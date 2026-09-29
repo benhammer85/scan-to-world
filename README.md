@@ -22,19 +22,22 @@ Scaniverse, KIRI Engine or RealityScan and load it with **Load scan**. If the sc
 use **Decimate to** (meshoptimizer, respects UV seams) and aim for 5–15k triangles. For
 multi-million-triangle raw scans, decimate in Blender or in the scan app's export first.
 
-## Controls
+## Touch
 
-| Mode   | Gesture |
-|--------|---------|
-| Orbit  | drag to rotate, pinch or scroll to zoom |
-| Sculpt | drag on the object to raise terrain (Shift or right-drag to dig). A drag that starts off the object orbits the view. |
-| Place  | tap to drop a tree, house or flag. A ghost preview follows the surface. |
+There are no buttons, modes or menus. The screen is the object and nothing else.
 
-Falloff options:
-* **Gaussian:** each touch leaves a permanent bump.
-* **Diffuse:** each touch spreads out over the surface (heat equation on the mesh) and fades.
+| Gesture | What it does |
+|---|---|
+| Drag | Turns the world, with momentum when you let go |
+| Hold still on the object | Presses into the ground, deeper the longer you hold |
+| Hold, then pull | Pulls the ground up. How far you pull is how high it goes, and moving back lets it down again |
+| Pinch or scroll | Comes closer. The brush is a fixed size on screen, so closer means finer edits |
+| Drop a file on the window | Loads a scan (GLB, OBJ or PLY) |
+| Three fingers held, or the <code>`</code> key | Opens the tuning drawer, which is for development and not part of the product |
 
-The two layers are stored separately, so diffuse edits never wear away your permanent ones.
+A ring appears the moment a finger takes hold, before any work happens, so you know you were heard. Changed contours show as pencil while you work, and the pen inks them when you let go.
+
+The object picks its own height method from its shape (`chooseHeightMode`): radial for round things, curvature for everything else. The recogniser (`src/interact/gestures.ts`) only turns pointer events into intents, so its rules are unit-tested. The feel constants live in `TOUCH` in `src/main.ts`.
 
 ## Pipeline
 

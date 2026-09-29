@@ -134,6 +134,42 @@ export class TerrainWorld {
     if (this.edits.brush([local.x, local.y, local.z], opts, dt)) this.markEdited();
   }
 
+  // ---- hold and pull: the gesture vocabulary (see interact/gestures.ts)
+  private held: { local: THREE.Vector3; pulled: number } | null = null;
+
+  /** A finger took hold of the ground here (world space). */
+  grab(worldPoint: THREE.Vector3): void {
+    const local = this.mesh.worldToLocal(worldPoint.clone());
+    this.held = { local, pulled: 0 };
+    this.strokeFrom = local.clone();
+    this.inkWanted = false;
+  }
+
+  /** Press into the held ground: `amount` height units, negative-going. */
+  pressIn(amount: number, radius: number): void {
+    if (!this.held) return;
+    this.brushLocal(this.held.local, { radius, strength: -amount, falloff: 'gaussian' }, 1);
+  }
+
+  /** Pull the held ground up to `height` units above where the pull began.
+   *  Elastic while held: bring the finger back and it comes back down. */
+  pullTo(height: number, radius: number): void {
+    if (!this.held) return;
+    const delta = height - this.held.pulled;
+    if (Math.abs(delta) < 1e-4) return;
+    this.held.pulled = height;
+    this.brushLocal(this.held.local, { radius, strength: delta, falloff: 'gaussian' }, 1);
+  }
+
+  letGo(): void {
+    this.held = null;
+    this.endStroke();
+  }
+
+  private brushLocal(local: THREE.Vector3, opts: BrushOptions, dt: number): void {
+    if (this.edits.brush([local.x, local.y, local.z], opts, dt)) this.markEdited();
+  }
+
   /** The finger lifted: once the ground stops moving, the pen inks what changed. */
   endStroke(): void {
     if (this.strokeFrom) this.inkWanted = true;

@@ -50,7 +50,7 @@ html, body {
 #panel h2 { margin: 0 0 8px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
 #panel section { padding: 12px 14px; border-bottom: 1px solid var(--line); }
 #panel section:last-child { border-bottom: 0; }
-#panel.collapsed .panel-body { display: none; }
+#panel[hidden] { display: none; }
 
 #panel-toggle { border: 0; background: none; font-size: 18px; padding: 0 4px; cursor: pointer; }
 
@@ -88,8 +88,6 @@ section > button { width: 100%; }
 .segmented button:last-child { border-radius: 0 6px 6px 0; }
 .segmented button.active { background: var(--ink); color: var(--paper); border-color: var(--ink); }
 
-body:not(.mode-sculpt) .sculpt-only { display: none; }
-body:not(.mode-place) .place-only { display: none; }
 
 .muted { color: var(--muted); }
 .hint { font-size: 12px; margin-bottom: 0; }
@@ -111,3 +109,20 @@ body:not(.mode-place) .place-only { display: none; }
 @media (max-width: 600px) {
   #panel { width: auto; right: 12px; max-height: 55%; }
 }
+
+#hint {
+  position: fixed;
+  bottom: max(20px, env(safe-area-inset-bottom));
+  left: 16px;
+  right: 16px;
+  margin: 0;
+  text-align: center;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  pointer-events: none;
+  transition: opacity 1.2s ease;
+}
+#hint.gone { opacity: 0; }
+
+body.dropping #stage { outline: 2px dashed var(--ink); outline-offset: -12px; }

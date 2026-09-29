@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { buildTopology } from '../src/mesh/topology';
 import { contourLevels, extractContours } from '../src/terrain/contours';
-import { extractHeights } from '../src/terrain/heightfield';
+import { chooseHeightMode, extractHeights } from '../src/terrain/heightfield';
 import { TerrainEdits } from '../src/interact/sculpt';
 import { lineKey, pointAlong } from '../src/render/plotterLines';
 
@@ -145,5 +145,14 @@ describe('reveal identity', () => {
     expect(out.distanceTo(new THREE.Vector3(1, 0, 0))).toBeLessThan(1e-6);
     pointAlong(ring, false, 99, out);
     expect(out.distanceTo(new THREE.Vector3(0, -1, 0))).toBeLessThan(1e-6);
+  });
+});
+
+describe('chooseHeightMode', () => {
+  it('reads an orange as round and a brick as not', () => {
+    expect(chooseHeightMode(sphereTopology(6))).toBe('radial');
+    const box = new THREE.BoxGeometry(2, 0.8, 1, 8, 4, 4);
+    box.scale(1 / Math.hypot(1, 0.4, 0.5), 1 / Math.hypot(1, 0.4, 0.5), 1 / Math.hypot(1, 0.4, 0.5));
+    expect(chooseHeightMode(buildTopology(box.attributes.position.array, box.index!.array))).toBe('curvature');
   });
 });

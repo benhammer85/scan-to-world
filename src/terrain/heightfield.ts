@@ -73,6 +73,26 @@ export function curvatureSignal(topo: Topology): Float32Array {
   return out;
 }
 
+/**
+ * Pick the height method from the object instead of asking. Distance from the
+ * centre only means "altitude" on something roughly round; how round is the
+ * spread of that distance against its mean (0 for a sphere). An orange scan
+ * measures about 0.03 and a LEGO brick about 0.2.
+ */
+export function chooseHeightMode(topo: Topology): HeightMode {
+  const r = radialSignal(topo);
+  let mean = 0;
+  for (const v of r) mean += v;
+  mean /= r.length;
+  let varSum = 0;
+  for (const v of r) varSum += (v - mean) ** 2;
+  const spread = Math.sqrt(varSum / r.length) / (mean || 1);
+  return spread < ROUND_ENOUGH ? 'radial' : 'curvature';
+}
+
+/** Threshold between the two, from the demo orange (0.03) and a brick-shaped box (0.2). */
+export const ROUND_ENOUGH = 0.1;
+
 export function normalise(values: Float32Array, clip: number): Float32Array {
   const sorted = Float32Array.from(values).sort();
   const lo = sorted[Math.floor(clip * (sorted.length - 1))];
