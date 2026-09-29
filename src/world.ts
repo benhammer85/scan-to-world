@@ -39,6 +39,7 @@ const WATER_INK = '#2a5680';
 const WATER_SHALLOW = '#9cc3e0';
 const SNOW_TINT = '#f6f7f9';
 const TOWN_INK = '#2e2118';
+const LAND_TRAFFIC = new Set(['train', 'car', 'cart', 'barrier', 'cabin']);
 
 const SNOW_INK = '#9aaebf';
 const ICE_TINT = '#dcebf4';
@@ -359,7 +360,10 @@ export class TerrainWorld {
     const st = this.settlements;
     if (st && (this.turning.length || st.ferries.length || st.harbours.length || st.rails.length || st.cables.length || st.streets.some((x) => x.kind === 'road'))) {
       this.sailing.geometry.dispose();
-      this.sailing.geometry = segments([...movers(this.topo, st, this.seconds, dt, this.delays, this.crossings), ...turningMarks(this.turning, this.seconds)]);
+      // No traffic on land: from this high up nobody could see a cart or a train, only the ways they
+      // wear. Boats on the water stay, a mark of life where there are no other marks.
+      const afloat = movers(this.topo, st, this.seconds, dt, this.delays, this.crossings).filter((m) => !LAND_TRAFFIC.has((m as { kind?: string }).kind ?? ''));
+      this.sailing.geometry = segments([...afloat, ...turningMarks(this.turning, this.seconds)]);
     }
     // The ploughland's wash goes round the year as the world turns.
     if (st && Math.abs(st.day - this.seasonDay) > 0.02 && this.seasonal.userData.wash) {
