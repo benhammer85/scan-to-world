@@ -446,6 +446,34 @@ function liftFor(outline: V3[], clearance: (q: V3) => number): number {
   return Math.max(0, ...samples.map(clearance)) + MARK.lift;
 }
 
+/**
+ * Back gardens: behind the outer houses, a plot a little deeper than the
+ * house and as wide, dug in rows running back from the house, the way a
+ * survey draws a cottage garden.
+ */
+export function backGardens(topo: Topology, buildings: Building[], look: Look, has: (b: Building) => boolean): Polyline[] {
+  const { positions: p, normals: n } = topo;
+  const out: Polyline[] = [];
+  for (const b of buildings) {
+    if (b.front === undefined || !has(b)) continue;
+    const v = b.vertex, o = v * 3, f = b.front * 3;
+    const nr: V3 = [n[o], n[o + 1], n[o + 2]];
+    const shape = shapeOf(b, look);
+    const across = turned(tangent([p[f] - p[o], p[f + 1] - p[o + 1], p[f + 2] - p[o + 2]], nr) ?? anyDirection(v, nr), nr, shape.turn);
+    const along: V3 = [nr[1] * across[2] - nr[2] * across[1], nr[2] * across[0] - nr[0] * across[2], nr[0] * across[1] - nr[1] * across[0]];
+    const from = shape.setback + shape.short / 2 + 0.003, depth = GARDEN.depth * (0.8 + 0.4 * hash(v, 23));
+    const rows = GARDEN.rows + Math.floor(hash(v, 24) * 2);
+    for (let i = 0; i < rows; i++) {
+      const x = (i / (rows - 1) - 0.5) * shape.long * 0.8;
+      const at = (y: number) => [0, 1, 2].map((k) => p[o + k] + along[k] * x - across[k] * y + nr[k] * MARK.lift);
+      out.push(polyline([at(from), at(from + depth)], 0));
+    }
+  }
+  return out;
+}
+
+export const GARDEN = { depth: 0.014, rows: 3 };
+
 /** `d` turned by `angle` about the normal `nr`. */
 function turned(d: V3, nr: V3, angle: number): V3 {
   if (!angle) return d;

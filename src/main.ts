@@ -37,7 +37,7 @@ scene.add(holdRing);
 const settings: WorldSettings = {
   height: { mode: 'radial', smoothing: 2, clip: 0.02 },
   bands: 22,
-  surface: 'scan',
+  surface: 'paper',
   displace: true,
   displaceScale: 0.12,
 };

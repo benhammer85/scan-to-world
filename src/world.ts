@@ -10,7 +10,9 @@ import { PlotterLines, defaultPlotterStyle, lineKey, type RevealMode } from './r
 import type { Polyline } from './terrain/contours';
 import { TerrainEdits, applyDisplacement, type BrushOptions } from './interact/sculpt';
 import { Settlements, type TapResult } from './life/settlements';
-import { blockMarks, buildingMarks, harbourMarks, lookOf, ruinMarks, squareFrames, stallMarks, streetMarks, sunkenMarks, terraceMarks, wingMarks, yardPaths } from './life/buildingMarks';
+import { Countryside, type CountryTap } from './life/country';
+import { countryMarks, seasonColour, turningMarks, type Turning, type Wash } from './life/countryMarks';
+import { blockMarks, buildingMarks, harbourMarks, lookOf, ruinMarks, squareFrames, stallMarks, streetMarks, sunkenMarks, terraceMarks, wingMarks, yardPaths, backGardens } from './life/buildingMarks';
 import { findWater, seaFor, snowLines, streamLines, waterLines, type Sea, type Water } from './nature/water';
 import { cableMarks, crossingFrames, crossingMarks, ferryRoute, movers, railMarks } from './life/buildingMarks';
 
@@ -27,11 +29,15 @@ export interface WorldSettings {
   displaceScale: number;
 }
 
-const PAPER = new THREE.Color('#efe7d6');
+const PAPER = new THREE.Color('#ecdfc2');
+/** How much of the scan's own colour shows through the paper. */
+const PAPER_TINT = 0.22;
 const WATER_INK = '#2a5680';
 const WATER_SHALLOW = '#9cc3e0';
 const SNOW_TINT = '#f6f7f9';
-const TOWN_FILL = '#2a2522';
+/** Buildings washed in carmine, as old town plans colour them, under a sepia pen. */
+const TOWN_FILL = '#a2503f';
+const TOWN_INK = '#2e2118';
 
 /** A flat fill lying just above the ground, in front of it and behind the ink. */
 function fillMesh(color: string, opacity: number, order: number): THREE.Mesh {
@@ -88,8 +94,9 @@ export class TerrainWorld {
    */
   readonly lines = new PlotterLines({ ...defaultPlotterStyle, ink: '#b48d64', inkHigh: '#8d5f3b', pencil: '#c9b79d', alpha: 0.45, indexAlpha: 0.8 });
   readonly settlements: Settlements;
+  readonly country: Countryside;
   /** The town has its own pen, so building never waits on the terrain's plot. */
-  readonly townLines = new PlotterLines({ ...defaultPlotterStyle, ink: '#15151c', inkHigh: '#15151c', indexEvery: 1 });
+  readonly townLines = new PlotterLines({ ...defaultPlotterStyle, ink: TOWN_INK, inkHigh: TOWN_INK, indexEvery: 1 });
   private townDirty = false;
   private lastTownBuild = 0;
   private townFrom: THREE.Vector3 | null = null;
@@ -152,9 +159,9 @@ export class TerrainWorld {
     );
     this.waterLines.renderOrder = 1;
     this.snowEdge = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: SNOW_INK, transparent: true, opacity: 0.9, depthWrite: false }));
-    this.sailing = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: '#15151c', depthWrite: false, transparent: true }));
+    this.sailing = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: TOWN_INK, depthWrite: false, transparent: true }));
     this.sailing.renderOrder = 2;
-    this.group.add(this.mesh, this.waterLines, this.snowEdge, this.lines.object, this.houseFill, this.townLines.object, this.sailing);
+    this.group.add(this.mesh, this.wash, this.seasonal, this.waterLines, this.snowEdge, this.lines.object, this.houseFill, this.townLines.object, this.sailing);
 
     this.baseHeights = extractHeights(this.topo, settings.height);
     this.heights = new Float32Array(this.topo.vertexCount);
@@ -167,6 +174,7 @@ export class TerrainWorld {
     this.rebuildContours('plot', penFrom);
     this.settlements = new Settlements(this.topo, this.heights);
     this.settlements.setWater(this.water.wet, this.water.depth, this.water.stream, this.water.snow);
+    this.country = new Countryside(this.topo, this.settlements, this.heights);
     this.drawWater(false);
   }
 
@@ -175,11 +183,23 @@ export class TerrainWorld {
     this.townLines.pace = pace;
   }
 
-  /** "People here." The ground decides whether and where. */
-  tap(worldPoint: THREE.Vector3): TapResult {
+  /**
+   * A tap is a seed, and the ground says what of. On a town: it grows
+   * there. On a field: it goes back to wood. On a wood: felled. On ground
+   * too steep to build: a wood planted. Near a town: a farm. Anywhere else
+   * open: people, a new town.
+   */
+  tap(worldPoint: THREE.Vector3): TapResult | { kind: CountryTap; vertex: number } {
     const local = this.mesh.worldToLocal(worldPoint.clone());
-    const r = this.settlements.tap([local.x, local.y, local.z]);
+    const at = [local.x, local.y, local.z];
+    let r: TapResult | { kind: CountryTap; vertex: number } | null = null;
+    if (!this.settlements.onTown(at)) {
+      const v = this.settlements.nearest(at), kind = this.country.tap(v);
+      if (kind) r = { kind, vertex: v };
+    }
+    r ??= this.settlements.tap(at);
     if (r.kind !== 'refused') {
+      this.country.update(true);
       this.townDirty = true;
       this.townFrom = local;
     }
@@ -189,9 +209,11 @@ export class TerrainWorld {
   /** Time passes as the world turns. */
   advance(days: number): void {
     if (this.settlements.advance(days) > 0) this.townDirty = true;
+    if (this.country.update()) this.townDirty = true;
     // Turning also ages what is there: paths wear in, huts become houses,
-    // gardens are built round. When anything has, the pen goes over it.
-    const look = this.settlements.lookSignature();
+    // gardens are built round, fields are ploughed, woods grow. When
+    // anything has, the pen goes over it.
+    const look = this.settlements.lookSignature() + this.country.signature() * 1e-3;
     if (look !== this.lastLook) { this.lastLook = look; this.townDirty = true; }
   }
   private lastLook = 0;
@@ -305,9 +327,14 @@ export class TerrainWorld {
     // Boats sail in real time: they are life on the water, not building.
     this.seconds += dt;
     const st = this.settlements;
-    if (st && (st.ferries.length || st.harbours.length || st.rails.length || st.cables.length || st.streets.some((x) => x.kind === 'road'))) {
+    if (st && (this.turning.length || st.ferries.length || st.harbours.length || st.rails.length || st.cables.length || st.streets.some((x) => x.kind === 'road'))) {
       this.sailing.geometry.dispose();
-      this.sailing.geometry = segments(movers(this.topo, st, this.seconds, dt, this.delays, this.crossings));
+      this.sailing.geometry = segments([...movers(this.topo, st, this.seconds, dt, this.delays, this.crossings), ...turningMarks(this.turning, this.seconds)]);
+    }
+    // The ploughland's wash goes round the year as the world turns.
+    if (st && Math.abs(st.day - this.seasonDay) > 0.02 && this.seasonal.userData.wash) {
+      this.seasonDay = st.day;
+      setWash(this.seasonal, this.seasonal.userData.wash, seasonColour(st.day));
     }
     if (this.waterFade < 1) {
       this.waterFade = Math.min(1, this.waterFade + dt / 0.9);
@@ -379,7 +406,14 @@ export class TerrainWorld {
       ...rows.marks,
     ];
     const stalls = stallMarks(st.stalls.filter((x) => !drownedHall.has(x.town)), frames, this.topo);
+    const country = countryMarks(this.topo, st, this.country);
+    this.turning = country.turning;
+    setWash(this.wash, country.wash);
+    setWash(this.seasonal, country.seasonal, seasonColour(st.day));
+    this.seasonDay = st.day;
     const marks = [
+      ...country.lines,
+      ...backGardens(this.topo, single, look, (b) => st.hasGarden(b)),
       ...streetMarks(this.topo, streets, shown, frames, st, look),
       ...yardPaths(this.topo, shown, frames, look),
       ...blocks.lines,
@@ -421,7 +455,12 @@ export class TerrainWorld {
     set(this.houseFill, dark);
   }
 
-  private houseFill = fillMesh(TOWN_FILL, 0.92, 2);
+  private houseFill = fillMesh(TOWN_FILL, 0.78, 2);
+  /** Hand colour on the fields and woods; the ploughland's on its own, tinted by the season. */
+  private wash = washMesh(0);
+  private seasonal = washMesh(0);
+  private turning: Turning[] = [];
+  private seasonDay = 0;
 
   private lastTownCentre(): THREE.Vector3 | null {
     const b = this.settlements.buildings.at(-1);
@@ -509,7 +548,12 @@ export class TerrainWorld {
         arr.set([c.r, c.g, c.b], i * 3);
       }
     } else {
-      for (let i = 0; i < arr.length; i += 3) arr.set([PAPER.r, PAPER.g, PAPER.b], i);
+      // Old map paper, with a little of the object's own colour in it, so an orange is still warm.
+      const own = this.scanColors;
+      for (let i = 0; i < arr.length; i += 3) {
+        if (!own) { arr.set([PAPER.r, PAPER.g, PAPER.b], i); continue; }
+        arr.set([PAPER.r * (1 - PAPER_TINT) + own[i] * PAPER_TINT, PAPER.g * (1 - PAPER_TINT) + own[i + 1] * PAPER_TINT, PAPER.b * (1 - PAPER_TINT) + own[i + 2] * PAPER_TINT], i);
+      }
     }
     // With a texture, vertex colours stay white so they don't tint the map.
     if (useMap && !this.scanColors) arr.fill(1);
@@ -566,4 +610,38 @@ function rectangleTris(mark: Polyline): number[] {
   const p = mark.points, n = p.length / 3, q = n / 4;
   const corner = (i: number) => [p[i * q * 3], p[i * q * 3 + 1], p[i * q * 3 + 2]];
   return [...corner(0), ...corner(1), ...corner(2), ...corner(0), ...corner(2), ...corner(3)];
+}
+
+/**
+ * A mesh for washes. Watercolour darkens the paper it's laid on, never
+ * lightens it, so washes multiply what's under them: a tint strength of
+ * nought leaves the ground as it was, which is how their edges go soft.
+ * (Laid over as paint, the pale tints came out as fog on the orange.)
+ */
+function washMesh(order: number): THREE.Mesh {
+  const m = new THREE.Mesh(
+    new THREE.BufferGeometry(),
+    new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.MultiplyBlending, premultipliedAlpha: true, side: THREE.DoubleSide, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }),
+  );
+  m.renderOrder = order;
+  return m;
+}
+
+/** A wash's colours, as what multiplies the ground: its tint at its strength, and white (no change) where it fades out. */
+function setWash(mesh: THREE.Mesh, w: Wash, tint?: [number, number, number]): void {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(w.positions), 3));
+  g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(multiplied(w.colours, tint)), 3));
+  mesh.geometry.dispose();
+  mesh.geometry = g;
+  mesh.userData.wash = w;
+}
+
+function multiplied(rgba: number[], tint?: [number, number, number]): number[] {
+  const out: number[] = [];
+  for (let i = 0; i < rgba.length; i += 4) {
+    const a = rgba[i + 3];
+    for (let k = 0; k < 3; k++) out.push(1 - a * (1 - rgba[i + k] * (tint ? tint[k] : 1)));
+  }
+  return out;
 }

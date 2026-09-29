@@ -165,6 +165,19 @@ export interface Block {
   born: number;
 }
 
+/** Outlying farms: a tap in the country near a town plants one. */
+export const FARM = {
+  /** A farm belongs to the nearest town within this reach... */
+  reach: 0.5,
+  /** ...and its track back to the town's streets is no longer than this. */
+  track: 0.55,
+  /** How far from the tap its farmstead may stand. */
+  site: 0.08,
+};
+
+/** Water mills: a town this big, with a stream crossing one of its ways. */
+export const MILL = { at: 8, reach: 0.4 };
+
 export const BRIDGE = {
   /** A bridge may cross water up to this wide (world units)... */
   span: 0.14,
@@ -214,7 +227,7 @@ export interface Street {
   path: number[];
   town: number;
   /** street: along the contour, houses front it. link: climbs from the network to a street. */
-  kind: 'street' | 'link' | 'road' | 'lane' | 'square';
+  kind: 'street' | 'link' | 'road' | 'lane' | 'square' | 'track';
   /** Its first vertex is a house (the old per-house spur). The house isn't street. */
   fromHouse?: boolean;
   /** A road's two towns, for how much it carries. */
@@ -290,6 +303,8 @@ export interface Building {
   state?: 'drowned' | 'ruin';
   /** When it was built (days): a house starts as a hut. */
   born?: number;
+  /** An outlying farmstead: out in the country, on its own track, and not one of its town's houses. */
+  farm?: boolean;
 }
 
 export interface Town {
@@ -308,6 +323,7 @@ export interface Town {
 export type TapResult =
   | { kind: 'founded'; town: number; vertex: number }
   | { kind: 'grew'; town: number; vertex: number }
+  | { kind: 'farm'; town: number; vertex: number }
   | { kind: 'refused' };
 
 export class Settlements {
@@ -364,8 +380,11 @@ export class Settlements {
 
   /** Can a building stand on this vertex, given the ground as it is now? */
   buildable(v: number): boolean {
-    return !this.wet?.[v] && !this.stream?.[v] && !this.snow?.[v] && this.localSlope(v) <= this.buildableSlope;
+    return !this.wet?.[v] && !this.stream?.[v] && !this.snow?.[v] && !this.keepOut?.[v] && this.localSlope(v) <= this.buildableSlope;
   }
+
+  /** Ground kept wild (a wood somebody planted): nothing is built there. */
+  keepOut: Uint8Array | null = null;
 
   /**
    * Water on the ground now: nothing is built or routed on it (but bridges),
@@ -423,9 +442,16 @@ export class Settlements {
   /** A tap at a surface point (local space). */
   tap(point: ArrayLike<number>): TapResult {
     const near = this.nearestVertex(point);
-    const town = this.townNear(near) ?? this.townWithin(near, TOWN.apart);
+    this.now = this.day;
+    const on = this.townNear(near);
+    // Near a town but not on it: a farm, out in its country.
+    const by = on ? null : this.townWithin(near, TOWN.apart);
+    if (by) {
+      const farm = this.plantFarm(near, by);
+      if (farm !== null) { this.refreshBlocks(); return { kind: 'farm', town: by.id, vertex: farm }; }
+    }
+    const town = on ?? by;
     if (town) {
-      this.now = this.day;
       const grown = this.growNear(town, near, 3);
       this.refreshBlocks();
       return grown === null ? { kind: 'refused' } : { kind: 'grew', town: town.id, vertex: grown };
@@ -440,6 +466,86 @@ export class Settlements {
     this.expand(t, site, 0);
     this.refreshBlocks();
     return { kind: 'founded', town: t.id, vertex: site };
+  }
+
+  /** The vertex nearest a surface point. */
+  nearest(point: ArrayLike<number>): number {
+    return this.nearestVertex(point);
+  }
+
+  /** Is this point on a town (its houses or its square)? Taps there grow it. */
+  onTown(point: ArrayLike<number>): boolean {
+    return this.townNear(this.nearestVertex(point)) !== null;
+  }
+
+  /**
+   * An outlying farm near `v`, belonging to `t`: a farmstead on free ground,
+   * with a track back to the town's streets. Refused (null) if there's no
+   * ground for it or no way back, before anything is laid.
+   */
+  plantFarm(v: number, t?: Town | null): number | null {
+    t ??= this.townWithin(v, FARM.reach);
+    if (!t) return null;
+    const town = t;
+    const site = this.nearestWhere(v, FARM.site, (u) => !this.network.has(u) && this.buildable(u) && this.roomFor(u));
+    if (site === null) return null;
+    const track = this.route([site], (u) => this.network.get(u) === town.id, FARM.track, site, true);
+    if (!track || track.length < 2) return null;
+    this.buildings.push({ vertex: site, town: town.id, order: 999, front: track[1], born: this.now, farm: true });
+    this.occupied.push(site);
+    this.buildingAt.add(site);
+    this.addStreet({ path: track, town: town.id, kind: 'track', fromHouse: true });
+    return site;
+  }
+
+  /** A farm planted from outside (the countryside's own growth), at the present day. */
+  sowFarm(v: number, t: Town): number | null {
+    this.now = this.day;
+    const r = this.plantFarm(v, t);
+    if (r !== null) this.refreshBlocks();
+    return r;
+  }
+
+  /** The water on the ground now, as the settlements see it. */
+  get ground(): { wet: Uint8Array | null; stream: Uint8Array | null; snow: Uint8Array | null } {
+    return { wet: this.wet, stream: this.stream, snow: this.snow };
+  }
+
+  /** Is this vertex part of a town's square (kept open)? */
+  isSquare(v: number): boolean {
+    return this.reserved.has(v);
+  }
+
+  /** The outlying farms. */
+  get farms(): Building[] {
+    return this.buildings.filter((b) => b.farm && b.state === undefined);
+  }
+
+  /** Does this house have a garden behind it? The outer houses do, most of them; the core's are built over. */
+  hasGarden(b: Building): boolean {
+    if (b.state !== undefined || b.farm || b.order === 0 || this.houseStage(b) < 2) return false;
+    const t = this.towns[b.town];
+    return this.dist(b.vertex, t.centre) > this.coreOf(t) && ((b.vertex * 2654435761) >>> 0) % 10 < 6;
+  }
+
+  /**
+   * Water mills: where a stream runs under one of a grown town's ways, the
+   * crossing nearest the town, one to a town.
+   */
+  mills(): { town: number; vertex: number }[] {
+    if (!this.stream) return [];
+    const out: { town: number; vertex: number }[] = [];
+    for (const t of this.towns) {
+      if (t.buildings.length < MILL.at) continue;
+      let best = -1, bd = MILL.reach;
+      for (const u of this.bridgeAt) {
+        if (!this.stream[u] || this.network.get(u) !== t.id) continue;
+        const d = this.dist(u, t.centre) + u * 1e-9;
+        if (d < bd) { bd = d; best = u; }
+      }
+      if (best >= 0) out.push({ town: t.id, vertex: best });
+    }
+    return out;
   }
 
   /** Time passes: every town grows. Returns how many marks were laid. */
@@ -497,6 +603,11 @@ export class Settlements {
       return n < STAGE.trackAt ? 0 : n < STAGE.streetAt ? 1 : n < STAGE.mainAt ? 2 : 3;
     };
     for (const st of this.streets) {
+      if (st.kind === 'track') {
+        // A farm track is walked, then worn in, and stays a track.
+        out.set(st, Math.min(byAge(st), 1));
+        continue;
+      }
       if (st.kind === 'road') {
         // A road between towns is only as made up as the trade it carries,
         // and it is a track from the day it's laid: it joins two places.

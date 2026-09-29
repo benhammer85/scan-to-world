@@ -28,7 +28,7 @@ There are no buttons, modes or menus. The screen is the object and nothing else.
 
 | Gesture | What it does |
 |---|---|
-| Tap | "People here." Founds a hamlet, or grows the town you touched. The ground decides whether and where |
+| Tap | A seed: the ground decides what of. People (a new town, or the town you touched grows), a farm near a town, a wood on steep ground; on a field it goes back to wood, on a wood it is felled |
 | Drag | Turns the world, and turning is time: a full turn is a day, and towns grow and grow up as the days pass: paths wear into streets, huts become houses, the old core is built into terraces and courts |
 | Hold still on the object | Presses into the ground, deeper the longer you hold |
 | Hold, then pull | Pulls the ground up. How far you pull is how high it goes, and moving back lets it down again |
@@ -150,6 +150,41 @@ scan file ─► load.ts         merge meshes, centre, scale to radius 1, option
     * the look doesn't depend on how time was sliced;
     * rows never touch a street's drawn line;
     * courts stand clear of the streets round them.
+
+* **The country, as an old map draws it.** This came from feedback that the game should be meditative, unique and inspired by vintage cartography, not by city builders. So the look is an old survey's (`src/life/country.ts`, `src/life/countryMarks.ts`):
+  * **Paper and ink.** The ground is old map paper with a little of the scan's own colour in it (still `paper` in the drawer; `scan` gives the raw colours back).
+  * **Town colours.** Buildings are washed carmine under a sepia pen, as old town plans colour them.
+  * **Washes.** Fields and woods are washed in muted hand colour that multiplies the paper, as watercolour does, and fades out at its edges. Laid over as paint, the washes came out as pale fog.
+  * **Terra incognita.** The map only shows country that has been surveyed, meaning land near somebody. Everything else stays blank until people spread there.
+* **Fields.** The land is divided once into a fixed patchwork of field cells, about 0.11 apart, so fields never reshuffle. A town works 0.3 fields per house, nearest and gentlest first, within 0.8 of its middle. Towns claim in rounds so neighbours share the land between them. The town builds over its nearest fields in time (a cell 30% town ground is taken), and its fields move out. What a field is follows from its ground:
+  * By a stream or water, it's a wet meadow with marsh tufts.
+  * Just under the snow, it's rough grazing with dotted dry-stone walls.
+  * On the steep, it's terraces: level steps along the ground's own contours.
+  * A town's first two fields are market gardens, dug in beds that alternate direction.
+  * Otherwise it's pasture (a plain wash) or arable, whose fine plough lines run one way across the field and stop short of the hedge, as a headland does.
+  * Fields are hedged at once, ploughed after 0.8 days and terraced after 1.6. The hedges carry hedge trees.
+  * The arable wash goes round a year of 8 turns: turned earth, green shoots, ripe, stubble.
+* **Woods** stand on ground too steep to farm (above 0.45 of the buildable slope) and in scattered copses. They're drawn as an old map's trees: a round crown, shaded down one side, on a stem, upright to the map's north. Fields fell them as they reach them.
+* **Farms.** A grown town (18 houses) sends farms out to its far fields, each on its own track (a way that is walked, then worn in, and stays a track). A farm works up to 5 fields, one more every 0.7 days.
+* **Gardens and mills.**
+  * The outer houses have back gardens, dug in rows.
+  * A town of 16 has a windmill, the old cross symbol with its sails turning slowly, on its highest arable field.
+  * A town of 8 has a water mill, with a turning wheel, where a stream runs under one of its ways.
+* **Seeds, and changing course.** A tap is a seed, and the ground says what of:
+  * **On a town:** it grows there.
+  * **On a field:** the field goes back to wood. A planted wood is kept, and the town builds nothing there, so a wood can steer where a town spreads.
+  * **On a wood:** it's felled, and fields may take it.
+  * **On ground too steep to build on:** a wood is planted, and grows from saplings over 4 days.
+  * **In the country near a town:** a farm is planted, with a track back to the town.
+  * **On open ground anywhere else:** people, a new town.
+* Tests (`test/country.test.ts`) check:
+  * the patchwork is fixed;
+  * fields are claimed near their town and never on its streets, and move out as it builds over them;
+  * terraces are on the steep;
+  * a spared field stays wood and is never built on;
+  * a felled wood opens up;
+  * a planted farm has its track and grows its fields;
+  * the year comes round.
 
 ## The reveal (ported from whatwesaved)
 
