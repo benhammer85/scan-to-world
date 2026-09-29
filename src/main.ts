@@ -3,11 +3,15 @@ import { TerrainWorld, type SurfaceStyle, type WorldSettings } from './world';
 import { decimate, loadScanFile, normaliseGeometry, triangleCount } from './mesh/load';
 import { makeDemoOrange } from './demo/orange';
 import { SPECIMENS } from './demo/specimens';
+import { ATLAS, chartLines, layout, railwayCurve, railwayLines, segments as skySegments, sketchLines, trainAt, trainLines, unchartedLines, type Railway } from './atlas/atlas';
 import { GestureRecognizer } from './interact/gestures';
 import { buildTopology } from './mesh/topology';
 import { chooseHeightMode, type HeightMode } from './terrain/heightfield';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+
+/** On one world, or looking at the atlas of all of them. */
+let mode: 'world' | 'atlas' = 'world';
 
 // If anything goes wrong, say so on the page: a blank screen tells nobody anything.
 function showTrouble(message: string): void {
@@ -93,7 +97,7 @@ function returnTo(name: string): boolean {
 
 function setWorld(geometry: THREE.BufferGeometry, map: THREE.Texture | null, name: string, heightMode?: HeightMode): void {
   if (world) {
-    scene.remove(world.group);
+    if (mode === 'world') scene.remove(world.group);
     // A world kept to come back to isn't thrown away; one being remade (decimated, say) is.
     if (kept.get(name) === world) { kept.delete(name); world.dispose(); }
   }
@@ -105,9 +109,9 @@ function setWorld(geometry: THREE.BufferGeometry, map: THREE.Texture | null, nam
 
   // The object decides how its bumps become altitude, not a menu.
   const pos = geometry.attributes.position.array as ArrayLike<number>;
-  const mode = heightMode ?? chooseHeightMode(buildTopology(pos, geometry.index?.array ?? null));
-  settings.height = { ...settings.height, mode, smoothing: mode === 'curvature' ? 6 : 2 };
-  $<HTMLSelectElement>('height-mode').value = mode;
+  const chosen = heightMode ?? chooseHeightMode(buildTopology(pos, geometry.index?.array ?? null));
+  settings.height = { ...settings.height, mode: chosen, smoothing: chosen === 'curvature' ? 6 : 2 };
+  $<HTMLSelectElement>('height-mode').value = chosen;
   $<HTMLInputElement>('smoothing').value = String(settings.height.smoothing);
 
   world = new TerrainWorld(geometry.clone(), map, { ...settings, height: { ...settings.height } }, facingPoint());
@@ -140,9 +144,11 @@ function frameObject(): void {
   placeCamera();
 }
 
+/** What the camera looks at: the world's middle, or in the atlas a place on the chart. */
+const focus = new THREE.Vector3();
 function placeCamera(): void {
-  camera.position.set(0, 0.16, 1).setLength(dist);
-  camera.lookAt(0, 0, 0);
+  camera.position.set(0, mode === 'atlas' ? 0.05 : 0.16, 1).setLength(dist).add(focus);
+  camera.lookAt(focus);
 }
 
 /** World units per screen pixel at the object's surface. */
@@ -161,7 +167,7 @@ const raycaster = new THREE.Raycaster();
 const ndc = new THREE.Vector2();
 
 function pickAt(x: number, y: number): THREE.Intersection | null {
-  if (!world) return null;
+  if (!world || mode !== 'world' || flight) return null;
   const r = renderer.domElement.getBoundingClientRect();
   ndc.set(((x - r.left) / r.width) * 2 - 1, -((y - r.top) / r.height) * 2 + 1);
   raycaster.setFromCamera(ndc, camera);
@@ -179,7 +185,7 @@ const turn = new THREE.Quaternion();
 const DAYS_PER_RADIAN = 1 / (2 * Math.PI);
 
 function rotateWorld(ax: number, ay: number): void {
-  if (!world) return;
+  if (!world || mode !== 'world') return;
   world.advance(Math.hypot(ax, ay) * DAYS_PER_RADIAN);
   axisUp.set(0, 1, 0);
   axisRight.set(1, 0, 0).applyQuaternion(camera.quaternion);
@@ -198,6 +204,8 @@ const gestures = new GestureRecognizer(
     tap(x, y) {
       firstTouch();
       spin.set(0, 0);
+      if (mode === 'atlas') { atlasTap(x, y); return; }
+      if (flight) return;
       const hit = pickAt(x, y);
       // A tap on the paper round the world, not on it: the cabinet of specimens.
       if (!hit?.face) { openCabinet(); return; }
@@ -210,13 +218,19 @@ const gestures = new GestureRecognizer(
     spin(dx, dy) {
       firstTouch();
       spin.set(0, 0);
+      if (mode === 'atlas') { atlasDrag(dx, dy); return; }
       rotateWorld(dx * SPIN_PER_PX, dy * SPIN_PER_PX);
     },
     fling(vx, vy) {
+      if (mode === 'atlas') { atlasDragEnd(); return; }
       spin.set(vx * SPIN_PER_PX, vy * SPIN_PER_PX);
     },
     zoom(factor) {
       firstTouch();
+      if (flight) return;
+      if (mode === 'atlas') { atlasZoom(factor); return; }
+      // Pinched out as far as the world goes, and further: the atlas.
+      if (factor < 0.985 && dist >= homeDist * 1.58) { enterAtlas(); return; }
       dist = THREE.MathUtils.clamp(dist / factor, MIN_DIST, homeDist * 1.6);
       placeCamera();
     },
@@ -247,11 +261,14 @@ const gestures = new GestureRecognizer(
 );
 let worldAtHome = 0;
 
+/** Where the finger went down, and where it is: the atlas needs to know what a drag began on. */
+const finger = { downX: 0, downY: 0, x: 0, y: 0 };
 stage.addEventListener('pointerdown', (e) => {
-  stage.setPointerCapture(e.pointerId);
+  finger.downX = finger.x = e.clientX; finger.downY = finger.y = e.clientY;
+  atlasDragKind = null;
   gestures.down(e.pointerId, e.clientX, e.clientY, e.timeStamp);
 });
-stage.addEventListener('pointermove', (e) => gestures.move(e.pointerId, e.clientX, e.clientY, e.timeStamp));
+stage.addEventListener('pointermove', (e) => { finger.x = e.clientX; finger.y = e.clientY; gestures.move(e.pointerId, e.clientX, e.clientY, e.timeStamp); });
 for (const type of ['pointerup', 'pointercancel'] as const) {
   stage.addEventListener(type, (e) => gestures.up(e.pointerId, e.clientX, e.clientY, e.timeStamp));
 }
@@ -407,7 +424,9 @@ renderer.setAnimationLoop(() => {
   const now = performance.now();
   gestures.tick(now, dt);
 
-  if (world) {
+  flying(dt);
+  atlasFrame(dt, now);
+  if (world && mode === 'world') {
     // Momentum, fading the way a spun globe does.
     if (spin.lengthSq() > 1e-6) {
       rotateWorld(spin.x * dt, spin.y * dt);
@@ -439,6 +458,7 @@ renderer.setAnimationLoop(() => {
     // that's when the pen comes to ink the town.
     const calm = !held && gestures.current !== 'spinning' && spin.length() < 0.6;
     world.update(dt, now, { rate: 30, fade: 0.15 }, camera, calm);
+    for (const w of scene.children) if (w !== world.group) for (const k of kept.values()) if (k.group === w) k.update(dt, now, { rate: 30, fade: 0.15 }, camera, true);
     if (now - lastStats > 500 && !$('panel').hidden) { lastStats = now; updateStats(); }
   }
 
@@ -531,4 +551,295 @@ function engrave(geometry: THREE.BufferGeometry): string {
   g.dispose();
   (mesh.material as THREE.Material).dispose();
   return url;
+}
+
+// ---------------------------------------------------------------- the atlas
+// Pinch out past a world and the atlas opens: every world you have made, laid
+// out on one celestial chart, and the specimens not yet made as uncharted
+// places. Tap a world to go to it; tap an uncharted place to make it. Drag
+// from one world to another to lay a celestial railway between them.
+const railways: Railway[] = [];
+let slots = new Map<string, THREE.Vector3>();
+let flight: { f0: THREE.Vector3; f1: THREE.Vector3; d0: number; d1: number; t: number; dur: number; arrive?: () => void } | null = null;
+let atlasDragKind: 'pan' | 'rail' | null = null;
+let sketchFrom: string | null = null;
+let seconds = 0;
+const INK = '#2e2118';
+const sky = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: INK, transparent: true, opacity: 0.9, depthWrite: false }));
+const chart = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: '#8a7358', transparent: true, opacity: 0.0, depthWrite: false }));
+sky.frustumCulled = chart.frustumCulled = false;
+scene.add(sky, chart);
+const ghosts = new THREE.Group();
+scene.add(ghosts);
+/** How the worlds are turned in the atlas, so each railway's stations face along it. */
+const facingTo = new Map<TerrainWorld, THREE.Quaternion>();
+
+function atlasNames(): string[] {
+  const names = SPECIMENS.map((s) => s.caption);
+  for (const k of kept.keys()) if (!names.includes(k)) names.push(k);
+  return names;
+}
+
+function chartCentre(): THREE.Vector3 {
+  const c = new THREE.Vector3();
+  for (const p of slots.values()) c.add(p);
+  return c.divideScalar(Math.max(1, slots.size));
+}
+
+function atlasDistance(): number {
+  const c = chartCentre();
+  let r = 0;
+  for (const p of slots.values()) r = Math.max(r, p.distanceTo(c));
+  const vfov = THREE.MathUtils.degToRad(camera.fov), hfov = 2 * Math.atan(Math.tan(vfov / 2) * camera.aspect);
+  return (r + 1.4) / Math.tan(Math.min(vfov, hfov) / 2);
+}
+
+function flyTo(f1: THREE.Vector3, d1: number, dur: number, arrive?: () => void): void {
+  flight = { f0: focus.clone(), f1: f1.clone(), d0: dist, d1, t: 0, dur, arrive };
+}
+
+function flying(dt: number): void {
+  if (!flight) return;
+  flight.t = Math.min(1, flight.t + dt / flight.dur);
+  const e = flight.t < 0.5 ? 4 * flight.t ** 3 : 1 - (-2 * flight.t + 2) ** 3 / 2;
+  focus.lerpVectors(flight.f0, flight.f1, e);
+  dist = flight.d0 + (flight.d1 - flight.d0) * e;
+  placeCamera();
+  if (flight.t >= 1) { const done = flight.arrive; flight = null; done?.(); }
+}
+
+/** Where each world sits relative to the one you are on (in a world) or on the chart (in the atlas). */
+function placeWorlds(): void {
+  const here = mode === 'world' ? slots.get(statsName) ?? new THREE.Vector3() : new THREE.Vector3();
+  for (const [name, w] of kept) w.group.position.copy(slots.get(name) ?? new THREE.Vector3()).sub(here);
+}
+
+function enterAtlas(): void {
+  if (!world) return;
+  slots = layout(atlasNames());
+  const here = slots.get(statsName)!;
+  mode = 'atlas';
+  placeWorlds();
+  for (const w of kept.values()) if (!scene.children.includes(w.group)) scene.add(w.group);
+  // The world you were on is at its place on the chart now, and so is the camera: nothing jumps.
+  focus.copy(here);
+  placeCamera();
+  drawChart();
+  orientForRailways();
+  flyTo(chartCentre(), atlasDistance(), 1.4);
+  $('hint').classList.remove('gone');
+  $('hint').textContent = 'tap a world to go there · tap a dotted place to make a new world · drag from one world to another to lay a railway · pinch in to go back';
+}
+
+function leaveAtlasFor(name: string): void {
+  const at = slots.get(name);
+  if (!at) return;
+  flyTo(at, homeDist, 1.2, () => {
+    returnTo(name);
+    mode = 'world';
+    for (const w of kept.values()) if (w !== world) scene.remove(w.group);
+    placeWorlds();
+    focus.set(0, 0, 0);
+    placeCamera();
+    ghosts.clear();
+    (chart.material as THREE.LineBasicMaterial).opacity = 0;
+    $('hint').classList.add('gone');
+  });
+}
+
+/** The chart's graticule and stars, and the uncharted places, each with the figure of what it will be. */
+function drawChart(): void {
+  const c = chartCentre();
+  let r = 0;
+  for (const p of slots.values()) r = Math.max(r, p.distanceTo(c));
+  const lines = chartLines(c, r + ATLAS.spacing);
+  ghosts.clear();
+  for (const [name, at] of slots) {
+    if (kept.has(name)) continue;
+    lines.push(...unchartedLines(at));
+    const src = SPECIMENS.find((s) => s.caption === name);
+    const img = src ? figures.get(src.id)?.src : undefined;
+    if (img) {
+      const tex = new THREE.TextureLoader().load(img);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, opacity: 0.55, depthWrite: false }));
+      sprite.position.copy(at);
+      sprite.scale.set(1.7, 1.36, 1);
+      ghosts.add(sprite);
+    }
+  }
+  chart.geometry.dispose();
+  chart.geometry = skySegments(lines);
+  (chart.material as THREE.LineBasicMaterial).opacity = 0.55;
+}
+
+/** Turn each world with a railway so its station faces along the line, a little towards you. */
+function orientForRailways(): void {
+  facingTo.clear();
+  for (const rw of railways) {
+    for (const [me, other, station] of [[rw.a, rw.b, rw.stationA], [rw.b, rw.a, rw.stationB]] as [string, string, number][]) {
+      const w = kept.get(me);
+      if (!w || facingTo.has(w)) continue;
+      const toward = (slots.get(other) ?? new THREE.Vector3()).clone().sub(slots.get(me) ?? new THREE.Vector3()).normalize();
+      const want = toward.multiplyScalar(0.7).add(new THREE.Vector3(0, 0, 0.55)).normalize();
+      const up = w.surfaceAt(station).up;
+      facingTo.set(w, new THREE.Quaternion().setFromUnitVectors(up, want).multiply(w.group.quaternion));
+    }
+  }
+}
+
+/** Which place on the chart is under the finger: a world, or an uncharted place. */
+function slotAt(x: number, y: number): string | null {
+  const r = renderer.domElement.getBoundingClientRect();
+  let best: string | null = null, bd = Infinity;
+  for (const [name, at] of slots) {
+    const c = at.clone().project(camera), e = at.clone().add(new THREE.Vector3(1, 0, 0)).project(camera);
+    const px = ((c.x + 1) / 2) * r.width + r.left, py = ((1 - c.y) / 2) * r.height + r.top;
+    const rad = Math.abs(((e.x - c.x) / 2) * r.width) * 1.1;
+    const d = Math.hypot(x - px, y - py);
+    if (d < rad && d < bd) { bd = d; best = name; }
+  }
+  return best;
+}
+
+/** Make an uncharted place's world, where it is on the chart. */
+function chart_(name: string): TerrainWorld | null {
+  if (kept.has(name)) return kept.get(name)!;
+  const sp = SPECIMENS.find((s) => s.caption === name);
+  if (!sp) return null;
+  const was = world;
+  setWorld(normaliseGeometry(sp.make()), null, sp.caption, sp.mode);
+  const made = world!;
+  made.group.position.copy(slots.get(name)!);
+  if (was && mode === 'atlas') { world = was; statsName = [...kept].find(([, w]) => w === was)?.[0] ?? statsName; }
+  drawChart();
+  return made;
+}
+
+function atlasTap(x: number, y: number): void {
+  if (flight) return;
+  const name = slotAt(x, y);
+  if (!name) return;
+  if (!kept.has(name)) chart_(name);
+  leaveAtlasFor(name);
+}
+
+function screenToChart(x: number, y: number): THREE.Vector3 {
+  const r = renderer.domElement.getBoundingClientRect();
+  const v = new THREE.Vector3(((x - r.left) / r.width) * 2 - 1, -((y - r.top) / r.height) * 2 + 1, 0.5).unproject(camera);
+  const dir = v.sub(camera.position).normalize();
+  const t = -camera.position.z / dir.z;
+  return camera.position.clone().addScaledVector(dir, t);
+}
+
+function atlasDrag(dx: number, dy: number): void {
+  if (flight) return;
+  if (!atlasDragKind) {
+    const from = slotAt(finger.downX, finger.downY);
+    atlasDragKind = from && kept.has(from) ? 'rail' : 'pan';
+    sketchFrom = atlasDragKind === 'rail' ? from : null;
+  }
+  if (atlasDragKind === 'pan') {
+    const perPx = (2 * dist * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)) / view().h;
+    focus.x -= dx * perPx;
+    focus.y += dy * perPx;
+    placeCamera();
+  }
+}
+
+function atlasDragEnd(): void {
+  if (atlasDragKind === 'rail' && sketchFrom) {
+    const to = slotAt(finger.x, finger.y);
+    if (to && to !== sketchFrom) {
+      chart_(to);
+      layRailway(sketchFrom, to);
+    }
+  }
+  atlasDragKind = null;
+  sketchFrom = null;
+}
+
+function atlasZoom(factor: number): void {
+  const far = atlasDistance();
+  // Pinched in far enough: down into the world nearest the middle of the screen.
+  if (factor > 1.015 && dist <= far * 0.42) {
+    const r = renderer.domElement.getBoundingClientRect();
+    const name = slotAt(r.left + r.width / 2, r.top + r.height / 2) ?? [...slots].filter(([n]) => kept.has(n)).sort((a, b) => a[1].distanceTo(focus) - b[1].distanceTo(focus))[0]?.[0];
+    if (name) { if (!kept.has(name)) chart_(name); leaveAtlasFor(name); }
+    return;
+  }
+  dist = THREE.MathUtils.clamp(dist / factor, far * 0.4, far * 1.6);
+  placeCamera();
+}
+
+/**
+ * A celestial railway from one world to another. Each end needs a station: at
+ * a town facing the other world if there is one, and if there isn't, the
+ * railway's first passengers found one.
+ */
+function layRailway(a: string, b: string): void {
+  if (railways.some((r) => (r.a === a && r.b === b) || (r.a === b && r.b === a))) return;
+  const A = kept.get(a), B = kept.get(b);
+  if (!A || !B) return;
+  const station = (w: TerrainWorld, toward: THREE.Vector3): number => {
+    let best = -1, bd = -Infinity;
+    for (const t of w.settlements.towns) {
+      const d = w.surfaceAt(t.centre).up.dot(toward);
+      if (d > bd) { bd = d; best = t.centre; }
+    }
+    if (best >= 0 && bd > -0.2) return best;
+    const v = w.facing(toward);
+    const r = w.welcome(v);
+    return r.kind === 'founded' ? w.settlements.towns[w.settlements.towns.length - 1].centre : v;
+  };
+  const dir = (slots.get(b) ?? new THREE.Vector3()).clone().sub(slots.get(a) ?? new THREE.Vector3()).normalize();
+  railways.push({ a, b, stationA: station(A, dir), stationB: station(B, dir.clone().negate()), born: seconds, trips: 0 });
+  orientForRailways();
+}
+
+// For the browser checks: where each place on the chart is on the screen. Not in builds.
+if (import.meta.env.DEV) (window as unknown as { atlas: unknown }).atlas = {
+  screen(name: string) {
+    const at = slots.get(name);
+    if (!at) return null;
+    const r = renderer.domElement.getBoundingClientRect(), c = at.clone().project(camera);
+    return [((c.x + 1) / 2) * r.width + r.left, ((1 - c.y) / 2) * r.height + r.top];
+  },
+  get mode() { return mode; },
+  get railways() { return railways.map((x) => ({ a: x.a, b: x.b, trips: x.trips })); },
+  get current() { return statsName; },
+};
+
+/** Every frame: the worlds turning to face their railways, the railways and their trains, the pencilled line being laid. */
+function atlasFrame(dt: number, now: number): void {
+  seconds += dt;
+  void now;
+  if (mode === 'atlas') for (const [w, q] of facingTo) w.group.quaternion.slerp(q, 1 - Math.exp(-3 * dt));
+  const lines: THREE.Vector3[][] = [];
+  for (const rw of railways) {
+    const A = kept.get(rw.a), B = kept.get(rw.b);
+    if (!A || !B) continue;
+    A.group.updateMatrixWorld(); B.group.updateMatrixWorld();
+    const ea = A.surfaceAt(rw.stationA), eb = B.surfaceAt(rw.stationB);
+    const curve = railwayCurve(ea, eb);
+    const growth = (seconds - rw.born) / 3;
+    // Its details drawn to the eye, not to the world: a train the size of a house can't be seen from the chart.
+    const scale = THREE.MathUtils.clamp(dist / 5, 1, 6);
+    lines.push(...railwayLines(curve, A.group.position, B.group.position, camera.position, growth, scale));
+    if (growth < 1) continue;
+    const phase = (rw.a.length * 7 + rw.b.length * 3) % 10 / 10;
+    const tr = trainAt(curve, seconds - rw.born - 3, phase);
+    lines.push(...trainLines(curve, tr.t, camera.position, scale));
+    // Each time it comes in, it brings settlers to that end.
+    if (tr.arrivals > rw.trips) {
+      rw.trips = tr.arrivals;
+      const atB = tr.t > 0.5;
+      (atB ? B : A).welcome(atB ? rw.stationB : rw.stationA);
+    }
+  }
+  if (mode === 'atlas' && atlasDragKind === 'rail' && sketchFrom) {
+    lines.push(...sketchLines(slots.get(sketchFrom)!, screenToChart(finger.x, finger.y)));
+  }
+  sky.geometry.dispose();
+  sky.geometry = skySegments(lines);
 }

@@ -27,6 +27,14 @@ The site is published to GitHub Pages from `main` by `.github/workflows/pages.ym
 * an orange, a toy brick, a chopstick, a pistachio (with a valley in its split seam), a river pebble and a bath duck;
 * a last place for your own scan.
 
+**The atlas and the celestial railway** (`src/atlas/atlas.ts`). Pinch out past a world and the camera pulls back to a celestial chart: every world you have made, on a dotted graticule among the stars, and the specimens not yet made as uncharted, dotted places with their figures.
+* **In the atlas:** tap a world to fly down into it, tap an uncharted place to make it, and pinch in to go back.
+* **Laying a railway:** drag from one world to another. The line leaves a station at the town facing the other world (or founds one there), climbs off on trestles, and bows across the chart past a halfway station hung on chains from nothing. It comes down onto the other world, and is laid from both ends to meet in the middle.
+* **The train** runs on it, out and back, and each time it comes in, its settlers grow the town at that end.
+* **Facing:** in the atlas each world turns so its station faces along its line.
+* **In a world:** you can see the line going off into the sky.
+* Its details are drawn to the eye, so a train is still a train from the chart.
+
 Each specimen is a solid described by its signed distance, meshed by surface nets into one closed surface of about 20,000 triangles (coarsened until it is, so a phone can turn it). Smooth ones take their height from the middle, as they have no bumps for curvature to find. Every world you visit is kept as you left it for the session.
 
 It boots with a procedural **demo orange**. To use a real scan, export GLB, OBJ or PLY from

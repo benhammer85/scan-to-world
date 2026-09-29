@@ -215,6 +215,39 @@ export class TerrainWorld {
     return r;
   }
 
+  /**
+   * Passengers arrive by the railway at the station by vertex `v`: they settle
+   * there, founding a town if there is none, growing it if there is.
+   */
+  welcome(v: number): TapResult {
+    const p = this.topo.positions;
+    const r = this.settlements.tap([p[v * 3], p[v * 3 + 1], p[v * 3 + 2]]);
+    if (r.kind !== 'refused') { this.country.update(true); this.townDirty = true; }
+    return r;
+  }
+
+  /** Where vertex `v` is now, and which way is up there, in the scene. */
+  surfaceAt(v: number): { at: THREE.Vector3; up: THREE.Vector3 } {
+    const p = this.topo.positions, n = this.topo.normals;
+    this.mesh.updateWorldMatrix(true, false);
+    return {
+      at: this.mesh.localToWorld(new THREE.Vector3(p[v * 3], p[v * 3 + 1], p[v * 3 + 2])),
+      up: new THREE.Vector3(n[v * 3], n[v * 3 + 1], n[v * 3 + 2]).transformDirection(this.mesh.matrixWorld),
+    };
+  }
+
+  /** The vertex whose ground faces most nearly `dir` (a direction in the scene). */
+  facing(dir: THREE.Vector3): number {
+    const n = this.topo.normals, m = new THREE.Matrix3().getNormalMatrix(this.mesh.matrixWorld);
+    const local = dir.clone().applyMatrix3(m.clone().invert()).normalize();
+    let best = 0, bd = -Infinity;
+    for (let v = 0; v < this.topo.vertexCount; v++) {
+      const d = n[v * 3] * local.x + n[v * 3 + 1] * local.y + n[v * 3 + 2] * local.z;
+      if (d > bd) { bd = d; best = v; }
+    }
+    return best;
+  }
+
   /** Time passes as the world turns. */
   advance(days: number): void {
     if (this.settlements.advance(days) > 0) this.townDirty = true;
