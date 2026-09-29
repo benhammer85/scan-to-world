@@ -166,6 +166,43 @@ export interface Block {
 }
 
 /** Outlying farms: a tap in the country near a town plants one. */
+/**
+ * How settlement grows, after what is known of real settlement seen from
+ * very high up (see STYLE.md, "Development as light"):
+ *
+ *  - Sizes are unequal (Zipf's law: a few places large, many small). Growth
+ *    rises with size faster than a square root, and each place has its own
+ *    vigour, so sizes drift apart by themselves.
+ *  - Edges are fingered, not round (Batty and Longley's fractal cities). The
+ *    next house goes to a cheap plot, but not always the cheapest, over a
+ *    ground whose preference varies smoothly, so growth reaches out in fingers.
+ *  - Settlement strings out along corridors: ground along a road or by the
+ *    water costs less to settle (ribbon villages, the finger plan).
+ *  - A grown place buds daughter villages out along its roads, at irregular
+ *    distances, on good ground by water or a way (central places, never a lattice).
+ */
+export const GROW = {
+  /** Growth per day: base + bySize * houses^pull, times the place's vigour. */
+  bySize: 0.12,
+  pull: 0.75,
+  /** Spread of vigour between places (log-normal): most near 1, a few far above or below. */
+  vigour: 0.5,
+  /** Chance in which plot comes next: 0 always the cheapest (a neat disc), 1 very ragged. */
+  chance: 0.7,
+  /** Ground along a road, and ground by the water, costs this share to settle. */
+  road: 0.5,
+  shore: 0.6,
+  /** How much the ground's own preference varies, and over how far (world units). */
+  grain: 0.8,
+  scale: 0.22,
+  /** Budding: a place this big sends out a village, and another for every so many houses more... */
+  budAt: 24,
+  budEvery: 36,
+  /** ...this far off (between), along its ways where it can. */
+  budNear: 0.36,
+  budFar: 0.62,
+};
+
 export const FARM = {
   /** A farm belongs to the nearest town within this reach... */
   reach: 0.5,
@@ -468,11 +505,7 @@ export class Settlements {
     this.now = this.day;
     const site = this.findSite(near);
     if (site === null) return { kind: 'refused' };
-    const t: Town = { id: this.towns.length, centre: site, buildings: [], owed: 0, frontier: [], settled: new Map(), rebuild: 0 };
-    this.towns.push(t);
-    this.lay(t, site);
-    this.openSquare(t);
-    this.expand(t, site, 0);
+    const t = this.found(site);
     this.refreshBlocks();
     return { kind: 'founded', town: t.id, vertex: site };
   }
@@ -586,7 +619,9 @@ export class Settlements {
     // the frame rate.
     let laid = 0, left = days;
     // A town that lost houses to the water rebuilds them faster than it grows.
-    const rate = (t: Town) => TOWN.baseRate + TOWN.rateBySize * Math.sqrt(t.buildings.length) + TOWN.rebuildRate * t.rebuild;
+    const rate = (t: Town) => this.organic
+      ? (TOWN.baseRate + GROW.bySize * Math.pow(t.buildings.length, GROW.pull)) * this.vigour(t) + TOWN.rebuildRate * t.rebuild
+      : TOWN.baseRate + TOWN.rateBySize * Math.sqrt(t.buildings.length) + TOWN.rebuildRate * t.rebuild;
     const live = new Set(this.towns.filter((t) => t.frontier.length > 0));
     while (left > 0 && live.size) {
       let next: Town | null = null, soonest = Infinity;
@@ -604,6 +639,8 @@ export class Settlements {
       this.now = this.day + (days - left);
       if (this.growOne(next) === null) { live.delete(next); continue; }
       laid++;
+      const bud = this.organic ? this.bud(next) : null;
+      if (bud) { live.add(bud); laid++; }
       laid += this.joinTowns();
       this.wearRoads();
       laid += this.joinRails() + this.liftToSnow();
@@ -999,7 +1036,12 @@ export class Settlements {
       if (town !== t.id || halls.has(s)) continue; // a hall isn't frontage: streets lead out from it
       this.eachNeighbour(s, (w, d) => {
         if (this.network.has(w) || this.buildingAt.has(w)) return;
-        const score = near !== undefined ? this.dist(w, near) : (t.settled.get(w) ?? 2 * this.dist(w, t.centre)) + d * 1e-3;
+        const score = near !== undefined
+          ? this.dist(w, near)
+          // Cheap, but not always the cheapest: a little chance in each choice, so the edge is ragged.
+          : this.organic
+            ? ((t.settled.get(w) ?? 2 * this.dist(w, t.centre)) * this.preference(w) * (1 - GROW.chance / 2 + GROW.chance * unit(w * 7919 + t.buildings.length * 104729))) + d * 1e-3
+            : (t.settled.get(w) ?? 2 * this.dist(w, t.centre)) + d * 1e-3;
         if (near !== undefined && score > reach) return;
         if (score > bestScore || (score === bestScore && best && w > best.v)) return;
         if (!this.buildable(w) || !this.roomFor(w)) return;
@@ -1208,7 +1250,7 @@ export class Settlements {
     this.eachNeighbour(v, (w, d) => {
       if (t.settled.has(w) || !this.buildable(w)) return;
       const step = d * (1 + TOWN.slopeCost * this.localSlope(w) / (this.buildableSlope || 1)) + TOWN.heightCost * d * Math.max(0, this.heights[w]);
-      insertSorted(t.frontier, [cost + step, w]);
+      insertSorted(t.frontier, [cost + step * this.preference(w), w]);
     });
   }
 
@@ -1397,6 +1439,78 @@ export class Settlements {
     // What it carries over water is bridge; the rest is street on the ground.
     if (this.wet) for (const u of st.path) if (this.wet[u] || this.stream?.[u]) this.bridgeAt.add(u);
     for (const u of streetVertices(st)) if (!this.network.has(u)) this.network.set(u, st.town);
+    if (st.kind === 'road') for (const u of st.path) this.roadAt.add(u);
+  }
+
+  /**
+   * Organic growth (GROW): unequal places, fingered edges, ribbons along the
+   * ways and the water, and villages budding off. The game grows this way;
+   * off, a town grows as a compact disc by the cheapest plot, which the tests
+   * of streets, squares and markets are written against.
+   */
+  organic = false;
+
+  /** Vertices a road runs over: ground along one is cheaper to settle. */
+  private roadAt = new Set<number>();
+
+  /**
+   * How much it costs to settle here, as a share: less along a road or by the
+   * water, and varying smoothly over the ground, so a place grows out in
+   * fingers along its ways, its shore and its easy ground, not in a disc.
+   */
+  private preference(v: number): number {
+    if (!this.organic) return 1;
+    let f = 1;
+    let byRoad = this.roadAt.has(v), byWater = false;
+    this.eachNeighbour(v, (w) => { if (this.roadAt.has(w)) byRoad = true; if (this.wet?.[w]) byWater = true; });
+    if (byRoad) f *= GROW.road;
+    if (byWater && !this.wet?.[v]) f *= GROW.shore;
+    const p = this.topo.positions, k = 1 / GROW.scale;
+    const x = p[v * 3] * k, y = p[v * 3 + 1] * k, z = p[v * 3 + 2] * k;
+    // Smooth, fixed noise over the ground: three waves in three directions.
+    const n = (Math.sin(x * 1.3 + y * 0.4 + 1.7) + Math.sin(y * 1.1 - z * 0.7 + 4.1) + Math.sin(z * 1.2 + x * 0.6 - 2.3)) / 6 + 0.5;
+    return f * (1 - GROW.grain / 2 + GROW.grain * n);
+  }
+
+  /** A place's own vigour: fixed by where it stands, log-normal, most near 1. */
+  private vigour(t: Town): number {
+    const z = (unit(t.centre * 31 + 1) + unit(t.centre * 31 + 2) + unit(t.centre * 31 + 3) - 1.5) * 2;
+    return Math.exp(GROW.vigour * z);
+  }
+
+  private buds = new Map<number, number>();
+
+  /**
+   * A grown place sends out a village: out along one of its ways, between
+   * `budNear` and `budFar` from its middle, where a square fits and no other
+   * place is near, preferring ground by the water or a road, and easy ground.
+   * The village then grows by its own vigour.
+   */
+  private bud(t: Town): Town | null {
+    const n = t.buildings.length, sent = this.buds.get(t.id) ?? 0;
+    if (n < GROW.budAt + sent * GROW.budEvery) return null;
+    this.buds.set(t.id, sent + 1); // tried once for this size, found or not
+    let best = -1, score = Infinity;
+    for (let v = 0; v < this.topo.vertexCount; v++) {
+      const d = this.dist(v, t.centre);
+      if (d < GROW.budNear || d > GROW.budFar) continue;
+      if (this.buildingAt.has(v) || this.network.has(v) || !this.buildable(v)) continue;
+      const pref = this.preference(v) * (0.6 + 0.8 * unit(v * 131 + t.id * 17 + sent));
+      if (pref >= score) continue;
+      if (this.towns.some((o) => this.dist(v, o.centre) < TOWN.apart) || !this.squareFits(v)) continue;
+      best = v; score = pref;
+    }
+    return best < 0 ? null : this.found(best);
+  }
+
+  /** A new place: its hall, its square, and its frontier to grow from. */
+  private found(site: number): Town {
+    const t: Town = { id: this.towns.length, centre: site, buildings: [], owed: 0, frontier: [], settled: new Map(), rebuild: 0 };
+    this.towns.push(t);
+    this.lay(t, site);
+    this.openSquare(t);
+    this.expand(t, site, 0);
+    return t;
   }
 
   // ------------------------------------------------------------ streets
@@ -1695,4 +1809,10 @@ function distanceToDry(topo: Topology, wet: Uint8Array): Float32Array {
     }
   }
   return out;
+}
+
+/** A fixed number in [0, 1) for an integer seed. */
+function unit(seed: number): number {
+  const x = Math.sin(seed * 12.9898 + 78.233) * 43758.5453;
+  return x - Math.floor(x);
 }

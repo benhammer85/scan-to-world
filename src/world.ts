@@ -17,7 +17,7 @@ import { glowDots, glowField } from './life/development';
 import { countryMarks, isoLines, maturity, seasonColour, springFlood, turningMarks, winter, type Turning, type Wash } from './life/countryMarks';
 import { blockMarks, buildingMarks, harbourMarks, lookOf, squareFrames, sunkenMarks, wingMarks, wayLine } from './life/buildingMarks';
 import { findWater, seaFor, snowLines, streamLines, waterLines, type Sea, type Water } from './nature/water';
-import { cableMarks, crossingFrames, crossingMarks, ferryRoute, movers, railMarks } from './life/buildingMarks';
+import { crossingFrames, ferryRoute, movers, railMarks } from './life/buildingMarks';
 
 export type SurfaceStyle = 'scan' | 'paper' | 'elevation';
 
@@ -167,6 +167,7 @@ export class TerrainWorld {
     // the player's own object and the thing they came to see, so it is plotted.
     this.rebuildContours('plot', penFrom);
     this.settlements = new Settlements(this.topo, this.heights);
+    this.settlements.organic = true; // the game grows organically (GROW); the tests of its mechanics use the compact model
     this.settlements.setWater(this.water.wet, this.water.depth, this.water.stream, this.water.snow);
     this.country = new Countryside(this.topo, this.settlements, this.heights);
     this.landmarks = new Landmarks(this.topo, this.settlements, this.heights, this.country);
@@ -472,9 +473,8 @@ export class TerrainWorld {
       const dots = glowDots(this.topo, glowField(this.topo, buildings, streets, (b) => st.houseStage(b)), (v) => !wet?.[v] && !stream?.[v]);
       const lines = [
         ...harbourMarks(this.topo, st.harbours, (h) => st.mooredAt(h)),
-        ...railMarks(this.topo, st.rails, crossings.map((x) => x.at)),
-        ...crossingMarks(crossings),
-        ...cableMarks(this.topo, st.cables),
+        // A railway is one fine line from this high: its sleepers, gates and the cable lines' pylons are too small to see.
+        ...railMarks(this.topo, st.rails).filter((m) => m.points.length > 6),
       ];
       return { look, frames, shown, crossings, lines, dots };
     });
@@ -483,7 +483,7 @@ export class TerrainWorld {
     // The country follows the town only loosely: redrawn every few houses, not each one.
     const m = maturity(st.day);
     const country = this.layer('country', `${ground}|${detail}|${Math.floor(st.buildings.length / 5)}|${Math.floor(st.streets.length / 4)}|${c.signature()}|${c.claims.size}|${c.planted.size}|${c.felled.size}|${c.remembered.size}|${c.commons.size}|${c.drained.size}|${Math.floor(m * 10)}`,
-      () => countryMarks(this.topo, st, c, detail));
+      () => countryMarks(this.topo, st, c, detail, true));
     const land = this.layer('land', `${ground}|${detail}|${lm.signature()}|${st.towns.map((t) => Math.floor(st.size(t.id) / 8)).join(',')}|${Math.floor(c.claims.size / 3)}|${st.harbours.length}|${st.harbours.filter((h) => h.silted !== undefined).length}|${st.farms.filter((f) => f.estate !== undefined).length}|${Math.floor(m * 4)}|${Math.floor(st.lookSignature() / 50)}`,
       () => landmarkMarks(this.topo, this.heights, st, c, lm, town.frames, town.look, (x) => wayLine(this.topo, x, town.shown, town.frames, town.look), detail, true));
     this.turning = [...country.turning, ...land.turning];

@@ -56,6 +56,9 @@ export const FARMLAND = {
   from: 18,
   outlying: 0.34,
   apart: 0.3,
+  /** Farms gather in hamlets of up to this many, standing within this of each other. */
+  hamlet: 4,
+  together: 0.14,
 };
 
 export const WOOD = {
@@ -449,12 +452,25 @@ export class Countryside {
     return changed;
   }
 
-  /** A grown town sends a farm out to a far field of its with no farm near it. One at a time. */
+  /**
+   * A grown town sends farms out to its far fields, one at a time. Not one to
+   * a field: farms gather in hamlets of one to four, as they do, so a farm is
+   * sent first to join a hamlet that is not yet full, and only then to start
+   * a new one, on a far field of the town's with no hamlet near it.
+   */
   private sendFarms(): boolean {
     const st = this.st, p = this.topo.positions;
     const d = (a: number, b: number) => Math.hypot(p[a * 3] - p[b * 3], p[a * 3 + 1] - p[b * 3 + 1], p[a * 3 + 2] - p[b * 3 + 2]);
+    const unit = (x: number) => { const y = Math.sin(x * 12.9898 + 78.233) * 43758.5453; return y - Math.floor(y); };
     for (const t of st.towns) {
       if (t.buildings.length < FARMLAND.from) continue;
+      const own = st.farms.filter((f) => f.town === t.id);
+      // A hamlet takes as many farms as the ground it started on says: one to four.
+      for (const f of own) {
+        const full = 1 + Math.floor(unit(f.vertex) * FARMLAND.hamlet);
+        if (own.filter((g) => d(g.vertex, f.vertex) < FARMLAND.together).length >= full) continue;
+        if (st.sowFarm(f.vertex, t as Town) !== null) return true;
+      }
       const mine = [...this.claims].filter(([, c]) => c.owner === `t${t.id}`).map(([cell]) => cell).sort((a, b) => a - b);
       for (const cell of mine) {
         const v = this.land.cells[cell].centre;

@@ -13,6 +13,7 @@ The look follows **[STYLE.md](STYLE.md)**. The world is a survey sheet of about 
 
 * **Purely ink, purely flat.** Everything lies on the ground, drawn from above. Nothing stands up off the world.
 * **Development as light.** The simulation still grows streets, houses, farms and markets underneath, but the map draws only their light, as the Earth is seen at night from space. Every house is a small light (old cores brightest, farms faint). Roads are threads of light, and it spreads and fades over the ground. It is drawn in ink as stipple: nearly solid at the cores, thinning to a halo, to specks. No buildings, outlines, walls or traffic on land (`src/life/development.ts`).
+* **Organic growth.** Places grow as real settlement does seen from high up (`GROW` in `src/life/settlements.ts`). Sizes are unequal, since growth rises with size and each place has its own vigour. Edges are ragged and fingered, and growth runs along roads and the water. A grown place buds villages along its ways, and farms gather in hamlets. The field cells are never outlined, so no pattern shows through. (The tests of streets and squares use the compact model with `organic` off.)
 * **You can't come close.** Zoom stops well short of seeing what anything is. You see how much, where and how it spreads; the rest is for the imagination.
 
 ## Run it

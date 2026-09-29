@@ -51,7 +51,18 @@ Development is drawn the way the Earth looks at night from space. There are no b
 - **Crowding counts:** light counts for more where there is more of it. Dim light gives only rare specks, and bright light nearly solid ground: bright cores, dark gaps, faint scattered points.
 - **Roads are threads of light, not lines.** Only the water's edge and the rails are drawn as lines.
 - **Nothing built is drawn from this height:** walls, churches, castles, abbeys and inns are part of the light. Carts and trains are too small to see; boats on the water stay.
-- **Working ground stays as texture:** fields in rows, woods as small trees, hedges and water as lines.
+- **Working ground stays as texture:** fields in rows and woods as small trees. There are no field outlines; water is drawn as lines. A railway is one fine line.
+
+## How development grows
+
+What the light shows is only as good as how the places grow. Growth follows what is known of real settlement seen from very high up (`GROW` in `src/life/settlements.ts`):
+
+- **Unequal sizes (Zipf's law).** A few places grow large and many stay small. Growth rises with size, and each place has its own vigour.
+- **Fingered edges, not discs** (Batty and Longley's *Fractal Cities*). The next house goes to a cheap plot, but not always the cheapest, over ground whose preference varies smoothly.
+- **Ribbons along corridors.** Ground along a road or by the water is cheaper to settle, so places string out along coasts and ways.
+- **Budding.** A grown place sends villages out along its ways, at irregular distances, preferring water and easy ground, never on a lattice. Places merge where they meet.
+- **Farms in hamlets** of one to four, not one to a field.
+- **No regular pattern shows through.** The fields' fixed cells are never outlined from this height: no hedges, walls or enclosure grids. Farmland shows as its rows, woods as their trees.
 
 ## You can't come close
 
