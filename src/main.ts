@@ -8,8 +8,17 @@ import { chooseHeightMode, type HeightMode } from './terrain/heightfield';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
+// If anything goes wrong, say so on the page: a blank screen tells nobody anything.
+function showTrouble(message: string): void {
+  const hint = document.getElementById('hint');
+  if (hint) { hint.classList.remove('gone'); hint.textContent = `Something went wrong: ${message}`; hint.style.color = '#8a2f22'; hint.style.opacity = '1'; }
+}
+window.addEventListener('error', (e) => showTrouble(e.message || String(e.error)));
+window.addEventListener('unhandledrejection', (e) => showTrouble(String(e.reason?.message ?? e.reason)));
+
 // ---------------------------------------------------------------- scene
 const stage = $('stage');
+if (!document.createElement('canvas').getContext('webgl2')) showTrouble('this browser has no WebGL 2, which the map needs to draw.');
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
