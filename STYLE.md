@@ -74,6 +74,15 @@ This comes from whatwesaved's *fading plate*: the pen is the only light on the s
 - **The development's light does not fade.** It is not ink, and a place does not dim because you looked away.
 - **Nothing ever disappears:** faded ink is pencil, still there (whatwesaved PRINCIPLES 21).
 
+## Your light hides the sky
+
+This is true of real light: a bright town washes out the stars, the faintest first. The chart does the same (`SKY` in `src/atlas/atlas.ts`).
+
+- **Loudness is what has been built lately, not how much.** Each house adds to it, and it settles away over a minute or two of real time.
+- **A loud universe shows only the brightest stars.** A quiet one fills with faint stars. On the quietest nights, small unnamed places appear between the worlds: the lights of others who were there all along, keeping dark.
+- **The rule is never shown.** There's no meter or number; you just notice that when your worlds rest, the sky fills.
+- **Nobody is a threat and nothing is lost.** It rewards quiet; it never punishes growth.
+
 ## You can't come close
 
 The zoom stops well short of seeing what anything is: at most about 1.7 times closer than the view of the whole world (`CLOSEST` in `main.ts`). You see how much, where and how it spreads. What it is is left to the imagination.

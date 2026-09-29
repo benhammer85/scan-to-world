@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { ATLAS, chartLines, constellations, layout, magnitudeLines, railwayCurve, railwayLines, starsOf, STARS, trainAt } from '../src/atlas/atlas';
+import { ATLAS, SKY, chartLines, constellations, layout, magnitudeLines, othersOf, skyLimit, railwayCurve, railwayLines, starsOf, STARS, trainAt } from '../src/atlas/atlas';
 
 describe('the atlas', () => {
   it('lays the worlds out so none crowds another: the first in the middle, the rest spiralling out', () => {
@@ -68,7 +68,7 @@ describe('the chart of the heavens', () => {
     expect(bright).toBeGreaterThan(0);
     const figures = constellations(stars);
     expect(figures.length).toBeGreaterThan(3);
-    for (const [a, b] of figures) for (const s of stars) {
+    for (const [a, b] of figures) for (const s of stars.filter((x) => x.bright >= 0.25)) { // the charted stars; a quiet sky's faint ones are only background
       expect(a.distanceTo(s.at)).toBeGreaterThan(0.05);
       expect(b.distanceTo(s.at)).toBeGreaterThan(0.05);
     }
@@ -87,5 +87,30 @@ describe('magnitudes', () => {
     expect(extent(city)).toBeGreaterThan(extent(town));
     // Rays stand clear of the world itself (about 1 across its middle).
     for (const [a] of city) expect(a.length()).toBeGreaterThan(1.1);
+  });
+});
+
+describe('your light hides the sky', () => {
+  const O = new THREE.Vector3(0, 0, 0);
+  it('a quiet universe shows every star; the louder it is, the fewer, the faintest going first; the brightest always show', () => {
+    expect(skyLimit(0)).toBe(0);
+    expect(skyLimit(10)).toBeLessThan(skyLimit(40));
+    expect(skyLimit(1e6)).toBeLessThanOrEqual(SKY.most);
+    const stars = starsOf(O, 14);
+    const seen = (limit: number) => stars.filter((s) => s.bright > limit).length;
+    expect(seen(skyLimit(0))).toBe(stars.length);
+    expect(seen(skyLimit(20))).toBeLessThan(stars.length * 0.7);
+    expect(seen(skyLimit(1e6))).toBeGreaterThan(0);
+    // Bright stars outshine dots, and the dots a quiet sky adds are fainter than any charted star.
+    expect(Math.min(...stars.filter((s) => s.magnitude === 2).map((s) => s.bright))).toBeGreaterThan(Math.max(...stars.filter((s) => s.magnitude === 1).map((s) => s.bright)) - 0.01);
+    expect(stars.filter((s) => s.bright < 0.25).length).toBeGreaterThan(stars.length / 3);
+  });
+
+  it('others keep dark in the spaces between the worlds, never on one', () => {
+    const worlds = [new THREE.Vector3(0, 0, 0), new THREE.Vector3(5.2, 0, 0), new THREE.Vector3(-3, 4, 0)];
+    const places = othersOf(O, 18, worlds);
+    expect(places.length).toBeGreaterThan(0);
+    for (const at of places) for (const w of worlds) expect(Math.hypot(at.x - w.x, at.y - w.y)).toBeGreaterThanOrEqual(SKY.otherClear);
+    expect(chartLines(O, 18, worlds).others.length).toBeGreaterThan(0);
   });
 });

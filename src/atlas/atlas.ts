@@ -175,9 +175,49 @@ export const STARS = {
   most: 6,
 };
 
-export interface Star { at: V; magnitude: 0 | 1 | 2 }
+/** `bright`: 0 (the faintest the eye can find on a dark night) to 1 (the brightest). */
+export interface Star { at: V; magnitude: 0 | 1 | 2; bright: number }
 
-export interface ChartDrawing { rule: V[][]; stars: V[][]; figures: V[][] }
+/**
+ * `starBright`: each of `stars`' lines' star's brightness, so the sky can show
+ * only the stars bright enough to be seen through the light (see SKY).
+ * `others`: the places of others who keep dark, seen only on the quietest nights.
+ */
+export interface ChartDrawing { rule: V[][]; stars: V[][]; starBright: number[]; figures: V[][]; figureBright: number[]; others: V[][] }
+
+/**
+ * Your light hides the sky. A city's light washes out the stars, the faintest
+ * first, and so does a universe's: the more its people are building just now,
+ * the fewer stars the chart can show. Let it grow quiet, and the faint stars
+ * come back, and with them, on the quietest nights, the lights of others who
+ * were there all along, keeping dark.
+ *
+ * Loudness is what has been built lately, not how much: each house adds to it,
+ * and it settles away in real time, so a busy spell washes the sky out and a
+ * rest brings it back. Nothing is shown of the rule: only the stars.
+ */
+export const SKY = {
+  /** Seconds for the loudness to settle to a third of itself. */
+  settle: 45,
+  /** How loud washes out half the stars. */
+  half: 18,
+  /** The limit never passes this: the brightest stars always show. */
+  most: 0.9,
+  /** Others show only while the limit is below this. */
+  others: 0.08,
+  /** Faint stars: one chance in each cell this big (they are what a quiet sky adds). */
+  faintCell: 0.75,
+  faintChance: 0.75,
+  /** Others: one chance in each cell this big, never this near a world. */
+  otherCell: 4.2,
+  otherChance: 0.22,
+  otherClear: 2.2,
+};
+
+/** The faintest star that shows through so much loudness (0: every star). */
+export function skyLimit(loud: number): number {
+  return SKY.most * (1 - Math.exp(-Math.max(0, loud) / SKY.half));
+}
 
 export function starsOf(centre: V, radius: number, avoid: V[] = []): Star[] {
   const out: Star[] = [];
@@ -189,14 +229,39 @@ export function starsOf(centre: V, radius: number, avoid: V[] = []): Star[] {
     const at = new THREE.Vector3((ix + cellHash(ix, iy, 2)) * c, (iy + cellHash(ix, iy, 3)) * c, z);
     if (Math.hypot(at.x - centre.x, at.y - centre.y) > radius) continue;
     if (avoid.some((w) => Math.hypot(at.x - w.x, at.y - w.y) < STARS.clear)) continue;
-    const m = cellHash(ix, iy, 4);
-    out.push({ at, magnitude: m < 0.62 ? 0 : m < 0.9 ? 1 : 2 });
+    const m = cellHash(ix, iy, 4), b = cellHash(ix, iy, 5);
+    const magnitude = m < 0.62 ? 0 : m < 0.9 ? 1 : 2;
+    out.push({ at, magnitude, bright: magnitude === 2 ? 0.85 + 0.15 * b : magnitude === 1 ? 0.55 + 0.3 * b : 0.25 + 0.3 * b });
+  }
+  // And the faint stars, which only a quiet sky shows: on their own finer grid, so they never
+  // move the charted ones.
+  const f = SKY.faintCell, nf = Math.ceil(radius / f) + 1, jx = Math.floor(centre.x / f), jy = Math.floor(centre.y / f);
+  for (let ix = jx - nf; ix <= jx + nf; ix++) for (let iy = jy - nf; iy <= jy + nf; iy++) {
+    if (cellHash(ix, iy, 11) > SKY.faintChance) continue;
+    const at = new THREE.Vector3((ix + cellHash(ix, iy, 12)) * f, (iy + cellHash(ix, iy, 13)) * f, z);
+    if (Math.hypot(at.x - centre.x, at.y - centre.y) > radius) continue;
+    if (avoid.some((w) => Math.hypot(at.x - w.x, at.y - w.y) < STARS.clear)) continue;
+    out.push({ at, magnitude: 0, bright: 0.02 + 0.22 * cellHash(ix, iy, 14) });
+  }
+  return out;
+}
+
+/** Where others keep dark: a few places between the worlds, fixed by the sky's own grid. */
+export function othersOf(centre: V, radius: number, avoid: V[] = []): V[] {
+  const out: V[] = [], c = SKY.otherCell, n = Math.ceil(radius / c) + 1;
+  const ix0 = Math.floor(centre.x / c), iy0 = Math.floor(centre.y / c);
+  for (let ix = ix0 - n; ix <= ix0 + n; ix++) for (let iy = iy0 - n; iy <= iy0 + n; iy++) {
+    if (cellHash(ix, iy, 21) > SKY.otherChance) continue;
+    const at = new THREE.Vector3((ix + 0.2 + 0.6 * cellHash(ix, iy, 22)) * c, (iy + 0.2 + 0.6 * cellHash(ix, iy, 23)) * c, -1.6);
+    if (Math.hypot(at.x - centre.x, at.y - centre.y) > radius) continue;
+    if (avoid.some((w) => Math.hypot(at.x - w.x, at.y - w.y) < SKY.otherClear)) continue;
+    out.push(at);
   }
   return out;
 }
 
 export function chartLines(centre: V, radius: number, avoid: V[] = []): ChartDrawing {
-  const rule: V[][] = [], stars: V[][] = [], figures: V[][] = [];
+  const rule: V[][] = [], stars: V[][] = [], figures: V[][] = [], starBright: number[] = [], others: V[][] = [];
   const z = -1.6;
   for (let r = ATLAS.spacing; r <= radius; r += ATLAS.spacing) {
     const ring: V[] = [];
@@ -210,26 +275,38 @@ export function chartLines(centre: V, radius: number, avoid: V[] = []): ChartDra
 
   const all = starsOf(centre, radius * 1.15, avoid);
   const X = new THREE.Vector3(1, 0, 0), Y = new THREE.Vector3(0, 1, 0);
-  for (const { at, magnitude } of all) {
+  for (const { at, magnitude, bright } of all) {
+    const had = stars.length;
     // A dot: a ring too small to see as one.
-    circle(at, X, Y, magnitude === 0 ? 0.011 : 0.016, stars);
-    if (magnitude === 0) continue;
+    circle(at, X, Y, magnitude === 0 ? (bright < 0.25 ? 0.008 : 0.011) : 0.016, stars);
+    if (magnitude === 0) { starBright.push(bright); continue; }
     const m = magnitude === 1 ? 0.04 : 0.075;
     stars.push([at.clone().addScaledVector(X, -m), at.clone().addScaledVector(X, m)], [at.clone().addScaledVector(Y, -m), at.clone().addScaledVector(Y, m)]);
     if (magnitude === 2) {
       const d = m * 0.38;
       stars.push([at.clone().add(new THREE.Vector3(-d, -d, 0)), at.clone().add(new THREE.Vector3(d, d, 0))], [at.clone().add(new THREE.Vector3(-d, d, 0)), at.clone().add(new THREE.Vector3(d, -d, 0))]);
     }
+    for (let i = had; i < stars.length; i++) starBright.push(bright);
   }
-  figures.push(...constellations(all));
-  return { rule, stars, figures };
+  const figureBright: number[] = [];
+  figures.push(...constellations(all, figureBright));
+  // The places of others who keep dark: a small ring with a point in it, and a faint dotted
+  // ring round that, as a chart marks something seen but not charted.
+  for (const at of othersOf(centre, radius, avoid)) {
+    circle(at, X, Y, 0.05, others);
+    circle(at, X, Y, 0.01, others);
+    const halo: V[] = [];
+    for (let i = 0; i <= 48; i++) { const a = (i / 48) * 2 * Math.PI; halo.push(at.clone().addScaledVector(X, Math.cos(a) * 0.14).addScaledVector(Y, Math.sin(a) * 0.14)); }
+    others.push(...dashed(halo, 0.012, 0.018));
+  }
+  return { rule, stars, starBright, figures, figureBright, others };
 }
 
 /**
  * Constellations: from a bright star, walk to the nearest bright star not yet
  * in a figure, and on, three to six stars; sometimes a branch off the second.
  */
-export function constellations(all: Star[]): V[][] {
+export function constellations(all: Star[], lineBright?: number[]): V[][] {
   const out: V[][] = [];
   const bright = all.filter((s) => s.magnitude > 0).sort((a, b) => a.at.x - b.at.x || a.at.y - b.at.y);
   const used = new Set<Star>();
@@ -261,6 +338,7 @@ export function constellations(all: Star[]): V[][] {
       const d = a.at.distanceTo(b.at), gap = 0.07;
       if (d < gap * 3) continue;
       out.push([a.at.clone().lerp(b.at, gap / d), b.at.clone().lerp(a.at, gap / d)]);
+      lineBright?.push(Math.min(a.bright, b.bright)); // a figure's line goes with the fainter of its two stars
     }
   }
   return out;
@@ -302,6 +380,16 @@ export function unchartedLines(at: V): V[][] {
 /** A pencilled line from the finger's start to where it is now, while a railway is being laid. */
 export function sketchLines(a: V, b: V): V[][] {
   return dashed([a, b], 0.05, 0.04);
+}
+
+/** Lines as one geometry of line segments, each line carrying a value (`aValue`) to its vertices. */
+export function segmentsWith(lines: V[][], values: number[]): THREE.BufferGeometry {
+  const g = segments(lines);
+  const count = g.getAttribute('position').count, val = new Float32Array(count);
+  let k = 0;
+  lines.forEach((l, i) => { for (let j = 1; j < l.length; j++) { val[k++] = values[i] ?? 1; val[k++] = values[i] ?? 1; } });
+  g.setAttribute('aValue', new THREE.BufferAttribute(val, 1));
+  return g;
 }
 
 /** Lines as one geometry of line segments. */

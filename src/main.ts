@@ -6,7 +6,7 @@ import { normaliseGeometry, triangleCount } from './mesh/geometry';
 const loaders = () => import('./mesh/load');
 import { makeDemoOrange } from './demo/orange';
 import { SPECIMENS } from './demo/specimens';
-import { ATLAS, chartLines, layout, magnitudeLines, railwayCurve, railwayLines, segments as skySegments, sketchLines, trainAt, trainLines, unchartedLines, type Railway } from './atlas/atlas';
+import { ATLAS, SKY, chartLines, layout, magnitudeLines, segmentsWith, skyLimit, railwayCurve, railwayLines, segments as skySegments, sketchLines, trainAt, trainLines, unchartedLines, type Railway } from './atlas/atlas';
 import { GestureRecognizer } from './interact/gestures';
 import { buildTopology } from './mesh/topology';
 import { chooseHeightMode, type HeightMode } from './terrain/heightfield';
@@ -623,19 +623,56 @@ let seconds = 0;
 const INK = '#2e2118';
 const sky = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: INK, transparent: true, opacity: 0.9, depthWrite: false }));
 const chart = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: '#8a7358', transparent: true, opacity: 0.0, depthWrite: false }));
-const stars = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: INK, transparent: true, opacity: 0.0, depthWrite: false }));
-const figuresOfStars = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: INK, transparent: true, opacity: 0.0, depthWrite: false }));
+/**
+ * Ink that shows only where brighter than the sky's limit (`aValue` per line): the light of
+ * the universe washes out the faintest stars first (SKY in atlas.ts). For the stars, and for
+ * the constellations' lines, which go with the fainter of their two stars.
+ */
+function skyInk(): THREE.ShaderMaterial {
+  return new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    uniforms: { uInk: { value: new THREE.Color(INK) }, uOpacity: { value: 0 }, uLimit: { value: 0 } },
+    vertexShader: /* glsl */ `
+      attribute float aValue;
+      varying float vSeen;
+      uniform float uLimit;
+      void main() {
+        vSeen = smoothstep(uLimit, uLimit + 0.06, aValue);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }`,
+    fragmentShader: /* glsl */ `
+      uniform vec3 uInk;
+      uniform float uOpacity;
+      varying float vSeen;
+      void main() {
+        if (vSeen <= 0.0) discard;
+        gl_FragColor = vec4(uInk, uOpacity * vSeen);
+        #include <colorspace_fragment>
+      }`,
+  });
+}
+const stars = new THREE.LineSegments(new THREE.BufferGeometry(), skyInk());
+/** Where others keep dark: seen only on the quietest nights. */
+const others = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: INK, transparent: true, opacity: 0.0, depthWrite: false }));
+others.frustumCulled = false;
+/** How loud the universe is just now: what its people have built lately. It settles in real time. */
+let loud = 0;
+/** The sky's limit as shown, easing towards what the loudness says. */
+let limit = 0;
+const housesSeen = new Map<TerrainWorld, number>();
+const figuresOfStars = new THREE.LineSegments(new THREE.BufferGeometry(), skyInk());
 sky.frustumCulled = chart.frustumCulled = stars.frustumCulled = figuresOfStars.frustumCulled = false;
 /** Each world's magnitude on the chart: rays round it for how much its people have built. */
 const magnitudes = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: INK, transparent: true, opacity: 0.0, depthWrite: false }));
 magnitudes.frustumCulled = false;
 let magnitudeKey = '';
-scene.add(sky, chart, stars, figuresOfStars, magnitudes);
+scene.add(sky, chart, stars, figuresOfStars, magnitudes, others);
 /** How far the page has aged into the atlas's paper: 0 on a world, 1 on the chart. */
 let aged = 0;
 let leaving = false;
 /** How strong each part of the chart is inked, once the page has fully aged. */
-const CHART_INK = { rule: 0.5, stars: 0.85, figures: 0.2, magnitudes: 0.8 };
+const CHART_INK = { rule: 0.5, stars: 0.85, figures: 0.2, magnitudes: 0.8, others: 0.55 };
 
 const ghosts = new THREE.Group();
 scene.add(ghosts);
@@ -741,9 +778,11 @@ function drawChart(): void {
   chart.geometry.dispose();
   chart.geometry = skySegments(lines);
   stars.geometry.dispose();
-  stars.geometry = skySegments(drawing.stars);
+  stars.geometry = segmentsWith(drawing.stars, drawing.starBright);
+  others.geometry.dispose();
+  others.geometry = skySegments(drawing.others);
   figuresOfStars.geometry.dispose();
-  figuresOfStars.geometry = skySegments(drawing.figures);
+  figuresOfStars.geometry = segmentsWith(drawing.figures, drawing.figureBright);
 }
 
 /** The page ages into the chart's paper as you rise into the atlas, and back as you go down to a world. */
@@ -753,8 +792,13 @@ function ageing(dt: number): void {
   if (Math.abs(want - aged) < 1e-3) aged = want;
   (scene.background as THREE.Color).lerpColors(PAGE, AGED, aged);
   (chart.material as THREE.LineBasicMaterial).opacity = CHART_INK.rule * aged;
-  (stars.material as THREE.LineBasicMaterial).opacity = CHART_INK.stars * aged;
-  (figuresOfStars.material as THREE.LineBasicMaterial).opacity = CHART_INK.figures * aged;
+  for (const [m, ink] of [[stars, CHART_INK.stars], [figuresOfStars, CHART_INK.figures]] as const) {
+    const u = (m.material as THREE.ShaderMaterial).uniforms;
+    u.uOpacity.value = ink * aged;
+    u.uLimit.value = limit;
+  }
+  (others.material as THREE.LineBasicMaterial).opacity = CHART_INK.others * aged * (1 - THREE.MathUtils.smoothstep(limit, SKY.others * 0.5, SKY.others));
+  others.visible = aged > 0 && limit < SKY.others;
   (magnitudes.material as THREE.LineBasicMaterial).opacity = CHART_INK.magnitudes * aged;
   chart.visible = stars.visible = figuresOfStars.visible = magnitudes.visible = aged > 0;
 }
@@ -895,11 +939,22 @@ if (import.meta.env.DEV) (window as unknown as { atlas: unknown }).atlas = {
   get railways() { return railways.map((x) => ({ a: x.a, b: x.b, trips: x.trips })); },
   get current() { return statsName; },
   get worlds() { return [...kept.keys()]; },
+  get loud() { return loud; },
+  set loud(v: number) { loud = v; limit = skyLimit(v); },
 };
 
 /** Every frame: the worlds turning to face their railways, the railways and their trains, the pencilled line being laid. */
 function atlasFrame(dt: number, now: number): void {
   seconds += dt;
+  // The universe's loudness: every house built adds to it, and it settles away in real time.
+  // A world first seen (made, or brought back) adds nothing: only what is built from then on.
+  for (const w of kept.values()) {
+    const n = w.settlements.buildings.length, had = housesSeen.get(w);
+    if (had !== undefined && n > had) loud += n - had;
+    housesSeen.set(w, n);
+  }
+  loud *= Math.exp(-dt / SKY.settle);
+  limit += (skyLimit(loud) - limit) * (1 - Math.exp(-dt / 2.5));
   void now;
   if (mode === 'atlas') for (const [w, q] of facingTo) w.group.quaternion.slerp(q, 1 - Math.exp(-3 * dt));
   if (mode === 'atlas') {
