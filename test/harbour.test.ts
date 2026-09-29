@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { buildTopology, type Topology } from '../src/mesh/topology';
 import { findWater, seaFor } from '../src/nature/water';
 import { BRIDGE, HARBOUR, Settlements, streetVertices } from '../src/life/settlements';
-import { harbourMarks, squareFrames, streetMarks, sunkenMarks } from '../src/life/buildingMarks';
+import { harbourMarks } from '../src/life/buildingMarks';
 
 function sphere(detail = 24): Topology {
   const g = new THREE.IcosahedronGeometry(1, detail);
@@ -72,9 +72,6 @@ describe('bridges', () => {
     const overWater = road!.path.filter((v) => w.wet[v]);
     expect(overWater.length).toBeGreaterThan(0);
     for (const v of overWater) expect(s.bridgeAt.has(v)).toBe(true);
-    // And it is drawn as a bridge: rails over the water.
-    const marks = streetMarks(topo, [road!], s.buildings, squareFrames(topo, s.streets, s.towns), s);
-    expect(marks.filter((m) => m.level === 1).length).toBeGreaterThanOrEqual(2);
   });
 
   it('nothing bridges water wider than a bridge can span', () => {
@@ -137,37 +134,6 @@ describe('floods', () => {
     expect(s.buildings.some((b) => b.state === 'ruin')).toBe(true);
     // And the sunken streets are streets again.
     expect(s.submerged.size).toBe(0);
-  });
-
-  it('a flooded town is drawn in ink only where it is dry (whatwesaved PRINCIPLES.md, 1)', () => {
-    const topo = sphere();
-    const flat = new Float32Array(topo.vertexCount).fill(0.5);
-    let drain = 0;
-    for (let v = 0; v < topo.vertexCount; v++) if (topo.positions[v * 3 + 2] < topo.positions[drain * 3 + 2]) drain = v;
-    flat[drain] = 0;
-    const { s } = settle(topo, flat, [[0, 0, 1]], 6, false);
-    // Sink the ground under one side of the square.
-    const sunk = flat.map((x, v) => x - 0.2 * Math.exp(-(((topo.positions[v * 3] - 0.12) ** 2 + topo.positions[v * 3 + 1] ** 2) / 0.004)));
-    (s as unknown as { heights: Float32Array }).heights.set(sunk);
-    const w = findWater(topo, sunk);
-    s.setWater(w.wet, w.depth);
-    const frames = squareFrames(topo, s.streets, s.towns);
-    expect([...frames.get(0)!.ring].some((u) => s.submerged.has(u))).toBe(true);
-    // A square's own edge is never drawn now; the ways round it are, and they go to the water where it's over them.
-    const ink = streetMarks(topo, s.streets, s.buildings, frames, s);
-    expect(streetMarks(topo, s.streets.filter((x) => x.kind === 'square'), s.buildings, frames, s)).toHaveLength(0);
-    expect(ink.length).toBeGreaterThan(0);
-    void sunkenMarks;
-    // No inked point of the edge lies over water: its nearest vertex is dry.
-    const P = topo.positions;
-    for (const m of ink) for (let k = 0; k < m.points.length; k += 3) {
-      let best = 0, bd = Infinity;
-      for (let v = 0; v < topo.vertexCount; v++) {
-        const d = (P[v * 3] - m.points[k]) ** 2 + (P[v * 3 + 1] - m.points[k + 1]) ** 2 + (P[v * 3 + 2] - m.points[k + 2]) ** 2;
-        if (d < bd) { bd = d; best = v; }
-      }
-      expect(w.depth[best]).toBeLessThan(0.05); // at most the very edge of the water
-    }
   });
 
   it('sunken streets leave the network: nothing is routed along them', () => {

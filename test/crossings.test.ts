@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { buildTopology, type Topology } from '../src/mesh/topology';
 import { findWater } from '../src/nature/water';
 import { Settlements, streetVertices } from '../src/life/settlements';
-import { CROSSING, crossingFrames, crossingMarks, movers } from '../src/life/buildingMarks';
+import { CROSSING, crossingFrames, movers } from '../src/life/buildingMarks';
 
 function sphere(detail = 24): Topology {
   const g = new THREE.IcosahedronGeometry(1, detail);
@@ -68,14 +68,6 @@ describe('level crossings', () => {
     const shared = s.rails[0].path.slice(1, -1).filter((v) => onStreet.has(v));
     expect(new Set(s.crossings().map((c) => c.vertex))).toEqual(new Set(shared));
     expect(shared.length).toBeGreaterThan(0);
-  });
-
-  it('each crossing is marked with gateposts', () => {
-    const topo = sphere();
-    const s = twoTowns(topo);
-    const frames = crossingFrames(topo, s);
-    expect(frames.length).toBeGreaterThan(0);
-    expect(crossingMarks(frames)).toHaveLength(frames.length * 4);
   });
 
   it('the barriers come down when a train is near, and traffic waits: no car is ever on the line with a train', () => {

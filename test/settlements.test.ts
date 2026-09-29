@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { buildTopology } from '../src/mesh/topology';
 import { MARKET, Settlements, STREET, streetVertices } from '../src/life/settlements';
-import { MARK, STALL, buildingMarks, footprintRadius, houseShape, squareFrames, stallMarks, streetMarks } from '../src/life/buildingMarks';
 
 /** A sphere whose height is a gentle swell, plus a steep ridge round x = 0.3. */
 function world() {
@@ -85,21 +84,6 @@ describe('settlements', () => {
     expect(s.buildings.length).toBeGreaterThan(1);
   });
 
-  it('buildings are drawn as small closed rectangles lying on the ground', () => {
-    const { topo, h } = world();
-    const s = new Settlements(topo, h);
-    s.tap(FRONT);
-    s.advance(2);
-    for (const [i, m] of buildingMarks(topo, h, s.buildings).entries()) {
-      expect(m.closed).toBe(true);
-      expect(m.points.length).toBe(48); // four sides of four points, each laid on the ground
-      const v = s.buildings[i].vertex * 3;
-      for (let k = 0; k < m.points.length; k += 3) {
-        const d = Math.hypot(m.points[k] - topo.positions[v], m.points[k + 1] - topo.positions[v + 1], m.points[k + 2] - topo.positions[v + 2]);
-        expect(d).toBeLessThan(0.03);
-      }
-    }
-  });
 });
 
 describe('streets', () => {
@@ -149,24 +133,6 @@ describe('streets', () => {
     for (const b of houses) { const w = wayOf.get(b.front!)!; perWay.set(w, (perWay.get(w) ?? 0) + 1); }
     const shared = houses.filter((b) => perWay.get(wayOf.get(b.front!)!)! >= 2).length;
     expect(shared / houses.length).toBeGreaterThan(0.8);
-  });
-
-  it('no street runs through a building, as laid or as drawn', () => {
-    const { topo, s } = grown();
-    const buildingAt = new Set(s.buildings.map((b) => b.vertex));
-    for (const st of s.streets) for (const v of st.path.slice(1, -1)) expect(buildingAt.has(v)).toBe(false);
-
-    // The drawn line, after smoothing, keeps out of every footprint.
-    const marks = streetMarks(topo, s.streets, s.buildings, squareFrames(topo, s.streets, s.towns));
-    let worst = Infinity;
-    for (const m of marks) for (const b of s.buildings) {
-      const o = b.vertex * 3;
-      for (let k = 0; k < m.points.length; k += 3) {
-        const d = Math.hypot(m.points[k] - topo.positions[o], m.points[k + 1] - topo.positions[o + 1], m.points[k + 2] - topo.positions[o + 2]);
-        worst = Math.min(worst, d - footprintRadius(b));
-      }
-    }
-    expect(worst).toBeGreaterThan(0);
   });
 
   // Measured against what the mesh allows, not against the mean: on a triangle
@@ -367,22 +333,6 @@ describe('square and market', () => {
     expect(s.stalls.length).toBeGreaterThanOrEqual(2);
   });
 
-  it('stalls stand evenly in the square, clear of the hall and of each other', () => {
-    const { topo, s } = town(30);
-    const frames = squareFrames(topo, s.streets, s.towns);
-    const f = frames.get(0)!;
-    const hall = s.towns[0].centre * 3, P = topo.positions;
-    const centres = stallMarks(s.stalls, frames, topo).map((m) => [0, 1, 2].map((k) => { let t = 0; for (let i = k; i < m.points.length; i += 3) t += m.points[i]; return t / (m.points.length / 3); }));
-    expect(centres.length).toBeGreaterThanOrEqual(3);
-    for (const c of centres) {
-      const d = Math.hypot(c[0] - P[hall], c[1] - P[hall + 1], c[2] - P[hall + 2]);
-      expect(d).toBeGreaterThan(footprintRadius(s.buildings[0]) + STALL.long / 2);
-      expect(d).toBeLessThan(f.radius - STALL.long);
-    }
-    for (let i = 0; i < centres.length; i++)
-      for (let j = i + 1; j < centres.length; j++) expect(Math.hypot(...[0, 1, 2].map((k) => centres[i][k] - centres[j][k]))).toBeGreaterThan(STALL.long * 1.5);
-  });
-
   it('a town is not founded where its square would not fit', () => {
     const { topo, h } = world();
     const s = new Settlements(topo, h);
@@ -393,117 +343,6 @@ describe('square and market', () => {
     const r = s.tap([topo.positions[b], topo.positions[b + 1], topo.positions[b + 2]]);
     expect(s.towns).toHaveLength(1); // it grew the town instead, or was refused
     expect(r.kind).not.toBe('founded');
-  });
-});
-
-describe('clean drawing', () => {
-  function drawn() {
-    const { topo, h } = world();
-    const s = new Settlements(topo, h);
-    s.tap(FRONT);
-    s.advance(16);
-    const frames = squareFrames(topo, s.streets, s.towns);
-    return { topo, h, s, frames, streets: streetMarks(topo, s.streets, s.buildings, frames) };
-  }
-
-  it("a square's edge is smooth: it never jumps from one point to the next", () => {
-    const { topo, s, frames } = drawn();
-    const f = frames.get(0)!, P = topo.positions, hall = s.towns[0].centre * 3;
-    const r: number[] = [];
-    for (let i = 0; i < 64; i++) { const q = f.edgeAt((i / 64) * 2 * Math.PI); r.push(Math.hypot(q[0] - P[hall], q[1] - P[hall + 1], q[2] - P[hall + 2])); }
-    for (let i = 0; i < r.length; i++) expect(Math.abs(r[i] - r[(i + 1) % r.length]) / f.radius).toBeLessThan(0.03);
-    for (const d of r) expect(Math.abs(d - f.radius) / f.radius).toBeLessThan(0.25);
-  });
-
-  it("a square is not drawn round: it is the open ground the streets and houses leave (a ring read as a bug)", () => {
-    const { topo, s, frames } = drawn();
-    expect(streetMarks(topo, s.streets.filter((x) => x.kind === 'square'), s.buildings, frames)).toHaveLength(0);
-  });
-
-  it('streets that meet a square end on its drawn edge', () => {
-    const { topo, s, frames } = drawn();
-    const f = frames.get(0)!, P = topo.positions, hall = s.towns[0].centre * 3;
-    const meeting = s.streets.filter((x) => x.kind !== 'square' && (f.ring.has(x.path[0]) || f.ring.has(x.path[x.path.length - 1])));
-    expect(meeting.length).toBeGreaterThan(0);
-    for (const m of streetMarks(topo, meeting, s.buildings, frames)) {
-      const ends = [0, m.points.length - 3].map((k) => Math.hypot(m.points[k] - P[hall], m.points[k + 1] - P[hall + 1], m.points[k + 2] - P[hall + 2]));
-      expect(Math.min(...ends.map((d) => Math.abs(d - f.radius)))).toBeLessThan(f.radius * 0.05);
-    }
-  });
-
-  it('every house faces the street it fronts', () => {
-    const { topo, h, s } = drawn();
-    const P = topo.positions;
-    const houses = s.buildings.filter((b) => b.front !== undefined);
-    buildingMarks(topo, h, s.buildings).forEach((m, i) => {
-      const b = s.buildings[i];
-      if (b.front === undefined) return;
-      // The short side (corner 0 -> corner 3, points 0 and 12) points at the front.
-      const across = [0, 1, 2].map((k) => m.points[k] - m.points[36 + k]);
-      const to = [0, 1, 2].map((k) => P[b.front! * 3 + k] - P[b.vertex * 3 + k]);
-      const n = [0, 1, 2].map((k) => topo.normals[b.vertex * 3 + k]);
-      const dn = to[0] * n[0] + to[1] * n[1] + to[2] * n[2];
-      const flat = to.map((x, k) => x - dn * n[k]);
-      const cos = Math.abs(across.reduce((a, x, k) => a + x * flat[k], 0)) / (Math.hypot(...across) * Math.hypot(...flat));
-      // Faces it, turned off square by exactly the house's own small turn (up to 10°).
-      expect(Math.abs(cos - Math.cos(houseShape(b).turn))).toBeLessThan(0.01);
-      expect(Math.abs(houseShape(b).turn)).toBeLessThanOrEqual(0.18);
-    });
-    expect(houses.length).toBeGreaterThan(10);
-  });
-
-  it('no stray ticks: every drawn street is long enough to read as a street', () => {
-    const { streets } = drawn();
-    for (const m of streets) expect(m.length).toBeGreaterThanOrEqual(MARK.shortest);
-  });
-});
-
-describe('marks lie on the ground', () => {
-  it('no part of a house or stall is buried under the surface', () => {
-    // A bumpy ground, like peel: a flat rectangle over a bump buries its short sides.
-    const g = new THREE.IcosahedronGeometry(1, 24);
-    const topo = buildTopology(g.attributes.position.array, null);
-    const P = topo.positions;
-    for (let v = 0; v < topo.vertexCount; v++) {
-      const [x, y, z] = [P[v * 3], P[v * 3 + 1], P[v * 3 + 2]];
-      // A little steeper than the demo orange's peel dimples (0.008 at
-      // frequency 28), and coarse enough for the mesh to hold: across a
-      // house's width it rises more than the marks' lift.
-      const r = 1 + 0.01 * Math.sin(x * 45) * Math.sin(y * 45) + 0 * z;
-      P[v * 3] *= r; P[v * 3 + 1] *= r; P[v * 3 + 2] *= r;
-    }
-    const h = new Float32Array(topo.vertexCount).fill(0.3);
-    const s = new Settlements(topo, h);
-    s.tap(FRONT);
-    s.advance(20);
-    const frames = squareFrames(topo, s.streets, s.towns);
-    const marks = [...buildingMarks(topo, h, s.buildings), ...stallMarks(s.stalls, frames, topo)];
-    expect(s.stalls.length).toBeGreaterThan(0);
-    // The ground under a point is where a ray down the radius meets the mesh itself.
-    // (Taking the nearest vertex instead passed with no draping at all: the
-    // nearest vertex to a corner is usually the house's own centre.)
-    const mesh = new THREE.Mesh(new THREE.BufferGeometry());
-    mesh.geometry.setAttribute('position', new THREE.BufferAttribute(P, 3));
-    mesh.geometry.setIndex(new THREE.BufferAttribute(topo.triangles, 1));
-    mesh.geometry.computeBoundingSphere();
-    const ray = new THREE.Raycaster();
-    let worst = Infinity, checked = 0;
-    marks.forEach((m, i) => {
-      if (i % 3) return; // a third of the marks is plenty, and ray casts are not cheap
-      for (let k = 0; k < m.points.length; k += 3) {
-        const q = new THREE.Vector3(m.points[k], m.points[k + 1], m.points[k + 2]);
-        ray.set(q.clone().multiplyScalar(1.2), q.clone().normalize().negate());
-        const hit = ray.intersectObject(mesh, false)[0];
-        if (!hit) continue;
-        worst = Math.min(worst, q.length() - hit.point.length());
-        checked++;
-      }
-    });
-    expect(checked).toBeGreaterThan(100);
-    // Measured: a flat rectangle at a fixed lift, -0.0012 (buried); each point
-    // laid on the ground by interpolation, -0.0003, and wobbly; flat and lifted
-    // by the most any point needs: clear of the ground, and straight.
-    expect(worst).toBeGreaterThan(0);
   });
 });
 
@@ -525,52 +364,5 @@ describe('towns keep apart', () => {
     s.advance(3);
     s.tap([-0.1, -0.5, 0.86]);
     expect(s.towns).toHaveLength(2);
-  });
-});
-
-describe('organic drawing', () => {
-  function town(days = 20) {
-    const { topo, h } = world();
-    const s = new Settlements(topo, h);
-    s.tap(FRONT);
-    s.advance(days);
-    return { topo, h, s };
-  }
-
-  it('houses vary: in size, in proportion, and some have a wing', () => {
-    const { s } = town();
-    const shapes = s.buildings.filter((b) => b.order > 0).map((b) => houseShape(b));
-    const longs = shapes.map((x) => x.long), aspects = shapes.map((x) => x.long / x.short);
-    expect(Math.max(...longs) / Math.min(...longs)).toBeGreaterThan(1.3);
-    expect(Math.max(...aspects) / Math.min(...aspects)).toBeGreaterThan(1.3);
-    const wings = shapes.filter((x) => x.wing).length / shapes.length;
-    expect(wings).toBeGreaterThan(0.15);
-    expect(wings).toBeLessThan(0.5);
-  });
-
-  it('a house is always drawn the same way: its shape depends on nothing but itself', () => {
-    const a = town(12), b = town(20); // the same first houses, in a town grown on further
-    for (const x of a.s.buildings) {
-      const y = b.s.buildings.find((q) => q.vertex === x.vertex && q.order === x.order);
-      if (y) expect(houseShape(y)).toEqual(houseShape(x));
-    }
-  });
-
-  it('streets meander: a drawn street strays from its straightened line, and settles at its ends', () => {
-    const { topo, s } = town();
-    const frames = squareFrames(topo, s.streets, s.towns);
-    let strayed = 0;
-    for (const st of s.streets.filter((x) => x.kind === 'street' && x.path.length > 6)) {
-      const plain = streetMarks(topo, [st], s.buildings, frames);
-      expect(plain.length).toBeGreaterThan(0);
-      // Its two sides wobble: the width between them is not constant.
-      if (plain.length === 2) {
-        const [l, r] = plain;
-        const w: number[] = [];
-        for (let k = 0; k < Math.min(l.points.length, r.points.length); k += 3) w.push(Math.hypot(l.points[k] - r.points[k], l.points[k + 1] - r.points[k + 1], l.points[k + 2] - r.points[k + 2]));
-        if (Math.max(...w) / Math.min(...w) > 1.15) strayed++;
-      }
-    }
-    expect(strayed).toBeGreaterThan(0);
   });
 });

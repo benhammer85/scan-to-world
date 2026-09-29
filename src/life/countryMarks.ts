@@ -36,9 +36,6 @@ export const COUNTRY = {
   windmillAt: 16,
 };
 
-/** A remembered line: fine dots, far apart, as an old map marks the site of something gone. */
-export const MEMORY = { dot: 0.0011, gap: 0.0065 };
-
 /** Hand colours. Muted: a wash, not paint. */
 export const WASH: Record<Crop | 'wood', [number, number, number]> = {
   arable: [1, 1, 1], // coloured by the season instead
@@ -114,11 +111,12 @@ export function winter(day: number): number {
  * what a turning map needs.
  */
 /**
- * `fromHigh`: seen from very high up, as the game draws it now. No field is outlined (no
- * hedges, walls, hedge trees or ghosts of old hedges), nothing is built (no mills), and
- * no single tree stands out (orchards, parkland): farmland is its rows, woods their trees.
+ * The country, seen from very high up: no field is outlined (no hedges, walls or
+ * enclosure grids, which showed the fixed field cells as a pattern), nothing is
+ * built (no mills), and no single tree stands out (orchards, parkland).
+ * Farmland is its rows and washes, woods their trees in clumps, commons a wash.
  */
-export function countryMarks(topo: Topology, st: Settlements, c: Countryside, detail = true, fromHigh = false): CountryDrawing {
+export function countryMarks(topo: Topology, st: Settlements, c: Countryside, detail = true): CountryDrawing {
   const out: CountryDrawing = { lines: [], wash: { positions: [], colours: [] }, seasonal: { positions: [], colours: [] }, meadow: { positions: [], colours: [] }, turning: [] };
   const rich = 0.7 + 0.3 * maturity(st.day);
   const { cells, cellOf } = c.land;
@@ -132,75 +130,12 @@ export function countryMarks(topo: Topology, st: Settlements, c: Countryside, de
   for (const [cell] of c.claims) for (const v of cells[cell].vertices) if (open(v)) label[v] = cell;
   const crops = new Map([...c.claims.keys()].map((cell) => [cell, c.cropOf(cell)]));
 
-  // ---- hedges and walls: where one field meets another, or the wild
-  const nKey = (a: number, b: number) => (a < b ? a * n + b : b * n + a);
-  const flat: number[] = [];
   const t = topo.triangles;
-  for (let i = 0; i < t.length; i += 3) {
-    const a = t[i], b = t[i + 1], cc = t[i + 2];
-    const la = label[a], lb = label[b], lc = label[cc];
-    if (la === lb && lb === lc) continue;
-    if (la < 0 && lb < 0 && lc < 0) continue;
-    // Not along the water or the town: the shore and the streets are drawn already.
-    if (water(a) || water(b) || water(cc) || c.townGround[a] || c.townGround[b] || c.townGround[cc]) continue;
-    const e: number[] = [];
-    if (la !== lb) e.push(nKey(a, b));
-    if (lb !== lc) e.push(nKey(b, cc));
-    if (lc !== la) e.push(nKey(cc, a));
-    flat.push(e[0], e[1]); // where three fields meet, two of the three edges: a hedge may stop short there
-  }
-  for (const chain of fromHigh ? [] : chainSegments(flat)) {
-    if (chain.keys.length < 2) continue;
-    let pts = chain.keys.map((k) => { const a = Math.floor(k / n), b = k - a * n; return mid(p, nm, a, b, COUNTRY.lift); });
-    if (chain.closed) pts.push(pts[0]);
-    for (let r = 0; r < 2; r++) pts = chaikin(pts);
-    const k0 = chain.keys[0], a0 = Math.floor(k0 / n), b0 = k0 - a0 * n;
-    const side = label[a0] >= 0 ? label[a0] : label[b0];
-    const line = polyline(pts, 0);
-    if (crops.get(side) === 'grazing') {
-      out.lines.push(...dashes(line, 0.0035, 0.0028)); // a dry-stone wall
-      continue;
-    }
-    out.lines.push(line);
-    if (!detail) continue;
-    // Hedge trees, here and there along it.
-    let since = COUNTRY.hedgeTree * hash(k0 % 100003, 81);
-    for (let i = 1; i < pts.length; i++) {
-      since += dist(pts[i], pts[i - 1]);
-      if (since < COUNTRY.hedgeTree) continue;
-      since = -COUNTRY.hedgeTree * 0.6 * hash(i + k0 % 997, 83);
-      const v = Math.floor(k0 / n);
-      out.lines.push(...tree(pts[i] as V3, frameAt(nm, v), COUNTRY.crown * 0.7, i + k0));
-    }
-  }
-
-  // ---- what the map remembers: where the hedges ran round fields the town has built over
-  const ghost = new Int32Array(n).fill(-1);
-  if (detail && !fromHigh) for (const [cell] of c.remembered) for (const v of cells[cell].vertices) if (!water(v)) ghost[v] = cell;
-  const ghostFlat: number[] = [];
-  for (let i = 0; i < t.length; i += 3) {
-    const a = t[i], b = t[i + 1], cc = t[i + 2];
-    const ga = ghost[a], gb = ghost[b], gc = ghost[cc];
-    if ((ga === gb && gb === gc) || (ga < 0 && gb < 0 && gc < 0)) continue;
-    if (label[a] >= 0 || label[b] >= 0 || label[cc] >= 0) continue; // a hedge still standing is drawn as one
-    const e: number[] = [];
-    if (ga !== gb) e.push(nKey(a, b));
-    if (gb !== gc) e.push(nKey(b, cc));
-    if (gc !== ga) e.push(nKey(cc, a));
-    ghostFlat.push(e[0], e[1]);
-  }
-  for (const chain of chainSegments(ghostFlat)) {
-    if (chain.keys.length < 2) continue;
-    let pts = chain.keys.map((k) => { const a = Math.floor(k / n), b = k - a * n; return mid(p, nm, a, b, COUNTRY.lift); });
-    for (let r = 0; r < 2; r++) pts = chaikin(pts);
-    out.lines.push(...dashes(polyline(pts, 0), MEMORY.dot, MEMORY.gap));
-  }
 
   // ---- inside the fields, and their washes
   const season = seasonColour(st.day);
   void season;
   const turning: Turning[] = [];
-  const seenTrees = new Set<number>();
   for (const [cell, claim] of c.claims) {
     const crop = crops.get(cell)!, age = st.day - claim.born;
     const inside = cells[cell].tris.filter((i) => label[t[i]] === cell && label[t[i + 1]] === cell && label[t[i + 2]] === cell);
@@ -241,28 +176,6 @@ export function countryMarks(topo: Topology, st: Settlements, c: Countryside, de
       const main = isoLines(topo, inside, (v) => p[v * 3] * w[0] + p[v * 3 + 1] * w[1] + p[v * 3 + 2] * w[2], 1, COUNTRY.lift);
       out.lines.push(...main.slice(0, 1));
       if (since < MARSH.dry) for (const v of cells[cell].vertices) if (label[v] === cell && !edge(v) && hash(v, 91) < 0.15) out.lines.push(...tuft(lifted(p, nm, v, COUNTRY.lift) as V3, frameAt(nm, v), v));
-    } else if (crop === 'orchard' && age >= FIELD.plough && !fromHigh) {
-      // Trees in rows, each row set half a gap along: an orchard as a survey draws it.
-      const a = hash(cell, 93) * Math.PI;
-      const u: V3 = [0, 1, 2].map((k) => fr.ax[k] * Math.cos(a) + fr.bx[k] * Math.sin(a)) as V3;
-      const w: V3 = [0, 1, 2].map((k) => -fr.ax[k] * Math.sin(a) + fr.bx[k] * Math.cos(a)) as V3;
-      const g = COUNTRY.orchard, grown = Math.min(1, 0.4 + age / 3);
-      for (const v of cells[cell].vertices) {
-        if (label[v] !== cell || edge(v)) continue;
-        // The lattice points nearest this vertex, if they are nearer it than to any other.
-        const x = p[v * 3] * u[0] + p[v * 3 + 1] * u[1] + p[v * 3 + 2] * u[2], y = p[v * 3] * w[0] + p[v * 3 + 1] * w[1] + p[v * 3 + 2] * w[2];
-        const j = Math.round(y / g), i = Math.round(x / g - (j % 2 ? 0.5 : 0));
-        const gx = (i + (j % 2 ? 0.5 : 0)) * g, gy = j * g;
-        if (Math.abs(gx - x) > g * 0.5 || Math.abs(gy - y) > g * 0.5) continue;
-        const key = i * 100003 + j;
-        if (seenTrees.has(key)) continue;
-        seenTrees.add(key);
-        const at = [0, 1, 2].map((k) => p[v * 3 + k] + u[k] * (gx - x) + w[k] * (gy - y) + nm[v * 3 + k] * COUNTRY.lift) as V3;
-        out.lines.push(...tree(at, frameAt(nm, v), COUNTRY.crown * 0.5 * grown, key, false));
-      }
-    } else if (crop === 'park' && !fromHigh) {
-      // Parkland: trees stood singly, far apart, in the grass.
-      for (const v of cells[cell].vertices) if (label[v] === cell && !edge(v) && hash(v, 94) < 0.18) out.lines.push(...tree(lifted(p, nm, v, COUNTRY.lift) as V3, frameAt(nm, v), COUNTRY.crown * 1.1, v));
     } else if (crop === 'meadow' && age >= FIELD.plough && detail) {
       for (const v of cells[cell].vertices) if (label[v] === cell && !edge(v) && hash(v, 91) < 0.35) out.lines.push(...tuft(lifted(p, nm, v, COUNTRY.lift) as V3, frameAt(nm, v), v));
     }
@@ -273,15 +186,7 @@ export function countryMarks(topo: Topology, st: Settlements, c: Countryside, de
     const cell = common.cell, own = (v: number) => cellOf[v] === cell && open(v);
     const inside = cells[cell].tris.filter((i) => own(t[i]) && own(t[i + 1]) && own(t[i + 2]));
     const fr = frameAt(nm, cells[cell].centre);
-    if (common.enclosed !== undefined) {
-      if (fromHigh) continue; // its ruled hedges are field outlines too
-      // Enclosure: straight hedges, ruled both ways, cutting the old common into small fields.
-      const a = hash(cell, 99) * Math.PI;
-      const u: V3 = [0, 1, 2].map((k) => fr.ax[k] * Math.cos(a) + fr.bx[k] * Math.sin(a)) as V3;
-      const w: V3 = [0, 1, 2].map((k) => -fr.ax[k] * Math.sin(a) + fr.bx[k] * Math.cos(a)) as V3;
-      for (const dir of [u, w]) out.lines.push(...isoLines(topo, inside, (v) => p[v * 3] * dir[0] + p[v * 3 + 1] * dir[1] + p[v * 3 + 2] * dir[2], COUNTRY.enclosure, COUNTRY.lift));
-      continue;
-    }
+    if (common.enclosed !== undefined) continue; // enclosed, it is fields like any other
     // Open: a wash of heath, gorse here and there, and the pond at its lowest.
     const edge = (v: number) => { for (let k = topo.nbrOffsets[v]; k < topo.nbrOffsets[v + 1]; k++) if (!own(topo.nbrList[k])) return true; return false; };
     for (const i of inside) for (const v of [t[i], t[i + 1], t[i + 2]]) {
@@ -292,7 +197,7 @@ export function countryMarks(topo: Topology, st: Settlements, c: Countryside, de
     if (!vs.length) continue;
     const kept = common.kept !== undefined, park = kept && st.size(town) >= COMMON.park;
     for (const v of vs) {
-      if (edge(v)) { if (kept && !fromHigh && hash(v, 105) < 0.5) out.lines.push(...tree(lifted(p, nm, v, COUNTRY.lift) as V3, frameAt(nm, v), COUNTRY.crown, v)); continue; }
+      if (edge(v)) continue;
       if (detail && !park && hash(v, 103) < 0.3) out.lines.push(...gorse(lifted(p, nm, v, COUNTRY.lift) as V3, frameAt(nm, v), v));
     }
     const low = vs.reduce((a, b) => (c.heightAt(b) < c.heightAt(a) ? b : a), vs[0]);
@@ -348,27 +253,6 @@ export function countryMarks(topo: Topology, st: Settlements, c: Countryside, de
     }
   }
 
-  // ---- windmills on the high fields, and mills on the streams
-  for (const town of fromHigh ? [] : st.towns) {
-    if (town.buildings.length < COUNTRY.windmillAt) continue;
-    let best = -1, bh = -Infinity;
-    for (const [cell, claim] of c.claims) {
-      if (claim.owner !== `t${town.id}` || crops.get(cell) !== 'arable' || st.day - claim.born < FIELD.plough) continue;
-      const v = cells[cell].centre;
-      if (!open(v)) continue;
-      if (c.heightAt(v) > bh) { bh = c.heightAt(v); best = v; }
-    }
-    if (best < 0) continue;
-    const fr = frameAt(nm, best), at = lifted(p, nm, best, COUNTRY.lift) as V3;
-    out.lines.push(circle(at, fr, 0.0035, 1));
-    turning.push({ kind: 'sails', at: [0, 1, 2].map((k) => at[k] + fr.nr[k] * 0.001) as V3, ...fr, size: 0.013 });
-  }
-  for (const m of fromHigh ? [] : st.mills()) {
-    const fr = frameAt(nm, m.vertex);
-    const at = [0, 1, 2].map((k) => p[m.vertex * 3 + k] + fr.ax[k] * 0.014 + nm[m.vertex * 3 + k] * COUNTRY.lift) as V3;
-    out.lines.push(circle(at, fr, 0.0055, 1));
-    turning.push({ kind: 'wheel', at, ...fr, size: 0.0055 });
-  }
   out.turning = turning;
   return out;
 }
@@ -454,12 +338,6 @@ function tuft(at: V3, fr: Frame, seed: number): Polyline[] {
     out.push(polyline([b, [0, 1, 2].map((k) => b[k] + fr.bx[k] * s * (x === 0 ? 1.3 : 1) + fr.ax[k] * lean * s)], 0));
   }
   return out;
-}
-
-function circle(at: V3, fr: Frame, r: number, level: number): Polyline {
-  const pts: number[][] = [];
-  for (let i = 0; i < 16; i++) { const a = (i / 16) * 2 * Math.PI; pts.push([0, 1, 2].map((k) => at[k] + (fr.ax[k] * Math.cos(a) + fr.bx[k] * Math.sin(a)) * r)); }
-  return { ...polyline(pts, level), closed: true };
 }
 
 /**

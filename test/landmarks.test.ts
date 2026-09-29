@@ -3,8 +3,8 @@ import * as THREE from 'three';
 import { buildTopology } from '../src/mesh/topology';
 import { Settlements } from '../src/life/settlements';
 import { Countryside, FIELD } from '../src/life/country';
-import { CHURCH, Landmarks, WALL, landmarkMarks } from '../src/life/landmarks';
-import { lookOf, squareFrames } from '../src/life/buildingMarks';
+import { Landmarks, WALL } from '../src/life/landmarks';
+
 import { frameAt } from '../src/life/countryMarks';
 
 function world() {
@@ -59,15 +59,6 @@ describe('walls', () => {
 });
 
 describe('landmarks and memory', () => {
-  it('a town with a market gets its church on the square', () => {
-    const { topo, h, s, c, l } = grow(12);
-    expect(s.size(0)).toBeGreaterThanOrEqual(CHURCH.at);
-    const look = lookOf(s), frames = squareFrames(topo, s.streets, s.towns, look);
-    const f = frames.get(0)!, hall = topo.positions.subarray(f.hall * 3, f.hall * 3 + 3);
-    const solids = landmarkMarks(topo, h, s, c, l, frames, look, () => null).lines.filter((m) => m.fill);
-    const onSquare = solids.filter((m) => Math.hypot(m.points[0] - hall[0], m.points[1] - hall[1], m.points[2] - hall[2]) < f.radius * 1.1);
-    expect(onSquare.length).toBeGreaterThanOrEqual(3); // nave, transept, tower
-  });
 
   it("a country house's fields are its park", () => {
     const { s, c, step } = grow(16);

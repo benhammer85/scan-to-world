@@ -58,16 +58,16 @@ There are no buttons, modes or menus. The screen is the object and nothing else.
 
 | Gesture | What it does |
 |---|---|
-| Tap | A seed: the ground decides what of. People (a new town, or the town you touched grows), a farm near a town, a wood on steep ground; on a field it goes back to wood, on a wood it is felled |
-| Drag | Turns the world, and turning is time: a full turn is a day, and towns grow and grow up as the days pass: paths wear into streets, huts become houses, the old core is built into terraces and courts |
+| Tap | Only what can be seen from high up can be touched. In empty country it sows a new place; on or near a light, that place grows towards your finger; on a wood it is cleared, on farmland it goes back to the wild, on a steep slope a wood is planted. Fine ink rings open where you tapped (one pencil ring closes if the ground refused) |
+| Drag | Turns the world, and turning is time: a full turn is a day. A place grows two or three houses a turn at first, faster as it grows, and its light spreads and brightens |
 | Hold still on the object | Presses into the ground, deeper the longer you hold |
 | Hold, then pull | Pulls the ground up. How far you pull is how high it goes, and moving back lets it down again |
 | Arrow keys | On a desktop, a push on the spin like a small fling: they turn the world and pass the days the same way a drag does |
-| Pinch or scroll | Comes closer. The brush is a fixed size on screen, so closer means finer edits |
+| Pinch or scroll | Comes a little closer (never near enough to see what anything is), or out to the atlas |
 | Drop a file on the window | Loads a scan (GLB, OBJ or PLY) |
 | Three fingers held, or the <code>`</code> key | Opens the tuning drawer, which is for development and not part of the product |
 
-A ring appears the moment a finger takes hold, before any work happens, so you know you were heard. Changed contours show as pencil while you work, and the pen inks them when you let go.
+A fine ink ring appears the moment a finger takes hold, before any work happens, so you know you were heard. Changed contours show as pencil while you work, and the pen inks them when you let go.
 
 The object picks its own height method from its shape (`chooseHeightMode`): radial for round things, curvature for everything else. The recogniser (`src/interact/gestures.ts`) only turns pointer events into intents, so its rules are unit-tested. The feel constants live in `TOUCH` in `src/main.ts`.
 
@@ -87,6 +87,9 @@ scan file ─► load.ts         merge meshes, centre, scale to radius 1, option
 `src/world.ts` connects these stages for one object. `src/main.ts` handles the scene, UI and input.
 
 ### Notes on each stage
+
+> **Note.** Much of what follows describes the simulation underneath: towns with streets, houses, terraces, walls, churches, castles, harbours and fields. All of it still runs and still shapes where people build. But from the height the game is seen from, none of it is drawn as itself: it is drawn only as light (see "The look" above and [STYLE.md](STYLE.md)). The code that drew buildings and landmarks was removed in the lightness clean-up.
+
 
 * **Heightfield.**
   * `radial` measures distance from the centroid. Use it for round, bumpy things like an orange, a rock or a potato.

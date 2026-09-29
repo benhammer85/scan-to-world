@@ -15,7 +15,7 @@ import { Landmarks, landmarkMarks } from './life/landmarks';
 import { Stipple } from './render/stipple';
 import { glowDots, glowField } from './life/development';
 import { countryMarks, isoLines, maturity, seasonColour, springFlood, turningMarks, winter, type Turning, type Wash } from './life/countryMarks';
-import { blockMarks, buildingMarks, harbourMarks, lookOf, squareFrames, sunkenMarks, wingMarks, wayLine } from './life/buildingMarks';
+import { harbourMarks } from './life/buildingMarks';
 import { findWater, seaFor, snowLines, streamLines, waterLines, type Sea, type Water } from './nature/water';
 import { crossingFrames, ferryRoute, movers, railMarks } from './life/buildingMarks';
 
@@ -460,13 +460,8 @@ export class TerrainWorld {
     const detail = mode === 'ink';
     const ground = `${this.shapeVersion}|${this.waterVersion}`;
     const town = this.layer('town', `${ground}|${st.buildings.length}|${st.streets.length}|${st.stalls.length}|${st.harbours.length}|${st.harbours.filter((h) => h.silted !== undefined).length}|${st.rails.length}|${st.cables.length}|${st.blocks.length}|${st.lookSignature()}`, () => {
-      const { buildings, streets, towns } = st;
-      const look = lookOf(st);
-      const frames = squareFrames(this.topo, streets, towns, look);
+      const { buildings, streets } = st;
       const crossings = crossingFrames(this.topo, st);
-      // Blocks built round take in the houses that stood on them: the ways are drawn round what is left.
-      const blocks = blockMarks(this.topo, st.blocks, (k) => st.blockStage(k), buildings, streets, look);
-      const shown = buildings.filter((b) => !blocks.absorbed.has(b.vertex));
       // Development as light seen from very high up: no buildings, no outlines, only a stipple
       // whose density is the light the houses give (see life/development.ts, STYLE.md). The roads
       // are threads of that light, not lines; only the water's edge and the rails are drawn.
@@ -477,16 +472,16 @@ export class TerrainWorld {
         // A railway is one fine line from this high: its sleepers, gates and the cable lines' pylons are too small to see.
         ...railMarks(this.topo, st.rails).filter((m) => m.points.length > 6),
       ];
-      return { look, frames, shown, crossings, lines, dots };
+      return { crossings, lines, dots };
     });
     this.crossings = town.crossings;
 
     // The country follows the town only loosely: redrawn every few houses, not each one.
     const m = maturity(st.day);
     const country = this.layer('country', `${ground}|${detail}|${Math.floor(st.buildings.length / 5)}|${Math.floor(st.streets.length / 4)}|${c.signature()}|${c.claims.size}|${c.planted.size}|${c.felled.size}|${c.remembered.size}|${c.commons.size}|${c.drained.size}|${Math.floor(m * 10)}`,
-      () => countryMarks(this.topo, st, c, detail, true));
+      () => countryMarks(this.topo, st, c, detail));
     const land = this.layer('land', `${ground}|${detail}|${lm.signature()}|${st.towns.map((t) => Math.floor(st.size(t.id) / 8)).join(',')}|${Math.floor(c.claims.size / 3)}|${st.harbours.length}|${st.harbours.filter((h) => h.silted !== undefined).length}|${st.farms.filter((f) => f.estate !== undefined).length}|${Math.floor(m * 4)}|${Math.floor(st.lookSignature() / 50)}`,
-      () => landmarkMarks(this.topo, this.heights, st, c, lm, town.frames, town.look, (x) => wayLine(this.topo, x, town.shown, town.frames, town.look), detail, true));
+      () => landmarkMarks(this.topo, this.heights, st, c, lm, detail));
     this.turning = [...country.turning, ...land.turning];
     // Washes are set again only when their layer was drawn again.
     const washKey = `${this.layers.get('country')!.key}|${this.layers.get('land')!.key}`;
@@ -577,16 +572,13 @@ export class TerrainWorld {
   }
 
   private drawWater(changed: boolean): void {
-    // The water, and whatever it has taken: drowned houses and sunken
-    // streets show through it in the water's own ink, like a drowned village.
+    // The water, its streams and its ferries' routes. What it has taken is part of the
+    // development's light no longer: nothing built is drawn from this high.
     const st = this.settlements;
     const lines = [
       ...waterLines(this.topo, this.water),
       ...streamLines(this.topo, this.water),
       ...(st ? st.ferries.flatMap((f) => ferryRoute(this.topo, f.route)) : []),
-      ...(st ? buildingMarks(this.topo, this.heights, st.buildings, 'drowned') : []),
-      ...(st ? wingMarks(this.topo, this.heights, st.buildings, 'drowned') : []),
-      ...(st ? sunkenMarks(this.topo, st.streets, st, squareFrames(this.topo, st.streets, st.towns)) : []),
       ...this.waterLining(),
     ];
     this.waterLines.geometry.dispose();

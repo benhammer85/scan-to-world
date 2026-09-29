@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { buildTopology } from '../src/mesh/topology';
 import { STAGE, Settlements, type Street } from '../src/life/settlements';
-import { BLOCK, blockMarks, footprintRadius, houseShape, lookOf, squareFrames, streetMarks, terraceMarks, yardPaths } from '../src/life/buildingMarks';
 
 /** The settlements tests' world: a gentle swell, and a cliff at x ≈ 0.3. */
 function world() {
@@ -82,19 +81,6 @@ describe('ways wear in', () => {
     expect(s.streetStages().get(way)).toBe(0);
   });
 
-  it('is drawn as it has worn: dotted, dashed, then two lines', () => {
-    const { topo, s } = town(20);
-    const look = lookOf(s), frames = squareFrames(topo, s.streets, s.towns, look);
-    for (const [x, stage] of s.streetStages()) {
-      if (x.kind === 'square' || x.kind === 'road') continue;
-      const marks = streetMarks(topo, [x], s.buildings, frames, s, look);
-      if (!marks.length) continue;
-      const longest = Math.max(...marks.map((m) => m.length));
-      if (stage === 0) expect(longest).toBeLessThan(0.004);
-      else if (stage === 1) expect(longest).toBeLessThan(0.016);
-      else expect(marks.length % 2).toBe(0); // its two sides
-    }
-  });
 });
 
 describe('people live there first', () => {
@@ -107,42 +93,16 @@ describe('people live there first', () => {
       s.advance(0.1);
     }
     expect(s.hallStands(0)).toBe(true);
-    const hall = s.buildings[0];
-    expect(houseShape(hall, 2, false).long).toBeLessThan(houseShape(hall, 2, true).long);
   });
 
-  it("before there's a square, the ways run in to the farmstead, and its houses are reached across the yard", () => {
-    const { topo, h } = world();
-    const s = new Settlements(topo, h);
-    s.tap([0, 0, 1]);
-    s.advance(1.5);
-    expect(s.hallStands(0)).toBe(false);
-    const look = lookOf(s), frames = squareFrames(topo, s.streets, s.towns, look);
-    const f = frames.get(0)!;
-    expect(f.open).toBe(false);
-    const farm = P(topo, f.hall), reach = footprintRadius(s.buildings[0], look);
-    const yard = yardPaths(topo, s.buildings, frames, look);
-    expect(yard.length).toBeGreaterThan(0);
-    // Each path ends at the farm's door.
-    const ends = yard.map((m) => d3(m.points.subarray(m.points.length - 3), farm));
-    expect(Math.min(...ends)).toBeLessThan(reach * 1.4);
-    for (const x of s.streets.filter((y) => y.kind !== 'square' && (f.ring.has(y.path[0]) || f.ring.has(y.path.at(-1)!)))) {
-      for (const m of streetMarks(topo, [x], s.buildings, frames, s, look)) {
-        const e = [0, m.points.length - 3].map((k) => d3(m.points.subarray(k, k + 3), farm));
-        expect(Math.min(...e)).toBeLessThan(f.radius * 0.8);
-      }
-    }
-  });
-
-  it('a house starts as a hut, and gets its wing only once it has stood a while', () => {
+  it('a house starts as a hut, and grows only once it has stood a while', () => {
     const { s } = town(8);
     for (const b of s.buildings.filter((x) => x.order > 0)) {
       const stage = s.houseStage(b), age = s.day - b.born!;
       expect(stage === 0).toBe(age < STAGE.house);
-      if (stage < 2) expect(houseShape(b, stage).wing).toBeNull();
-      expect(houseShape(b, 0).long).toBeLessThan(houseShape(b, 1).long);
     }
   });
+
 
   it('growing up does not depend on how time was sliced', () => {
     const one = town(0), many = town(0);
@@ -154,20 +114,6 @@ describe('people live there first', () => {
 });
 
 describe('terraces and blocks', () => {
-  it("in the old core, a street's houses are built into rows that follow it, stop at a way that joins, and never cross a street", () => {
-    const { topo, s } = town(24);
-    const look = lookOf(s), frames = squareFrames(topo, s.streets, s.towns, look);
-    const rows = terraceMarks(topo, s.streets, s.buildings, frames, look, s.spacing);
-    expect(rows.marks.length).toBeGreaterThan(0);
-    expect(rows.joined.size).toBeGreaterThanOrEqual(rows.marks.length * 2);
-    for (const b of rows.joined) expect(s.houseStage(b)).toBe(3);
-    // Clear of every street's drawn line, its own included: a street's line runs between its vertices.
-    const lines = streetMarks(topo, s.streets, s.buildings, frames, s, look);
-    for (const m of rows.marks) for (let k = 0; k < m.points.length; k += 3) {
-      const q = m.points.subarray(k, k + 3);
-      for (const l of lines) for (let j = 0; j < l.points.length; j += 3) expect(d3(q, l.points.subarray(j, j + 3))).toBeGreaterThan(0.0015);
-    }
-  });
 
   it('ground enclosed by streets is found as blocks, and a block keeps its stamp as time goes on', () => {
     const { s } = town(26);
@@ -185,28 +131,4 @@ describe('terraces and blocks', () => {
     }
   });
 
-  it("an old block in the core is built round a courtyard, clear of the streets round it, and takes in the houses that stood there", () => {
-    const { topo, s } = town(34);
-    const look = lookOf(s);
-    const courts = s.blocks.filter((k) => s.blockStage(k) === 2);
-    expect(courts.length).toBeGreaterThan(0);
-    const drawn = blockMarks(topo, courts, () => 2, s.buildings, s.streets, look);
-    const walls = drawn.lines.filter((m) => m.fill);
-    expect(walls.length).toBeGreaterThan(0);
-    const street = s.streets.flatMap((x) => x.path).map((v) => P(topo, v));
-    // A street's drawn line passes between its vertices, so measured from the segments.
-    let nearest = Infinity;
-    for (const m of walls) for (let k = 0; k < m.points.length; k += 3) {
-      const q = m.points.subarray(k, k + 3);
-      for (const x of s.streets) for (let i = 1; i < x.path.length; i++) {
-        const a = P(topo, x.path[i - 1]), b = P(topo, x.path[i]);
-        const ab = [0, 1, 2].map((j) => b[j] - a[j]), L2 = ab[0] ** 2 + ab[1] ** 2 + ab[2] ** 2 || 1;
-        const t = Math.max(0, Math.min(1, ((q[0] - a[0]) * ab[0] + (q[1] - a[1]) * ab[1] + (q[2] - a[2]) * ab[2]) / L2));
-        nearest = Math.min(nearest, d3(q, [a[0] + ab[0] * t, a[1] + ab[1] * t, a[2] + ab[2] * t]));
-      }
-    }
-    void street;
-    expect(nearest).toBeGreaterThan(BLOCK.gap * 0.5);
-    for (const v of drawn.absorbed) expect(courts.some((k) => k.vertices.includes(v))).toBe(true);
-  });
 });
