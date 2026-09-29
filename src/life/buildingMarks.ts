@@ -6,7 +6,7 @@
  */
 import type { Topology } from '../mesh/topology';
 import type { Polyline } from '../terrain/contours';
-import type { Building } from './settlements';
+import type { Building, Street } from './settlements';
 
 export const MARK = {
   long: 0.024,
@@ -53,6 +53,71 @@ export function buildingMarks(topo: Topology, heights: Float32Array, buildings: 
       pts[k * 3 + 1] = cy + ay * hl * i + gy * hs * j;
       pts[k * 3 + 2] = cz + az * hl * i + gz * hs * j;
     });
-    return { level: 0, iso: 0, points: pts, closed: true, length: 2 * (MARK.long + MARK.short) * s };
+    // Level 1: drawn after the streets (level 0), the way a person draws a town.
+    return { level: 1, iso: 0, points: pts, closed: true, length: 2 * (MARK.long + MARK.short) * s };
   });
+}
+
+/** Half the diagonal of a building's footprint: nothing else may be drawn inside it. */
+export function footprintRadius(b: Building): number {
+  const s = b.order === 0 ? MARK.hall : 1;
+  return Math.hypot(MARK.long * s, MARK.short * s) / 2;
+}
+
+/**
+ * Streets as pen lines. A path along mesh edges is a staircase, so it gets
+ * two rounds of corner cutting (as the map app does to its contours), with
+ * the ends held so streets still meet exactly at their junctions. A street's
+ * first end is at its building; it is trimmed back to the footprint so the
+ * street reaches the door and doesn't run into the house.
+ */
+export function streetMarks(topo: Topology, streets: Street[], buildings: Building[]): Polyline[] {
+  const { positions: p, normals: n } = topo;
+  const byVertex = new Map(buildings.map((b) => [b.vertex, b]));
+  const out: Polyline[] = [];
+  for (const st of streets) {
+    if (st.path.length < 2) continue;
+    let pts: number[][] = st.path.map((v) => {
+      const o = v * 3;
+      return [p[o] + n[o] * MARK.lift, p[o + 1] + n[o + 1] * MARK.lift, p[o + 2] + n[o + 2] * MARK.lift];
+    });
+    for (let r = 0; r < 2; r++) pts = chaikin(pts);
+    const home = st.kind === 'street' ? byVertex.get(st.path[0]) : undefined;
+    if (home) pts = trimStart(pts, pts[0], footprintRadius(home) * 1.05);
+    // A street that arrives at a hall stops at its door too.
+    const end = byVertex.get(st.path[st.path.length - 1]);
+    if (end && pts.length >= 2) pts = trimStart(pts.reverse(), pts[0], footprintRadius(end) * 1.05).reverse();
+    if (home === undefined && st.kind === 'road') {
+      const start = byVertex.get(st.path[0]);
+      if (start && pts.length >= 2) pts = trimStart(pts, pts[0], footprintRadius(start) * 1.05);
+    }
+    if (pts.length < 2) continue;
+    const flat = new Float32Array(pts.flat());
+    let length = 0;
+    for (let i = 1; i < pts.length; i++) length += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1], pts[i][2] - pts[i - 1][2]);
+    out.push({ level: 0, iso: 0, points: flat, closed: false, length });
+  }
+  return out;
+}
+
+function chaikin(pts: number[][]): number[][] {
+  if (pts.length < 3) return pts;
+  const out = [pts[0]];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i], b = pts[i + 1];
+    out.push(a.map((x, k) => 0.75 * x + 0.25 * b[k]), a.map((x, k) => 0.25 * x + 0.75 * b[k]));
+  }
+  out.push(pts[pts.length - 1]);
+  return out;
+}
+
+/** Drop the start of a polyline that lies within `r` of `c`, cutting the crossing segment exactly. */
+function trimStart(pts: number[][], c: number[], r: number): number[][] {
+  const d = (q: number[]) => Math.hypot(q[0] - c[0], q[1] - c[1], q[2] - c[2]);
+  let i = 0;
+  while (i < pts.length && d(pts[i]) < r) i++;
+  if (i === 0 || i >= pts.length) return i >= pts.length ? [] : pts;
+  const a = pts[i - 1], b = pts[i], da = d(a), db = d(b);
+  const t = (r - da) / (db - da || 1);
+  return [a.map((x, k) => x + (b[k] - x) * t), ...pts.slice(i)];
 }

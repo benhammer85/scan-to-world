@@ -11,9 +11,17 @@
  *    building in another.
  *  - A shared routine doesn't carry its caller's scale (12). Spacing is in world
  *    units, not vertices, so a denser scan doesn't get a denser town.
+ *  - Whatever is drawn is what the world is made of (1). Streets keep clear of
+ *    buildings and buildings stay off streets, both as rules checked before
+ *    anything is laid.
+ *  - Streets are grown one at a time and each stops at the first street it
+ *    meets (5b, 5c). They run along mesh edges, so two streets can only meet
+ *    at a vertex: every crossing is a junction by construction.
+ *  - Infrastructure knows why it exists (7). A building's street is its way to
+ *    the rest of the town, and a road exists because two towns need one.
  *
- * Time is rotation: `advance(days)` grows every town. It is batch-independent,
- * so ten small advances build the same town as one big one.
+ * Time is rotation: `advance(days)` grows every town, in true time order
+ * across towns, so ten small advances build the same world as one big one.
  */
 import type { Topology } from '../mesh/topology';
 
@@ -37,6 +45,30 @@ export const TOWN = {
   slopeCost: 4,
   heightCost: 1.5,
 };
+
+export const STREET = {
+  /** No street passes closer than this to a building it doesn't serve,
+   *  and no building stands closer than this to a street. */
+  clearance: 0.019,
+  /** A building with no street within this reach is refused. */
+  reach: 0.3,
+  /** Streets may be steeper than building plots, but not cliffs. */
+  steepness: 1.6,
+  /** Climbing cost for streets, so they wind round hills along the contours. */
+  climb: 6,
+  /** Two towns are joined by a road once both have this many buildings. */
+  roadAt: 6,
+  /** A hall always keeps this many open sides for streets to arrive by. */
+  hallOpen: 2,
+  roadReach: 3.5,
+};
+
+export interface Street {
+  /** Welded vertices, from the building (or town) it serves to where it met the network. */
+  path: number[];
+  town: number;
+  kind: 'street' | 'road';
+}
 
 export interface Building {
   vertex: number;
@@ -64,10 +96,15 @@ export type TapResult =
 export class Settlements {
   readonly towns: Town[] = [];
   readonly buildings: Building[] = [];
+  readonly streets: Street[] = [];
+  /** Vertex -> town, for every vertex a street runs through (and each hall). */
+  private network = new Map<number, number>();
+  private joined = new Set<string>();
   /** Slope per welded vertex, in height units per world unit, from the ground as it was scanned. */
   readonly slope: Float32Array;
   readonly buildableSlope: number;
   private occupied: number[] = []; // vertex per building, for spacing checks
+  private buildingAt = new Set<number>();
 
   constructor(private topo: Topology, private heights: Float32Array) {
     this.slope = slopes(topo, heights);
@@ -92,27 +129,38 @@ export class Settlements {
     if (site === null) return { kind: 'refused' };
     const t: Town = { id: this.towns.length, centre: site, buildings: [], owed: 0, frontier: [], settled: new Map() };
     this.towns.push(t);
-    this.lay(t, site);
+    this.lay(t, site, null);
+    this.network.set(site, t.id); // the hall is where the first streets lead
     this.expand(t, site, 0);
     return { kind: 'founded', town: t.id, vertex: site };
   }
 
-  /** Time passes: every town grows. Returns how many buildings were laid. */
+  /** Time passes: every town grows. Returns how many marks were laid. */
   advance(days: number): number {
-    let laid = 0;
-    for (const t of this.towns) {
-      // Building by building, because the rate depends on the size: one
-      // advance of a day must build what ten advances of a tenth do.
-      let left = days;
-      while (left > 0) {
-        const rate = TOWN.baseRate + TOWN.rateBySize * Math.sqrt(t.buildings.length);
-        const until = (1 - t.owed) / rate;
-        if (until > left) { t.owed += rate * left; break; }
-        left -= until;
-        t.owed = 0;
-        if (this.growOne(t) === null) break; // nowhere left to go
-        laid++;
+    // Event by event in true time order across all towns: whichever town is
+    // next due builds next, whatever size the step. The rate depends on the
+    // town's size, and towns take each other's ground, so growing one town
+    // for the whole step and then the next would make the world depend on
+    // the frame rate.
+    let laid = 0, left = days;
+    const rate = (t: Town) => TOWN.baseRate + TOWN.rateBySize * Math.sqrt(t.buildings.length);
+    const live = new Set(this.towns.filter((t) => t.frontier.length > 0));
+    while (left > 0 && live.size) {
+      let next: Town | null = null, soonest = Infinity;
+      for (const t of live) {
+        const until = (1 - t.owed) / rate(t);
+        if (until < soonest) { soonest = until; next = t; } // ties go to the older town
       }
+      if (!next || soonest > left) {
+        for (const t of live) t.owed += rate(t) * left;
+        break;
+      }
+      for (const t of live) if (t !== next) t.owed += rate(t) * soonest;
+      next.owed = 0;
+      left -= soonest;
+      if (this.growOne(next) === null) { live.delete(next); continue; }
+      laid++;
+      laid += this.joinTowns();
     }
     return laid;
   }
@@ -128,7 +176,9 @@ export class Settlements {
       // Refused here, not undone later: the ground may have been sculpted
       // steep since this vertex was queued.
       if (this.buildable(v) && this.roomFor(v)) {
-        this.lay(t, v);
+        const path = this.connect(v);
+        if (!path) continue; // unreachable: refused, never built and then stranded
+        this.lay(t, v, path);
         return v;
       }
     }
@@ -146,8 +196,9 @@ export class Settlements {
       const [cost, u] = local.pop();
       if (seen.has(u) || cost > TOWN.searchRadius) continue;
       seen.add(u);
-      if (this.buildable(u) && this.roomFor(u)) {
-        this.lay(t, u);
+      const path = this.buildable(u) && this.roomFor(u) ? this.connect(u) : null;
+      if (path) {
+        this.lay(t, u, path);
         if (!t.settled.has(u)) { t.settled.set(u, 0); this.expand(t, u, 0); }
         first ??= u;
         laid++;
@@ -165,10 +216,85 @@ export class Settlements {
     });
   }
 
-  private lay(t: Town, v: number): void {
+  private lay(t: Town, v: number, path: number[] | null): void {
     this.buildings.push({ vertex: v, town: t.id, order: t.buildings.length });
     t.buildings.push(v);
     this.occupied.push(v);
+    this.buildingAt.add(v);
+    if (path) this.addStreet({ path, town: t.id, kind: 'street' });
+  }
+
+  private addStreet(st: Street): void {
+    this.streets.push(st);
+    // The building's own vertex is the building, not street.
+    for (const u of st.kind === 'street' ? st.path.slice(1) : st.path) if (!this.network.has(u)) this.network.set(u, st.town);
+  }
+
+  // ------------------------------------------------------------ streets
+
+  /** The way from a new building to the nearest street, or null if there is none in reach. */
+  private connect(v: number): number[] | null {
+    return this.route([v], (u) => this.network.has(u), STREET.reach, v);
+  }
+
+  /** Roads between towns that have both grown, once per pair. */
+  private joinTowns(): number {
+    let laid = 0;
+    for (const a of this.towns) {
+      if (a.buildings.length < STREET.roadAt) continue;
+      for (const b of this.towns) {
+        if (b.id <= a.id || b.buildings.length < STREET.roadAt) continue;
+        const key = `${a.id}-${b.id}`;
+        if (this.joined.has(key)) continue;
+        this.joined.add(key); // tried once; a road that can't be found isn't retried every frame
+        const from = [...this.network].filter(([, t]) => t === a.id).map(([u]) => u).sort((x, y) => x - y);
+        const path = this.route(from, (u) => this.network.get(u) === b.id, STREET.roadReach, -1);
+        if (path) { this.addStreet({ path, town: a.id, kind: 'road' }); laid++; }
+      }
+    }
+    return laid;
+  }
+
+  /**
+   * Cheapest way over the surface from any of `sources` to a vertex that
+   * satisfies `isTarget`: distance, plus climbing. Passes only where a street
+   * may run. `own` is the building the route serves, which it may start from.
+   */
+  private route(sources: number[], isTarget: (u: number) => boolean, reach: number, own: number): number[] | null {
+    const f = new Settlements.Frontier();
+    const cost = new Map<number, number>(), prev = new Map<number, number>(), length = new Map<number, number>();
+    for (const s of sources) { f.push(0, s); cost.set(s, 0); length.set(s, 0); }
+    const done = new Set<number>();
+    const srcSet = new Set(sources);
+    while (f.size) {
+      const [c, u] = f.pop();
+      if (done.has(u)) continue;
+      done.add(u);
+      if (!srcSet.has(u) && isTarget(u)) {
+        const path = [u];
+        for (let w = u; prev.has(w); ) { w = prev.get(w)!; path.push(w); }
+        return path.reverse();
+      }
+      this.eachNeighbour(u, (w, d) => {
+        if (done.has(w)) return;
+        const len = length.get(u)! + d;
+        if (len > reach) return;
+        if (!isTarget(w) && !this.streetMayRun(w, own)) return;
+        const step = d * (1 + STREET.climb * Math.abs(this.heights[w] - this.heights[u]) / d / (this.buildableSlope || 1));
+        const nc = c + step;
+        if (nc < (cost.get(w) ?? Infinity)) {
+          cost.set(w, nc); prev.set(w, u); length.set(w, len);
+          f.push(nc, w);
+        }
+      });
+    }
+    return null;
+  }
+
+  private streetMayRun(u: number, own: number): boolean {
+    if (this.localSlope(u) > this.buildableSlope * STREET.steepness) return false;
+    for (const o of this.occupied) if (o !== own && this.dist(u, o) < STREET.clearance) return false;
+    return true;
   }
 
   // ------------------------------------------------------------ the ground
@@ -199,7 +325,28 @@ export class Settlements {
 
   private roomFor(v: number): boolean {
     for (const o of this.occupied) if (this.dist(v, o) < TOWN.spacing) return false;
-    return true;
+    for (const u of this.network.keys()) if (this.dist(v, u) < STREET.clearance) return false;
+    return !this.wouldEnclose(v);
+  }
+
+  /**
+   * Would a building here wall in a town's hall? On a coarse mesh the first
+   * ring of houses can take every vertex round it, and then no later building
+   * can reach a street: measured, a town stalled at seven buildings with 2,689
+   * of 2,695 connections refused. Refused here, before it is laid, rather than
+   * repaired afterwards (whatwesaved PRINCIPLES.md, 3).
+   */
+  private wouldEnclose(v: number): boolean {
+    for (const t of this.towns) {
+      const h = t.centre;
+      let adjacent = false, open = 0;
+      this.eachNeighbour(h, (w) => {
+        if (w === v) { adjacent = true; return; }
+        if (!this.buildingAt.has(w)) open++;
+      });
+      if (adjacent && open < STREET.hallOpen) return true;
+    }
+    return false;
   }
 
   /** Slope with the current edits, so sculpted cliffs refuse building. */
