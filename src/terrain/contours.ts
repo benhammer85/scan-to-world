@@ -26,6 +26,8 @@ export interface ContourOptions {
   interval: number;
   /** Distance to lift lines off the surface (avoids z-fighting). */
   lift: number;
+  /** Vertices to leave out: a triangle with all three masked gets no line (land contours stop at the shore). */
+  mask?: Uint8Array;
 }
 
 /** Contour levels are anchored to multiples of `interval`, so editing the terrain
@@ -50,6 +52,7 @@ export function extractContours(topo: Topology, heights: Float32Array, opts: Con
   const segsByLevel: number[][] = levels.map(() => []); // flat list of edge-key pairs
   for (let t = 0; t < triangles.length; t += 3) {
     const a = triangles[t], b = triangles[t + 1], c = triangles[t + 2];
+    if (opts.mask && opts.mask[a] && opts.mask[b] && opts.mask[c]) continue;
     const ha = heights[a], hb = heights[b], hc = heights[c];
     const lo = Math.min(ha, hb, hc), hi = Math.max(ha, hb, hc);
     // Small tolerance so float error never drops a level; the >= test below decides.

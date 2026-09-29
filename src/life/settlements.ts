@@ -181,8 +181,14 @@ export class Settlements {
 
   /** Can a building stand on this vertex, given the ground as it is now? */
   buildable(v: number): boolean {
-    return this.localSlope(v) <= this.buildableSlope;
+    return !this.wet?.[v] && this.localSlope(v) <= this.buildableSlope;
   }
+
+  /** Water on the ground now: nothing is built or routed on it. The same mask the shore is drawn from. */
+  setWater(wet: Uint8Array): void {
+    this.wet = wet;
+  }
+  private wet: Uint8Array | null = null;
 
   /** A tap at a surface point (local space). */
   tap(point: ArrayLike<number>): TapResult {
@@ -329,7 +335,7 @@ export class Settlements {
     const ground = this.squareOf(hall);
     let ok = 0;
     for (const u of ground) {
-      if (this.network.has(u) || this.buildingAt.has(u) || this.reserved.has(u)) return false;
+      if (this.network.has(u) || this.buildingAt.has(u) || this.reserved.has(u) || this.wet?.[u]) return false;
       for (const o of this.occupied) if (this.dist(u, o) < this.spacing) return false;
       if (this.buildable(u)) ok++;
     }
@@ -632,6 +638,7 @@ export class Settlements {
 
   private streetMayRun(u: number, own: number): boolean {
     if (this.reserved.has(u)) return false; // not across a square; its edge is already street
+    if (this.wet?.[u]) return false; // not through water (bridges would be their own thing)
     if (this.localSlope(u) > this.buildableSlope * STREET.steepness) return false;
     for (const o of this.occupied) if (o !== own && this.dist(u, o) < STREET.clearance) return false;
     return true;

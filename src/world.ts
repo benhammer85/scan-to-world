@@ -10,6 +10,7 @@ import { PlotterLines, defaultPlotterStyle, type RevealMode } from './render/plo
 import { TerrainEdits, applyDisplacement, type BrushOptions } from './interact/sculpt';
 import { Settlements, type TapResult } from './life/settlements';
 import { buildingMarks, squareFrames, stallMarks, streetMarks } from './life/buildingMarks';
+import { findWater, seaFor, waterLines, type Sea, type Water } from './nature/water';
 
 export type SurfaceStyle = 'scan' | 'paper' | 'elevation';
 
@@ -25,6 +26,15 @@ export interface WorldSettings {
 }
 
 const PAPER = new THREE.Color('#efe7d6');
+const WATER_INK = '#2a5680';
+const WATER_SHALLOW = '#9cc3e0';
+const WATER_DEEP = '#4d82b3';
+
+function sameWet(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
 const LOW = new THREE.Color('#6f8f5a');
 const MID = new THREE.Color('#d8c48e');
 const HIGH = new THREE.Color('#a8674a');
@@ -50,6 +60,12 @@ export class TerrainWorld {
   private dirty = false;
   private geometryDirty = false;
   private lastContourBuild = 0;
+  water: Water;
+  /** Set once from the ground as scanned, so the sea stays put while the ground is worked. */
+  private sea: Sea = { level: -Infinity, anchor: 0 };
+  private waterLines: THREE.LineSegments;
+  /** 0..1: water fades in when it arrives or changes, since no pen draws it. */
+  private waterFade = 1;
   private lastLineCount = 0;
   /** Where the current stroke began (local space); the pen starts there. */
   private strokeFrom: THREE.Vector3 | null = null;
@@ -82,16 +98,25 @@ export class TerrainWorld {
 
     this.material = new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0, vertexColors: true });
     this.mesh = new THREE.Mesh(geometry, this.material);
-    this.group.add(this.mesh, this.lines.object, this.townLines.object);
+    this.waterLines = new THREE.LineSegments(
+      new THREE.BufferGeometry(),
+      new THREE.LineBasicMaterial({ color: WATER_INK, transparent: true, opacity: 0.85, depthWrite: false }),
+    );
+    this.waterLines.renderOrder = 1;
+    this.group.add(this.mesh, this.waterLines, this.lines.object, this.townLines.object);
 
     this.baseHeights = extractHeights(this.topo, settings.height);
     this.heights = new Float32Array(this.topo.vertexCount);
     this.recomputeHeights();
+    this.sea = seaFor(this.topo, this.baseHeights);
+    this.water = findWater(this.topo, this.heights, this.sea);
     this.applySurface();
     // Unlike the map app, whose reveal skips the country, the terrain here is
     // the player's own object and the thing they came to see, so it is plotted.
     this.rebuildContours('plot', penFrom);
     this.settlements = new Settlements(this.topo, this.heights);
+    this.settlements.setWater(this.water.wet);
+    this.drawWater(false);
   }
 
   setPace(pace: number): void {
@@ -127,6 +152,7 @@ export class TerrainWorld {
   setHeightOptions(opts: HeightOptions): void {
     this.settings.height = opts;
     this.baseHeights = extractHeights(this.topo, opts);
+    this.sea = seaFor(this.topo, this.baseHeights);
     this.recomputeHeights();
     this.applySurface();
     this.rebuildContours('settle');
@@ -216,6 +242,10 @@ export class TerrainWorld {
   update(dt: number, now: number, diffusion: { rate: number; fade: number }, camera?: THREE.Camera, calm = true): void {
     this.lines.update(dt, camera);
     this.townLines.update(dt, camera);
+    if (this.waterFade < 1) {
+      this.waterFade = Math.min(1, this.waterFade + dt / 0.9);
+      (this.waterLines.material as THREE.LineBasicMaterial).opacity = 0.85 * this.waterFade;
+    }
     const moving = this.edits.relax(dt, diffusion.rate, diffusion.fade);
     if (moving) this.markEdited();
 
@@ -289,12 +319,42 @@ export class TerrainWorld {
 
   private rebuildContours(mode: RevealMode, from?: THREE.Vector3): void {
     this.lastContourBuild = performance.now();
+    // The ground changed, so the water may have: hollows fill, dug ground floods.
+    if (this.settlements) {
+      const before = this.water;
+      this.water = findWater(this.topo, this.heights, this.sea);
+      this.settlements.setWater(this.water.wet);
+      this.drawWater(!sameWet(before.wet, this.water.wet));
+      if (this.settings.surface !== 'elevation') this.applySurface();
+    }
     const lines = extractContours(this.topo, this.heights, {
       interval: 1 / this.settings.bands,
       lift: 0.002,
+      mask: this.water?.wet, // under water, only the depth lines are drawn
     });
     this.lastLineCount = lines.length;
     this.lines.setLines(lines, mode, from);
+  }
+
+  private drawWater(changed: boolean): void {
+    const lines = waterLines(this.topo, this.water);
+    let segs = 0;
+    for (const l of lines) segs += l.points.length / 3 - 1 + (l.closed ? 1 : 0);
+    const pos = new Float32Array(segs * 6);
+    let o = 0;
+    for (const l of lines) {
+      const n = l.points.length / 3, s = n - 1 + (l.closed ? 1 : 0);
+      for (let i = 0; i < s; i++) {
+        const a = i, b = (i + 1) % n;
+        pos.set(l.points.subarray(a * 3, a * 3 + 3), o); pos.set(l.points.subarray(b * 3, b * 3 + 3), o + 3);
+        o += 6;
+      }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    this.waterLines.geometry.dispose();
+    this.waterLines.geometry = g;
+    if (changed) this.waterFade = 0;
   }
 
   /** Copy welded positions/normals back to every (possibly seam-split) render vertex. */
@@ -335,6 +395,19 @@ export class TerrainWorld {
     }
     // With a texture, vertex colours stay white so they don't tint the map.
     if (useMap && !this.scanColors) arr.fill(1);
+    // Water tints the ground under it, deeper bluer.
+    if (this.water) {
+      // Mostly the water's own colour: a light tint over orange reads as mud.
+      const { remap } = this.topo, c = new THREE.Color(), blue = new THREE.Color();
+      const shallow = new THREE.Color(WATER_SHALLOW), deep = new THREE.Color(WATER_DEEP);
+      for (let i = 0; i < remap.length; i++) {
+        const v = remap[i];
+        if (!this.water.wet[v]) continue;
+        blue.copy(shallow).lerp(deep, Math.min(1, this.water.depth[v] / 0.25));
+        c.setRGB(arr[i * 3], arr[i * 3 + 1], arr[i * 3 + 2]).lerp(blue, 0.88);
+        arr.set([c.r, c.g, c.b], i * 3);
+      }
+    }
     color.needsUpdate = true;
 
     const wantMap = useMap ? this.map : null;
