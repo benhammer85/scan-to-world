@@ -1,3 +1,4 @@
+import { SAVE, forgetUniverse, loadUniverse, saveUniverse, type Universe, type WorldSource } from './save';
 import * as THREE from 'three';
 import { TerrainWorld, type SurfaceStyle, type WorldSettings } from './world';
 import { normaliseGeometry, triangleCount } from './mesh/geometry';
@@ -96,8 +97,10 @@ let statsName = '';
 let pace = 1;
 try { pace = Number(localStorage.getItem('scan-to-world.pace')) || 1; } catch { /* private window */ }
 
-/** Every world made this session, by name: going back to one finds it as it was left. */
+/** Every world made, by name: going back to one finds it as it was left. Kept between visits (save.ts). */
 const kept = new Map<string, TerrainWorld>();
+/** Where each world's shape came from, to make it again when the universe is brought back. */
+const sources = new Map<string, WorldSource>();
 
 /** Go to a world already made, if there is one of this name. */
 function returnTo(name: string): boolean {
@@ -113,7 +116,7 @@ function returnTo(name: string): boolean {
   return true;
 }
 
-function setWorld(geometry: THREE.BufferGeometry, map: THREE.Texture | null, name: string, heightMode?: HeightMode): void {
+function setWorld(geometry: THREE.BufferGeometry, map: THREE.Texture | null, name: string, heightMode?: HeightMode, source?: WorldSource): void {
   if (world) {
     if (mode === 'world') scene.remove(world.group);
     // A world kept to come back to isn't thrown away; one being remade (decimated, say) is.
@@ -134,6 +137,7 @@ function setWorld(geometry: THREE.BufferGeometry, map: THREE.Texture | null, nam
 
   world = new TerrainWorld(geometry.clone(), map, { ...settings, height: { ...settings.height } }, facingPoint());
   kept.set(name, world);
+  sources.set(name, source ?? scanSource(geometry));
   world.setPace(pace);
   spin.set(0, 0);
   scene.add(world.group);
@@ -506,7 +510,8 @@ renderer.setAnimationLoop(() => {
 // ---------------------------------------------------------------- boot
 frameObject();
 worldAtHome = worldPerPixel();
-setWorld(normaliseGeometry(makeDemoOrange()), null, SPECIMENS[0].caption);
+setWorld(normaliseGeometry(makeDemoOrange()), null, SPECIMENS[0].caption, undefined, { kind: 'specimen', caption: SPECIMENS[0].caption });
+bringBack();
 
 // ---------------------------------------------------------------- the cabinet of specimens
 // Tap the paper round the world and a plate of specimens opens, as in an old
@@ -532,7 +537,7 @@ function openCabinet(): void {
       fig.addEventListener('click', (e) => {
         e.stopPropagation();
         closeCabinet();
-        if (!returnTo(sp.caption)) setWorld(normaliseGeometry(sp.make()), null, sp.caption, sp.mode);
+        if (!returnTo(sp.caption)) setWorld(normaliseGeometry(sp.make()), null, sp.caption, sp.mode, { kind: 'specimen', caption: sp.caption });
         toast(sp.caption);
       });
       grid.append(fig);
@@ -542,6 +547,19 @@ function openCabinet(): void {
     own.innerHTML = `<span class="blank">?</span><span><i>Fig. ${numeral(SPECIMENS.length)}.</i> Your own specimen</span>`;
     own.addEventListener('click', (e) => { e.stopPropagation(); closeCabinet(); $<HTMLInputElement>('pick').click(); });
     grid.append(own);
+    // Starting over: the one way to let the kept universe go. A second tap is asked for,
+    // since nothing brings it back.
+    const forget = document.createElement('button');
+    forget.className = 'forget';
+    forget.textContent = 'Begin a new atlas';
+    let armed = 0;
+    forget.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (performance.now() - armed > 4000) { armed = performance.now(); forget.textContent = 'Tap again to let every world go'; return; }
+      forgetting = true;
+      forgetUniverse().then(() => location.reload());
+    });
+    $('cabinet').querySelector('.plate')!.append(forget);
     // Not the very tap that opened it: a phone sends that tap on as a click, onto the plate's backdrop.
     cabinet.addEventListener('click', (e) => { if (e.target === cabinet && performance.now() - openedAt > 450) closeCabinet(); });
     // Engrave the figures after the plate is up, one at a time, so it opens at once.
@@ -776,7 +794,7 @@ function chart_(name: string): TerrainWorld | null {
   const sp = SPECIMENS.find((s) => s.caption === name);
   if (!sp) return null;
   const was = world;
-  setWorld(normaliseGeometry(sp.make()), null, sp.caption, sp.mode);
+  setWorld(normaliseGeometry(sp.make()), null, sp.caption, sp.mode, { kind: 'specimen', caption: sp.caption });
   const made = world!;
   made.group.position.copy(slots.get(name)!);
   if (was && mode === 'atlas') { world = was; statsName = [...kept].find(([, w]) => w === was)?.[0] ?? statsName; }
@@ -876,6 +894,7 @@ if (import.meta.env.DEV) (window as unknown as { atlas: unknown }).atlas = {
   get mode() { return mode; },
   get railways() { return railways.map((x) => ({ a: x.a, b: x.b, trips: x.trips })); },
   get current() { return statsName; },
+  get worlds() { return [...kept.keys()]; },
 };
 
 /** Every frame: the worlds turning to face their railways, the railways and their trains, the pencilled line being laid. */
@@ -921,3 +940,98 @@ function atlasFrame(dt: number, now: number): void {
   sky.geometry.dispose();
   sky.geometry = skySegments(lines);
 }
+
+
+// ---------------------------------------------------------------- keeping the universe
+// Every world, what grew on it, the railways and where you were are kept on the
+// device (save.ts), and brought back when the page opens again.
+
+let forgetting = false;
+let keptKey = '';
+let keeping = false;
+
+/** A scan's own geometry, kept as it was normalised, so its topology comes back vertex for vertex. */
+function scanSource(g: THREE.BufferGeometry): WorldSource {
+  const pos = g.getAttribute('position').array as ArrayLike<number>;
+  const col = g.getAttribute('color');
+  return {
+    kind: 'scan',
+    position: Float32Array.from(pos),
+    index: g.index ? Uint32Array.from(g.index.array as ArrayLike<number>) : null,
+    color: col ? Float32Array.from(col.array as ArrayLike<number>) : null,
+  };
+}
+
+function geometryOf(src: WorldSource): { geometry: THREE.BufferGeometry; mode?: HeightMode } | null {
+  if (src.kind === 'specimen') {
+    const sp = SPECIMENS.find((x) => x.caption === src.caption);
+    return sp ? { geometry: normaliseGeometry(sp.make()), mode: sp.mode } : null;
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(src.position, 3));
+  if (src.index) g.setIndex(new THREE.BufferAttribute(src.index, 1));
+  if (src.color) g.setAttribute('color', new THREE.BufferAttribute(src.color, 3));
+  return { geometry: g };
+}
+
+/** What has changed since the universe was last kept, as one string: kept again only if it differs. */
+function universeKey(): string {
+  return [...kept].map(([n, w]) => `${n}:${w.group.quaternion.toArray().map((x) => x.toFixed(2)).join(',')}:${w.settlements.day.toFixed(2)}:${w.settlements.buildings.length}:${w.country.signature()}:${w.editVersion}`).join('|')
+    + `|${railways.map((r) => `${r.a}-${r.b}:${r.trips}`).join(',')}|${statsName}`;
+}
+
+async function keepUniverse(force = false): Promise<void> {
+  if (forgetting || keeping || !kept.size) return;
+  const key = universeKey();
+  if (!force && key === keptKey) return;
+  keeping = true;
+  try {
+    const u: Universe = {
+      version: SAVE.version,
+      savedAt: Date.now(),
+      current: statsName,
+      worlds: [...kept].filter(([n]) => sources.has(n)).map(([name, w]) => ({ name, source: sources.get(name)!, heightMode: w.settings.height.mode, state: w.snapshot(), turn: w.group.quaternion.toArray() })),
+      // Kept by age, not by this visit's clock: brought back, a train is where it was, and owes no arrivals.
+      railways: railways.map((r) => ({ ...r, born: r.born - seconds })),
+    };
+    if (await saveUniverse(u)) keptKey = key;
+  } finally {
+    keeping = false;
+  }
+}
+
+/** Bring back the kept universe, if there is one, in place of the fresh world the page opened with. */
+async function bringBack(): Promise<void> {
+  const u = await loadUniverse();
+  if (!u) { keptKey = universeKey(); return; }
+  try {
+    for (const w of kept.values()) { scene.remove(w.group); w.dispose(); }
+    kept.clear();
+    sources.clear();
+    world = null;
+    for (const saved of u.worlds) {
+      const made = geometryOf(saved.source);
+      if (!made) continue;
+      setWorld(made.geometry, null, saved.name, (saved.heightMode as HeightMode) ?? made.mode, saved.source);
+      world!.restore(saved.state);
+      if (saved.turn?.length === 4) world!.group.quaternion.fromArray(saved.turn);
+      scene.remove(world!.group);
+    }
+    for (const r of u.railways) if (kept.has(r.a) && kept.has(r.b)) railways.push({ ...r, born: seconds + r.born });
+    const here = kept.has(u.current) ? u.current : [...kept.keys()][0];
+    world = null;
+    if (here) returnTo(here);
+    keptKey = universeKey();
+  } catch (err) {
+    // A kept universe that can't be brought back is set aside, never half-restored.
+    console.error(err);
+    toast('The kept atlas could not be opened; starting a new one.');
+    for (const w of kept.values()) { scene.remove(w.group); w.dispose(); }
+    kept.clear(); sources.clear(); railways.length = 0; world = null;
+    setWorld(normaliseGeometry(makeDemoOrange()), null, SPECIMENS[0].caption, undefined, { kind: 'specimen', caption: SPECIMENS[0].caption });
+  }
+}
+
+setInterval(() => { void keepUniverse(); }, SAVE.every * 1000);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') void keepUniverse(); });
+window.addEventListener('pagehide', () => { void keepUniverse(); });

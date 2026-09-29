@@ -17,6 +17,15 @@ The look follows **[STYLE.md](STYLE.md)**. The world is a survey sheet of about 
 * **Fading ink.** Ink out of sight fades slowly back to pencil (held 25 s, then over 45 s), never further. When it turns back into view and the world is at rest, the pen comes and inks it again. After whatwesaved's fading plate: the pen is the only light on the sheet.
 * **You can't come close.** Zoom stops well short of seeing what anything is. You see how much, where and how it spreads; the rest is for the imagination.
 
+## Your universe is kept
+
+Every world you make, what grew on it, the railways between worlds, which way each world was turned and which one you were on are kept on your device (the browser's own database, offline). Opening the app again brings it all back as you left it (`src/save.ts`).
+
+* **What's kept is small.** A specimen is kept by its name, since it is made the same way every time. A scan keeps its own geometry. Then the ground's edits and the simulation's own state; heights, water and the drawing are worked out again.
+* **When:** every 8 seconds if anything changed, and whenever the page is hidden (switching apps, locking the phone).
+* **Starting over:** open the cabinet (tap the paper round the world) and tap *Begin a new atlas* twice.
+* **Not kept:** a scan's photo texture. Its vertex colours are kept, and the paper look uses only a little of either.
+
 ## Run it
 
 ```bash

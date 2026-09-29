@@ -12,6 +12,7 @@ import { TerrainEdits, applyDisplacement, type BrushOptions } from './interact/s
 import { Settlements, type TapResult } from './life/settlements';
 import { Countryside, type CountryTap } from './life/country';
 import { Landmarks, landmarkMarks } from './life/landmarks';
+import { restoreInto, stateOf, type WorldState } from './save';
 import { Stipple } from './render/stipple';
 import { glowDots, glowField } from './life/development';
 import { countryMarks, isoLines, maturity, seasonColour, springFlood, turningMarks, winter, type Turning, type Wash } from './life/countryMarks';
@@ -173,6 +174,44 @@ export class TerrainWorld {
     this.landmarks = new Landmarks(this.topo, this.settlements, this.heights, this.country);
     this.drawWater(false);
   }
+
+  /** What brings this world back as it is now (see save.ts). */
+  snapshot(): WorldState {
+    const ctx = [this.topo, this.heights, this.settlements, this.country];
+    return {
+      edits: this.edits.saved(),
+      settlements: stateOf(this.settlements, ctx),
+      country: stateOf(this.country, ctx),
+      landmarks: stateOf(this.landmarks, ctx),
+    };
+  }
+
+  /**
+   * Bring a kept world back: its ground's edits, then everything that grew on
+   * it. The heights, the water and the drawing are worked out again, and the
+   * map plots itself in, as it did the first time.
+   */
+  restore(state: WorldState): void {
+    this.edits.restore(state.edits);
+    this.recomputeHeights();
+    if (this.settings.displace) applyDisplacement(this.topo, this.edits.field, this.settings.displaceScale);
+    this.syncRenderGeometry();
+    this.shapeVersion++;
+    restoreInto(this.settlements, state.settlements);
+    restoreInto(this.country, state.country);
+    restoreInto(this.landmarks, state.landmarks);
+    this.water = findWater(this.topo, this.heights, this.sea);
+    this.settlements.setWater(this.water.wet, this.water.depth, this.water.stream, this.water.snow);
+    this.waterVersion++;
+    this.drawWater(true);
+    this.applySurface();
+    this.rebuildContours('plot');
+    this.townDirty = true;
+    this.editVersion++;
+  }
+
+  /** Counted up whenever something that is kept changes, so the universe is kept only when it has. */
+  editVersion = 0;
 
   setPace(pace: number): void {
     this.lines.pace = pace;
@@ -349,6 +388,7 @@ export class TerrainWorld {
   }
 
   private markEdited(): void {
+    this.editVersion++;
     this.dirty = true;
     this.geometryDirty = true;
   }

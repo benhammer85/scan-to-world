@@ -83,6 +83,19 @@ export class TerrainEdits {
     return true;
   }
 
+  /** The edits that stay, for keeping: the diffuse ones fade away of themselves. */
+  saved(): Float32Array {
+    return this.permanent.slice();
+  }
+
+  /** Put kept edits back. */
+  restore(permanent: Float32Array): void {
+    if (permanent.length !== this.permanent.length) return;
+    this.permanent.set(permanent);
+    this.transient.fill(0);
+    this.field.set(permanent);
+  }
+
   clear(): void {
     this.field.fill(0);
     this.permanent.fill(0);

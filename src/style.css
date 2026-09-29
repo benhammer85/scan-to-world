@@ -197,3 +197,14 @@ body.dropping #stage { outline: 2px dashed var(--ink); outline-offset: -12px; }
   color: #6e5438;
 }
 #cabinet .fig:active { opacity: 0.6; }
+#cabinet .forget {
+  appearance: none;
+  display: block;
+  margin: 14px auto 0;
+  border: 0;
+  background: none;
+  color: #6b5a48;
+  font: italic 13px "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  cursor: pointer;
+  padding: 6px 10px;
+}
