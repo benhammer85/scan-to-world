@@ -6,7 +6,6 @@
  * shaded tree crowns on stems, and the windmill's cross and the mill's
  * wheel. The washes are hand colour: faint, muted, soft at their edges.
  */
-import { stand, standing } from './figures';
 import type { Topology } from '../mesh/topology';
 import { chainSegments, type Polyline } from '../terrain/contours';
 import { hash } from './buildingMarks';
@@ -92,9 +91,6 @@ export interface CountryDrawing {
 
 /** How much the map has matured: a young world's map is drawn sparely, an old one's richly. */
 export const MAP = { mature: 40 };
-
-/** Standing figures' heights: a tree's as so many crown radii, the others in world units. */
-export const FIGURE = { tree: 11, mill: 0.065, spire: 0.07, keep: 0.075, lighthouse: 0.065 };
 export function maturity(day: number): number {
   return Math.min(1, day / MAP.mature);
 }
@@ -351,7 +347,6 @@ export function countryMarks(topo: Topology, st: Settlements, c: Countryside, de
     }
     if (best < 0) continue;
     const fr = frameAt(nm, best), at = lifted(p, nm, best, COUNTRY.lift) as V3;
-    if (standing()) { stand({ kind: 'mill', at, up: fr.nr, size: FIGURE.mill, seed: best }); continue; }
     out.lines.push(circle(at, fr, 0.0035, 1));
     turning.push({ kind: 'sails', at: [0, 1, 2].map((k) => at[k] + fr.nr[k] * 0.001) as V3, ...fr, size: 0.013 });
   }
@@ -402,8 +397,6 @@ export function turningMarks(turning: Turning[], seconds: number): Polyline[] {
  */
 export function tree(at: V3, fr: Frame, r: number, seed: number, shaded = true): Polyline[] {
   if (r < 0.0012) return [];
-  // Standing, it is a cutout in profile instead: a fir now and then among the woods and hedges.
-  if (standing()) { stand({ kind: shaded && hash(seed, 96) < 0.22 ? 'fir' : 'tree', at, up: fr.nr, size: r * FIGURE.tree, seed }); return []; }
   const pts: number[][] = [];
   const bumps = 5 + Math.floor(hash(seed, 97) * 3), phase = hash(seed, 98) * 6.283;
   for (let i = 0; i <= 18; i++) {

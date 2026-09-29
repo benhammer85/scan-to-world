@@ -11,11 +11,9 @@ recognises "this is an orange" and swaps in a library mesh.
 
 The look follows **[STYLE.md](STYLE.md)**. The world is a survey sheet of about 1780–1850, and the atlas a star atlas of the same years. Every new mark has to pass one test: would a surveyor of about 1820 have drawn it this way?
 
-* **Plan and profile.** The ground is drawn in plan, from above. Trees, church towers and spires, windmills (with turning sails), castle keeps and lighthouses stand up off the world as engraved cutouts. They face you, as the profile symbols on an old map do. They are drawn in one batch from a small sheet of glyphs (`src/render/standing.ts`).
-* **Three looks to compare**, chosen in the address:
-  * `/` is the default: standing figures, carmine buildings.
-  * `?stipple` dots the towns instead of drawing their buildings, as a small-scale survey sheet does. Development reads as density.
-  * `?flat` draws everything in plan, as before the figures stood up.
+* **Purely ink, purely flat.** Everything lies on the ground, drawn from above. Nothing stands up off the world.
+* **Development, not towns.** The simulation still grows streets, houses, farms and markets underneath, but none of them is drawn as a building. What you see is the development's extent: a fine outline round the taken ground, a light stipple over it, and dots thickening where it is most built. The old streets show only as lines of dots. Farms and gardens show as rows, and woods as trees (`src/life/development.ts`, `src/render/stipple.ts`).
+* **You can't come close.** Zoom stops well short of seeing what anything is. You see how much, where and how it spreads; the rest is for the imagination.
 
 ## Run it
 
@@ -184,7 +182,7 @@ scan file ─► load.ts         merge meshes, centre, scale to radius 1, option
 
 * **The country, as an old map draws it.** This came from feedback that the game should be meditative, unique and inspired by vintage cartography, not by city builders. So the look is an old survey's (`src/life/country.ts`, `src/life/countryMarks.ts`):
   * **Paper and ink.** The ground is old map paper with a little of the scan's own colour in it (still `paper` in the drawer; `scan` gives the raw colours back).
-  * **Town colours.** Buildings are washed carmine under a sepia pen, as old town plans colour them.
+  * **Development in ink.** Built ground is stippled in the sepia ink, not drawn as buildings (see "The look" above).
   * **Washes.** Fields and woods are washed in muted hand colour that multiplies the paper, as watercolour does, and fades out at its edges. Laid over as paint, the washes came out as pale fog.
   * **Terra incognita.** The map only shows country that has been surveyed, meaning land near somebody. Everything else stays blank until people spread there.
 * **Fields.** The land is divided once into a fixed patchwork of field cells, about 0.11 apart, so fields never reshuffle. A town works 0.3 fields per house, nearest and gentlest first, within 0.8 of its middle. Towns claim in rounds so neighbours share the land between them. The town builds over its nearest fields in time (a cell 30% town ground is taken), and its fields move out. What a field is follows from its ground:

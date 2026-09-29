@@ -1,4 +1,3 @@
-import { STANDING } from './life/figures';
 import * as THREE from 'three';
 import { TerrainWorld, type SurfaceStyle, type WorldSettings } from './world';
 import { normaliseGeometry, triangleCount } from './mesh/geometry';
@@ -35,11 +34,6 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 const view = () => ({ w: Math.max(1, stage.clientWidth || window.innerWidth), h: Math.max(1, stage.clientHeight || window.innerHeight) });
 renderer.setSize(view().w, view().h, false);
 stage.appendChild(renderer.domElement);
-
-// `?flat` draws the map wholly in plan, as before its figures stood up; `?stipple` dots the towns. For comparing.
-const looks = new URLSearchParams(location.search);
-STANDING.on = !looks.has('flat');
-STANDING.stipple = looks.has('stipple');
 
 const scene = new THREE.Scene();
 /** The page a world is drawn on, and the atlas's chart of the heavens: the same paper a
@@ -142,7 +136,12 @@ function updateStats(): void {
 }
 
 // ---------------------------------------------------------------- camera
-const MIN_DIST = 1.35;
+/**
+ * How close you can come, as a share of the distance the whole world is seen from. Never
+ * near enough to make out what a development is, only its extent and how dense it is: the
+ * rest is for the imagination (STYLE.md).
+ */
+const CLOSEST = 0.6;
 let homeDist = 4;
 let dist = 4;
 
@@ -242,7 +241,7 @@ const gestures = new GestureRecognizer(
       if (mode === 'atlas') { atlasZoom(factor); return; }
       // Pinched out as far as the world goes, and further: the atlas.
       if (factor < 0.985 && dist >= homeDist * 1.58) { enterAtlas(); return; }
-      dist = THREE.MathUtils.clamp(dist / factor, MIN_DIST, homeDist * 1.6);
+      dist = THREE.MathUtils.clamp(dist / factor, homeDist * CLOSEST, homeDist * 1.6);
       placeCamera();
     },
     grab(x, y) {

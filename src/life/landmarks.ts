@@ -19,13 +19,12 @@
  * All are drawn from the world as it is; only the walls are a record, since
  * where a wall stood doesn't follow from where the town is now.
  */
-import { stand, standing } from './figures';
 import type { Topology } from '../mesh/topology';
 import type { Polyline } from '../terrain/contours';
 import { hash, type Look, type SquareFrame } from './buildingMarks';
 import type { Building, Settlements, Street } from './settlements';
 import type { Countryside } from './country';
-import { chaikin, dashes, FIGURE, frameAt, maturity, mid, polyline, tree, type Frame, type Turning, type Wash } from './countryMarks';
+import { chaikin, dashes, frameAt, maturity, mid, polyline, tree, type Frame, type Turning, type Wash } from './countryMarks';
 import { chainSegments } from '../terrain/contours';
 
 type V3 = [number, number, number];
@@ -380,10 +379,7 @@ function churches(topo: Topology, st: Settlements, frames: Map<number, SquareFra
     const L = 0.021 * big;
     out.lines.push(block(lift(c), east, north, L, 0.0075 * big)); // nave
     out.lines.push(block(lift(add(c, east, L * 0.18)), north, east, 0.017 * big, 0.0065 * big)); // transept
-    const west = lift(add(c, east, -L * 0.55));
-    // The tower at the west end: in profile, standing, a spire (a cathedral's great tower), or in plan.
-    if (standing()) stand({ kind: big > 1 ? 'tower' : 'spire', at: west, up: fr.nr, size: FIGURE.spire * big, seed: t.id });
-    else out.lines.push(block(west, east, north, 0.0065 * big, 0.0065 * big));
+    out.lines.push(block(lift(add(c, east, -L * 0.55)), east, north, 0.0065 * big, 0.0065 * big)); // tower, at the west end
     if (big > 1) {
       // A cathedral's cloister, to the south: a walk round a garth.
       const q = lift(add(add(c, north, -0.016), east, L * 0.05));
@@ -514,9 +510,8 @@ function coast(topo: Topology, st: Settlements, c: Countryside, wet: Uint8Array,
       }
       if (best >= 0) {
         const fr = frameAt(nm, best), q = add([p[best * 3], p[best * 3 + 1], p[best * 3 + 2]], fr.nr, 0.004);
-        if (standing()) stand({ kind: 'lighthouse', at: q, up: fr.nr, size: FIGURE.lighthouse, seed: best });
-        else out.lines.push({ ...ring(q, fr, 0.0028, 0, 2 * Math.PI, 12, 2), closed: true });
-        for (let i = 0; i < 8 && !standing(); i++) {
+        out.lines.push({ ...ring(q, fr, 0.0028, 0, 2 * Math.PI, 12, 2), closed: true });
+        for (let i = 0; i < 8; i++) {
           const a = (i / 8) * 2 * Math.PI, u = add(fr.ax.map((x) => x * Math.cos(a)), fr.bx, Math.sin(a));
           out.lines.push(polyline([add(q, u, 0.0042), add(q, u, i % 2 ? 0.0062 : 0.0078)], 1));
         }
@@ -691,7 +686,6 @@ function castles(topo: Topology, st: Settlements, lm: Landmarks, out: LandmarkDr
     const corner = (i: number) => { const a = (i / 6) * 2 * Math.PI + 0.3; return add(add(q, fr.ax, Math.cos(a) * 0.013), fr.bx, Math.sin(a) * 0.013); };
     out.lines.push(...line({ ...polyline([0, 1, 2, 3, 4, 5].map(corner), 2), closed: true }));
     for (let i = 0; i < 6; i++) out.lines.push(...line({ ...ring(corner(i), fr, 0.0024, 0, 2 * Math.PI, 10, 2), closed: true }));
-    if (standing()) { stand({ kind: ruin ? 'ruin' : 'keep', at: q, up: fr.nr, size: FIGURE.keep, seed: v }); continue; }
     const keep = block(q, fr.ax, fr.bx, 0.007, 0.007, 2);
     out.lines.push(ruin ? { ...keep, fill: undefined } : keep);
   }

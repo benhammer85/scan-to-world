@@ -6,17 +6,16 @@ import * as THREE from 'three';
 import { buildTopology, type Topology } from './mesh/topology';
 import { extractHeights, type HeightOptions } from './terrain/heightfield';
 import { extractContours } from './terrain/contours';
-import { PlotterLines, defaultPlotterStyle, lineKey, type RevealMode } from './render/plotterLines';
+import { PlotterLines, defaultPlotterStyle, type RevealMode } from './render/plotterLines';
 import type { Polyline } from './terrain/contours';
 import { TerrainEdits, applyDisplacement, type BrushOptions } from './interact/sculpt';
 import { Settlements, type TapResult } from './life/settlements';
 import { Countryside, type CountryTap } from './life/country';
 import { ESTATE, Landmarks, landmarkMarks } from './life/landmarks';
-import { gathering, STANDING, type Figure } from './life/figures';
 import { Stipple, stippleDots } from './render/stipple';
-import { StandingFigures } from './render/standing';
+import { DEVELOPMENT, developedGround, developmentOutline, takenDots } from './life/development';
 import { countryMarks, isoLines, maturity, seasonColour, springFlood, turningMarks, winter, type Turning, type Wash } from './life/countryMarks';
-import { blockMarks, buildingMarks, harbourMarks, lookOf, ruinMarks, squareFrames, stallMarks, streetMarks, sunkenMarks, terraceMarks, wingMarks, yardPaths, backGardens, wayLine } from './life/buildingMarks';
+import { blockMarks, buildingMarks, harbourMarks, lookOf, squareFrames, stallMarks, streetMarks, sunkenMarks, terraceMarks, wingMarks, backGardens, wayLine } from './life/buildingMarks';
 import { findWater, seaFor, snowLines, streamLines, waterLines, type Sea, type Water } from './nature/water';
 import { cableMarks, crossingFrames, crossingMarks, ferryRoute, movers, railMarks } from './life/buildingMarks';
 
@@ -39,19 +38,8 @@ const PAPER_TINT = 0.22;
 const WATER_INK = '#2a5680';
 const WATER_SHALLOW = '#9cc3e0';
 const SNOW_TINT = '#f6f7f9';
-/** Buildings washed in carmine, as old town plans colour them, under a sepia pen. */
-const TOWN_FILL = '#a2503f';
 const TOWN_INK = '#2e2118';
 
-/** A flat fill lying just above the ground, in front of it and behind the ink. */
-function fillMesh(color: string, opacity: number, order: number): THREE.Mesh {
-  const m = new THREE.Mesh(
-    new THREE.BufferGeometry(),
-    new THREE.MeshBasicMaterial({ color, transparent: true, opacity, side: THREE.DoubleSide, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
-  );
-  m.renderOrder = order;
-  return m;
-}
 const SNOW_INK = '#9aaebf';
 const ICE_TINT = '#dcebf4';
 
@@ -166,7 +154,7 @@ export class TerrainWorld {
     this.snowEdge = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: SNOW_INK, transparent: true, opacity: 0.9, depthWrite: false }));
     this.sailing = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: TOWN_INK, depthWrite: false, transparent: true }));
     this.sailing.renderOrder = 2;
-    this.group.add(this.mesh, this.wash, this.seasonal, this.meadow, this.waterLines, this.snowEdge, this.lines.object, this.houseFill, this.townLines.object, this.sailing, this.standing.object, this.stipple.object);
+    this.group.add(this.mesh, this.wash, this.seasonal, this.meadow, this.waterLines, this.snowEdge, this.lines.object, this.townLines.object, this.sailing, this.stipple.object);
 
     this.baseHeights = extractHeights(this.topo, settings.height);
     this.heights = new Float32Array(this.topo.vertexCount);
@@ -366,11 +354,6 @@ export class TerrainWorld {
   update(dt: number, now: number, diffusion: { rate: number; fade: number }, camera?: THREE.Camera, calm = true): void {
     this.lines.update(dt, camera);
     this.townLines.update(dt, camera);
-    this.standing.update(dt);
-    // When the pen lifts, fill in what it has just drawn.
-    const drawing = this.townLines.animating;
-    if (this.townWasDrawing && !drawing) this.refreshFills();
-    this.townWasDrawing = drawing;
     // Boats sail in real time: they are life on the water, not building.
     this.seconds += dt;
     const st = this.settlements;
@@ -489,41 +472,33 @@ export class TerrainWorld {
         ...rows.marks,
       ];
       const stalls = stallMarks(st.stalls.filter((x) => !drownedHall.has(x.town)), frames, this.topo);
+      // Development, not a town you could walk down: everything built is dotted, the taken ground
+      // is outlined and lightly dotted, and only the roads out, the water's edge and the rails
+      // are drawn as lines (see life/development.ts, STYLE.md).
+      const built = [...houses, ...blocks.lines.filter((m) => m.fill), ...stalls];
+      const { wet, stream } = st.ground;
+      const ground = developedGround(this.topo, buildings.map((b) => b.vertex), (v) => !wet?.[v] && !stream?.[v]);
+      const taken = (v: number) => ground[v] === 1;
+      const dots = [...stippleDots(built.flatMap((m) => m.fill ?? rectangleTris(m)), DEVELOPMENT.core), ...takenDots(this.topo, taken)];
       const lines = [
+        ...developmentOutline(this.topo, taken),
         ...backGardens(this.topo, single, look, (b) => st.hasGarden(b)),
-        ...streetMarks(this.topo, streets, shown, frames, st, look),
-        ...yardPaths(this.topo, shown, frames, look),
-        ...blocks.lines,
-        ...houses,
-        ...ruinMarks(this.topo, this.heights, buildings),
-        ...stalls,
+        ...streetMarks(this.topo, streets.filter((x) => x.kind === 'road'), shown, frames, st, look),
         ...harbourMarks(this.topo, st.harbours, (h) => st.mooredAt(h)),
         ...railMarks(this.topo, st.rails, crossings.map((x) => x.at)),
         ...crossingMarks(crossings),
         ...cableMarks(this.topo, st.cables),
       ];
-      if (STANDING.stipple) {
-        // Stipple: the built ground dotted, not its buildings drawn (see render/stipple.ts).
-        const built = new Set<Polyline>([...houses, ...blocks.lines.filter((m) => m.fill)]);
-        const dots = stippleDots([...built].flatMap((m) => m.fill ?? rectangleTris(m)));
-        return { look, frames, shown, crossings, lines: lines.filter((m) => !built.has(m)), solids: stalls, dots };
-      }
-      const solids = [...houses, ...stalls, ...blocks.lines.filter((m) => m.fill)];
-      return { look, frames, shown, crossings, lines, solids, dots: null as number[] | null };
+      return { look, frames, shown, crossings, lines, dots };
     });
     this.crossings = town.crossings;
-    if (town.dots !== this.shownDots) { this.shownDots = town.dots; this.stipple.set(town.dots ?? []); }
+
     // The country follows the town only loosely: redrawn every few houses, not each one.
     const m = maturity(st.day);
     const country = this.layer('country', `${ground}|${detail}|${Math.floor(st.buildings.length / 5)}|${Math.floor(st.streets.length / 4)}|${c.signature()}|${c.claims.size}|${c.planted.size}|${c.felled.size}|${c.remembered.size}|${c.commons.size}|${c.drained.size}|${Math.floor(m * 10)}`,
-      () => gathering(() => countryMarks(this.topo, st, c, detail)));
+      () => countryMarks(this.topo, st, c, detail));
     const land = this.layer('land', `${ground}|${detail}|${lm.signature()}|${st.towns.map((t) => Math.floor(st.size(t.id) / 8)).join(',')}|${Math.floor(c.claims.size / 3)}|${st.harbours.length}|${st.harbours.filter((h) => h.silted !== undefined).length}|${st.farms.filter((f) => f.estate !== undefined).length}|${Math.floor(m * 4)}|${Math.floor(st.lookSignature() / 50)}`,
-      () => gathering(() => landmarkMarks(this.topo, this.heights, st, c, lm, town.frames, town.look, (x) => wayLine(this.topo, x, town.shown, town.frames, town.look), detail)));
-    // What stands up off the page: set again only when a layer it comes from was drawn again.
-    if (country.figures !== this.shownFigures[0] || land.figures !== this.shownFigures[1]) {
-      this.shownFigures = [country.figures, land.figures];
-      this.standing.set([...country.figures, ...land.figures]);
-    }
+      () => landmarkMarks(this.topo, this.heights, st, c, lm, town.frames, town.look, (x) => wayLine(this.topo, x, town.shown, town.frames, town.look), detail));
     this.turning = [...country.turning, ...land.turning];
     // Washes are set again only when their layer was drawn again.
     const washKey = `${this.layers.get('country')!.key}|${this.layers.get('land')!.key}`;
@@ -534,44 +509,21 @@ export class TerrainWorld {
       setWash(this.meadow, country.meadow, floodTint(st.day));
       this.seasonDay = st.day;
     }
-    const marks = [...country.lines, ...land.lines, ...town.lines];
+    // A landmark's buildings are dotted too: only its lines on the ground are drawn.
+    if (land !== this.dotted.land) this.dotted.landDots = stippleDots(land.lines.filter((x) => x.fill).flatMap((x) => x.fill!), DEVELOPMENT.core);
+    if (town.dots !== this.dotted.town || land !== this.dotted.land) {
+      this.dotted = { town: town.dots, land, landDots: this.dotted.landDots };
+      this.stipple.set([...town.dots, ...this.dotted.landDots]);
+    }
+    const marks = [...country.lines, ...land.lines.filter((x) => !x.fill), ...town.lines];
     const from = this.townFrom ?? this.lastTownCentre();
-    // Keys before setLines: the pen may turn a line round to start at its nearer end.
-    this.solid = [...town.solids, ...land.lines.filter((x) => x.fill)].map((x) => ({ key: lineKey(x), tris: x.fill ?? rectangleTris(x) }));
     this.townLines.setLines(marks, mode, from ?? undefined);
     if (mode === 'ink') this.townFrom = null;
-    this.refreshFills();
   }
   private washKey = '';
-  /** Trees, spires, mills, keeps and lighthouses, standing up off the page as cutouts. */
-  readonly standing = new StandingFigures();
-  private shownFigures: Figure[][] = [[], []];
   readonly stipple = new Stipple(TOWN_INK);
-  private shownDots: number[] | null = null;
+  private dotted: { town: number[] | null; land: unknown; landDots: number[] } = { town: null, land: null, landDots: [] };
 
-  // ---- fills: what a map fills in, once the pen has drawn its outline
-  private solid: { key: string; tris: number[] }[] = [];
-  private townWasDrawing = false;
-
-  /**
-   * Houses, stalls and built-round blocks are filled solid, the way a map
-   * fills buildings. Only once their outline is inked: the pen draws the
-   * outline, then the inside, as whatwesaved's reveal does. Squares aren't
-   * paved: a square is the open ground left between the fronts.
-   */
-  private refreshFills(): void {
-    const dark: number[] = [];
-    for (const { key, tris } of this.solid) if (this.townLines.isInked(key)) dark.push(...tris);
-    const set = (mesh: THREE.Mesh, arr: number[]) => {
-      const g = new THREE.BufferGeometry();
-      g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(arr), 3));
-      mesh.geometry.dispose();
-      mesh.geometry = g;
-    };
-    set(this.houseFill, dark);
-  }
-
-  private houseFill = fillMesh(TOWN_FILL, 0.78, 2);
   /** Hand colour on the fields and woods; the ploughland's on its own, tinted by the season. */
   private wash = washMesh(0);
   private seasonal = washMesh(0);
@@ -757,7 +709,6 @@ export class TerrainWorld {
     this.material.dispose();
     this.lines.dispose();
     this.townLines.dispose();
-    this.standing.dispose();
     this.stipple.dispose();
   }
 }
