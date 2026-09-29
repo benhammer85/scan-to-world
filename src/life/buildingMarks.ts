@@ -37,6 +37,8 @@ export const BOAT = { long: 0.012, beam: 0.005 };
 export interface WaterState {
   bridgeAt: Set<number>;
   submerged: Map<number, number>;
+  /** Bridge vertices over a stream, not a lake or the sea: where a way may ford. */
+  fordable?: Set<number>;
 }
 
 const DRY: WaterState = { bridgeAt: new Set(), submerged: new Map() };
@@ -705,6 +707,7 @@ export function stallAngle(slot: number): number {
  */
 export function streetMarks(topo: Topology, streets: Street[], buildings: Building[], frames: Map<number, SquareFrame>, water: WaterState = DRY, look: Look = GROWN): Polyline[] {
   const out: Polyline[] = [];
+  const fordable = water.fordable; // asked once: it is worked out on asking
   for (const st of streets) {
     // A square's edge isn't drawn: a square is the open ground the houses
     // and streets leave round the hall. Drawn as a ring (and paved), it read
@@ -721,7 +724,13 @@ export function streetMarks(topo: Topology, streets: Street[], buildings: Buildi
         else if (stage === 1) out.push(...dashes(m, WAY.track[0], WAY.track[1]));
         else out.push(...twoSides(topo, m, run.path, (STREET_WIDTH[st.kind] ?? 0.003) * (stage === 3 ? WAY.main : 1)));
       } else if (run.kind === 'bridge') {
-        out.push(...deck(topo, run.path, BRIDGE_MARK.halfWidth, 'ticks'));
+        // Over a stream, a way is forded first, then bridged in timber, then in stone, as it is
+        // made up. (Over wider water it is always a bridge.)
+        const wetPart = run.path.filter((v) => water.bridgeAt.has(v));
+        const stream = !!fordable && wetPart.length > 0 && wetPart.every((v) => fordable.has(v));
+        if (stream && stage <= 1) out.push(...ford(topo, run.path));
+        else if (stream && stage === 2) out.push(...deck(topo, run.path, BRIDGE_MARK.halfWidth * 0.6, 'none'));
+        else out.push(...deck(topo, run.path, BRIDGE_MARK.halfWidth, 'ticks'), ...arches(topo, run.path));
       }
     }
   }
@@ -891,7 +900,34 @@ function twoSides(topo: Topology, centre: Polyline, path: number[], half: number
  * Two rails either side of a centreline: a bridge deck (with the splayed
  * end ticks maps give a bridge) or a pier (with a head across its end).
  */
-function deck(topo: Topology, path: number[], half: number, ends: 'ticks' | 'head'): Polyline[] {
+/** A ford: stepping stones across, a dotted crossing, as old maps mark one. */
+function ford(topo: Topology, path: number[]): Polyline[] {
+  const centre = chaikin(path.map((v) => lifted(topo, v, 0.004)));
+  return dashes(polyline(centre, 1), 0.0016, 0.0022);
+}
+
+/** A stone bridge's arches: small arcs along both sides of its deck. */
+function arches(topo: Topology, path: number[]): Polyline[] {
+  const c = chaikin(path.map((v) => lifted(topo, v, 0.004)));
+  const out: Polyline[] = [];
+  const n = topo.normals;
+  for (let i = 1; i < c.length - 1; i += 2) {
+    const a = c[i - 1], b = c[i + 1], t = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], l = Math.hypot(t[0], t[1], t[2]) || 1;
+    const v = path[Math.min(path.length - 1, Math.round((i / (c.length - 1)) * (path.length - 1)))] * 3, nr = [n[v], n[v + 1], n[v + 2]];
+    const s = [nr[1] * t[2] - nr[2] * t[1], nr[2] * t[0] - nr[0] * t[2], nr[0] * t[1] - nr[1] * t[0]].map((x) => x / l);
+    for (const side of [1, -1]) {
+      const pts: number[][] = [];
+      for (let k = 0; k <= 4; k++) {
+        const u = k / 4 - 0.5, bulge = (1 - 4 * u * u) * 0.0022;
+        pts.push([0, 1, 2].map((j) => c[i][j] + (t[j] / l) * u * l * 0.9 + s[j] * side * (BRIDGE_MARK.halfWidth + bulge)));
+      }
+      out.push(polyline(pts, 1));
+    }
+  }
+  return out;
+}
+
+function deck(topo: Topology, path: number[], half: number, ends: 'ticks' | 'head' | 'none'): Polyline[] {
   const centre = chaikin(path.map((v) => lifted(topo, v, 0.004)));
   const n = topo.normals;
   const side = (i: number): V3 => {

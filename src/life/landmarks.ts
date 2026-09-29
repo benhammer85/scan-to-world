@@ -24,7 +24,8 @@ import type { Polyline } from '../terrain/contours';
 import { hash, type Look, type SquareFrame } from './buildingMarks';
 import type { Building, Settlements, Street } from './settlements';
 import type { Countryside } from './country';
-import { chaikin, dashes, frameAt, polyline, tree, type Frame, type Turning, type Wash } from './countryMarks';
+import { chaikin, dashes, frameAt, maturity, mid, polyline, tree, type Frame, type Turning, type Wash } from './countryMarks';
+import { chainSegments } from '../terrain/contours';
 
 type V3 = [number, number, number];
 
@@ -48,6 +49,14 @@ export const WALL = {
 };
 
 export const CHURCH = { at: 14, cathedral: 60 };
+/** A castle on the town's hill at this many houses; a ruin this many days later. */
+export const CASTLE = { at: 40, reach: 0.35, ruin: 90 };
+/** An abbey, in a quiet valley near a grown town and away from everyone; a ruin in time. */
+export const ABBEY = { town: 30, apart: 0.3, reach: 0.9, ruin: 100 };
+/** Canals between big towns on gentle ground, with a lock at every such rise. */
+export const CANAL = { at: 40, reach: 1.3, lock: 0.02 };
+/** Milestones along the roads, inns where roads meet, a cemetery outside the walls. */
+export const ROAD = { milestone: 0.07, cemetery: 50 };
 export const ESTATE = { at: 20 };
 export const COAST = { lighthouse: 12, saltPans: 10, traps: 6, reach: 0.4 };
 export const HIGH = { beacon: 0.2, quarry: 12, shrine: 22, reach: 0.7 };
@@ -64,15 +73,20 @@ export interface Wall {
 
 const N = 48;
 
+export interface Site { vertex: number; born: number; town: number }
+
 export class Landmarks {
   readonly walls = new Map<number, Wall>();
+  readonly castles = new Map<number, Site>();
+  readonly abbeys: Site[] = [];
+  readonly canals: { from: number; to: number; path: number[]; born: number }[] = [];
 
-  constructor(private topo: Topology, private st: Settlements) {}
+  constructor(private topo: Topology, private st: Settlements, private heights?: Float32Array, private country?: Countryside) {}
 
-  /** Walls go up and come down. Returns whether any did. */
+  /** Walls go up and come down; castles, abbeys and canals are founded. Returns whether anything was. */
   update(): boolean {
     const st = this.st, p = this.topo.positions;
-    let changed = false;
+    let changed = this.found();
     for (const t of st.towns) {
       const n = st.size(t.id), w = this.walls.get(t.id);
       const fr = frameAt(this.topo.normals, t.centre);
@@ -103,8 +117,62 @@ export class Landmarks {
     return changed;
   }
 
+  /** Castles on the hills of old towns, an abbey in a quiet valley, canals between big towns. */
+  private found(): boolean {
+    const st = this.st, h = this.heights, c = this.country;
+    if (!h || !c) return false;
+    const p = this.topo.positions, d = (a: number, b: number) => Math.hypot(p[a * 3] - p[b * 3], p[a * 3 + 1] - p[b * 3 + 1], p[a * 3 + 2] - p[b * 3 + 2]);
+    const { wet, snow } = st.ground;
+    let changed = false;
+    const reserve = (v: number, r: number) => { for (const u of around(this.topo, v, r)) c.reserved.add(u); c.keepOut(); };
+    for (const t of st.towns) {
+      if (this.castles.has(t.id) || st.size(t.id) < CASTLE.at) continue;
+      // The top of the nearest high ground.
+      let best = -1;
+      for (const v of around(this.topo, t.centre, CASTLE.reach)) {
+        if (wet?.[v] || snow?.[v] || st.isSquare(v)) continue;
+        if (best < 0 || h[v] > h[best]) best = v;
+      }
+      if (best < 0) continue;
+      this.castles.set(t.id, { vertex: best, born: st.day, town: t.id });
+      reserve(best, 0.02);
+      changed = true;
+    }
+    if (!this.abbeys.length && st.towns.some((t) => st.size(t.id) >= ABBEY.town)) {
+      // Low, by water if there is any, away from everyone, and not too far from a town.
+      const people = st.buildings.filter((b) => b.state === undefined).map((b) => b.vertex);
+      let best = -1, score = Infinity;
+      for (const cell of c.land.cells) {
+        const v = cell.centre;
+        if (!st.buildable(v) || c.townGround[v] || c.claims.has(cell.id)) continue;
+        if (people.some((u) => d(u, v) < ABBEY.apart)) continue;
+        const town = st.towns.find((t) => st.size(t.id) >= ABBEY.town && d(t.centre, v) < ABBEY.reach);
+        if (!town) continue;
+        const byWater = around(this.topo, v, 0.1).some((u) => st.ground.stream?.[u] || wet?.[u]);
+        const sc = h[v] - (byWater ? 0.2 : 0) + hash(v, 3) * 0.01;
+        if (sc < score) { score = sc; best = v; }
+      }
+      if (best >= 0) {
+        const town = st.towns.filter((t) => st.size(t.id) >= ABBEY.town).sort((a, b) => d(a.centre, best) - d(b.centre, best))[0];
+        this.abbeys.push({ vertex: best, born: st.day, town: town.id });
+        reserve(best, 0.05);
+        changed = true;
+      }
+    }
+    for (const a of st.towns) for (const b of st.towns) {
+      if (b.id <= a.id || st.size(a.id) < CANAL.at || st.size(b.id) < CANAL.at) continue;
+      if (this.canals.some((x) => x.from === a.id && x.to === b.id) || d(a.centre, b.centre) > CANAL.reach) continue;
+      const path = level(this.topo, h, a.centre, b.centre, wet, c.townGround);
+      this.canals.push({ from: a.id, to: b.id, path: path ?? [], born: st.day });
+      changed = true;
+    }
+    return changed;
+  }
+
   signature(): number {
-    let s = 0;
+    let s = this.castles.size * 3 + this.abbeys.length * 5 + this.canals.length * 7;
+    for (const x of this.castles.values()) if (this.st.day - x.born > CASTLE.ruin) s += 1;
+    for (const x of this.abbeys) if (this.st.day - x.born > ABBEY.ruin) s += 1;
     for (const w of this.walls.values()) s += 1 + (w.gone !== undefined ? 2 : 0) + (this.st.day - w.born >= WALL.build ? 4 : 0);
     return s;
   }
@@ -132,8 +200,15 @@ export function landmarkMarks(topo: Topology, heights: Float32Array, st: Settlem
   churches(topo, st, frames, out);
   estates(topo, st, c, look, out);
   if (wet) coast(topo, st, c, wet, depth, out);
-  high(topo, heights, st, c, snow, surveyed, out);
+  const peaks = summits(topo, heights, surveyed);
+  high(topo, heights, st, c, snow, surveyed, out, peaks);
   avenues(st, look, ways, out);
+  castles(topo, st, lm, out);
+  abbeys(topo, heights, st, lm, out);
+  roads(topo, st, c, lm, look, ways, out);
+  canals(topo, heights, st, lm, out);
+  survey(topo, st, c, surveyed, out, peaks);
+  hachures(topo, heights, st, c, surveyed, out);
   return out;
 }
 
@@ -382,6 +457,17 @@ function coast(topo: Topology, st: Settlements, c: Countryside, wet: Uint8Array,
     const shore = local.filter(shoreOf);
     if (!shore.length) continue;
     const harbour = st.harbours.find((h) => h.town === t.id && !h.drowned);
+    // A harbour that silted up: its pier stranded, dotted, in marsh, and a bar of sand across the water.
+    for (const h of st.harbours.filter((x) => x.town === t.id && x.silted !== undefined)) {
+      const pts = h.pier.map((v) => [p[v * 3] + nm[v * 3] * 0.004, p[v * 3 + 1] + nm[v * 3 + 1] * 0.004, p[v * 3 + 2] + nm[v * 3 + 2] * 0.004]);
+      out.lines.push(...dashes(polyline(pts, 1), 0.002, 0.002));
+      const end = h.pier[h.pier.length - 1], fr = frameAt(nm, end), q = add([p[end * 3], p[end * 3 + 1], p[end * 3 + 2]], fr.nr, 0.003);
+      for (let i = 0; i < 5; i++) {
+        const a = hash(end + i, 12) * 2 * Math.PI, r = 0.006 + 0.012 * hash(end + i, 13), at = add(add(q, fr.ax, Math.cos(a) * r), fr.bx, Math.sin(a) * r);
+        out.lines.push(polyline([add(at, fr.ax, -0.002), add(at, fr.ax, 0.002)], 0), polyline([at, add(at, fr.bx, 0.0028)], 0));
+      }
+      out.lines.push(...dashes(ring(q, fr, 0.03, -0.9, 0.9, 12, 0), 0.0015, 0.0025));
+    }
     // Fish traps: a few V-shaped lines of stakes in the shallows, pointing out to sea.
     const shallows = local.filter((v) => wet[v] && (depth?.[v] ?? 0) < 0.03 && (depth?.[v] ?? 0) > 0.003).sort((a, b) => hash(a, 7) - hash(b, 7)).slice(0, 3);
     for (const v of shallows) {
@@ -448,17 +534,21 @@ function principal(p: Float32Array, vs: number[], root: number, fr: Frame): numb
 
 // ------------------------------------------------------------ the high ground
 
-function high(topo: Topology, heights: Float32Array, st: Settlements, c: Countryside, snow: Uint8Array | null, surveyed: (v: number) => boolean, out: LandmarkDrawing): void {
-  const p = topo.positions, nm = topo.normals, n = topo.vertexCount;
-  const d = (a: number, b: number) => Math.hypot(p[a * 3] - p[b * 3], p[a * 3 + 1] - p[b * 3 + 1], p[a * 3 + 2] - p[b * 3 + 2]);
-  // Summits: higher than everything within a beacon's reach.
+/** Summits: higher than everything within a beacon's reach, where the map has been surveyed. */
+function summits(topo: Topology, heights: Float32Array, surveyed: (v: number) => boolean): number[] {
   const peaks: number[] = [];
-  for (let v = 0; v < n; v++) {
+  for (let v = 0; v < topo.vertexCount; v++) {
     if (!surveyed(v)) continue;
     let top = true;
     for (let k = topo.nbrOffsets[v]; k < topo.nbrOffsets[v + 1] && top; k++) if (heights[topo.nbrList[k]] >= heights[v]) top = false;
     if (top && around(topo, v, HIGH.beacon).every((u) => u === v || heights[u] < heights[v])) peaks.push(v);
   }
+  return peaks;
+}
+
+function high(topo: Topology, heights: Float32Array, st: Settlements, c: Countryside, snow: Uint8Array | null, surveyed: (v: number) => boolean, out: LandmarkDrawing, peaks: number[]): void {
+  const p = topo.positions, nm = topo.normals;
+  const d = (a: number, b: number) => Math.hypot(p[a * 3] - p[b * 3], p[a * 3 + 1] - p[b * 3 + 1], p[a * 3 + 2] - p[b * 3 + 2]);
   const shrines = new Set<number>();
   for (const t of st.towns) {
     if (st.size(t.id) < HIGH.shrine) continue;
@@ -576,3 +666,232 @@ function normal(q: number[]): number[] {
 }
 
 export type { Building };
+
+// ------------------------------------------------------------ castles and abbeys
+
+function castles(topo: Topology, st: Settlements, lm: Landmarks, out: LandmarkDrawing): void {
+  const p = topo.positions, nm = topo.normals;
+  for (const k of lm.castles.values()) {
+    const ruin = st.day - k.born > CASTLE.ruin, v = k.vertex, fr = frameAt(nm, v), q = add([p[v * 3], p[v * 3 + 1], p[v * 3 + 2]], fr.nr, 0.004);
+    const line = (m: Polyline) => (ruin ? dashes(m, 0.0025, 0.0018) : [m]);
+    // The mound, hatched down all round.
+    for (let i = 0; i < 20; i++) {
+      const a = (i / 20) * 2 * Math.PI, u = add(fr.ax.map((x) => x * Math.cos(a)), fr.bx, Math.sin(a));
+      out.lines.push(polyline([add(q, u, 0.017), add(q, u, 0.023)], 0));
+    }
+    // The curtain wall, six-sided, with a tower at each corner, and the keep in the middle.
+    const corner = (i: number) => { const a = (i / 6) * 2 * Math.PI + 0.3; return add(add(q, fr.ax, Math.cos(a) * 0.013), fr.bx, Math.sin(a) * 0.013); };
+    out.lines.push(...line({ ...polyline([0, 1, 2, 3, 4, 5].map(corner), 2), closed: true }));
+    for (let i = 0; i < 6; i++) out.lines.push(...line({ ...ring(corner(i), fr, 0.0024, 0, 2 * Math.PI, 10, 2), closed: true }));
+    const keep = block(q, fr.ax, fr.bx, 0.007, 0.007, 2);
+    out.lines.push(ruin ? { ...keep, fill: undefined } : keep);
+  }
+}
+
+function abbeys(topo: Topology, heights: Float32Array, st: Settlements, lm: Landmarks, out: LandmarkDrawing): void {
+  const p = topo.positions, nm = topo.normals;
+  for (const k of lm.abbeys) {
+    const ruin = st.day - k.born > ABBEY.ruin, v = k.vertex, fr = frameAt(nm, v), q = add([p[v * 3], p[v * 3 + 1], p[v * 3 + 2]], fr.nr, 0.004);
+    const solid = (m: Polyline) => (ruin ? dashes({ ...m, fill: undefined }, 0.002, 0.0015) : [m]);
+    const east = fr.ax, north = fr.bx;
+    out.lines.push(...solid(block(q, east, north, 0.026, 0.008)), ...solid(block(add(q, east, 0.006), north, east, 0.018, 0.007)));
+    // The cloister to the south, and its garth.
+    const cq = add(q, north, -0.015);
+    for (const sz of [0.009, 0.005]) out.lines.push(...(ruin ? dashes : (m: Polyline) => [m])({ ...polyline([[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([i, j]) => add(add(cq, east, i * sz), north, j * sz)), 1), closed: true }, 0.002, 0.0015));
+    // Fishponds, downhill, washed (dry, and dotted, once it is a ruin).
+    const down = around(topo, v, 0.06).reduce((a, b) => (heights[b] < heights[a] ? b : a), v);
+    const dq = add([p[down * 3], p[down * 3 + 1], p[down * 3 + 2]], fr.nr, 0.003);
+    for (let i = 0; i < 3; i++) {
+      const c = add(dq, east, (i - 1) * 0.011), pond = block(c, east, north, 0.008, 0.005, 0);
+      out.lines.push(...(ruin ? dashes({ ...pond, fill: undefined }, 0.0015, 0.002) : [{ ...pond, fill: undefined }]));
+      if (!ruin && pond.fill) for (let j = 0; j < pond.fill.length; j += 3) { out.wash.positions.push(pond.fill[j], pond.fill[j + 1], pond.fill[j + 2]); out.wash.colours.push(0.55, 0.68, 0.8, 0.6); }
+    }
+    // Its grange: the abbey's farm, out along a track.
+    const g = add(q, east, 0.05);
+    out.lines.push(...solid(block(g, east, north, 0.009, 0.006)));
+    out.lines.push(...dashes(polyline([add(q, east, 0.016), add(g, east, -0.006)], 0), 0.002, 0.003));
+  }
+}
+
+// ------------------------------------------------------------ roads and canals
+
+function roads(topo: Topology, st: Settlements, c: Countryside, lm: Landmarks, look: Look, ways: (s: Street) => Polyline | null, out: LandmarkDrawing): void {
+  const p = topo.positions, nm = topo.normals;
+  const through = new Map<number, number>();
+  for (const s of st.streets) for (const v of s.path) through.set(v, (through.get(v) ?? 0) + 1);
+  const inns: number[] = [];
+  for (const s of st.streets) {
+    if (s.kind !== 'road' || look.street(s) < 1) continue;
+    const m = ways(s);
+    if (m) {
+      // Milestones: a small stone, a dot and its tick, every so far, out in the country.
+      let along = 0, next = ROAD.milestone;
+      for (let k = 3; k < m.points.length; k += 3) {
+        const a = m.points.subarray(k - 3, k), b = m.points.subarray(k, k + 3);
+        along += Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+        if (along < next) continue;
+        next += ROAD.milestone;
+        if (along > m.length - 0.05) break;
+        const nr = normalOf(b), t = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], l = Math.hypot(t[0], t[1], t[2]) || 1;
+        const side = [nr[1] * t[2] - nr[2] * t[1], nr[2] * t[0] - nr[0] * t[2], nr[0] * t[1] - nr[1] * t[0]].map((x) => x / l);
+        const q = add([b[0], b[1], b[2]], side, 0.009), fr: Frame = { nr: nr as V3, ax: t.map((x) => x / l) as V3, bx: side as V3 };
+        out.lines.push({ ...ring(q, fr, 0.0012, 0, 2 * Math.PI, 8, 1), closed: true }, polyline([add(q, side, 0.0012), add(q, side, 0.0032)], 1));
+      }
+    }
+    // Inns: where a road meets another way, out in the country.
+    for (const v of s.path.slice(1, -1)) {
+      if ((through.get(v) ?? 0) < 2 || c.townGround[v] && st.buildings.some((b) => b.vertex === v)) continue;
+      if (c.townGround[v]) continue;
+      if (inns.some((u) => Math.hypot(p[u * 3] - p[v * 3], p[u * 3 + 1] - p[v * 3 + 1], p[u * 3 + 2] - p[v * 3 + 2]) < 0.1)) continue;
+      inns.push(v);
+      const fr = frameAt(nm, v), q = add(add([p[v * 3], p[v * 3 + 1], p[v * 3 + 2]], fr.nr, 0.003), fr.ax, 0.011);
+      out.lines.push(block(q, fr.ax, fr.bx, 0.008, 0.0055));
+      // Its sign on a post.
+      const post = add(q, fr.ax, -0.0065);
+      out.lines.push(polyline([post, add(post, fr.bx, 0.005)], 1), block(add(add(post, fr.bx, 0.005), fr.ax, 0.0015), fr.ax, fr.bx, 0.003, 0.002, 1));
+    }
+  }
+  // A cemetery outside the walls of a big town, by a gate: a dotted enclosure, rows of little crosses.
+  for (const w of lm.walls.values()) {
+    if (st.size(w.town) < ROAD.cemetery) continue;
+    const fr = frameAt(nm, w.centre), cp = [p[w.centre * 3], p[w.centre * 3 + 1], p[w.centre * 3 + 2]];
+    const a = hash(w.centre, 17) * 2 * Math.PI, r = radiusAt(w, a) + 0.04;
+    const near = around(topo, w.centre, r + 0.05);
+    const at = onGround(topo, near, add(add(cp, fr.ax, Math.cos(a) * r), fr.bx, Math.sin(a) * r), 0.003);
+    const u = add(fr.ax.map((x) => x * Math.cos(a)), fr.bx, Math.sin(a)), v = add(fr.ax.map((x) => x * -Math.sin(a)), fr.bx, Math.cos(a));
+    const edge = [[-1, -1], [1, -1], [1, 1], [-1, 1], [-1, -1]].map(([i, j]) => add(add(at, u, i * 0.014), v, j * 0.02));
+    out.lines.push(...dashes(polyline(edge, 1), 0.002, 0.0015));
+    for (let i = -2; i <= 2; i++) for (let j = -3; j <= 3; j++) {
+      const g = add(add(at, u, i * 0.0055), v, j * 0.0055);
+      out.lines.push(polyline([add(g, v, -0.0012), add(g, v, 0.0012)], 0), polyline([add(g, u, -0.0008), add(g, u, 0.0008)], 0));
+    }
+  }
+}
+
+/** A canal's way: along the level as far as it can, since every rise is a lock. */
+function level(topo: Topology, heights: Float32Array, a: number, b: number, wet: Uint8Array | null, town: Uint8Array): number[] | null {
+  const p = topo.positions, cost = new Map([[a, 0]]), prev = new Map<number, number>(), done = new Set<number>();
+  const heap: [number, number][] = [[0, a]];
+  const push = (c: number, v: number) => { heap.push([c, v]); let i = heap.length - 1; while (i > 0) { const q = (i - 1) >> 1; if (heap[q][0] <= heap[i][0]) break; [heap[q], heap[i]] = [heap[i], heap[q]]; i = q; } };
+  const pop = () => { const top = heap[0], last = heap.pop()!; if (heap.length) { heap[0] = last; let i = 0; for (;;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < heap.length && heap[l][0] < heap[m][0]) m = l; if (r < heap.length && heap[r][0] < heap[m][0]) m = r; if (m === i) break; [heap[m], heap[i]] = [heap[i], heap[m]]; i = m; } } return top; };
+  while (heap.length) {
+    const [c, u] = pop();
+    if (done.has(u)) continue;
+    done.add(u);
+    if (u === b) { const path = [b]; for (let w = b; prev.has(w); ) { w = prev.get(w)!; path.push(w); } return path.reverse(); }
+    if (done.size > 12000) return null;
+    for (let k = topo.nbrOffsets[u]; k < topo.nbrOffsets[u + 1]; k++) {
+      const w = topo.nbrList[k];
+      if (done.has(w) || wet?.[w]) continue;
+      const dd = Math.hypot(p[u * 3] - p[w * 3], p[u * 3 + 1] - p[w * 3 + 1], p[u * 3 + 2] - p[w * 3 + 2]) || 1e-6;
+      const nc = c + dd * (1 + 60 * Math.abs(heights[w] - heights[u]) / dd + (town[w] ? 3 : 0));
+      if (nc < (cost.get(w) ?? Infinity)) { cost.set(w, nc); prev.set(w, u); push(nc, w); }
+    }
+  }
+  return null;
+}
+
+function canals(topo: Topology, heights: Float32Array, st: Settlements, lm: Landmarks, out: LandmarkDrawing): void {
+  const p = topo.positions, nm = topo.normals;
+  for (const cn of lm.canals) {
+    if (cn.path.length < 3) continue;
+    let pts = cn.path.map((v) => [p[v * 3] + nm[v * 3] * 0.0032, p[v * 3 + 1] + nm[v * 3 + 1] * 0.0032, p[v * 3 + 2] + nm[v * 3 + 2] * 0.0032]);
+    for (let r = 0; r < 2; r++) pts = chaikin(pts);
+    // Dug over a day or two: pegged out first.
+    const age = st.day - cn.born;
+    const side = (i: number) => {
+      const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)], t = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], l = Math.hypot(t[0], t[1], t[2]) || 1;
+      const nr = normalOf(pts[i]);
+      return { s: [nr[1] * t[2] - nr[2] * t[1], nr[2] * t[0] - nr[0] * t[2], nr[0] * t[1] - nr[1] * t[0]].map((x) => x / l), t: t.map((x) => x / l) };
+    };
+    if (age < 1.5) { out.lines.push(...dashes(polyline(pts, 1), 0.003, 0.004)); continue; }
+    for (const off of [-0.0022, 0.0022]) out.lines.push(polyline(pts.map((q, i) => add(q, side(i).s, off)), 1));
+    out.lines.push(...dashes(polyline(pts.map((q, i) => add(q, side(i).s, 0.0065)), 0), 0.0012, 0.0025)); // the towpath
+    // Locks, at every rise: two gates across, and the chevron of the upper gate.
+    let since = heights[cn.path[0]];
+    for (let j = 1; j < cn.path.length; j++) {
+      const hv = heights[cn.path[j]];
+      if (Math.abs(hv - since) < CANAL.lock) continue;
+      since = hv;
+      const i = Math.min(pts.length - 1, Math.round((j / (cn.path.length - 1)) * (pts.length - 1))), { s, t } = side(i), q = pts[i];
+      for (const g of [-0.003, 0.003]) out.lines.push(polyline([add(add(q, t, g), s, -0.0035), add(add(q, t, g), s, 0.0035)], 2));
+      out.lines.push(polyline([add(add(q, t, 0.003), s, -0.0022), add(q, t, 0.0055), add(add(q, t, 0.003), s, 0.0022)], 2));
+    }
+  }
+}
+
+// ------------------------------------------------------------ the survey, and the map's own age
+
+/**
+ * The survey. Summits in sight of each other are joined by the fine straight
+ * lines of the triangulation, as a national survey is carried across the
+ * land; and the edge of what has been surveyed is marked, finely dotted.
+ */
+function survey(topo: Topology, st: Settlements, c: Countryside, surveyed: (v: number) => boolean, out: LandmarkDrawing, peaks: number[]): void {
+  const p = topo.positions, n = topo.vertexCount;
+  const d = (a: number, b: number) => Math.hypot(p[a * 3] - p[b * 3], p[a * 3 + 1] - p[b * 3 + 1], p[a * 3 + 2] - p[b * 3 + 2]);
+  const done = new Set<string>();
+  for (const a of peaks) {
+    const nearest = peaks.filter((b) => b !== a && d(a, b) < 0.8).sort((x, y) => d(a, x) - d(a, y)).slice(0, 3);
+    for (const b of nearest) {
+      const key = a < b ? `${a}-${b}` : `${b}-${a}`;
+      if (done.has(key)) continue;
+      done.add(key);
+      // Straight between them, laid over the ground below.
+      const near = [...around(topo, a, d(a, b) * 0.6), ...around(topo, b, d(a, b) * 0.6)];
+      const pts: number[][] = [];
+      for (let i = 0; i <= 24; i++) {
+        const t = i / 24, q = [0, 1, 2].map((k) => p[a * 3 + k] * (1 - t) + p[b * 3 + k] * t);
+        pts.push(onGround(topo, near, q, 0.0045));
+      }
+      out.lines.push(...dashes(polyline(pts, 0), 0.004, 0.003));
+    }
+  }
+  // The limit of the survey, where the blank begins.
+  const cellOf = c.land.cellOf, t = topo.triangles, flat: number[] = [];
+  const inside = (v: number) => surveyed(v) && cellOf[v] >= 0;
+  const key = (x: number, y: number) => (x < y ? x * n + y : y * n + x);
+  for (let i = 0; i < t.length; i += 3) {
+    const vs = [t[i], t[i + 1], t[i + 2]], ins = vs.map(inside);
+    if (ins[0] === ins[1] && ins[1] === ins[2]) continue;
+    if (vs.some((v) => st.ground.wet?.[v])) continue;
+    const e: number[] = [];
+    for (const [x, y] of [[0, 1], [1, 2], [2, 0]]) if (ins[x] !== ins[y]) e.push(key(vs[x], vs[y]));
+    flat.push(e[0], e[1]);
+  }
+  for (const chain of chainSegments(flat)) {
+    if (chain.keys.length < 3) continue;
+    let pts = chain.keys.map((k) => mid(p, topo.normals, Math.floor(k / n), k % n, 0.0025));
+    for (let r = 0; r < 2; r++) pts = chaikin(pts);
+    out.lines.push(...dashes(polyline(pts, 0), 0.001, 0.007));
+  }
+}
+
+/**
+ * Hachures: as the map matures, the steep ground is engraved with short
+ * strokes down the slope, closer and longer the steeper, as old maps show
+ * their hills. A young map hasn't the hand for it yet.
+ */
+function hachures(topo: Topology, heights: Float32Array, st: Settlements, c: Countryside, surveyed: (v: number) => boolean, out: LandmarkDrawing): void {
+  const m = maturity(st.day);
+  if (m < 0.3) return;
+  const p = topo.positions, nm = topo.normals, b = st.buildableSlope || 1;
+  const { wet, snow } = st.ground;
+  for (let v = 0; v < topo.vertexCount; v++) {
+    if (!surveyed(v) || wet?.[v] || snow?.[v] || c.townGround[v]) continue;
+    const s = st.slope[v] / b;
+    if (s < 0.7 || hash(v, 111) > 0.5 * m) continue;
+    const g = [0, 0, 0];
+    for (let k = topo.nbrOffsets[v]; k < topo.nbrOffsets[v + 1]; k++) { const u = topo.nbrList[k], dh = heights[u] - heights[v]; for (let j = 0; j < 3; j++) g[j] += (p[u * 3 + j] - p[v * 3 + j]) * dh; }
+    const nr = [nm[v * 3], nm[v * 3 + 1], nm[v * 3 + 2]], gn = dot3(g, nr), tg = [g[0] - gn * nr[0], g[1] - gn * nr[1], g[2] - gn * nr[2]], l = Math.hypot(tg[0], tg[1], tg[2]);
+    if (l < 1e-9) continue;
+    const down = tg.map((x) => -x / l), len = 0.004 + 0.006 * Math.min(1, (s - 0.7) / 1.3);
+    const q = [p[v * 3] + nr[0] * 0.003, p[v * 3 + 1] + nr[1] * 0.003, p[v * 3 + 2] + nr[2] * 0.003];
+    out.lines.push(polyline([add(q, down, -len / 2), add(q, down, len / 2)], 0));
+  }
+}
+
+function normalOf(q: ArrayLike<number>): number[] {
+  const l = Math.hypot(q[0], q[1], q[2]) || 1;
+  return [q[0] / l, q[1] / l, q[2] / l];
+}

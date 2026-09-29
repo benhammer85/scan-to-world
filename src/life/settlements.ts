@@ -194,6 +194,9 @@ export const HARBOUR = {
   /** ...and one boat for every this many houses, up to `boats`. */
   perBoat: 8,
   boats: 4,
+  /** A harbour silts up this many days after it is built, and the next is at least this far along the shore. */
+  silt: 70,
+  apart: 0.15,
 };
 
 export const FERRY = {
@@ -214,6 +217,10 @@ export interface Harbour {
   /** From the shore street out over the water. */
   pier: number[];
   drowned?: boolean;
+  /** When it was built. */
+  born?: number;
+  /** When it silted up: no boats come, and the town builds a new harbour along the shore. */
+  silted?: number;
 }
 
 export interface Stall {
@@ -526,6 +533,13 @@ export class Settlements {
     return this.towns[town].buildings.length;
   }
 
+  /** Bridge vertices over streams (not lakes or the sea): where a way may ford. */
+  get fordable(): Set<number> {
+    const out = new Set<number>();
+    for (const u of this.bridgeAt) if (this.stream?.[u] && !this.wet?.[u]) out.add(u);
+    return out;
+  }
+
   /** Is this vertex part of a town's square (kept open)? */
   isSquare(v: number): boolean {
     return this.reserved.has(v);
@@ -593,8 +607,11 @@ export class Settlements {
       laid += this.joinTowns();
       this.wearRoads();
       laid += this.joinRails() + this.liftToSnow();
+      laid += this.silt(this.now);
       this.refreshBlocks();
     }
+    // Harbours silt by time alone: a town that has stopped growing still loses its harbour.
+    laid += this.silt(this.day + days);
     this.day += days;
     return laid;
   }
@@ -716,6 +733,27 @@ export class Settlements {
   }
 
   // ------------------------------------------------------------ transport
+
+  /**
+   * Harbours silt up in time: the sand comes in, the boats stop coming, and
+   * the town builds another harbour further along the shore. The old one
+   * stays on the map, stranded.
+   */
+  private silt(until: number): number {
+    let n = 0;
+    for (const h of this.harbours) {
+      const due = (h.born ?? 0) + HARBOUR.silt;
+      if (h.silted !== undefined || h.drowned || due > until) continue;
+      // At its own time, not when next anything happened to be laid.
+      this.now = due;
+      h.silted = due;
+      h.drowned = true; // no boats, no ferries, no roads to it
+      this.linkHarbours();
+      this.maybeHarbour(this.towns[h.town]);
+      n++;
+    }
+    return n;
+  }
 
   /** Roads wear in with the trade they carry: track, then lane, then made road. Never back. */
   private wearRoads(): void {
@@ -1190,12 +1228,14 @@ export class Settlements {
    * shore street nearest the square, out into deepening water.
    */
   private maybeHarbour(t: Town): void {
-    if (!this.wet || !this.depth || this.harbours.some((h) => h.town === t.id)) return;
+    if (!this.wet || !this.depth || this.harbours.some((h) => h.town === t.id && h.silted === undefined)) return;
+    const old = this.harbours.filter((h) => h.town === t.id).map((h) => h.pier[0]);
     const houses = this.buildings.filter((b) => b.town === t.id && b.state === undefined).length - 1;
     if (houses < HARBOUR.at) return;
     let best = -1, bestD = Infinity;
     for (const [u, town] of this.network) {
       if (town !== t.id || this.bridgeAt.has(u) || this.reserved.has(u)) continue;
+      if (old.some((o) => this.dist(o, u) < HARBOUR.apart)) continue; // not back where the sand came in
       let shore = false;
       this.eachNeighbour(u, (w) => { if (this.wet![w]) shore = true; });
       if (!shore) continue;
@@ -1219,7 +1259,7 @@ export class Settlements {
       length += step;
     }
     if (pier.length < 2) return;
-    this.harbours.push({ town: t.id, pier });
+    this.harbours.push({ town: t.id, pier, born: this.now });
     this.linkHarbours();
   }
 

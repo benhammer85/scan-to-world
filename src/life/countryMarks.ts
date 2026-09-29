@@ -10,7 +10,7 @@ import type { Topology } from '../mesh/topology';
 import { chainSegments, type Polyline } from '../terrain/contours';
 import { hash } from './buildingMarks';
 import type { Settlements } from './settlements';
-import { FIELD, SEASON, type Countryside, type Crop } from './country';
+import { COMMON, FIELD, MARSH, SEASON, type Countryside, type Crop } from './country';
 
 type V3 = [number, number, number];
 
@@ -23,6 +23,10 @@ export const COUNTRY = {
   step: 0.026,
   /** A hedge tree every so often along a hedgerow. */
   hedgeTree: 0.028,
+  /** Drains across a drained marsh, this far apart. */
+  drain: 0.022,
+  /** Enclosure: a common ruled into fields this size. */
+  enclosure: 0.02,
   /** Orchard trees this far apart. */
   orchard: 0.011,
   /** Wood: tree crowns, and the share of a wood's vertices that have one. */
@@ -45,6 +49,7 @@ export const WASH: Record<Crop | 'wood', [number, number, number]> = {
   garden: [0.56, 0.66, 0.42],
   orchard: [0.6, 0.68, 0.46],
   park: [0.62, 0.72, 0.52],
+  drained: [1, 1, 1],
   wood: [0.44, 0.55, 0.38],
 };
 export const WASH_ALPHA = 0.5;
@@ -77,14 +82,34 @@ export interface Turning {
 
 export interface CountryDrawing {
   lines: Polyline[];
-  /** Washes that keep their colour, and the ploughland's, whose colour is the season's. */
+  /** Washes that keep their colour, the ploughland's, whose colour is the season's, and the wet meadows', which flood in spring. */
   wash: Wash;
   seasonal: Wash;
+  meadow: Wash;
   turning: Turning[];
 }
 
+/** How much the map has matured: a young world's map is drawn sparely, an old one's richly. */
+export const MAP = { mature: 40 };
+export function maturity(day: number): number {
+  return Math.min(1, day / MAP.mature);
+}
+
+/** How wet the spring is: the meadows flood, most at the turn from winter to spring. */
+export function springFlood(day: number): number {
+  const t = ((((day / SEASON.days) % 1) + 1) % 1);
+  return Math.max(0, Math.cos((t - 0.2) * 2 * Math.PI * 1.6)) * (t < 0.5 ? 1 : 0);
+}
+
+/** How deep in winter: 1 at midwinter, 0 from spring to autumn. */
+export function winter(day: number): number {
+  const t = ((((day / SEASON.days) % 1) + 1) % 1);
+  return Math.max(0, Math.cos(t * 2 * Math.PI));
+}
+
 export function countryMarks(topo: Topology, st: Settlements, c: Countryside): CountryDrawing {
-  const out: CountryDrawing = { lines: [], wash: { positions: [], colours: [] }, seasonal: { positions: [], colours: [] }, turning: [] };
+  const out: CountryDrawing = { lines: [], wash: { positions: [], colours: [] }, seasonal: { positions: [], colours: [] }, meadow: { positions: [], colours: [] }, turning: [] };
+  const rich = 0.7 + 0.3 * maturity(st.day);
   const { cells, cellOf } = c.land;
   const n = topo.vertexCount, p = topo.positions, nm = topo.normals;
   const { wet, stream, snow } = st.ground;
@@ -168,12 +193,13 @@ export function countryMarks(topo: Topology, st: Settlements, c: Countryside): C
     const crop = crops.get(cell)!, age = st.day - claim.born;
     const inside = cells[cell].tris.filter((i) => label[t[i]] === cell && label[t[i + 1]] === cell && label[t[i + 2]] === cell);
     const edge = (v: number) => { for (let k = topo.nbrOffsets[v]; k < topo.nbrOffsets[v + 1]; k++) if (label[topo.nbrList[k]] !== cell) return true; return false; };
-    const tint = WASH[crop], seasonal = crop === 'arable' || crop === 'terrace';
+    const drying = crop === 'drained' && age < MARSH.dry;
+    const tint = drying ? WASH.meadow : WASH[crop], seasonal = crop === 'arable' || crop === 'terrace' || (crop === 'drained' && !drying);
     const vary = 0.88 + 0.12 * hash(cell, 85);
-    const into = seasonal ? out.seasonal : out.wash;
+    const into = seasonal ? out.seasonal : crop === 'meadow' || drying ? out.meadow : out.wash;
     for (const i of inside) for (const v of [t[i], t[i + 1], t[i + 2]]) {
       into.positions.push(...lifted(p, nm, v, COUNTRY.lift * 0.6));
-      into.colours.push(tint[0] * vary, tint[1] * vary, tint[2] * vary, edge(v) ? 0 : WASH_ALPHA);
+      into.colours.push(tint[0] * vary, tint[1] * vary, tint[2] * vary, edge(v) ? 0 : WASH_ALPHA * rich);
     }
     const c0 = cells[cell].centre, fr = frameAt(nm, c0);
     if (crop === 'arable' && age >= FIELD.plough) {
@@ -193,6 +219,16 @@ export function countryMarks(topo: Topology, st: Settlements, c: Countryside): C
       // Level steps: the ground's own contours, close together.
       const h = st.slope, grade = Math.max(1e-4, cells[cell].vertices.reduce((s, v) => s + h[v], 0) / cells[cell].vertices.length);
       out.lines.push(...isoLines(topo, inside, (v) => c.heightAt(v), grade * COUNTRY.step, COUNTRY.lift));
+    } else if (crop === 'drained') {
+      // Ruler-straight drains across it, the way a fen is drained, and one main drain the other way.
+      const since = st.day - (c.drained.get(cell) ?? st.day);
+      const a = hash(cell, 97) * Math.PI;
+      const u: V3 = [0, 1, 2].map((k) => fr.ax[k] * Math.cos(a) + fr.bx[k] * Math.sin(a)) as V3;
+      const w: V3 = [0, 1, 2].map((k) => -fr.ax[k] * Math.sin(a) + fr.bx[k] * Math.cos(a)) as V3;
+      out.lines.push(...isoLines(topo, inside, (v) => p[v * 3] * u[0] + p[v * 3 + 1] * u[1] + p[v * 3 + 2] * u[2], COUNTRY.drain, COUNTRY.lift));
+      const main = isoLines(topo, inside, (v) => p[v * 3] * w[0] + p[v * 3 + 1] * w[1] + p[v * 3 + 2] * w[2], 1, COUNTRY.lift);
+      out.lines.push(...main.slice(0, 1));
+      if (since < MARSH.dry) for (const v of cells[cell].vertices) if (label[v] === cell && !edge(v) && hash(v, 91) < 0.15) out.lines.push(...tuft(lifted(p, nm, v, COUNTRY.lift) as V3, frameAt(nm, v), v));
     } else if (crop === 'orchard' && age >= FIELD.plough) {
       // Trees in rows, each row set half a gap along: an orchard as a survey draws it.
       const a = hash(cell, 93) * Math.PI;
@@ -217,6 +253,54 @@ export function countryMarks(topo: Topology, st: Settlements, c: Countryside): C
       for (const v of cells[cell].vertices) if (label[v] === cell && !edge(v) && hash(v, 94) < 0.18) out.lines.push(...tree(lifted(p, nm, v, COUNTRY.lift) as V3, frameAt(nm, v), COUNTRY.crown * 1.1, v));
     } else if (crop === 'meadow' && age >= FIELD.plough) {
       for (const v of cells[cell].vertices) if (label[v] === cell && !edge(v) && hash(v, 91) < 0.35) out.lines.push(...tuft(lifted(p, nm, v, COUNTRY.lift) as V3, frameAt(nm, v), v));
+    }
+  }
+
+  // ---- commons: open, kept as a green (a park in a city), or enclosed into ruled fields
+  for (const [town, common] of c.commons) {
+    const cell = common.cell, own = (v: number) => cellOf[v] === cell && open(v);
+    const inside = cells[cell].tris.filter((i) => own(t[i]) && own(t[i + 1]) && own(t[i + 2]));
+    const fr = frameAt(nm, cells[cell].centre);
+    if (common.enclosed !== undefined) {
+      // Enclosure: straight hedges, ruled both ways, cutting the old common into small fields.
+      const a = hash(cell, 99) * Math.PI;
+      const u: V3 = [0, 1, 2].map((k) => fr.ax[k] * Math.cos(a) + fr.bx[k] * Math.sin(a)) as V3;
+      const w: V3 = [0, 1, 2].map((k) => -fr.ax[k] * Math.sin(a) + fr.bx[k] * Math.cos(a)) as V3;
+      for (const dir of [u, w]) out.lines.push(...isoLines(topo, inside, (v) => p[v * 3] * dir[0] + p[v * 3 + 1] * dir[1] + p[v * 3 + 2] * dir[2], COUNTRY.enclosure, COUNTRY.lift));
+      continue;
+    }
+    // Open: a wash of heath, gorse here and there, and the pond at its lowest.
+    const edge = (v: number) => { for (let k = topo.nbrOffsets[v]; k < topo.nbrOffsets[v + 1]; k++) if (!own(topo.nbrList[k])) return true; return false; };
+    for (const i of inside) for (const v of [t[i], t[i + 1], t[i + 2]]) {
+      out.wash.positions.push(...lifted(p, nm, v, COUNTRY.lift * 0.6));
+      out.wash.colours.push(0.7, 0.72, 0.52, edge(v) ? 0 : WASH_ALPHA * 0.8 * rich);
+    }
+    const vs = cells[cell].vertices.filter(own);
+    if (!vs.length) continue;
+    const kept = common.kept !== undefined, park = kept && st.size(town) >= COMMON.park;
+    for (const v of vs) {
+      if (edge(v)) { if (kept && hash(v, 105) < 0.5) out.lines.push(...tree(lifted(p, nm, v, COUNTRY.lift) as V3, frameAt(nm, v), COUNTRY.crown, v)); continue; }
+      if (!park && hash(v, 103) < 0.3) out.lines.push(...gorse(lifted(p, nm, v, COUNTRY.lift) as V3, frameAt(nm, v), v));
+    }
+    const low = vs.reduce((a, b) => (c.heightAt(b) < c.heightAt(a) ? b : a), vs[0]);
+    const pond = lifted(p, nm, low, COUNTRY.lift), pf = frameAt(nm, low), r = park ? 0.012 : 0.0065, ring: number[][] = [];
+    for (let i = 0; i < 18; i++) { const a = (i / 18) * 2 * Math.PI; ring.push([0, 1, 2].map((k) => pond[k] + (pf.ax[k] * Math.cos(a) * 1.3 + pf.bx[k] * Math.sin(a) * (1 + 0.15 * Math.sin(3 * a))) * r)); }
+    out.lines.push({ ...polyline(ring, 0), closed: true });
+    for (let i = 0; i < 18; i++) { out.wash.positions.push(...pond, ...ring[i], ...ring[(i + 1) % 18]); out.wash.colours.push(0.55, 0.68, 0.8, 0.6, 0.55, 0.68, 0.8, 0.3, 0.55, 0.68, 0.8, 0.3); }
+    if (park) {
+      // A park's walks: winding, dotted, across it.
+      const a = hash(cell, 107) * Math.PI;
+      const u: V3 = [0, 1, 2].map((k) => fr.ax[k] * Math.cos(a) + fr.bx[k] * Math.sin(a)) as V3;
+      const w: V3 = [0, 1, 2].map((k) => -fr.ax[k] * Math.sin(a) + fr.bx[k] * Math.cos(a)) as V3;
+      const cc = p.subarray(cells[cell].centre * 3, cells[cell].centre * 3 + 3);
+      for (const off of [-0.02, 0.02]) {
+        const walk = (v: number) => {
+          const x = p[v * 3] * u[0] + p[v * 3 + 1] * u[1] + p[v * 3 + 2] * u[2] - (cc[0] * u[0] + cc[1] * u[1] + cc[2] * u[2]);
+          const y = p[v * 3] * w[0] + p[v * 3 + 1] * w[1] + p[v * 3 + 2] * w[2] - (cc[0] * w[0] + cc[1] * w[1] + cc[2] * w[2]);
+          return y + 0.012 * Math.sin(x / 0.02) - off + 50; // the one level at 50: a single winding walk
+        };
+        for (const m of isoLines(topo, inside, walk, 50, COUNTRY.lift)) out.lines.push(...dashes(m, 0.002, 0.003));
+      }
     }
   }
 
@@ -323,6 +407,16 @@ export function tree(at: V3, fr: Frame, r: number, seed: number, shaded = true):
   return [{ ...polyline(pts, 0), closed: true }, polyline(shade, 0), polyline(stem, 0)];
 }
 
+/** Gorse on a common: a little spray of short strokes. */
+function gorse(at: V3, fr: Frame, seed: number): Polyline[] {
+  const out: Polyline[] = [], s = 0.0028 * (0.8 + 0.4 * hash(seed, 104));
+  for (let i = 0; i < 3; i++) {
+    const a = (i / 3) * Math.PI + hash(seed, 106) * 0.8;
+    out.push(polyline([[0, 1, 2].map((k) => at[k] - (fr.ax[k] * Math.cos(a) + fr.bx[k] * Math.sin(a)) * s), [0, 1, 2].map((k) => at[k] + (fr.ax[k] * Math.cos(a) + fr.bx[k] * Math.sin(a)) * s)], 0));
+  }
+  return out;
+}
+
 /** A marsh tuft: a short ground stroke, and three blades rising from it. */
 function tuft(at: V3, fr: Frame, seed: number): Polyline[] {
   const s = 0.0032 * (0.8 + 0.4 * hash(seed, 99));
@@ -347,7 +441,7 @@ function circle(at: V3, fr: Frame, r: number, level: number): Polyline {
  * Only the field's own triangles, so the lines stop short of the hedge,
  * as a headland does.
  */
-function isoLines(topo: Topology, tris: number[], f: (v: number) => number, every: number, lift: number): Polyline[] {
+export function isoLines(topo: Topology, tris: number[], f: (v: number) => number, every: number, lift: number): Polyline[] {
   const t = topo.triangles, n = topo.vertexCount, p = topo.positions, nm = topo.normals;
   const val = new Map<number, number>();
   const F = (v: number) => { let x = val.get(v); if (x === undefined) { x = f(v); val.set(v, x); } return x; };
@@ -404,7 +498,7 @@ function lifted(p: Float32Array, nm: Float32Array, v: number, lift: number): num
   return [p[v * 3] + nm[v * 3] * lift, p[v * 3 + 1] + nm[v * 3 + 1] * lift, p[v * 3 + 2] + nm[v * 3 + 2] * lift];
 }
 
-function mid(p: Float32Array, nm: Float32Array, a: number, b: number, lift: number): number[] {
+export function mid(p: Float32Array, nm: Float32Array, a: number, b: number, lift: number): number[] {
   return [0, 1, 2].map((k) => (p[a * 3 + k] + p[b * 3 + k]) / 2 + ((nm[a * 3 + k] + nm[b * 3 + k]) / 2) * lift);
 }
 

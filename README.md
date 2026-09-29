@@ -17,6 +17,8 @@ npm test           # contour / heightfield / sculpt unit tests
 npm run build
 ```
 
+The site is published to GitHub Pages from `main` by `.github/workflows/pages.yml` (see below for turning Pages on).
+
 It boots with a procedural **demo orange**. To use a real scan, export GLB, OBJ or PLY from
 Scaniverse, KIRI Engine or RealityScan and load it with **Load scan**. If the scan is heavy,
 use **Decimate to** (meshoptimizer, respects UV seams) and aim for 5–15k triangles. For
@@ -217,6 +219,34 @@ scan file ─► load.ts         merge meshes, centre, scale to radius 1, option
   * an estate's fields are park;
   * built-over fields are remembered;
   * orchards are only on gentle slopes.
+
+* **The land changing by itself.**
+  * **Fords, then bridges.** Where a way crosses a stream it is forded first (dotted stepping stones), bridged in timber once it's a made street, and in stone, with arches, once it's a main street or a made road.
+  * **Harbours silt up** 70 days after they're built, by time alone. At first silting was only checked when something was laid, so a town that had stopped growing never silted. The old pier is left stranded and dotted in marsh, with a sand bar across. The boats stop, and the town builds its next harbour at least 0.15 along the shore.
+  * **The year's weather.** In winter the snow comes 0.12 down the hills below the snowline and the lakes freeze; in spring the wet meadows flood bluer. It uses the same year of 8 turns as the ploughland.
+* **Commons and enclosure.** Every town has a common, the nearest open ground past its square: unhedged, washed as heath, with gorse and a pond, and nothing built on it. At 35 houses it's enclosed, ruled with straight hedges into small fields and farmed, unless somebody tapped it first. Then it stays a green with trees round it, and at 60 houses a park with winding walks.
+* **Draining the marsh.** Tap a wet meadow of a town of 15 and it's drained with ruler-straight ditches and a main drain. After 2 days it's ploughland.
+* **Places with a life story.**
+  * **A castle** at 40 houses, on the highest ground within 0.35: a hatched mound, a six-sided curtain wall with towers and a keep. Nothing is built on its hill. It's a ruin, in broken lines, after 90 days.
+  * **An abbey.** Once a town has 30 houses, an abbey stands in the lowest quiet ground (by water if there is any) at least 0.3 from everyone, within 0.9 of the town. It has its church facing east, a cloister, fishponds downhill, and a grange farm down a track. It's a ruin after 100 days.
+  * **The road network.**
+    * Milestones every 0.07 along the roads.
+    * An inn where a road meets another way out in the country.
+    * A cemetery outside the walls of a town of 50, with rows of crosses in a dotted enclosure.
+    * Canals, along the level, between two towns of 40 within 1.3 of each other. They're pegged out, then dug, with a towpath and a lock at every rise of 0.02.
+* **The map itself.**
+  * **The survey.** Summits within 0.8 of each other are joined by the fine straight lines of the triangulation, and the limit of the survey, where the blank begins, is finely dotted.
+  * **The map matures** over 40 days:
+    * its washes grow richer;
+    * steep ground is engraved with hachures, closer and longer the steeper;
+    * the water is lined along surveyed shores, up to four lines, further apart the further out.
+* Tests (`test/history.test.ts`) check:
+  * a common stays open and unbuilt until the town encloses it at 35, and never if it was kept;
+  * the castle is on the nearest high ground, and nothing is built on it;
+  * the abbey stands apart from everyone;
+  * a canal's way is continuous;
+  * a harbour silts at its own time;
+  * the winter and spring floods come round.
 
 ## The reveal (ported from whatwesaved)
 

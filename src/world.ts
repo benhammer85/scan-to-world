@@ -12,7 +12,7 @@ import { TerrainEdits, applyDisplacement, type BrushOptions } from './interact/s
 import { Settlements, type TapResult } from './life/settlements';
 import { Countryside, type CountryTap } from './life/country';
 import { ESTATE, Landmarks, landmarkMarks } from './life/landmarks';
-import { countryMarks, seasonColour, turningMarks, type Turning, type Wash } from './life/countryMarks';
+import { countryMarks, isoLines, maturity, seasonColour, springFlood, turningMarks, winter, type Turning, type Wash } from './life/countryMarks';
 import { blockMarks, buildingMarks, harbourMarks, lookOf, ruinMarks, squareFrames, stallMarks, streetMarks, sunkenMarks, terraceMarks, wingMarks, yardPaths, backGardens, wayLine } from './life/buildingMarks';
 import { findWater, seaFor, snowLines, streamLines, waterLines, type Sea, type Water } from './nature/water';
 import { cableMarks, crossingFrames, crossingMarks, ferryRoute, movers, railMarks } from './life/buildingMarks';
@@ -163,7 +163,7 @@ export class TerrainWorld {
     this.snowEdge = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: SNOW_INK, transparent: true, opacity: 0.9, depthWrite: false }));
     this.sailing = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: TOWN_INK, depthWrite: false, transparent: true }));
     this.sailing.renderOrder = 2;
-    this.group.add(this.mesh, this.wash, this.seasonal, this.waterLines, this.snowEdge, this.lines.object, this.houseFill, this.townLines.object, this.sailing);
+    this.group.add(this.mesh, this.wash, this.seasonal, this.meadow, this.waterLines, this.snowEdge, this.lines.object, this.houseFill, this.townLines.object, this.sailing);
 
     this.baseHeights = extractHeights(this.topo, settings.height);
     this.heights = new Float32Array(this.topo.vertexCount);
@@ -177,7 +177,7 @@ export class TerrainWorld {
     this.settlements = new Settlements(this.topo, this.heights);
     this.settlements.setWater(this.water.wet, this.water.depth, this.water.stream, this.water.snow);
     this.country = new Countryside(this.topo, this.settlements, this.heights);
-    this.landmarks = new Landmarks(this.topo, this.settlements);
+    this.landmarks = new Landmarks(this.topo, this.settlements, this.heights, this.country);
     this.drawWater(false);
   }
 
@@ -345,6 +345,12 @@ export class TerrainWorld {
     if (st && Math.abs(st.day - this.seasonDay) > 0.02 && this.seasonal.userData.wash) {
       this.seasonDay = st.day;
       setWash(this.seasonal, this.seasonal.userData.wash, seasonColour(st.day));
+      if (this.meadow.userData.wash) setWash(this.meadow, this.meadow.userData.wash, floodTint(st.day));
+      // And the weather: snow down the hills in winter, the lakes frozen.
+      this.applySurface();
+      // The map matures: its water lined more finely as the world ages.
+      const m = Math.floor(maturity(st.day) * 4);
+      if (m !== this.lining) { this.lining = m; this.drawWater(false); }
     }
     if (this.waterFade < 1) {
       this.waterFade = Math.min(1, this.waterFade + dt / 0.9);
@@ -429,6 +435,7 @@ export class TerrainWorld {
     this.turning = [...country.turning, ...land.turning];
     setWash(this.wash, { positions: [...country.wash.positions, ...land.wash.positions], colours: [...country.wash.colours, ...land.wash.colours] });
     setWash(this.seasonal, country.seasonal, seasonColour(st.day));
+    setWash(this.meadow, country.meadow, floodTint(st.day));
     this.seasonDay = st.day;
     const marks = [
       ...country.lines,
@@ -479,7 +486,9 @@ export class TerrainWorld {
   /** Hand colour on the fields and woods; the ploughland's on its own, tinted by the season. */
   private wash = washMesh(0);
   private seasonal = washMesh(0);
+  private meadow = washMesh(0);
   private turning: Turning[] = [];
+  private lining = -1;
   private seasonDay = 0;
 
   private lastTownCentre(): THREE.Vector3 | null {
@@ -515,6 +524,33 @@ export class TerrainWorld {
     this.lines.setLines(lines, mode, from);
   }
 
+  /**
+   * Water-lining: as the map matures, the engraver lines the water along its
+   * shores, the lines further apart the further out, as old charts do. Only
+   * along surveyed shores.
+   */
+  private waterLining(): Polyline[] {
+    const st = this.settlements;
+    if (!st || !this.country) return [];
+    const m = maturity(st.day);
+    const count = Math.floor(m * 4);
+    if (!count) return [];
+    const near = this.country.nearPeople(), cellOf = this.country.land.cellOf, wet = this.water.wet, t = this.topo.triangles;
+    const toShore = distanceToShore(this.topo, wet);
+    const tris: number[] = [];
+    for (let i = 0; i < t.length; i += 3) {
+      const a = t[i], b = t[i + 1], c = t[i + 2];
+      if (!wet[a] || !wet[b] || !wet[c]) continue;
+      if (!near.has(cellOf[a]) && !near.has(cellOf[b]) && !near.has(cellOf[c])) continue;
+      if (Math.min(toShore[a], toShore[b], toShore[c]) > 0.05) continue;
+      tris.push(i);
+    }
+    const out: Polyline[] = [];
+    // Each line its own spacing: ever further out.
+    for (const at of [0.006, 0.013, 0.022, 0.034].slice(0, count)) out.push(...isoLines(this.topo, tris, (v) => toShore[v] - at + 1, 1, 0.0022));
+    return out;
+  }
+
   private drawWater(changed: boolean): void {
     // The water, and whatever it has taken: drowned houses and sunken
     // streets show through it in the water's own ink, like a drowned village.
@@ -526,6 +562,7 @@ export class TerrainWorld {
       ...(st ? buildingMarks(this.topo, this.heights, st.buildings, 'drowned') : []),
       ...(st ? wingMarks(this.topo, this.heights, st.buildings, 'drowned') : []),
       ...(st ? sunkenMarks(this.topo, st.streets, st, squareFrames(this.topo, st.streets, st.towns)) : []),
+      ...this.waterLining(),
     ];
     this.waterLines.geometry.dispose();
     this.waterLines.geometry = segments(lines);
@@ -588,6 +625,21 @@ export class TerrainWorld {
         arr.set([c.r, c.g, c.b], i * 3);
       }
     }
+    // The winter's snow comes down the hills below the snowline, and the lakes freeze.
+    const cold = this.settlements ? winter(this.settlements.day) : 0;
+    if (this.water && cold > 0.05 && this.sea.snowline !== undefined) {
+      const { remap } = this.topo, c = new THREE.Color(), white = new THREE.Color(SNOW_TINT), iceTint = new THREE.Color(ICE_TINT);
+      const reach = WEATHER.snowDrop * cold, line = this.sea.snowline;
+      for (let i = 0; i < remap.length; i++) {
+        const v = remap[i], h = this.heights[v];
+        if (this.water.snow[v]) continue;
+        if (this.water.wet[v] && !this.water.sea[v] && cold > WEATHER.freeze) { arr.set([iceTint.r, iceTint.g, iceTint.b], i * 3); continue; }
+        if (this.water.wet[v] || h < line - reach) continue;
+        const k = 0.75 * Math.min(1, (h - (line - reach)) / (reach * 0.4 + 1e-6));
+        c.setRGB(arr[i * 3], arr[i * 3 + 1], arr[i * 3 + 2]).lerp(white, k);
+        arr.set([c.r, c.g, c.b], i * 3);
+      }
+    }
     // Water tints the ground under it, deeper bluer.
     if (this.water) {
       // Mostly the water's own colour: a light tint over orange reads as mud.
@@ -596,6 +648,7 @@ export class TerrainWorld {
       for (let i = 0; i < remap.length; i++) {
         const v = remap[i];
         if (!this.water.wet[v] || this.water.ice[v]) continue;
+        if (!this.water.sea[v] && cold > WEATHER.freeze) continue; // frozen for the winter
         blue.copy(shallow).lerp(deep, Math.min(1, this.water.depth[v] / 0.25));
         c.setRGB(arr[i * 3], arr[i * 3 + 1], arr[i * 3 + 2]).lerp(blue, 0.88);
         arr.set([c.r, c.g, c.b], i * 3);
@@ -662,6 +715,34 @@ function multiplied(rgba: number[], tint?: [number, number, number]): number[] {
   for (let i = 0; i < rgba.length; i += 4) {
     const a = rgba[i + 3];
     for (let k = 0; k < 3; k++) out.push(1 - a * (1 - rgba[i + k] * (tint ? tint[k] : 1)));
+  }
+  return out;
+}
+
+/** The weather through the year: how far down the hills the winter snow comes, and how cold before the lakes freeze. */
+const WEATHER = { snowDrop: 0.12, freeze: 0.55 };
+
+/** The wet meadows in spring: flooded, a little bluer. */
+function floodTint(day: number): [number, number, number] {
+  const f = springFlood(day);
+  return [1 - 0.28 * f, 1 - 0.12 * f, 1];
+}
+
+/** For each wet vertex, how far it is to the shore over the water (0 on dry ground). */
+function distanceToShore(topo: Topology, wet: Uint8Array): Float32Array {
+  const n = topo.vertexCount, p = topo.positions, out = new Float32Array(n).fill(Infinity);
+  const queue: number[] = [];
+  for (let v = 0; v < n; v++) if (!wet[v]) { out[v] = 0; queue.push(v); }
+  // Relaxed breadth first: the reach wanted is a few edges, so this settles quickly.
+  for (let i = 0; i < queue.length; i++) {
+    const u = queue[i];
+    if (out[u] > 0.06) continue;
+    for (let k = topo.nbrOffsets[u]; k < topo.nbrOffsets[u + 1]; k++) {
+      const w = topo.nbrList[k];
+      if (!wet[w]) continue;
+      const nd = out[u] + Math.hypot(p[u * 3] - p[w * 3], p[u * 3 + 1] - p[w * 3 + 1], p[u * 3 + 2] - p[w * 3 + 2]);
+      if (nd < out[w]) { out[w] = nd; queue.push(w); }
+    }
   }
   return out;
 }

@@ -69,10 +69,21 @@ export const WOOD = {
   surveyed: 0.55,
 };
 
+/**
+ * Every town has its common: open grazing by the village, unhedged, with
+ * its pond and its gorse. When the town is big it is enclosed, ruled into
+ * small square fields, unless somebody has kept it (a tap), and then it is
+ * the village green, and in a city a park.
+ */
+export const COMMON = { enclose: 35, park: 60, least: 0.12 };
+
+/** A wet meadow of a town this big can be drained (a tap): straight ditches, and in time ploughland. */
+export const MARSH = { at: 15, dry: 2 };
+
 /** A year, in days (turns of the world): the fields' colour goes round with it. */
 export const SEASON = { days: 8 };
 
-export type Crop = 'arable' | 'pasture' | 'meadow' | 'terrace' | 'garden' | 'grazing' | 'orchard' | 'park';
+export type Crop = 'arable' | 'pasture' | 'meadow' | 'terrace' | 'garden' | 'grazing' | 'orchard' | 'park' | 'drained';
 
 export interface Cell {
   id: number;
@@ -155,7 +166,14 @@ export function cadastre(topo: Topology): Cadastre {
   return out;
 }
 
-export type CountryTap = 'spared' | 'felled' | 'planted';
+export type CountryTap = 'spared' | 'felled' | 'planted' | 'kept' | 'drained';
+
+export interface Common {
+  cell: number;
+  born: number;
+  kept?: number;
+  enclosed?: number;
+}
 
 export class Countryside {
   readonly land: Cadastre;
@@ -167,6 +185,12 @@ export class Countryside {
   readonly felled = new Set<number>();
   /** Fields the town has built over (cell -> day): the map remembers where their hedges ran. */
   readonly remembered = new Map<number, number>();
+  /** Each town's common. */
+  readonly commons = new Map<number, Common>();
+  /** Meadows drained (cell -> day). */
+  readonly drained = new Map<number, number>();
+  /** Ground the landmarks keep for themselves (a castle's hill, an abbey's close). */
+  reserved = new Set<number>();
   /** Ground that is the town's (streets, houses, squares, and a little round them), as of the last update. */
   townGround: Uint8Array;
   private slopeOf: Float32Array;
@@ -212,6 +236,7 @@ export class Countryside {
   /** What a field is, from its ground. */
   cropOf(cell: number): Crop {
     const c = this.land.cells[cell], claim = this.claims.get(cell);
+    if (this.drained.has(cell)) return 'drained';
     const { wet, stream, snow } = this.st.ground;
     const nearWater = c.vertices.some((v) => stream?.[v] || wet?.[v]);
     if (nearWater) return 'meadow';
@@ -231,6 +256,7 @@ export class Countryside {
   /** Is this cell wooded now? */
   isWood(cell: number): boolean {
     if (this.planted.has(cell)) return true;
+    for (const c of this.commons.values()) if (c.cell === cell) return false;
     if (this.claims.has(cell) || this.felled.has(cell)) return false;
     if (this.wetShare(cell) > FIELD.wet || this.builtShare(cell) > FIELD.built) return false;
     return this.slopeOf[cell] > WOOD.steep || hash(cell, 73) < WOOD.copse;
@@ -272,7 +298,18 @@ export class Countryside {
     if (cell < 0) return null;
     const { wet, stream, snow } = this.st.ground;
     if (wet?.[v] || stream?.[v] || snow?.[v]) return null;
+    const common = [...this.commons.values()].find((x) => x.cell === cell);
+    if (common && common.enclosed === undefined && common.kept === undefined) {
+      common.kept = this.st.day;
+      return 'kept';
+    }
     if (this.claims.has(cell)) {
+      // A wet meadow of a grown town is drained, not given up.
+      const owner = this.claims.get(cell)!.owner;
+      if (this.cropOf(cell) === 'meadow' && owner.startsWith('t') && this.st.size(Number(owner.slice(1))) >= MARSH.at) {
+        this.drained.set(cell, this.st.day);
+        return 'drained';
+      }
       this.claims.delete(cell);
       this.plant(cell);
       return 'spared';
@@ -296,10 +333,12 @@ export class Countryside {
     this.keepOut();
   }
 
-  /** Planted woods are kept: the settlements build nothing there. */
-  private keepOut(): void {
+  /** Planted woods and open commons are kept: the settlements build nothing there. Nor where a landmark stands. */
+  keepOut(): void {
     const mask = new Uint8Array(this.topo.vertexCount);
     for (const cell of this.planted.keys()) for (const v of this.land.cells[cell].vertices) mask[v] = 1;
+    for (const c of this.commons.values()) if (c.enclosed === undefined) for (const v of this.land.cells[c.cell].vertices) mask[v] = 1;
+    for (const v of this.reserved) mask[v] = 1;
     this.st.keepOut = mask;
   }
 
@@ -310,7 +349,7 @@ export class Countryside {
    */
   update(force = false): boolean {
     const st = this.st;
-    const key = `${st.buildings.length}|${st.streets.length}|${Math.floor(st.day / 0.1)}|${this.planted.size}|${this.felled.size}`;
+    const key = `${st.buildings.length}|${st.streets.length}|${Math.floor(st.day / 0.1)}|${this.planted.size}|${this.felled.size}|${st.towns.length}`;
     if (!force && key === this.lastKey) return false;
     this.lastKey = key;
     this.townGround = groundOf(this.topo, st);
@@ -332,6 +371,7 @@ export class Countryside {
       const age = st.day - (f.born ?? 0);
       owners.push({ id: `f${f.vertex}`, origin: f.vertex, want: Math.min(FARMLAND.fields, 1 + Math.floor(age / FARMLAND.every)), at: f.vertex });
     }
+    if (this.updateCommons()) changed = true;
     // In rounds, a field each, so towns next to each other share the land between them.
     const orders = new Map(owners.map((o) => [o.id, this.claimOrder(o.origin)]));
     for (let round = 0; round < 200; round++) {
@@ -352,6 +392,7 @@ export class Countryside {
   }
 
   private claimable(cell: number): boolean {
+    for (const c of this.commons.values()) if (c.cell === cell && c.enclosed === undefined) return false;
     return !this.planted.has(cell) && this.slopeOf[cell] < FIELD.tooSteep && this.wetShare(cell) <= FIELD.wet && this.builtShare(cell) <= FIELD.built;
   }
 
@@ -380,6 +421,32 @@ export class Countryside {
     return out;
   }
 
+  /** Each town's common, found when it is founded; enclosed when the town is big, unless kept. */
+  private updateCommons(): boolean {
+    const st = this.st, p = this.topo.positions;
+    let changed = false;
+    for (const t of st.towns) {
+      const had = this.commons.get(t.id);
+      if (!had) {
+        const cell = this.claimOrder(t.centre).find((cell) => {
+          const v = this.land.cells[cell].centre;
+          const d = Math.hypot(p[v * 3] - p[t.centre * 3], p[v * 3 + 1] - p[t.centre * 3 + 1], p[v * 3 + 2] - p[t.centre * 3 + 2]);
+          return d > COMMON.least && !this.claims.has(cell) && this.claimable(cell) && this.slopeOf[cell] < 0.4 && ![...this.commons.values()].some((x) => x.cell === cell);
+        });
+        if (cell === undefined) continue;
+        this.commons.set(t.id, { cell, born: st.day });
+        this.keepOut();
+        changed = true;
+      } else if (had.enclosed === undefined && had.kept === undefined && st.size(t.id) >= COMMON.enclose) {
+        had.enclosed = st.day;
+        this.claims.set(had.cell, { owner: `t${t.id}`, born: st.day, rank: 99 });
+        this.keepOut();
+        changed = true;
+      }
+    }
+    return changed;
+  }
+
   /** A grown town sends a farm out to a far field of its with no farm near it. One at a time. */
   private sendFarms(): boolean {
     const st = this.st, p = this.topo.positions;
@@ -397,6 +464,11 @@ export class Countryside {
     return false;
   }
 
+  commonTown(c: Common): number {
+    for (const [t, x] of this.commons) if (x === c) return t;
+    return 0;
+  }
+
   /** Everything the country's look depends on besides the claims, as one number. */
   signature(): number {
     let sig = this.claims.size * 1000;
@@ -406,6 +478,8 @@ export class Countryside {
     }
     for (const cell of this.planted.keys()) sig += Math.round(this.woodGrowth(cell) * 5) * 3;
     sig += this.remembered.size * 7;
+    for (const c of this.commons.values()) sig += 11 + (c.kept !== undefined ? 3 : 0) + (c.enclosed !== undefined ? 5 : 0) + (c.kept !== undefined && this.st.size(this.commonTown(c)) >= COMMON.park ? 2 : 0);
+    for (const day of this.drained.values()) sig += this.st.day - day >= MARSH.dry ? 13 : 17;
     return sig;
   }
 }
