@@ -12,6 +12,9 @@ import { TerrainEdits, applyDisplacement, type BrushOptions } from './interact/s
 import { Settlements, type TapResult } from './life/settlements';
 import { Countryside, type CountryTap } from './life/country';
 import { ESTATE, Landmarks, landmarkMarks } from './life/landmarks';
+import { gathering, STANDING, type Figure } from './life/figures';
+import { Stipple, stippleDots } from './render/stipple';
+import { StandingFigures } from './render/standing';
 import { countryMarks, isoLines, maturity, seasonColour, springFlood, turningMarks, winter, type Turning, type Wash } from './life/countryMarks';
 import { blockMarks, buildingMarks, harbourMarks, lookOf, ruinMarks, squareFrames, stallMarks, streetMarks, sunkenMarks, terraceMarks, wingMarks, yardPaths, backGardens, wayLine } from './life/buildingMarks';
 import { findWater, seaFor, snowLines, streamLines, waterLines, type Sea, type Water } from './nature/water';
@@ -163,7 +166,7 @@ export class TerrainWorld {
     this.snowEdge = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: SNOW_INK, transparent: true, opacity: 0.9, depthWrite: false }));
     this.sailing = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: TOWN_INK, depthWrite: false, transparent: true }));
     this.sailing.renderOrder = 2;
-    this.group.add(this.mesh, this.wash, this.seasonal, this.meadow, this.waterLines, this.snowEdge, this.lines.object, this.houseFill, this.townLines.object, this.sailing);
+    this.group.add(this.mesh, this.wash, this.seasonal, this.meadow, this.waterLines, this.snowEdge, this.lines.object, this.houseFill, this.townLines.object, this.sailing, this.standing.object, this.stipple.object);
 
     this.baseHeights = extractHeights(this.topo, settings.height);
     this.heights = new Float32Array(this.topo.vertexCount);
@@ -363,6 +366,7 @@ export class TerrainWorld {
   update(dt: number, now: number, diffusion: { rate: number; fade: number }, camera?: THREE.Camera, calm = true): void {
     this.lines.update(dt, camera);
     this.townLines.update(dt, camera);
+    this.standing.update(dt);
     // When the pen lifts, fill in what it has just drawn.
     const drawing = this.townLines.animating;
     if (this.townWasDrawing && !drawing) this.refreshFills();
@@ -498,16 +502,28 @@ export class TerrainWorld {
         ...crossingMarks(crossings),
         ...cableMarks(this.topo, st.cables),
       ];
+      if (STANDING.stipple) {
+        // Stipple: the built ground dotted, not its buildings drawn (see render/stipple.ts).
+        const built = new Set<Polyline>([...houses, ...blocks.lines.filter((m) => m.fill)]);
+        const dots = stippleDots([...built].flatMap((m) => m.fill ?? rectangleTris(m)));
+        return { look, frames, shown, crossings, lines: lines.filter((m) => !built.has(m)), solids: stalls, dots };
+      }
       const solids = [...houses, ...stalls, ...blocks.lines.filter((m) => m.fill)];
-      return { look, frames, shown, crossings, lines, solids };
+      return { look, frames, shown, crossings, lines, solids, dots: null as number[] | null };
     });
     this.crossings = town.crossings;
+    if (town.dots !== this.shownDots) { this.shownDots = town.dots; this.stipple.set(town.dots ?? []); }
     // The country follows the town only loosely: redrawn every few houses, not each one.
     const m = maturity(st.day);
     const country = this.layer('country', `${ground}|${detail}|${Math.floor(st.buildings.length / 5)}|${Math.floor(st.streets.length / 4)}|${c.signature()}|${c.claims.size}|${c.planted.size}|${c.felled.size}|${c.remembered.size}|${c.commons.size}|${c.drained.size}|${Math.floor(m * 10)}`,
-      () => countryMarks(this.topo, st, c, detail));
+      () => gathering(() => countryMarks(this.topo, st, c, detail)));
     const land = this.layer('land', `${ground}|${detail}|${lm.signature()}|${st.towns.map((t) => Math.floor(st.size(t.id) / 8)).join(',')}|${Math.floor(c.claims.size / 3)}|${st.harbours.length}|${st.harbours.filter((h) => h.silted !== undefined).length}|${st.farms.filter((f) => f.estate !== undefined).length}|${Math.floor(m * 4)}|${Math.floor(st.lookSignature() / 50)}`,
-      () => landmarkMarks(this.topo, this.heights, st, c, lm, town.frames, town.look, (x) => wayLine(this.topo, x, town.shown, town.frames, town.look), detail));
+      () => gathering(() => landmarkMarks(this.topo, this.heights, st, c, lm, town.frames, town.look, (x) => wayLine(this.topo, x, town.shown, town.frames, town.look), detail)));
+    // What stands up off the page: set again only when a layer it comes from was drawn again.
+    if (country.figures !== this.shownFigures[0] || land.figures !== this.shownFigures[1]) {
+      this.shownFigures = [country.figures, land.figures];
+      this.standing.set([...country.figures, ...land.figures]);
+    }
     this.turning = [...country.turning, ...land.turning];
     // Washes are set again only when their layer was drawn again.
     const washKey = `${this.layers.get('country')!.key}|${this.layers.get('land')!.key}`;
@@ -527,6 +543,11 @@ export class TerrainWorld {
     this.refreshFills();
   }
   private washKey = '';
+  /** Trees, spires, mills, keeps and lighthouses, standing up off the page as cutouts. */
+  readonly standing = new StandingFigures();
+  private shownFigures: Figure[][] = [[], []];
+  readonly stipple = new Stipple(TOWN_INK);
+  private shownDots: number[] | null = null;
 
   // ---- fills: what a map fills in, once the pen has drawn its outline
   private solid: { key: string; tris: number[] }[] = [];
@@ -736,6 +757,8 @@ export class TerrainWorld {
     this.material.dispose();
     this.lines.dispose();
     this.townLines.dispose();
+    this.standing.dispose();
+    this.stipple.dispose();
   }
 }
 

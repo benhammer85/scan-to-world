@@ -1,3 +1,4 @@
+import { STANDING } from './life/figures';
 import * as THREE from 'three';
 import { TerrainWorld, type SurfaceStyle, type WorldSettings } from './world';
 import { normaliseGeometry, triangleCount } from './mesh/geometry';
@@ -35,9 +36,15 @@ const view = () => ({ w: Math.max(1, stage.clientWidth || window.innerWidth), h:
 renderer.setSize(view().w, view().h, false);
 stage.appendChild(renderer.domElement);
 
+// `?flat` draws the map wholly in plan, as before its figures stood up; `?stipple` dots the towns. For comparing.
+const looks = new URLSearchParams(location.search);
+STANDING.on = !looks.has('flat');
+STANDING.stipple = looks.has('stipple');
+
 const scene = new THREE.Scene();
-/** The page a world is drawn on, and the older, darker paper of the atlas's chart of the heavens. */
-const PAGE = new THREE.Color('#f4efe4'), AGED = new THREE.Color('#dccaa4');
+/** The page a world is drawn on, and the atlas's chart of the heavens: the same paper a
+ *  shade warmer, as a different sheet from the same stock. Plain: no stains, no foxing. */
+const PAGE = new THREE.Color('#f4efe4'), AGED = new THREE.Color('#ebdfc6');
 scene.background = PAGE.clone();
 const camera = new THREE.PerspectiveCamera(40, view().w / view().h, 0.01, 100);
 
@@ -574,42 +581,14 @@ const sky = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBas
 const chart = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: '#8a7358', transparent: true, opacity: 0.0, depthWrite: false }));
 const stars = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: INK, transparent: true, opacity: 0.0, depthWrite: false }));
 const figuresOfStars = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: INK, transparent: true, opacity: 0.0, depthWrite: false }));
-const paper = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: agedPaper(), transparent: true, opacity: 0, depthWrite: false }));
-paper.renderOrder = -1;
-sky.frustumCulled = chart.frustumCulled = stars.frustumCulled = figuresOfStars.frustumCulled = paper.frustumCulled = false;
-scene.add(paper, sky, chart, stars, figuresOfStars);
+sky.frustumCulled = chart.frustumCulled = stars.frustumCulled = figuresOfStars.frustumCulled = false;
+scene.add(sky, chart, stars, figuresOfStars);
 /** How far the page has aged into the atlas's paper: 0 on a world, 1 on the chart. */
 let aged = 0;
 let leaving = false;
 /** How strong each part of the chart is inked, once the page has fully aged. */
-const CHART_INK = { rule: 0.5, stars: 0.85, figures: 0.2, paper: 1 };
+const CHART_INK = { rule: 0.5, stars: 0.85, figures: 0.2 };
 
-/** The chart's paper: paler in the middle, where it was handled least, browning to the
- *  page's aged edge; and a few foxing spots. Made once, small, and fading to nothing at its
- *  own edges so the sheet has no edge of its own. */
-function agedPaper(): THREE.Texture {
-  const n = 256, cv = document.createElement('canvas');
-  cv.width = cv.height = n;
-  const g = cv.getContext('2d')!;
-  const glow = g.createRadialGradient(n / 2, n / 2, 0, n / 2, n / 2, n * 0.5);
-  glow.addColorStop(0, 'rgba(246,236,212,0.75)');
-  glow.addColorStop(0.55, 'rgba(242,230,204,0.4)');
-  glow.addColorStop(1, 'rgba(236,222,192,0)');
-  g.fillStyle = glow; g.fillRect(0, 0, n, n);
-  let seed = 11;
-  const r = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-  for (let i = 0; i < 22; i++) {
-    const a = r() * 2 * Math.PI, d = Math.sqrt(r()) * n * 0.36;
-    const x = n / 2 + Math.cos(a) * d, y = n / 2 + Math.sin(a) * d, rad = 2 + r() * 8;
-    const spot = g.createRadialGradient(x, y, 0, x, y, rad);
-    spot.addColorStop(0, `rgba(135,90,45,${0.04 + r() * 0.07})`);
-    spot.addColorStop(1, 'rgba(135,90,45,0)');
-    g.fillStyle = spot; g.fillRect(x - rad, y - rad, rad * 2, rad * 2);
-  }
-  const tex = new THREE.CanvasTexture(cv);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
-}
 const ghosts = new THREE.Group();
 scene.add(ghosts);
 /** How the worlds are turned in the atlas, so each railway's stations face along it. */
@@ -717,9 +696,6 @@ function drawChart(): void {
   stars.geometry = skySegments(drawing.stars);
   figuresOfStars.geometry.dispose();
   figuresOfStars.geometry = skySegments(drawing.figures);
-  const R = (r + ATLAS.spacing) * 2.4;
-  paper.position.set(c.x, c.y, -1.7);
-  paper.scale.set(R, R, 1);
 }
 
 /** The page ages into the chart's paper as you rise into the atlas, and back as you go down to a world. */
@@ -731,8 +707,7 @@ function ageing(dt: number): void {
   (chart.material as THREE.LineBasicMaterial).opacity = CHART_INK.rule * aged;
   (stars.material as THREE.LineBasicMaterial).opacity = CHART_INK.stars * aged;
   (figuresOfStars.material as THREE.LineBasicMaterial).opacity = CHART_INK.figures * aged;
-  (paper.material as THREE.MeshBasicMaterial).opacity = CHART_INK.paper * aged;
-  chart.visible = stars.visible = figuresOfStars.visible = paper.visible = aged > 0;
+  chart.visible = stars.visible = figuresOfStars.visible = aged > 0;
 }
 
 /** Turn each world with a railway so its station faces along the line, a little towards you. */
@@ -891,7 +866,7 @@ function atlasFrame(dt: number, now: number): void {
     if (growth < 1) continue;
     const phase = (rw.a.length * 7 + rw.b.length * 3) % 10 / 10;
     const tr = trainAt(curve, seconds - rw.born - 3, phase);
-    lines.push(...trainLines(curve, tr.t, camera.position, scale));
+    lines.push(...trainLines(curve, tr.t, camera.position, scale, tr.dir));
     // Each time it comes in, it brings settlers to that end.
     if (tr.arrivals > rw.trips) {
       rw.trips = tr.arrivals;

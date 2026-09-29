@@ -1,13 +1,13 @@
 /**
  * The atlas: every world you have made, laid out together on one celestial
  * chart, and the uncharted ones still to make shown as dotted places. And the
- * celestial railway between worlds: it leaves a station on one world on ever
- * taller trestles, climbs off into the sky, passes a halfway station floating
- * in the empty paper, and comes down on trestles to the other. A train runs on
- * it, and brings settlers.
+ * celestial railway between worlds: it leaves a station on one world, climbs
+ * off into the sky, passes a halfway station, and comes down to the other. A
+ * train runs on it, and brings settlers.
  *
- * Drawn in the same sepia ink as the towns, as an old chart of the heavens
- * would draw a thing nobody ought to have built.
+ * Drawn as an old chart of the heavens draws a comet's course: a fine line
+ * marked with its places, the train a comet with its tail. The fancy is in
+ * the idea, never in the drawing (see STYLE.md).
  */
 import * as THREE from 'three';
 
@@ -18,10 +18,9 @@ export const ATLAS = {
   spacing: 5.2,
   /** The railway: how far out from each world it climbs before it turns for the other. */
   climb: 1.3,
-  /** The rails' gauge, a tie every so far, the trestles for this share of each end. */
-  gauge: 0.022,
-  tie: 0.05,
-  trestles: 0.24,
+  /** Its course is marked with a small ring every so far, and the train's tail is so long. */
+  place: 0.45,
+  tail: 0.3,
   /** The train: world units per second, and how long it stands at each end. */
   speed: 0.9,
   dwell: 2.5,
@@ -71,68 +70,48 @@ export function railwayCurve(a: End, b: End): THREE.CubicBezierCurve3 {
 }
 
 /**
- * The railway as drawn: two rails, their ties, trestles down to each world
- * near its ends (with cross-bracing), and the halfway station.
+ * The railway as drawn: as a chart of the heavens draws a comet's course, not
+ * as an engineer draws a bridge. A single fine line from station to station,
+ * with a small ring at every so far along it, as a comet's course is marked
+ * with its places night by night; a ring at each station; and at the halfway
+ * point the sign for a station, a ring with a dot in it. No trestles, no
+ * chains: the one fanciful thing is that the line is there at all.
  */
 export function railwayLines(curve: THREE.CubicBezierCurve3, centreA: V, centreB: V, eye: V, growth = 1, scale = 1): V[][] {
+  void centreA; void centreB;
   const out: V[][] = [];
-  const N = 120, pts = curve.getSpacedPoints(N), len = curve.getLength();
-  // Laid out from both ends at once, meeting in the middle as it is finished.
+  const N = 160, pts = curve.getSpacedPoints(N), len = curve.getLength();
+  // Laid from both ends at once, meeting in the middle as it is finished.
   const shown = Math.min(1, growth);
-  const side = (i: number): V => {
-    const t = pts[Math.min(N, i + 1)].clone().sub(pts[Math.max(0, i - 1)]).normalize();
-    const view = eye.clone().sub(pts[i]).normalize();
-    return new THREE.Vector3().crossVectors(t, view).normalize();
-  };
   const visible = (i: number) => i / N <= shown / 2 || i / N >= 1 - shown / 2;
-  for (const sgn of [1, -1]) {
-    let run: V[] = [];
-    for (let i = 0; i <= N; i++) {
-      if (!visible(i)) { if (run.length > 1) out.push(run); run = []; continue; }
-      run.push(pts[i].clone().addScaledVector(side(i), (sgn * ATLAS.gauge * scale) / 2));
-    }
-    if (run.length > 1) out.push(run);
+  const facing = (at: V) => {
+    const view = eye.clone().sub(at).normalize();
+    const u = new THREE.Vector3().crossVectors(view, Math.abs(view.z) < 0.9 ? new THREE.Vector3(0, 0, 1) : new THREE.Vector3(1, 0, 0)).normalize();
+    return { u, w: new THREE.Vector3().crossVectors(view, u).normalize() };
+  };
+  let run: V[] = [];
+  for (let i = 0; i <= N; i++) {
+    if (!visible(i)) { if (run.length > 1) out.push(run); run = []; continue; }
+    run.push(pts[i].clone());
   }
-  const every = Math.max(1, Math.round((ATLAS.tie * scale / len) * N));
-  for (let i = 0; i <= N; i += every) {
-    if (!visible(i)) continue;
-    const s = side(i);
-    out.push([pts[i].clone().addScaledVector(s, -ATLAS.gauge * scale * 0.9), pts[i].clone().addScaledVector(s, ATLAS.gauge * scale * 0.9)]);
+  if (run.length > 1) out.push(run);
+  // Its places along the way, and a station at each end.
+  const places = Math.max(2, Math.round(len / (ATLAS.place * scale)));
+  for (let k = 1; k < places; k++) {
+    const i = Math.round((k / places) * N);
+    if (!visible(i) || Math.abs(k / places - 0.5) < 0.5 / places) continue;
+    const { u, w } = facing(pts[i]);
+    circle(pts[i], u, w, 0.012 * scale, out);
   }
-  // Trestles: posts from the track down to the ground, taller as it climbs, braced across.
-  let prevFoot: V | null = null, prevTop: V | null = null;
-  for (let i = 0; i <= N; i += 3) {
-    const f = i / N;
-    const end = f < ATLAS.trestles ? centreA : f > 1 - ATLAS.trestles ? centreB : null;
-    if (!end || !visible(i)) { prevFoot = prevTop = null; continue; }
-    const top = pts[i];
-    const down = end.clone().sub(top).normalize();
-    // The foot: where the post meets the world, near enough (the world is about 1 across its middle).
-    const foot = end.clone().addScaledVector(down, -Math.max(0.98, 0));
-    if (top.distanceTo(end) < 1.03) { prevFoot = prevTop = null; continue; }
-    out.push([top.clone(), foot]);
-    if (prevFoot && prevTop) out.push([prevTop, foot], [prevFoot, top.clone()]);
-    prevFoot = foot; prevTop = top.clone();
+  for (const i of [0, N]) {
+    const { u, w } = facing(pts[i]);
+    circle(pts[i], u, w, 0.02 * scale, out);
   }
-  // The halfway station: a platform floating in the sky, its little house, and its lamp.
+  // The halfway station: the sign for one, a ring with a dot in it.
   if (shown >= 1) {
-    const m = curve.getPointAt(0.5), t = curve.getTangentAt(0.5), s = side(Math.round(N / 2));
-    const up = new THREE.Vector3().crossVectors(s, t).normalize();
-    const k = scale, g = ATLAS.gauge * k;
-    const box = (c: V, u: V, w: V, a: number, b: number) => {
-      const q = [[-1, -1], [1, -1], [1, 1], [-1, 1], [-1, -1]].map(([i, j]) => c.clone().addScaledVector(u, a * i).addScaledVector(w, b * j));
-      out.push(q);
-    };
-    box(m.clone().addScaledVector(s, g * 2.2), t, s, 0.09 * k, 0.02 * k);
-    box(m.clone().addScaledVector(s, g * 2.2 + 0.05 * k), t, s, 0.035 * k, 0.022 * k);
-    const lamp = m.clone().addScaledVector(s, -g * 2.2);
-    out.push([lamp, lamp.clone().addScaledVector(up, 0.07 * k)]);
-    circle(lamp.clone().addScaledVector(up, 0.08 * k), t, up, 0.012 * k, out);
-    // And the chains it hangs from, going up into nothing, as if from a hook in the sky.
-    for (const d of [-0.08, 0.08]) {
-      const p = m.clone().addScaledVector(t, d * k).addScaledVector(s, g * 2.2);
-      out.push(...dashed([p, p.clone().addScaledVector(up, 0.35 * k)], 0.012 * k, 0.012 * k));
-    }
+    const m = curve.getPointAt(0.5), { u, w } = facing(m);
+    circle(m, u, w, 0.032 * scale, out);
+    circle(m, u, w, 0.006 * scale, out);
   }
   return out;
 }
@@ -149,30 +128,35 @@ export function trainAt(curve: THREE.CubicBezierCurve3, seconds: number, phase: 
   return { t: 0, dir: -1, arrivals };
 }
 
-/** The train, drawn: an engine with its funnel, and two carriages. */
-export function trainLines(curve: THREE.CubicBezierCurve3, t: number, eye: V, scale = 1): V[][] {
+/**
+ * The train, drawn as a comet is: a small head, and a fine tail of three
+ * lines streaming back along its course behind it, whichever way it goes.
+ */
+export function trainLines(curve: THREE.CubicBezierCurve3, t: number, eye: V, scale = 1, dir = 1): V[][] {
   const out: V[][] = [];
   const len = curve.getLength();
-  for (let k = 0; k < 3; k++) {
-    const u = THREE.MathUtils.clamp(t - (k * 0.07 * scale) / len, 0, 1);
-    const c = curve.getPointAt(u), tan = curve.getTangentAt(u);
-    const view = eye.clone().sub(c).normalize(), s = new THREE.Vector3().crossVectors(tan, view).normalize();
-    const up = new THREE.Vector3().crossVectors(s, tan).normalize();
-    const z = scale, lift = c.clone().addScaledVector(up, 0.018 * z);
-    const q = [[-1, -1], [1, -1], [1, 1], [-1, 1], [-1, -1]].map(([i, j]) => lift.clone().addScaledVector(tan, 0.03 * z * i).addScaledVector(up, 0.013 * z * j));
-    out.push(q);
-    if (k === 0) {
-      const f = lift.clone().addScaledVector(tan, 0.018 * z).addScaledVector(up, 0.013 * z);
-      out.push([f, f.clone().addScaledVector(up, 0.018 * z)]);
-      // A little smoke behind it, in puffs.
-      for (let j = 1; j <= 3; j++) circle(f.clone().addScaledVector(up, (0.02 + j * 0.018) * z).addScaledVector(tan, -j * 0.02 * z), tan, up, (0.006 + j * 0.003) * z, out);
+  const head = curve.getPointAt(THREE.MathUtils.clamp(t, 0, 1));
+  const view = eye.clone().sub(head).normalize();
+  const tan = curve.getTangentAt(THREE.MathUtils.clamp(t, 0, 1)).multiplyScalar(dir);
+  const side = new THREE.Vector3().crossVectors(tan, view).normalize();
+  circle(head, side, new THREE.Vector3().crossVectors(view, side).normalize(), 0.014 * scale, out);
+  const tail = ATLAS.tail * scale;
+  for (const spread of [-1, 0, 1]) {
+    const line: V[] = [];
+    for (let j = 0; j <= 8; j++) {
+      const back = (j / 8) * tail;
+      const u = THREE.MathUtils.clamp(t - (dir * back) / len, 0, 1);
+      line.push(curve.getPointAt(u).addScaledVector(side, spread * 0.018 * scale * (j / 8)));
     }
+    // Starting at the head's rim, not its middle.
+    line[0] = head.clone().addScaledVector(tan, -0.014 * scale).addScaledVector(side, spread * 0.006 * scale);
+    out.push(line);
   }
   return out;
 }
 
 /**
- * The chart itself, on its own aged paper: a faint graticule round the
+ * The chart itself: a faint graticule round the
  * middle, as a celestial chart is ruled; stars in ink, most of them dots and
  * the brighter ones crosses; and here and there a constellation's figure,
  * joined in faint lines that stop short of each star, as an engraver would.

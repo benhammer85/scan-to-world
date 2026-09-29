@@ -7,6 +7,16 @@ terrain around with your finger.
 The rule the code sticks to: **terrain always comes from the scanned geometry**. Nothing
 recognises "this is an orange" and swaps in a library mesh.
 
+## The look
+
+The look follows **[STYLE.md](STYLE.md)**. The world is a survey sheet of about 1780–1850, and the atlas a star atlas of the same years. Every new mark has to pass one test: would a surveyor of about 1820 have drawn it this way?
+
+* **Plan and profile.** The ground is drawn in plan, from above. Trees, church towers and spires, windmills (with turning sails), castle keeps and lighthouses stand up off the world as engraved cutouts. They face you, as the profile symbols on an old map do. They are drawn in one batch from a small sheet of glyphs (`src/render/standing.ts`).
+* **Three looks to compare**, chosen in the address:
+  * `/` is the default: standing figures, carmine buildings.
+  * `?stipple` dots the towns instead of drawing their buildings, as a small-scale survey sheet does. Development reads as density.
+  * `?flat` draws everything in plan, as before the figures stood up.
+
 ## Run it
 
 ```bash
@@ -28,10 +38,10 @@ The site is published to GitHub Pages from `main` by `.github/workflows/pages.ym
 * a last place for your own scan.
 
 **The atlas and the celestial railway** (`src/atlas/atlas.ts`). Pinch out past a world and the camera pulls back to a celestial chart: every world you have made, on a dotted graticule among the stars, and the specimens not yet made as uncharted, dotted places with their figures.
-* **The chart's paper:** as you rise into the atlas, the page ages to a darker, browner paper with a little foxing. Stars are inked as dots, and the brighter ones as small crosses. Faint constellation lines stop just short of each star, as on an engraved chart. The stars are placed by a fixed rule on a fixed grid, so the sky stays put as more worlds are added.
+* **The chart's paper:** as you rise into the atlas, the page turns a shade warmer: the same stock, plain, with no stains or foxing. Stars are inked as dots, and the brighter ones as small crosses. Faint constellation lines stop just short of each star, as on an engraved chart. The stars are placed by a fixed rule on a fixed grid, so the sky stays put as more worlds are added.
 * **In the atlas:** tap a world to fly down into it, tap an uncharted place to make it, and pinch in to go back.
-* **Laying a railway:** drag from one world to another. The line leaves a station at the town facing the other world (or founds one there), climbs off on trestles, and bows across the chart past a halfway station hung on chains from nothing. It comes down onto the other world, and is laid from both ends to meet in the middle.
-* **The train** runs on it, out and back, and each time it comes in, its settlers grow the town at that end.
+* **Laying a railway:** drag from one world to another. The line leaves a station at the town facing the other world (or founds one there), and is laid from both ends to meet in the middle. It is drawn the way a star atlas draws a comet's course: a fine line with small rings marking its places, a ring at each station, and the sign for a station at its halfway point.
+* **The train** is drawn as a comet with a thin tail. It runs out and back, and each time it comes in, its settlers grow the town at that end.
 * **Facing:** in the atlas each world turns so its station faces along its line.
 * **In a world:** you can see the line going off into the sky.
 * Its details are drawn to the eye, so a train is still a train from the chart.
