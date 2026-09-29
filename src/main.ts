@@ -79,7 +79,7 @@ function setWorld(geometry: THREE.BufferGeometry, map: THREE.Texture | null, nam
   $<HTMLInputElement>('smoothing').value = String(settings.height.smoothing);
 
   world = new TerrainWorld(geometry.clone(), map, { ...settings, height: { ...settings.height } }, facingPoint());
-  world.lines.pace = pace;
+  world.setPace(pace);
   spin.set(0, 0);
   scene.add(world.group);
   updateStats();
@@ -142,8 +142,12 @@ const axisUp = new THREE.Vector3();
 const axisRight = new THREE.Vector3();
 const turn = new THREE.Quaternion();
 
+/** Days per radian turned: a full turn is a day. */
+const DAYS_PER_RADIAN = 1 / (2 * Math.PI);
+
 function rotateWorld(ax: number, ay: number): void {
   if (!world) return;
+  world.advance(Math.hypot(ax, ay) * DAYS_PER_RADIAN);
   axisUp.set(0, 1, 0);
   axisRight.set(1, 0, 0).applyQuaternion(camera.quaternion);
   turn.setFromAxisAngle(axisUp, ax);
@@ -153,10 +157,21 @@ function rotateWorld(ax: number, ay: number): void {
 }
 
 let held: { point: THREE.Vector3; normal: THREE.Vector3; radius: number; since: number } | null = null;
+let flash: { point: THREE.Vector3; normal: THREE.Vector3; since: number; refused: boolean } | null = null;
 let touched = false;
 
 const gestures = new GestureRecognizer(
   {
+    tap(x, y) {
+      firstTouch();
+      spin.set(0, 0);
+      const hit = pickAt(x, y);
+      if (!hit?.face || !world) return;
+      const r = world.tap(hit.point);
+      // The ring answers every tap, refused or not, so a tap is never ignored.
+      const normal = hit.face.normal.clone().transformDirection(world.mesh.matrixWorld);
+      flash = { point: hit.point.clone(), normal, since: performance.now(), refused: r.kind === 'refused' };
+    },
     spin(dx, dy) {
       firstTouch();
       spin.set(0, 0);
@@ -294,7 +309,7 @@ $('replay').addEventListener('click', () => world?.replay(facingPoint()));
 $<HTMLInputElement>('pace').value = String(pace);
 $<HTMLInputElement>('pace').addEventListener('input', (e) => {
   pace = Number((e.target as HTMLInputElement).value);
-  if (world) world.lines.pace = pace;
+  world?.setPace(pace);
   try { localStorage.setItem('scan-to-world.pace', String(pace)); } catch { /* private window */ }
 });
 
@@ -331,11 +346,23 @@ renderer.setAnimationLoop(() => {
       holdRing.lookAt(held.point.clone().add(held.normal));
       holdRing.scale.setScalar(held.radius * (0.6 + 0.4 * grow));
       mat.opacity = 0.75 * grow;
+    } else if (flash) {
+      // A tap: a small ring that opens and fades. Grey if the ground refused.
+      const t = (now - flash.since) / 500;
+      holdRing.position.copy(flash.point).addScaledVector(flash.normal, 0.01);
+      holdRing.lookAt(flash.point.clone().add(flash.normal));
+      holdRing.scale.setScalar(0.03 + 0.05 * Math.min(1, t));
+      mat.color.set(flash.refused ? '#8a8578' : '#c8541a');
+      mat.opacity = 0.8 * Math.max(0, 1 - t);
+      if (t >= 1) { flash = null; mat.color.set('#c8541a'); }
     } else {
       mat.opacity = Math.max(0, mat.opacity - dt * 3);
     }
 
-    world.update(dt, now, { rate: 30, fade: 0.15 }, camera);
+    // Calm is when nothing is being held and the world has nearly stopped:
+    // that's when the pen comes to ink the town.
+    const calm = !held && gestures.current !== 'spinning' && spin.length() < 0.6;
+    world.update(dt, now, { rate: 30, fade: 0.15 }, camera, calm);
     if (now - lastStats > 500 && !$('panel').hidden) { lastStats = now; updateStats(); }
   }
 

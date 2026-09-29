@@ -1,6 +1,7 @@
 /**
  * Touch and motion, with no modes and no buttons.
  *
+ *   tap             "people here": found a town, or grow the one you touched
  *   drag            turn the world (with momentum)
  *   hold still      press into the ground, deeper the longer you hold
  *   hold, then pull pull the ground up; how far you pull is how high it goes,
@@ -15,6 +16,8 @@
  */
 
 export interface GestureSink {
+  /** A short touch that didn't move. */
+  tap(x: number, y: number): void;
   /** Pixels dragged since the last call. */
   spin(dx: number, dy: number): void;
   /** Momentum at release, in pixels per second. */
@@ -128,6 +131,7 @@ export class GestureRecognizer {
       const fresh = t - this.last.t < 80;
       this.sink.fling(fresh ? this.velocity.x : 0, fresh ? this.velocity.y : 0);
     }
+    if (this.phase === 'pending' && this.pointers.size === 0) this.sink.tap(this.start.x, this.start.y);
     this.endGrab();
     if (this.pointers.size === 0) this.phase = 'idle';
     else if (this.phase !== 'multi') this.phase = 'multi'; // finish lifting before anything new starts

@@ -4,6 +4,7 @@ import { GESTURE, GestureRecognizer, type GestureSink } from '../src/interact/ge
 function recorder(onObject = true) {
   const log: string[] = [];
   const sink: GestureSink = {
+    tap: () => log.push('tap'),
     spin: () => log.push('spin'),
     fling: (vx) => log.push(vx === 0 ? 'stop' : 'fling'),
     zoom: (f) => log.push(f > 1 ? 'closer' : 'further'),
@@ -53,6 +54,15 @@ describe('gestures', () => {
     g.move(1, 100, 70, t);    // back down again: the pull is elastic
     g.up(1, 100, 70, t + 10);
     expect(seq()).toEqual(['grab', 'pull:20', 'pull:60', 'pull:30', 'release']);
+  });
+
+  it('a short touch that does not move is a tap', () => {
+    const { g, seq } = recorder();
+    g.down(1, 100, 100, 0);
+    const t = hold(g, 0, GESTURE.holdMs - 60);
+    g.move(1, 103, 101, t);
+    g.up(1, 103, 101, t + 10);
+    expect(seq()).toEqual(['tap']);
   });
 
   it('holding off the object does nothing until it moves', () => {

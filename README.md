@@ -28,7 +28,8 @@ There are no buttons, modes or menus. The screen is the object and nothing else.
 
 | Gesture | What it does |
 |---|---|
-| Drag | Turns the world, with momentum when you let go |
+| Tap | "People here." Founds a hamlet, or grows the town you touched. The ground decides whether and where |
+| Drag | Turns the world, and turning is time: a full turn is a day, and towns grow as the days pass |
 | Hold still on the object | Presses into the ground, deeper the longer you hold |
 | Hold, then pull | Pulls the ground up. How far you pull is how high it goes, and moving back lets it down again |
 | Pinch or scroll | Comes closer. The brush is a fixed size on screen, so closer means finer edits |
@@ -48,7 +49,8 @@ scan file ─► load.ts         merge meshes, centre, scale to radius 1, option
           ─► + sculpt.ts     touch edit layer (Gaussian / diffusion), optional surface displacement
           ─► contours.ts     marching triangles + segment chaining  → Polyline[]
           ─► plotterLines.ts stroke-reveal shader (arc length + per-line timing)
-          ─► placement.ts    props pinned by barycentric coords, aligned to surface normal
+          ─► settlements.ts  towns: founded by a tap, grown by turning, on ground gentle enough to build
+          ─► buildingMarks.ts buildings as pen marks along the contours
 ```
 
 `src/world.ts` connects these stages for one object. `src/main.ts` handles the scene, UI and input.
@@ -61,7 +63,8 @@ scan file ─► load.ts         merge meshes, centre, scale to radius 1, option
   * Values are normalised with a 2% percentile clip so scan spikes don't flatten everything. **This is the stage that needs visual tuning.**
 * **Contours.** Levels sit at fixed multiples of `1 / bands`. Editing bends existing lines or adds new levels, and the rest stay put. Holes in a scan give open polylines, which are handled.
 * **Live reshaping.** Brushing updates the edit field every frame. Contour extraction is throttled to about every 70 ms. Rebuilt lines appear fully drawn instead of replaying the plot.
-* **Placement.** The cheap version: no remeshing or quad grid. Props store `(triangle, barycentric)`, so they ride along when the surface is sculpted.
+* **Settlements.** A tap founds a town on the nearest buildable ground within reach, or refuses with a grey ring. Buildable means gentler than whichever is higher: the object's own 60th-percentile slope, or an absolute floor, so gentle ground is always buildable. Towns grow outward along the cheapest ground by path cost (climbing and height cost more), keep a fixed spacing in world units, and never take a building back. Growth is batch-independent (one day in one step builds the same town as a hundred steps), and founding a town moves nothing in another. All of this is tested. Buildings sit on vertices, so they ride the ground when it's sculpted. They're pencilled in while the world turns and inked by their own pen once it's calm. On the orange, 83% of the surface is buildable, and the flank of a pulled-up mountain measured 27 of 27 vertices refused.
+* **Next: streets.** A hamlet without streets reads as a scatter of plots. The next step is streets that grow between the buildings, following the contours, as in whatwesaved.
 
 ## The reveal (ported from whatwesaved)
 

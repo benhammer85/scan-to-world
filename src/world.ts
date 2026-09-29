@@ -6,9 +6,10 @@ import * as THREE from 'three';
 import { buildTopology, type Topology } from './mesh/topology';
 import { extractHeights, type HeightOptions } from './terrain/heightfield';
 import { extractContours } from './terrain/contours';
-import { PlotterLines, type RevealMode } from './render/plotterLines';
+import { PlotterLines, defaultPlotterStyle, type RevealMode } from './render/plotterLines';
 import { TerrainEdits, applyDisplacement, type BrushOptions } from './interact/sculpt';
-import { Placement } from './interact/placement';
+import { Settlements, type TapResult } from './life/settlements';
+import { buildingMarks } from './life/buildingMarks';
 
 export type SurfaceStyle = 'scan' | 'paper' | 'elevation';
 
@@ -35,7 +36,12 @@ export class TerrainWorld {
   readonly topo: Topology;
   readonly edits: TerrainEdits;
   readonly lines = new PlotterLines();
-  readonly placement: Placement;
+  readonly settlements: Settlements;
+  /** The town has its own pen, so building never waits on the terrain's plot. */
+  readonly townLines = new PlotterLines({ ...defaultPlotterStyle, ink: '#15151c', inkHigh: '#15151c', indexEvery: 1 });
+  private townDirty = false;
+  private lastTownBuild = 0;
+  private townFrom: THREE.Vector3 | null = null;
 
   private baseHeights: Float32Array;
   readonly heights: Float32Array;
@@ -76,9 +82,7 @@ export class TerrainWorld {
 
     this.material = new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0, vertexColors: true });
     this.mesh = new THREE.Mesh(geometry, this.material);
-    this.placement = new Placement(this.mesh);
-    this.mesh.add(this.placement.group);
-    this.group.add(this.mesh, this.lines.object);
+    this.group.add(this.mesh, this.lines.object, this.townLines.object);
 
     this.baseHeights = extractHeights(this.topo, settings.height);
     this.heights = new Float32Array(this.topo.vertexCount);
@@ -87,6 +91,28 @@ export class TerrainWorld {
     // Unlike the map app, whose reveal skips the country, the terrain here is
     // the player's own object and the thing they came to see, so it is plotted.
     this.rebuildContours('plot', penFrom);
+    this.settlements = new Settlements(this.topo, this.heights);
+  }
+
+  setPace(pace: number): void {
+    this.lines.pace = pace;
+    this.townLines.pace = pace;
+  }
+
+  /** "People here." The ground decides whether and where. */
+  tap(worldPoint: THREE.Vector3): TapResult {
+    const local = this.mesh.worldToLocal(worldPoint.clone());
+    const r = this.settlements.tap([local.x, local.y, local.z]);
+    if (r.kind !== 'refused') {
+      this.townDirty = true;
+      this.townFrom = local;
+    }
+    return r;
+  }
+
+  /** Time passes as the world turns. */
+  advance(days: number): void {
+    if (this.settlements.advance(days) > 0) this.townDirty = true;
   }
 
   get triangleCount(): number {
@@ -187,8 +213,9 @@ export class TerrainWorld {
   }
 
   /** Per-frame update. `diffusion` controls how diffuse-brush edits spread and fade. */
-  update(dt: number, now: number, diffusion: { rate: number; fade: number }, camera?: THREE.Camera): void {
+  update(dt: number, now: number, diffusion: { rate: number; fade: number }, camera?: THREE.Camera, calm = true): void {
     this.lines.update(dt, camera);
+    this.townLines.update(dt, camera);
     const moving = this.edits.relax(dt, diffusion.rate, diffusion.fade);
     if (moving) this.markEdited();
 
@@ -203,7 +230,7 @@ export class TerrainWorld {
       }
       this.syncRenderGeometry();
       if (this.settings.surface === 'elevation') this.applySurface();
-      this.placement.refresh();
+      if (this.settlements?.buildings.length) this.townDirty = true; // they ride the ground
     }
 
     // Contour extraction is the expensive bit: throttle it while the player drags.
@@ -221,6 +248,32 @@ export class TerrainWorld {
       this.rebuildContours('ink', this.strokeFrom ?? undefined);
       this.strokeFrom = null;
     }
+
+    // New buildings are pencilled in while the world is turning or being
+    // worked, and inked once it's calm, from where the town was touched.
+    if (this.townDirty) {
+      if (calm) {
+        this.townDirty = false;
+        this.rebuildTown('ink');
+      } else if (now - this.lastTownBuild > 150) {
+        this.rebuildTown('live');
+      }
+    }
+  }
+
+  private rebuildTown(mode: RevealMode): void {
+    this.lastTownBuild = performance.now();
+    const marks = buildingMarks(this.topo, this.heights, this.settlements.buildings);
+    const from = this.townFrom ?? this.lastTownCentre();
+    this.townLines.setLines(marks, mode, from ?? undefined);
+    if (mode === 'ink') this.townFrom = null;
+  }
+
+  private lastTownCentre(): THREE.Vector3 | null {
+    const b = this.settlements.buildings.at(-1);
+    if (!b) return null;
+    const c = this.settlements.towns[b.town].centre * 3, p = this.topo.positions;
+    return new THREE.Vector3(p[c], p[c + 1], p[c + 2]);
   }
 
   private recomputeHeights(): void {
@@ -289,6 +342,7 @@ export class TerrainWorld {
     this.mesh.geometry.dispose();
     this.material.dispose();
     this.lines.dispose();
+    this.townLines.dispose();
   }
 }
 
