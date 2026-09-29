@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
     <title>Scan-to-World</title>
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
     <link rel="manifest" href="/manifest.webmanifest" />
@@ -85,7 +85,12 @@
       </div>
     </aside>
 
-    <p id="hint">tap to sow (the ground decides: people, a farm, a wood) · tap the paper around it to bring your own scan · tap a field to let it go wild, a wood to fell it, a farm to make it a country house, a common to keep it, a wet meadow to drain it · drag or arrow keys to turn the days · hold to press in · hold and pull to raise · pinch to come closer</p>
+    <p id="hint">tap to sow (the ground decides: people, a farm, a wood) · tap the paper around it for other worlds, or your own scan · tap a field to let it go wild, a wood to fell it, a farm to make it a country house, a common to keep it, a wet meadow to drain it · drag or arrow keys to turn the days · hold to press in · hold and pull to raise · pinch to come closer</p>
+    <div id="cabinet" hidden>
+      <div class="plate">
+        <div id="figures"></div>
+      </div>
+    </div>
     <div id="toast" hidden></div>
     <script type="module" src="/src/main.ts"></script>
   </body>

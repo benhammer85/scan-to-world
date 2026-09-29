@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { TerrainWorld, type SurfaceStyle, type WorldSettings } from './world';
 import { decimate, loadScanFile, normaliseGeometry, triangleCount } from './mesh/load';
 import { makeDemoOrange } from './demo/orange';
+import { SPECIMENS } from './demo/specimens';
 import { GestureRecognizer } from './interact/gestures';
 import { buildTopology } from './mesh/topology';
 import { chooseHeightMode, type HeightMode } from './terrain/heightfield';
@@ -21,12 +22,16 @@ const stage = $('stage');
 if (!document.createElement('canvas').getContext('webgl2')) showTrouble('this browser has no WebGL 2, which the map needs to draw.');
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.setSize(window.innerWidth, window.innerHeight);
+// Sized to the stage as laid out, not to the window as first reported: an
+// iPhone opened from the home screen reports half its height at first, and
+// the world was drawn in the top half only.
+const view = () => ({ w: Math.max(1, stage.clientWidth || window.innerWidth), h: Math.max(1, stage.clientHeight || window.innerHeight) });
+renderer.setSize(view().w, view().h, false);
 stage.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color('#f4efe4');
-const camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.01, 100);
+const camera = new THREE.PerspectiveCamera(40, view().w / view().h, 0.01, 100);
 
 scene.add(new THREE.HemisphereLight('#fffaf0', '#8a7a66', 1.6));
 const sun = new THREE.DirectionalLight('#ffffff', 1.6);
@@ -69,10 +74,28 @@ let statsName = '';
 let pace = 1;
 try { pace = Number(localStorage.getItem('scan-to-world.pace')) || 1; } catch { /* private window */ }
 
-function setWorld(geometry: THREE.BufferGeometry, map: THREE.Texture | null, name: string): void {
+/** Every world made this session, by name: going back to one finds it as it was left. */
+const kept = new Map<string, TerrainWorld>();
+
+/** Go to a world already made, if there is one of this name. */
+function returnTo(name: string): boolean {
+  const w = kept.get(name);
+  if (!w) return false;
+  if (world) scene.remove(world.group);
+  world = w;
+  statsName = name;
+  spin.set(0, 0);
+  scene.add(world.group);
+  updateStats();
+  if (import.meta.env.DEV) (window as unknown as { world: TerrainWorld }).world = world;
+  return true;
+}
+
+function setWorld(geometry: THREE.BufferGeometry, map: THREE.Texture | null, name: string, heightMode?: HeightMode): void {
   if (world) {
     scene.remove(world.group);
-    world.dispose();
+    // A world kept to come back to isn't thrown away; one being remade (decimated, say) is.
+    if (kept.get(name) === world) { kept.delete(name); world.dispose(); }
   }
   sourceGeometry = geometry;
   sourceMap = map;
@@ -82,12 +105,13 @@ function setWorld(geometry: THREE.BufferGeometry, map: THREE.Texture | null, nam
 
   // The object decides how its bumps become altitude, not a menu.
   const pos = geometry.attributes.position.array as ArrayLike<number>;
-  const mode = chooseHeightMode(buildTopology(pos, geometry.index?.array ?? null));
+  const mode = heightMode ?? chooseHeightMode(buildTopology(pos, geometry.index?.array ?? null));
   settings.height = { ...settings.height, mode, smoothing: mode === 'curvature' ? 6 : 2 };
   $<HTMLSelectElement>('height-mode').value = mode;
   $<HTMLInputElement>('smoothing').value = String(settings.height.smoothing);
 
   world = new TerrainWorld(geometry.clone(), map, { ...settings, height: { ...settings.height } }, facingPoint());
+  kept.set(name, world);
   world.setPace(pace);
   spin.set(0, 0);
   scene.add(world.group);
@@ -124,7 +148,7 @@ function placeCamera(): void {
 /** World units per screen pixel at the object's surface. */
 function worldPerPixel(): number {
   const d = Math.max(0.2, dist - 1);
-  return (2 * d * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)) / window.innerHeight;
+  return (2 * d * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)) / view().h;
 }
 
 /** The point of the object nearest the viewer: where a first plot begins. */
@@ -175,8 +199,8 @@ const gestures = new GestureRecognizer(
       firstTouch();
       spin.set(0, 0);
       const hit = pickAt(x, y);
-      // A tap on the paper round the world, not on it: bring your own scan.
-      if (!hit?.face) { $<HTMLInputElement>('pick').click(); return; }
+      // A tap on the paper round the world, not on it: the cabinet of specimens.
+      if (!hit?.face) { openCabinet(); return; }
       if (!world) return;
       const r = world.tap(hit.point);
       // The ring answers every tap, refused or not, so a tap is never ignored.
@@ -259,11 +283,18 @@ window.addEventListener('drop', (e) => {
   if (file) openScan(file);
 });
 
-window.addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
+function fit(): void {
+  const { w, h } = view();
+  const now = renderer.getSize(new THREE.Vector2());
+  if (now.x === w && now.y === h) return;
+  camera.aspect = w / h;
   camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-});
+  renderer.setSize(w, h, false);
+}
+window.addEventListener('resize', fit);
+window.addEventListener('orientationchange', () => setTimeout(fit, 250));
+window.visualViewport?.addEventListener('resize', fit);
+new ResizeObserver(fit).observe(stage);
 
 function firstTouch(): void {
   if (touched) return;
@@ -417,4 +448,87 @@ renderer.setAnimationLoop(() => {
 // ---------------------------------------------------------------- boot
 frameObject();
 worldAtHome = worldPerPixel();
-setWorld(normaliseGeometry(makeDemoOrange()), null, 'demo orange');
+setWorld(normaliseGeometry(makeDemoOrange()), null, SPECIMENS[0].caption);
+
+// ---------------------------------------------------------------- the cabinet of specimens
+// Tap the paper round the world and a plate of specimens opens, as in an old
+// natural history: each a world to go to, and a last place for your own scan.
+// A world left is kept as it was.
+const figures = new Map<string, HTMLImageElement>();
+let plateBuilt = false;
+function openCabinet(): void {
+  const cabinet = $('cabinet');
+  if (!plateBuilt) {
+    plateBuilt = true;
+    const grid = $('figures');
+    const numeral = (i: number) => ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'][i] ?? String(i + 1);
+    SPECIMENS.forEach((sp, i) => {
+      const fig = document.createElement('button');
+      fig.className = 'fig';
+      const img = document.createElement('img');
+      img.alt = sp.caption;
+      figures.set(sp.id, img);
+      const cap = document.createElement('span');
+      cap.innerHTML = `<i>Fig. ${numeral(i)}.</i> ${sp.caption}`;
+      fig.append(img, cap);
+      fig.addEventListener('click', (e) => {
+        e.stopPropagation();
+        closeCabinet();
+        if (!returnTo(sp.caption)) setWorld(normaliseGeometry(sp.make()), null, sp.caption, sp.mode);
+        toast(sp.caption);
+      });
+      grid.append(fig);
+    });
+    const own = document.createElement('button');
+    own.className = 'fig own';
+    own.innerHTML = `<span class="blank">?</span><span><i>Fig. ${numeral(SPECIMENS.length)}.</i> Your own specimen</span>`;
+    own.addEventListener('click', (e) => { e.stopPropagation(); closeCabinet(); $<HTMLInputElement>('pick').click(); });
+    grid.append(own);
+    // Not the very tap that opened it: a phone sends that tap on as a click, onto the plate's backdrop.
+    cabinet.addEventListener('click', (e) => { if (e.target === cabinet && performance.now() - openedAt > 450) closeCabinet(); });
+    // Engrave the figures after the plate is up, one at a time, so it opens at once.
+    let n = 0;
+    const next = () => {
+      const sp = SPECIMENS[n++];
+      if (!sp) return;
+      figures.get(sp.id)!.src = engrave(sp.make());
+      setTimeout(next, 30);
+    };
+    setTimeout(next, 60);
+  }
+  cabinet.hidden = false;
+  openedAt = performance.now();
+}
+let openedAt = 0;
+function closeCabinet(): void {
+  $('cabinet').hidden = true;
+}
+
+/** A specimen's figure for the plate: rendered small, in the paper's light, three-quarter view. */
+let engraver: THREE.WebGLRenderer | null = null;
+function engrave(geometry: THREE.BufferGeometry): string {
+  const g = normaliseGeometry(geometry);
+  engraver ??= new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+  engraver.setPixelRatio(2);
+  engraver.setSize(150, 120, false);
+  const s = new THREE.Scene();
+  s.add(new THREE.HemisphereLight('#fffaf0', '#6d5a44', 1.5));
+  const sun = new THREE.DirectionalLight('#ffffff', 1.8);
+  sun.position.set(-2, 3, 2);
+  s.add(sun);
+  const colours = g.attributes.color;
+  if (colours) {
+    const paper = new THREE.Color('#ecdfc2'), c = new THREE.Color();
+    for (let i = 0; i < colours.count; i++) { c.fromBufferAttribute(colours as THREE.BufferAttribute, i).lerp(paper, 0.35); colours.setXYZ(i, c.r, c.g, c.b); }
+  }
+  const mesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: !!colours, color: colours ? '#ffffff' : '#e6d3b0', roughness: 0.85 }));
+  mesh.rotation.set(0.45, -0.6, 0.1);
+  s.add(mesh);
+  const cam = new THREE.PerspectiveCamera(30, 150 / 120, 0.1, 20);
+  cam.position.set(0, 0, 4.2);
+  engraver.render(s, cam);
+  const url = engraver.domElement.toDataURL('image/png');
+  g.dispose();
+  (mesh.material as THREE.Material).dispose();
+  return url;
+}

@@ -23,6 +23,12 @@ The site is published to GitHub Pages from `main` by `.github/workflows/pages.ym
 * **Loading a scan:** tap the empty paper round the world to pick one from Files. Scaniverse is free, and its GLB or OBJ export works.
 * **On Android:** once it's installed, it also appears in the share menu, so a scan shared from another app opens straight in the game.
 
+**Specimens.** Tap the paper round the world and a cabinet of specimens opens, drawn as an old natural history plate:
+* an orange, a toy brick, a chopstick, a pistachio (with a valley in its split seam), a river pebble and a bath duck;
+* a last place for your own scan.
+
+Each specimen is a solid described by its signed distance, meshed by surface nets into one closed surface of about 20,000 triangles (coarsened until it is, so a phone can turn it). Smooth ones take their height from the middle, as they have no bumps for curvature to find. Every world you visit is kept as you left it for the session.
+
 It boots with a procedural **demo orange**. To use a real scan, export GLB, OBJ or PLY from
 Scaniverse, KIRI Engine or RealityScan and load it with **Load scan**. If the scan is heavy,
 use **Decimate to** (meshoptimizer, respects UV seams) and aim for 5–15k triangles. For

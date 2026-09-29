@@ -21,8 +21,14 @@ html, body {
 #stage {
   position: fixed;
   inset: 0;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
   touch-action: none;
 }
+
+/* The canvas fills the stage, whatever size it was first given. */
+#stage canvas { display: block; width: 100% !important; height: 100% !important; }
 
 #panel {
   position: fixed;
@@ -126,3 +132,68 @@ section > button { width: 100%; }
 #hint.gone { opacity: 0; }
 
 body.dropping #stage { outline: 2px dashed var(--ink); outline-offset: -12px; }
+
+/* The cabinet of specimens: an old natural history plate, ruled round, figures captioned in italic. */
+#cabinet {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(60, 45, 30, 0.18);
+  z-index: 20;
+  padding: 16px;
+}
+#cabinet[hidden] { display: none; }
+#cabinet .plate {
+  background: #f2ead8;
+  color: #2e2118;
+  border: 1px solid #2e2118;
+  outline: 3px double #2e2118;
+  outline-offset: 5px;
+  padding: 18px 16px 14px;
+  max-width: 560px;
+  width: 100%;
+  max-height: calc(100dvh - 60px);
+  overflow: auto;
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+  box-shadow: 0 10px 40px rgba(46, 33, 24, 0.25);
+}
+#figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px 12px;
+}
+#cabinet .fig {
+  appearance: none;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+#cabinet .fig img {
+  width: 140px;
+  height: 112px;
+  object-fit: contain;
+  filter: sepia(0.45) contrast(1.05);
+  mix-blend-mode: multiply;
+}
+#cabinet .fig span { font-size: 13px; text-align: center; line-height: 1.3; }
+#cabinet .fig .blank {
+  width: 112px;
+  height: 104px;
+  margin: 4px 0;
+  display: grid;
+  place-items: center;
+  border: 1px dashed #6e5438;
+  border-radius: 50%;
+  font-size: 34px;
+  font-style: italic;
+  color: #6e5438;
+}
+#cabinet .fig:active { opacity: 0.6; }
