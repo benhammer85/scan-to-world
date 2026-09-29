@@ -64,6 +64,16 @@ What the light shows is only as good as how the places grow. Growth follows what
 - **Farms in hamlets** of one to four, not one to a field.
 - **No regular pattern shows through.** The fields' fixed cells are never outlined from this height: no hedges, walls or enclosure grids. Farmland shows as its rows, woods as their trees.
 
+## Fading ink
+
+This comes from whatwesaved's *fading plate*: the pen is the only light on the sheet (`holdSeconds` and `fadeSeconds` in `src/render/plotterLines.ts`).
+
+- **Ink you are looking at keeps.**
+- **Ink out of sight is held a while (25 s), then fades slowly (45 s) to pencil, never below.** The far side of a world is always a little faint, and the world is never quite whole at once.
+- **Turned back into view, faded ink is inked again by the pen** once the world is at rest, starting nearest the eye.
+- **The development's light does not fade.** It is not ink, and a place does not dim because you looked away.
+- **Nothing ever disappears:** faded ink is pencil, still there (whatwesaved PRINCIPLES 21).
+
 ## You can't come close
 
 The zoom stops well short of seeing what anything is: at most about 1.7 times closer than the view of the whole world (`CLOSEST` in `main.ts`). You see how much, where and how it spreads. What it is is left to the imagination.

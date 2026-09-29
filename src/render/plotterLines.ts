@@ -42,6 +42,14 @@ export interface PlotterStyle {
   /** How strong ordinary lines and index lines are drawn (0..1). */
   alpha: number;
   indexAlpha: number;
+  /**
+   * Fading ink (after whatwesaved's fading plate: the pen is the only light
+   * on the sheet). Ink out of sight is held this many seconds, then fades
+   * over `fadeSeconds` to pencil, never below. Turned back into view, the pen
+   * inks it again. 0 turns fading off.
+   */
+  holdSeconds: number;
+  fadeSeconds: number;
 }
 
 export const defaultPlotterStyle: PlotterStyle = {
@@ -55,7 +63,14 @@ export const defaultPlotterStyle: PlotterStyle = {
   indexEvery: 5,
   alpha: 0.72,
   indexAlpha: 1,
+  holdSeconds: 25,
+  fadeSeconds: 45,
 };
+
+/** A line faces the eye, for fading, if the ground under it looks at least this much towards it. */
+const FACING = 0.2;
+/** Faded this far (of the way to pencil) and back in view, a line is inked again. */
+const STALE = 0.35;
 
 /**
  *  - plot:   forget what's inked and plot everything (first load, replay)
@@ -73,7 +88,12 @@ const vertexShader = /* glsl */ `
   attribute vec2 aTiming;   // (pen distance at which this line starts, its charged length)
   attribute float aLevel;
   attribute float aPencil;
+  attribute float aSeen;
   uniform float uDrawn;
+  uniform float uNow;
+  uniform float uHold;
+  uniform float uFade;
+  varying float vFaded;
   varying float vAlong;
   varying float vProgress;
   varying float vLevel;
@@ -83,6 +103,7 @@ const vertexShader = /* glsl */ `
     vLevel = aLevel;
     vPencil = aPencil;
     vProgress = aTiming.y <= 0.0 ? 1.0 : clamp((uDrawn - aTiming.x) / aTiming.y, 0.0, 1.0);
+    vFaded = uFade <= 0.0 ? 0.0 : smoothstep(0.0, 1.0, (uNow - aSeen - uHold) / uFade);
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   }
 `;
@@ -99,6 +120,7 @@ const fragmentShader = /* glsl */ `
   varying float vProgress;
   varying float vLevel;
   varying float vPencil;
+  varying float vFaded;
   void main() {
     bool inked = vProgress > 0.0 && vAlong <= vProgress;
     if (!inked) {
@@ -108,7 +130,8 @@ const fragmentShader = /* glsl */ `
     }
     vec3 ink = mix(uInk, uInkHigh, clamp(vLevel / max(uLevelCount - 1.0, 1.0), 0.0, 1.0));
     bool isIndex = mod(vLevel + 0.5, uIndexEvery) < 1.0;
-    gl_FragColor = vec4(ink, isIndex ? uIndexAlpha : uAlpha);
+    // Out of sight long enough, ink fades back to pencil, and no further.
+    gl_FragColor = vec4(mix(ink, uPencil, vFaded), mix(isIndex ? uIndexAlpha : uAlpha, 0.55, vFaded));
   }
 `;
 
@@ -160,6 +183,9 @@ export class PlotterLines {
         uAlpha: { value: style.alpha },
         uIndexAlpha: { value: style.indexAlpha },
         uLevelCount: { value: 1 },
+        uNow: { value: 0 },
+        uHold: { value: style.holdSeconds },
+        uFade: { value: style.fadeSeconds },
       },
     });
     this.lines = new THREE.LineSegments(new THREE.BufferGeometry(), this.material);
@@ -231,8 +257,95 @@ export class PlotterLines {
     this.elapsed = 0;
     this.uninkedCount = keys.filter((k) => !this.inked.has(k)).length;
 
+    this.shown = { lines, keys };
+    this.stale = []; // indices into the lines just replaced
     this.build(lines, keys, mode !== 'plot');
     this.update(0);
+  }
+
+  // ---- fading ink
+
+  /** Seconds since this pen was made: the clock the fading runs on. */
+  private clock = 0;
+  private lastSurvey = -1;
+  /** When each line (by key) last faced the eye, on `clock`. */
+  private seenAt = new Map<string, number>();
+  /** Each drawn line's vertices in the geometry, and a point on it. */
+  private ranges: { from: number; to: number; mid: number[] }[] = [];
+  private shown: { lines: Polyline[]; keys: string[] } = { lines: [], keys: [] };
+  /** Faded lines back in view, waiting for the pen (indices into `shown`). */
+  private stale: number[] = [];
+
+  /**
+   * Which lines face the eye now: those are seen, and keep their ink; those
+   * that have faded and come back into view wait for the pen. The object is
+   * centred on its origin, so a point's outward direction is its ground's up.
+   */
+  private survey(camera: THREE.Camera): void {
+    if (this.style.fadeSeconds <= 0 || !this.ranges.length) return;
+    const eye = this.object.worldToLocal(NIB_EYE.setFromMatrixPosition(camera.matrixWorld));
+    const attr = this.lines.geometry.getAttribute('aSeen') as THREE.BufferAttribute | undefined;
+    if (!attr) return;
+    const arr = attr.array as Float32Array, now = this.clock, faded = this.style.holdSeconds + this.style.fadeSeconds * STALE;
+    let touched = false;
+    this.stale = [];
+    this.ranges.forEach((r, li) => {
+      const [x, y, z] = r.mid, l = Math.hypot(x, y, z) || 1;
+      const ex = eye.x - x, ey = eye.y - y, ez = eye.z - z, el = Math.hypot(ex, ey, ez) || 1;
+      if ((x * ex + y * ey + z * ez) / (l * el) < FACING) return;
+      const key = this.shown.keys[li], was = this.seenAt.get(key) ?? now;
+      if (!this.inked.has(key)) return;
+      if (now - was > faded) { this.stale.push(li); return; } // faded: the pen will come for it
+      if (now - was < 1) return;
+      this.seenAt.set(key, now);
+      arr.fill(now, r.from, r.to);
+      touched = true;
+    });
+    if (touched) attr.needsUpdate = true;
+  }
+
+  /** Just drawn: these lines are fresh ink now, not from when the pen set out for them. */
+  private freshen(keys: string[]): void {
+    const attr = this.lines.geometry.getAttribute('aSeen') as THREE.BufferAttribute | undefined;
+    if (!attr || !keys.length) return;
+    const want = new Set(keys), arr = attr.array as Float32Array;
+    this.shown.keys.forEach((k, li) => {
+      if (!want.has(k) || !this.ranges[li]) return;
+      this.seenAt.set(k, this.clock);
+      arr.fill(this.clock, this.ranges[li].from, this.ranges[li].to);
+    });
+    attr.needsUpdate = true;
+  }
+
+  /** How far this line (by key) has faded towards pencil, 0 to 1, as the shader draws it. */
+  fadeOf(key: string): number {
+    const f = this.style.fadeSeconds;
+    if (f <= 0) return 0;
+    const x = Math.min(1, Math.max(0, (this.clock - (this.seenAt.get(key) ?? this.clock) - this.style.holdSeconds) / f));
+    return x * x * (3 - 2 * x);
+  }
+
+  /**
+   * The pen comes back for faded lines that are in view again, nearest the eye
+   * first, and inks them. Called when the world is at rest. Returns whether it
+   * started.
+   */
+  reinkFaded(): boolean {
+    if (this.animating || !this.stale.length) return false;
+    const { lines, keys } = this.shown;
+    for (const i of this.stale) this.inked.delete(keys[i]);
+    const [x, y, z] = this.ranges[this.stale[0]].mid;
+    const from = new THREE.Vector3(x, y, z);
+    this.runs = this.order(lines, keys, this.stale, from);
+    this.stale = [];
+    this.total = this.runs.reduce((s, r) => s + r.cost, 0);
+    const seconds = this.total / (this.width * this.style.widthsPerSecond * this.pace);
+    this.duration = Math.max(this.style.minSeconds / this.pace, Math.min(this.style.maxSeconds / this.pace, seconds));
+    this.elapsed = 0;
+    this.uninkedCount = keys.filter((k) => !this.inked.has(k)).length;
+    this.build(lines, keys, true);
+    this.update(0);
+    return true;
   }
 
   private lastKeys = '';
@@ -287,6 +400,8 @@ export class PlotterLines {
     const timing = new Float32Array(segCount * 4);
     const level = new Float32Array(segCount * 2);
     const pencil = new Float32Array(segCount * 2);
+    const seen = new Float32Array(segCount * 2);
+    this.ranges = [];
     let maxLevel = 0, o = 0;
 
     lines.forEach((line, li) => {
@@ -300,6 +415,11 @@ export class PlotterLines {
 
       const pts = run ? run.points : line.points, n = pts.length / 3;
       const segs = n - 1 + (line.closed ? 1 : 0);
+      // When it was last seen: a line just drawn, or queued for the pen, is fresh.
+      if (!isInked || !this.seenAt.has(keys[li])) this.seenAt.set(keys[li], this.clock);
+      const when = this.seenAt.get(keys[li])!;
+      const m = Math.floor(n / 2) * 3;
+      this.ranges.push({ from: o * 2, to: (o + segs) * 2, mid: [pts[m], pts[m + 1], pts[m + 2]] });
       let d = 0;
       for (let s = 0; s < segs; s++) {
         const i = s, j = (s + 1) % n;
@@ -312,6 +432,7 @@ export class PlotterLines {
           timing[v * 2 + 1] = cost;
           level[v] = line.level;
           pencil[v] = isPencil;
+          seen[v] = when;
         }
         d += seg;
         o++;
@@ -324,6 +445,7 @@ export class PlotterLines {
     geom.setAttribute('aTiming', new THREE.BufferAttribute(timing, 2));
     geom.setAttribute('aLevel', new THREE.BufferAttribute(level, 1));
     geom.setAttribute('aPencil', new THREE.BufferAttribute(pencil, 1));
+    geom.setAttribute('aSeen', new THREE.BufferAttribute(seen, 1));
     this.lines.geometry.dispose();
     this.lines.geometry = geom;
     this.material.uniforms.uLevelCount.value = maxLevel + 1;
@@ -332,6 +454,7 @@ export class PlotterLines {
   /** Mark everything queued as inked and lift the pen. */
   private finish(): void {
     for (const r of this.runs) this.inked.add(r.key);
+    this.freshen(this.runs.map((r) => r.key));
     this.uninkedCount -= this.runs.length;
     this.runs = [];
     this.elapsed = this.duration;
@@ -340,6 +463,9 @@ export class PlotterLines {
   }
 
   update(dt: number, camera?: THREE.Camera): void {
+    this.clock += dt;
+    this.material.uniforms.uNow.value = this.clock;
+    if (camera && this.clock - this.lastSurvey > 0.3) { this.lastSurvey = this.clock; this.survey(camera); }
     if (!this.runs.length) { this.nib.visible = false; return; }
     this.elapsed += dt;
     if (this.elapsed >= this.duration) { this.finish(); return; }

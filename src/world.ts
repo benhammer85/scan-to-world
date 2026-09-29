@@ -416,6 +416,11 @@ export class TerrainWorld {
       this.strokeFrom = null;
     }
 
+    // Fading ink: when the world is at rest, the pen comes back for what faded
+    // out of sight and has been turned back into view (the terrain's contours
+    // first, then the map on them).
+    if (calm && !this.townDirty && !this.dirty && !this.inkWanted) this.lines.reinkFaded() || this.townLines.reinkFaded();
+
     // New buildings are pencilled in while the world is turning or being
     // worked, and inked once it's calm, from where the town was touched.
     if (this.townDirty) {
