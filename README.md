@@ -87,7 +87,22 @@ scan file ─► load.ts         merge meshes, centre, scale to radius 1, option
   * **Squares.** A flooded square is drawn in ink only where it's still dry.
   * **Rebuilding.** The town owes what it lost and rebuilds it on dry ground, one extra house a day for each loss. On the orange, a pit dug into a town drowned 5 houses, and four days later it had grown back past where it was.
   * **When the water goes down,** drowned houses become ruins (the corners of their outline), their ground is free, and sunken streets are streets again.
-* **Not yet:** springs and streams; roads that prefer harbours; boats that sail.
+* **Springs and streams.**
+  * **Drainage.** The water-filling pass also finds which way every point drains: to the point it was reached from, which is lower or level and nearer the sea, so water can never run in a circle. Rain on every point is carried down that drainage.
+  * **Streams.** A stream shows where at least 0.3 of ground drains through a point, and it becomes a river, drawn with two banks, past 1.1. Lakes with enough ground above them get a river from their outlet.
+  * **Springs.** Sculpting is the spring gesture: pull up a mountain and streams run off it.
+  * **Towns.** Streams take any house they come to run through. Streets never run along a stream and cross one only by a small bridge.
+  * **On the demo orange:** about 7 streams and 2 rivers.
+* **Snow and ice.**
+  * **Snow** lies on the highest 8% of scanned ground (a snowline fixed from the scan, like the sea level), drawn white with a dashed snowline.
+  * **Snowmelt** gives three times bare ground's water, so streams start from the snowcaps.
+  * **Ice.** A lake whose surface stands above the snowline is ice: pale, with a shore but no depth lines.
+  * **Towns** don't build on snow, and town streets stay below it. Roads may cross.
+* **Roads to harbours.** Roads carry what towns trade, so any two ports are joined port to port, even where the towns already had a road. A town only becomes a port once its streets reach the water, which is usually after its first road: measured, the road came at 6 houses and the harbours at 7 and 37.
+* **Ferries and sailing boats.**
+  * **Ferries.** Harbours on the same water get a ferry: a dashed way over the water from pier end to pier end.
+  * **Sailing.** Each ferry's boat sails it in real time, easing out of one pier and into the other, resting, and coming back. It's life on the water, not building. Boats out on a ferry aren't also drawn moored.
+  * **When water changes,** a ferry whose way is no longer all water, or whose harbour drowned, is dropped and looked for again.
 * **Clean drawing.** The plan's shape is kept, and only the drawing is tidied:
   * **Squares are round.** A square's edge is drawn as a true circle through the mean radius of its ring. Streets that meet the square end exactly on that circle.
   * **Stalls are even.** Stalls fill even slots round the hall, in order, and never move.

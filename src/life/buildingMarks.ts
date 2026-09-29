@@ -386,6 +386,66 @@ export function harbourMarks(topo: Topology, harbours: Harbour[], boats: (h: Har
   return out;
 }
 
+/** A ferry's way across the water, dashed, as maps draw a ferry. */
+export function ferryRoute(topo: Topology, route: number[]): Polyline[] {
+  const pts = chaikin(chaikin(route.map((v) => lifted(topo, v, 0.003))));
+  const out: Polyline[] = [];
+  let run: number[][] = [], along = 0, on = true;
+  for (let i = 1; i < pts.length; i++) {
+    const d = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1], pts[i][2] - pts[i - 1][2]);
+    if (on) { if (!run.length) run.push(pts[i - 1]); run.push(pts[i]); }
+    along += d;
+    if (along > 0.01) { along = 0; if (on && run.length >= 2) out.push(polyline(run, 0)); run = []; on = !on; }
+  }
+  if (on && run.length >= 2) out.push(polyline(run, 0));
+  return out;
+}
+
+export const SAIL = {
+  /** World units per second. */
+  speed: 0.05,
+  /** Seconds tied up at each end before sailing back. */
+  dwell: 2,
+};
+
+/**
+ * Where each ferry's boat is at `seconds`: out along the route, a rest at
+ * the far pier, back, a rest at home, and again. Pointed the way it sails.
+ */
+export function boatPosition(topo: Topology, route: number[], seconds: number, phase = 0): { at: V3; heading: V3; normal: V3 } {
+  const p = topo.positions, n = topo.normals;
+  const pts = route.map((v) => [p[v * 3], p[v * 3 + 1], p[v * 3 + 2]] as V3);
+  const cum = [0];
+  for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1], pts[i][2] - pts[i - 1][2]));
+  const L = cum[cum.length - 1] || 1e-6, trip = L / SAIL.speed, cycle = 2 * (trip + SAIL.dwell);
+  let t = (seconds + phase * cycle) % cycle;
+  // Eased at both ends, so a boat slows into the pier and gathers way leaving it.
+  const ease = (x: number) => x * x * (3 - 2 * x);
+  let s: number, dir = 1;
+  if (t < trip) s = ease(t / trip) * L;
+  else if ((t -= trip) < SAIL.dwell) s = L;
+  else if ((t -= SAIL.dwell) < trip) { s = L - ease(t / trip) * L; dir = -1; }
+  else { s = 0; dir = -1; }
+  const i = Math.max(1, cum.findIndex((c) => c >= s));
+  const k = Math.min(1, (s - cum[i - 1]) / Math.max(1e-9, cum[i] - cum[i - 1]));
+  const at = pts[i - 1].map((x, j) => x + (pts[i][j] - x) * k) as V3;
+  const nv = route[i - 1] * 3;
+  const normal: V3 = [n[nv], n[nv + 1], n[nv + 2]];
+  const heading = pts[i].map((x, j) => (x - pts[i - 1][j]) * dir) as V3;
+  const lift = 0.004;
+  return { at: [at[0] + normal[0] * lift, at[1] + normal[1] * lift, at[2] + normal[2] * lift], heading, normal };
+}
+
+/** The boats out on the ferries, as they are at `seconds`. */
+export function sailingBoats(topo: Topology, ferries: { route: number[] }[], seconds: number): Polyline[] {
+  return ferries.filter((f) => f.route.length >= 2).map((f, i) => {
+    const { at, heading, normal } = boatPosition(topo, f.route, seconds, i * 0.37);
+    const along = tangent(heading, normal) ?? anyDirection(f.route[0], normal);
+    const across: V3 = [normal[1] * along[2] - normal[2] * along[1], normal[2] * along[0] - normal[0] * along[2], normal[0] * along[1] - normal[1] * along[0]];
+    return hull(at, along, across);
+  });
+}
+
 function hull(c: V3, along: V3, across: V3): Polyline {
   const pts: number[][] = [];
   for (let i = 0; i < 10; i++) {

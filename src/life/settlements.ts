@@ -122,6 +122,19 @@ export const HARBOUR = {
   boats: 4,
 };
 
+export const FERRY = {
+  /** Harbours on the same water this close by boat get a ferry between them. */
+  reach: 2,
+};
+
+export interface Ferry {
+  /** Indexes into `harbours`. */
+  from: number;
+  to: number;
+  /** Over water, from one pier's end to the other's. */
+  route: number[];
+}
+
 export interface Harbour {
   town: number;
   /** From the shore street out over the water. */
@@ -189,6 +202,7 @@ export class Settlements {
   readonly streets: Street[] = [];
   readonly stalls: Stall[] = [];
   readonly harbours: Harbour[] = [];
+  readonly ferries: Ferry[] = [];
   /** Street vertices carried over water. */
   readonly bridgeAt = new Set<number>();
   /** Street vertices under water now (not bridges): out of the network until the water goes. */
@@ -224,7 +238,7 @@ export class Settlements {
 
   /** Can a building stand on this vertex, given the ground as it is now? */
   buildable(v: number): boolean {
-    return !this.wet?.[v] && this.localSlope(v) <= this.buildableSlope;
+    return !this.wet?.[v] && !this.stream?.[v] && !this.snow?.[v] && this.localSlope(v) <= this.buildableSlope;
   }
 
   /**
@@ -233,30 +247,34 @@ export class Settlements {
    * over what was built, that is drowned; where it has gone down, what
    * drowned is a ruin, and the ground is free again.
    */
-  setWater(wet: Uint8Array, depth?: Float32Array): void {
+  setWater(wet: Uint8Array, depth?: Float32Array, stream?: Uint8Array, snow?: Uint8Array): void {
     this.wet = wet;
     this.depth = depth ?? null;
+    this.stream = stream ?? null;
+    this.snow = snow ?? null;
     this.shoreDist = distanceToDry(this.topo, wet);
     this.flood();
+    this.linkHarbours();
   }
 
   private flood(): void {
     const wet = this.wet!;
     for (const b of this.buildings) {
-      if (b.state === undefined && wet[b.vertex]) {
+      // A stream that has come to run through a house takes it too.
+      if (b.state === undefined && (wet[b.vertex] || this.stream?.[b.vertex])) {
         b.state = 'drowned';
         this.buildingAt.delete(b.vertex);
         this.occupied.splice(this.occupied.indexOf(b.vertex), 1);
         this.towns[b.town].rebuild++;
-      } else if (b.state === 'drowned' && !wet[b.vertex]) {
+      } else if (b.state === 'drowned' && !wet[b.vertex] && !this.stream?.[b.vertex]) {
         b.state = 'ruin';
       }
     }
     for (const [u, town] of this.network) {
-      if (wet[u] && !this.bridgeAt.has(u)) { this.network.delete(u); this.submerged.set(u, town); }
+      if ((wet[u] || this.stream?.[u]) && !this.bridgeAt.has(u)) { this.network.delete(u); this.submerged.set(u, town); }
     }
     for (const [u, town] of this.submerged) {
-      if (!wet[u]) { this.submerged.delete(u); this.network.set(u, town); }
+      if (!wet[u] && !this.stream?.[u]) { this.submerged.delete(u); this.network.set(u, town); }
     }
     for (const h of this.harbours) if (wet[h.pier[0]]) h.drowned = true;
   }
@@ -266,6 +284,8 @@ export class Settlements {
     return this.buildings.filter((b) => b.state === undefined).length;
   }
   private wet: Uint8Array | null = null;
+  private stream: Uint8Array | null = null;
+  private snow: Uint8Array | null = null;
 
   /** A tap at a surface point (local space). */
   tap(point: ArrayLike<number>): TapResult {
@@ -477,7 +497,7 @@ export class Settlements {
    */
   private layRun(t: Town, v: number): boolean {
     if (!this.runMayStart(v)) return false;
-    const head = this.route([v], (u) => this.network.get(u) === t.id, STREET.reach, -1);
+    const head = this.route([v], (u) => this.network.get(u) === t.id, STREET.reach, -1, true);
     if (!head) return false;
     const junction = head[head.length - 1];
     const gap = STREET.runGapEdges * this.edge;
@@ -630,12 +650,68 @@ export class Settlements {
     }
     if (pier.length < 2) return;
     this.harbours.push({ town: t.id, pier });
+    this.linkHarbours();
+  }
+
+  /**
+   * Ferries between harbours on the same water: a way over the water from
+   * one pier's end to the other's. Water changes, so a ferry whose way is no
+   * longer all water, or whose harbour drowned, is dropped and looked for again.
+   */
+  private linkHarbours(): void {
+    const wet = this.wet;
+    if (!wet) return;
+    for (let i = this.ferries.length - 1; i >= 0; i--) {
+      const f = this.ferries[i];
+      if (this.harbours[f.from].drowned || this.harbours[f.to].drowned || f.route.some((v) => !wet[v])) this.ferries.splice(i, 1);
+    }
+    for (let a = 0; a < this.harbours.length; a++) {
+      for (let b = a + 1; b < this.harbours.length; b++) {
+        const ha = this.harbours[a], hb = this.harbours[b];
+        if (ha.drowned || hb.drowned || ha.town === hb.town) continue;
+        if (this.ferries.some((f) => f.from === a && f.to === b)) continue;
+        const start = ha.pier[ha.pier.length - 1], end = hb.pier[hb.pier.length - 1];
+        const route = this.overWater(start, end, FERRY.reach);
+        if (route) this.ferries.push({ from: a, to: b, route });
+      }
+    }
+  }
+
+  /** Shortest way from `a` to `b` over wet vertices only. */
+  private overWater(a: number, b: number, reach: number): number[] | null {
+    const wet = this.wet!;
+    const f = new Settlements.Frontier(), dist = new Map([[a, 0]]), prev = new Map<number, number>();
+    f.push(0, a);
+    while (f.size) {
+      const [d, u] = f.pop();
+      if (d > (dist.get(u) ?? Infinity)) continue;
+      if (u === b) {
+        const path = [b];
+        for (let w = b; prev.has(w); ) { w = prev.get(w)!; path.push(w); }
+        return path.reverse();
+      }
+      this.eachNeighbour(u, (w, e) => {
+        if (!wet[w]) return;
+        const nd = d + e;
+        if (nd > reach || nd >= (dist.get(w) ?? Infinity)) return;
+        dist.set(w, nd); prev.set(w, u); f.push(nd, w);
+      });
+    }
+    return null;
+  }
+
+  /** Boats sailing a ferry: one per ferry, out of its first harbour. */
+  sailingFrom(harbour: number): number {
+    return this.ferries.filter((f) => f.from === harbour).length;
   }
 
   /** Boats moored at a harbour: more as its town grows. */
   boatsAt(h: Harbour): number {
     const houses = this.buildings.filter((b) => b.town === h.town && b.state === undefined).length - 1;
-    return h.drowned ? 0 : Math.min(HARBOUR.boats, Math.floor((houses - HARBOUR.at) / HARBOUR.perBoat) + 1);
+    if (h.drowned) return 0;
+    const all = Math.min(HARBOUR.boats, Math.floor((houses - HARBOUR.at) / HARBOUR.perBoat) + 1);
+    // The ones out on a ferry aren't moored.
+    return Math.max(0, all - this.sailingFrom(this.harbours.indexOf(h)));
   }
 
   /**
@@ -702,7 +778,7 @@ export class Settlements {
   private addStreet(st: Street): void {
     this.streets.push(st);
     // What it carries over water is bridge; the rest is street on the ground.
-    if (this.wet) for (const u of st.path) if (this.wet[u]) this.bridgeAt.add(u);
+    if (this.wet) for (const u of st.path) if (this.wet[u] || this.stream?.[u]) this.bridgeAt.add(u);
     for (const u of streetVertices(st)) if (!this.network.has(u)) this.network.set(u, st.town);
   }
 
@@ -710,17 +786,52 @@ export class Settlements {
 
   /** Roads between towns that have both grown, once per pair. */
   private joinTowns(): number {
-    let laid = 0;
+    let laid = this.joinPorts();
+    // Counted in houses, like harbours, so a town's harbour is settled before its roads.
+    const houses = (t: Town) => t.buildings.length - 1;
     for (const a of this.towns) {
-      if (a.buildings.length < STREET.roadAt) continue;
+      if (houses(a) < STREET.roadAt) continue;
       for (const b of this.towns) {
-        if (b.id <= a.id || b.buildings.length < STREET.roadAt) continue;
+        if (b.id <= a.id || houses(b) < STREET.roadAt) continue;
         const key = `${a.id}-${b.id}`;
         if (this.joined.has(key)) continue;
         this.joined.add(key); // tried once; a road that can't be found isn't retried every frame
-        const from = [...this.network].filter(([, t]) => t === a.id).map(([u]) => u).sort((x, y) => x - y);
-        const path = this.route(from, (u) => this.network.get(u) === b.id, STREET.roadReach, -1, true);
+        // A road exists to carry what the towns trade, so where a town has a
+        // harbour it runs from the harbour (whatwesaved PRINCIPLES.md, 7:
+        // where there is a port, the railway runs to the port).
+        const portOf = (t: Town) => this.harbours.find((h) => h.town === t.id && !h.drowned)?.pier[0];
+        const pa = portOf(a), pb = portOf(b);
+        const from = pa !== undefined ? [pa] : [...this.network].filter(([, t]) => t === a.id).map(([u]) => u).sort((x, y) => x - y);
+        const everywhere = [...this.network].filter(([, t]) => t === a.id).map(([u]) => u).sort((x, y) => x - y);
+        const path =
+          this.route(from, (u) => (pb !== undefined ? u === pb : this.network.get(u) === b.id), STREET.roadReach, -1, true) ??
+          // No way between the harbours: the towns still get a road.
+          (pa !== undefined || pb !== undefined ? this.route(everywhere, (u) => this.network.get(u) === b.id, STREET.roadReach, -1, true) : null);
         if (path) { this.addStreet({ path, town: a.id, kind: 'road' }); laid++; }
+      }
+    }
+    return laid;
+  }
+
+  /**
+   * A road between every two harbours, once. Roads carry what towns trade, so
+   * ports are joined port to port, even where the towns already had a road:
+   * a town only becomes a port when its streets reach the water, and that is
+   * usually after its first road (measured: the road at 6 houses, harbours
+   * at 7 and at 37).
+   */
+  private joinPorts(): number {
+    let laid = 0;
+    const live = this.harbours.filter((h) => !h.drowned);
+    for (let i = 0; i < live.length; i++) {
+      for (let j = i + 1; j < live.length; j++) {
+        const a = live[i], b = live[j];
+        if (a.town === b.town) continue;
+        const key = `port ${Math.min(a.town, b.town)}-${Math.max(a.town, b.town)}`;
+        if (this.joined.has(key)) continue;
+        this.joined.add(key);
+        const path = this.route([a.pier[0]], (u) => u === b.pier[0], STREET.roadReach, -1, true);
+        if (path) { this.addStreet({ path, town: a.town, kind: 'road' }); laid++; }
       }
     }
     return laid;
@@ -753,7 +864,7 @@ export class Settlements {
         // Only the end may be on the network: a new way never runs along an
         // existing street, or the pen would draw the same street twice.
         if (!isTarget(w, len) && (this.network.has(w) || !this.streetMayRun(w, own, bridging))) return;
-        const overWater = !!this.wet?.[w];
+        const overWater = !!this.wet?.[w] || !!this.stream?.[w];
         const step = overWater
           ? d * BRIDGE.cost // a bridge is level, but dear
           : d * (1 + STREET.climb * Math.abs(this.heights[w] - this.heights[u]) / d / (this.buildableSlope || 1));
@@ -773,6 +884,11 @@ export class Settlements {
     if (this.wet?.[u]) {
       // Over water only as a bridge, and only where the water is narrow.
       if (!bridging || (this.shoreDist?.[u] ?? Infinity) > BRIDGE.span / 2) return false;
+    } else if (this.stream?.[u]) {
+      // Across a stream only as a bridge; never along one.
+      if (!bridging) return false;
+    } else if (this.snow?.[u] && !bridging) {
+      return false; // town streets stay below the snow; only roads cross it
     } else if (this.localSlope(u) > this.buildableSlope * STREET.steepness) return false;
     for (const o of this.occupied) if (o !== own && this.dist(u, o) < STREET.clearance) return false;
     return true;

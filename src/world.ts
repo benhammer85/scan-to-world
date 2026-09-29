@@ -10,7 +10,8 @@ import { PlotterLines, defaultPlotterStyle, type RevealMode } from './render/plo
 import { TerrainEdits, applyDisplacement, type BrushOptions } from './interact/sculpt';
 import { Settlements, type TapResult } from './life/settlements';
 import { buildingMarks, harbourMarks, ruinMarks, squareFrames, stallMarks, streetMarks, sunkenMarks } from './life/buildingMarks';
-import { findWater, seaFor, waterLines, type Sea, type Water } from './nature/water';
+import { findWater, seaFor, snowLines, streamLines, waterLines, type Sea, type Water } from './nature/water';
+import { ferryRoute, sailingBoats } from './life/buildingMarks';
 
 export type SurfaceStyle = 'scan' | 'paper' | 'elevation';
 
@@ -28,6 +29,29 @@ export interface WorldSettings {
 const PAPER = new THREE.Color('#efe7d6');
 const WATER_INK = '#2a5680';
 const WATER_SHALLOW = '#9cc3e0';
+const SNOW_TINT = '#f6f7f9';
+const SNOW_INK = '#9aaebf';
+const ICE_TINT = '#dcebf4';
+
+/** Polylines as one LineSegments geometry. */
+function segments(lines: { points: Float32Array; closed: boolean }[]): THREE.BufferGeometry {
+  let count = 0;
+  for (const l of lines) count += l.points.length / 3 - 1 + (l.closed ? 1 : 0);
+  const pos = new Float32Array(Math.max(0, count) * 6);
+  let o = 0;
+  for (const l of lines) {
+    const n = l.points.length / 3, segs = n - 1 + (l.closed ? 1 : 0);
+    for (let i = 0; i < segs; i++) {
+      const a = i, b = (i + 1) % n;
+      pos.set(l.points.subarray(a * 3, a * 3 + 3), o);
+      pos.set(l.points.subarray(b * 3, b * 3 + 3), o + 3);
+      o += 6;
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  return g;
+}
 const WATER_DEEP = '#4d82b3';
 
 function sameWet(a: Uint8Array, b: Uint8Array): boolean {
@@ -64,6 +88,10 @@ export class TerrainWorld {
   /** Set once from the ground as scanned, so the sea stays put while the ground is worked. */
   private sea: Sea = { level: -Infinity, anchor: 0 };
   private waterLines: THREE.LineSegments;
+  private snowEdge: THREE.LineSegments;
+  /** Boats out on the ferries: not plotted, they move. */
+  private sailing: THREE.LineSegments;
+  private seconds = 0;
   /** 0..1: water fades in when it arrives or changes, since no pen draws it. */
   private waterFade = 1;
   private lastLineCount = 0;
@@ -103,7 +131,10 @@ export class TerrainWorld {
       new THREE.LineBasicMaterial({ color: WATER_INK, transparent: true, opacity: 0.85, depthWrite: false }),
     );
     this.waterLines.renderOrder = 1;
-    this.group.add(this.mesh, this.waterLines, this.lines.object, this.townLines.object);
+    this.snowEdge = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: SNOW_INK, transparent: true, opacity: 0.9, depthWrite: false }));
+    this.sailing = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: '#15151c', depthWrite: false, transparent: true }));
+    this.sailing.renderOrder = 2;
+    this.group.add(this.mesh, this.waterLines, this.snowEdge, this.lines.object, this.townLines.object, this.sailing);
 
     this.baseHeights = extractHeights(this.topo, settings.height);
     this.heights = new Float32Array(this.topo.vertexCount);
@@ -115,7 +146,7 @@ export class TerrainWorld {
     // the player's own object and the thing they came to see, so it is plotted.
     this.rebuildContours('plot', penFrom);
     this.settlements = new Settlements(this.topo, this.heights);
-    this.settlements.setWater(this.water.wet, this.water.depth);
+    this.settlements.setWater(this.water.wet, this.water.depth, this.water.stream, this.water.snow);
     this.drawWater(false);
   }
 
@@ -242,6 +273,12 @@ export class TerrainWorld {
   update(dt: number, now: number, diffusion: { rate: number; fade: number }, camera?: THREE.Camera, calm = true): void {
     this.lines.update(dt, camera);
     this.townLines.update(dt, camera);
+    // Boats sail in real time: they are life on the water, not building.
+    this.seconds += dt;
+    if (this.settlements?.ferries.length) {
+      this.sailing.geometry.dispose();
+      this.sailing.geometry = segments(sailingBoats(this.topo, this.settlements.ferries, this.seconds));
+    }
     if (this.waterFade < 1) {
       this.waterFade = Math.min(1, this.waterFade + dt / 0.9);
       (this.waterLines.material as THREE.LineBasicMaterial).opacity = 0.85 * this.waterFade;
@@ -328,8 +365,8 @@ export class TerrainWorld {
     if (this.settlements) {
       const before = this.water;
       this.water = findWater(this.topo, this.heights, this.sea);
-      const changed = !sameWet(before.wet, this.water.wet);
-      this.settlements.setWater(this.water.wet, this.water.depth);
+      const changed = !sameWet(before.wet, this.water.wet) || !sameWet(before.stream, this.water.stream) || !sameWet(before.snow, this.water.snow);
+      this.settlements.setWater(this.water.wet, this.water.depth, this.water.stream, this.water.snow);
       this.drawWater(changed);
       if (changed) this.townDirty = true; // the water may have taken, or given back, what was built
       if (this.settings.surface !== 'elevation') this.applySurface();
@@ -349,25 +386,15 @@ export class TerrainWorld {
     const st = this.settlements;
     const lines = [
       ...waterLines(this.topo, this.water),
+      ...streamLines(this.topo, this.water),
+      ...(st ? st.ferries.flatMap((f) => ferryRoute(this.topo, f.route)) : []),
       ...(st ? buildingMarks(this.topo, this.heights, st.buildings, 'drowned') : []),
       ...(st ? sunkenMarks(this.topo, st.streets, st, squareFrames(this.topo, st.streets, st.towns)) : []),
     ];
-    let segs = 0;
-    for (const l of lines) segs += l.points.length / 3 - 1 + (l.closed ? 1 : 0);
-    const pos = new Float32Array(segs * 6);
-    let o = 0;
-    for (const l of lines) {
-      const n = l.points.length / 3, s = n - 1 + (l.closed ? 1 : 0);
-      for (let i = 0; i < s; i++) {
-        const a = i, b = (i + 1) % n;
-        pos.set(l.points.subarray(a * 3, a * 3 + 3), o); pos.set(l.points.subarray(b * 3, b * 3 + 3), o + 3);
-        o += 6;
-      }
-    }
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     this.waterLines.geometry.dispose();
-    this.waterLines.geometry = g;
+    this.waterLines.geometry = segments(lines);
+    this.snowEdge.geometry.dispose();
+    this.snowEdge.geometry = segments(snowLines(this.topo, this.water, this.heights, this.sea.snowline ?? Infinity));
     if (changed) this.waterFade = 0;
   }
 
@@ -409,6 +436,17 @@ export class TerrainWorld {
     }
     // With a texture, vertex colours stay white so they don't tint the map.
     if (useMap && !this.scanColors) arr.fill(1);
+    // Snow whitens the high ground; ice is a pale, flat blue.
+    if (this.water) {
+      const { remap } = this.topo, c = new THREE.Color(), white = new THREE.Color(SNOW_TINT), iceTint = new THREE.Color(ICE_TINT);
+      for (let i = 0; i < remap.length; i++) {
+        const v = remap[i];
+        if (this.water.snow[v]) c.setRGB(arr[i * 3], arr[i * 3 + 1], arr[i * 3 + 2]).lerp(white, 0.85);
+        else if (this.water.ice[v]) c.copy(iceTint);
+        else continue;
+        arr.set([c.r, c.g, c.b], i * 3);
+      }
+    }
     // Water tints the ground under it, deeper bluer.
     if (this.water) {
       // Mostly the water's own colour: a light tint over orange reads as mud.
@@ -416,7 +454,7 @@ export class TerrainWorld {
       const shallow = new THREE.Color(WATER_SHALLOW), deep = new THREE.Color(WATER_DEEP);
       for (let i = 0; i < remap.length; i++) {
         const v = remap[i];
-        if (!this.water.wet[v]) continue;
+        if (!this.water.wet[v] || this.water.ice[v]) continue;
         blue.copy(shallow).lerp(deep, Math.min(1, this.water.depth[v] / 0.25));
         c.setRGB(arr[i * 3], arr[i * 3 + 1], arr[i * 3 + 2]).lerp(blue, 0.88);
         arr.set([c.r, c.g, c.b], i * 3);
