@@ -42,8 +42,12 @@ export const TOWN = {
   gentle: 1.5,
   /** How far a tap on steep ground looks for somewhere it can stand. */
   searchRadius: 0.15,
-  /** A tap this close to a town grows it instead of founding another. */
+  /** A tap this close to a town grows it instead of founding another... */
   joinRadius: 0.1,
+  /** ...and no new town is founded nearer than this to another: a tap there
+   *  grows the nearest town instead. Without it, tapping about founded a
+   *  crowd of hamlets, square against square. */
+  apart: 0.32,
   /** Buildings per day: a hamlet grows steadily, a town faster. */
   baseRate: 2,
   rateBySize: 0.25,
@@ -86,9 +90,9 @@ export const STREET = {
 
 export const SQUARE = {
   /** Open ground kept round a town's hall, in world units... */
-  radius: 0.1,
+  radius: 0.07,
   /** ...and never narrower than this many mesh edges, so there is ground inside to stand in. */
-  radiusEdges: 2.6,
+  radiusEdges: 1.8,
   /** A site needs this share of its square buildable to found a town there. */
   buildableShare: 0.7,
 };
@@ -156,6 +160,55 @@ export interface Street {
   kind: 'street' | 'link' | 'road' | 'lane' | 'square';
   /** Its first vertex is a house (the old per-house spur). The house isn't street. */
   fromHouse?: boolean;
+  /** A road's two towns, for how much it carries. */
+  joins?: [number, number];
+  /** A road wears in with use: 0 a track, 1 a lane, 2 a made road. Only ever goes up. */
+  grade?: number;
+}
+
+export const TRADE = {
+  /** A road is worn into a lane, then made up, when the smaller of its towns reaches... */
+  lane: 12,
+  road: 24,
+};
+
+export const RAIL = {
+  /** Two towns this big get a railway between them... */
+  at: 28,
+  reach: 3.5,
+  /**
+   * ...held to the gentlest ruling gradient the ground allows, with this much
+   * slack. A railway is limited by its steepest pitch, so that is what is
+   * chosen: first the least steepest-pitch any way can have, then the
+   * shortest way within it. Costing the climb (or even its square) could
+   * not do this: any line over a ridge climbs the same height in all, and
+   * measured, the rail's ruling gradient came out equal to the road's
+   * (0.575 each), better at one weight and worse again at a higher one.
+   * The slack trades gradient for straightness, measured on the orange:
+   * 1.05 wound the line to 2.64 times the direct distance, 1.2 to 1.78
+   * with a ruling grade still gentler than a road's; 1.4 was steeper than a road.
+   */
+  slack: 1.2,
+  /** A rail may cross a street (a level crossing), at this extra cost. */
+  crossing: 1,
+};
+
+export const CABLE = {
+  /** A town this big, with snow within reach, gets a cable line up to it. */
+  at: 16,
+  reach: 0.45,
+};
+
+export interface Rail {
+  from: number;
+  to: number;
+  path: number[];
+}
+
+export interface Cable {
+  town: number;
+  /** From the town up over the ground to the snow. */
+  path: number[];
 }
 
 /** The vertices of a way that are street, not house. */
@@ -203,6 +256,11 @@ export class Settlements {
   readonly stalls: Stall[] = [];
   readonly harbours: Harbour[] = [];
   readonly ferries: Ferry[] = [];
+  readonly rails: Rail[] = [];
+  readonly railAt = new Set<number>();
+  readonly cables: Cable[] = [];
+  /** Days since the world began: carts give way to cars as it ages. */
+  day = 0;
   /** Street vertices carried over water. */
   readonly bridgeAt = new Set<number>();
   /** Street vertices under water now (not bridges): out of the network until the water goes. */
@@ -290,7 +348,7 @@ export class Settlements {
   /** A tap at a surface point (local space). */
   tap(point: ArrayLike<number>): TapResult {
     const near = this.nearestVertex(point);
-    const town = this.townNear(near);
+    const town = this.townNear(near) ?? this.townWithin(near, TOWN.apart);
     if (town) {
       const grown = this.growNear(town, near, 3);
       return grown === null ? { kind: 'refused' } : { kind: 'grew', town: town.id, vertex: grown };
@@ -332,8 +390,189 @@ export class Settlements {
       if (this.growOne(next) === null) { live.delete(next); continue; }
       laid++;
       laid += this.joinTowns();
+      this.wearRoads();
+      laid += this.joinRails() + this.liftToSnow();
+    }
+    this.day += days;
+    return laid;
+  }
+
+  // ------------------------------------------------------------ transport
+
+  /** Roads wear in with the trade they carry: track, then lane, then made road. Never back. */
+  private wearRoads(): void {
+    const houses = (t: number) => this.buildings.filter((b) => b.town === t && b.state === undefined).length - 1;
+    for (const st of this.streets) {
+      if (st.kind !== 'road' || !st.joins) continue;
+      const trade = Math.min(houses(st.joins[0]), houses(st.joins[1]));
+      const grade = trade >= TRADE.road ? 2 : trade >= TRADE.lane ? 1 : 0;
+      if (grade > (st.grade ?? 0)) st.grade = grade;
+    }
+  }
+
+  /**
+   * Railways between big towns, once per pair, running to a harbour where
+   * there is one (whatwesaved PRINCIPLES.md, 7). Gentle gradients; they cross
+   * streets on the level but never run along them, and are not streets.
+   */
+  private joinRails(): number {
+    let laid = 0;
+    const houses = (t: Town) => this.buildings.filter((b) => b.town === t.id && b.state === undefined).length - 1;
+    const end = (t: Town) => this.harbours.find((h) => h.town === t.id && !h.drowned)?.pier[0]
+      ?? this.streets.find((x) => x.kind === 'square' && x.town === t.id)?.path[0];
+    for (const a of this.towns) {
+      if (houses(a) < RAIL.at) continue;
+      for (const b of this.towns) {
+        if (b.id <= a.id || houses(b) < RAIL.at) continue;
+        const key = `rail ${a.id}-${b.id}`;
+        if (this.joined.has(key)) continue;
+        this.joined.add(key);
+        const from = end(a), to = end(b);
+        if (from === undefined || to === undefined) continue;
+        const path = this.railRoute(from, to);
+        if (!path) continue;
+        this.rails.push({ from: a.id, to: b.id, path });
+        for (const v of path) this.railAt.add(v);
+        laid++;
+      }
     }
     return laid;
+  }
+
+  private railRoute(from: number, to: number): number[] | null {
+    const grade = (u: number, w: number, d: number) => Math.abs(this.heights[w] - this.heights[u]) / d;
+    const mayPass = (w: number) => {
+      if (w === to) return true;
+      // Not across a square, nor round its edge: that is street, and a rail never runs along a street.
+      if (this.buildingAt.has(w) || this.reserved.has(w)) return false;
+      if (this.wet?.[w] && (this.shoreDist?.[w] ?? Infinity) > BRIDGE.span / 2) return false;
+      return !this.snow?.[w];
+    };
+    // 1. The least ruling gradient any way from `from` to `to` can have (minimax path).
+    const worst = new Map([[from, 0]]);
+    const f1 = new Settlements.Frontier();
+    f1.push(0, from);
+    let ruling = Infinity;
+    while (f1.size) {
+      const [g, u] = f1.pop();
+      if (g > (worst.get(u) ?? Infinity)) continue;
+      if (u === to) { ruling = g; break; }
+      this.eachNeighbour(u, (w, d) => {
+        if (!mayPass(w)) return;
+        const ng = Math.max(g, grade(u, w, d));
+        if (ng < (worst.get(w) ?? Infinity)) { worst.set(w, ng); f1.push(ng, w); }
+      });
+    }
+    if (!Number.isFinite(ruling)) return null;
+    // 2. The shortest way that never pitches steeper than that (and a little).
+    // If that is too long to lay, allow a steeper pitch, a step at a time.
+    for (let allow = ruling * RAIL.slack; allow <= ruling * 3 + 1e-9; allow *= 1.25) {
+      const cost = new Map([[from, 0]]), prev = new Map<number, number>(), len = new Map([[from, 0]]);
+      const f = new Settlements.Frontier();
+      f.push(0, from);
+      while (f.size) {
+        const [c, u] = f.pop();
+        if (c > (cost.get(u) ?? Infinity)) continue;
+        if (u === to) {
+          const path = [to];
+          for (let w = to; prev.has(w); ) { w = prev.get(w)!; path.push(w); }
+          return path.reverse();
+        }
+        this.eachNeighbour(u, (w, d) => {
+          if (!mayPass(w) || grade(u, w, d) > allow + 1e-12) return;
+          const l = len.get(u)! + d;
+          if (l > RAIL.reach) return;
+          const step = d * (1 + (this.network.has(w) ? RAIL.crossing : 0) + (this.wet?.[w] ? BRIDGE.cost : 0));
+          const nc = c + step;
+          if (nc < (cost.get(w) ?? Infinity)) { cost.set(w, nc); prev.set(w, u); len.set(w, l); f.push(nc, w); }
+        });
+      }
+    }
+    return null;
+  }
+
+  /** A cable line from a grown town up to the snow above it, if there is snow within reach. */
+  private liftToSnow(): number {
+    if (!this.snow) return 0;
+    let laid = 0;
+    for (const t of this.towns) {
+      if (this.cables.some((c) => c.town === t.id)) continue;
+      const houses = this.buildings.filter((b) => b.town === t.id && b.state === undefined).length - 1;
+      if (houses < CABLE.at) continue;
+      const start = this.streets.find((x) => x.kind === 'square' && x.town === t.id)?.path[0];
+      if (start === undefined) continue;
+      // Up to the highest snow within reach: a cable goes to the top.
+      const f = new Settlements.Frontier(), seen = new Map([[start, 0]]), prev = new Map<number, number>();
+      f.push(0, start);
+      let top = -1;
+      while (f.size) {
+        const [d, u] = f.pop();
+        if (d > (seen.get(u) ?? Infinity)) continue;
+        if (this.snow[u] && (top < 0 || this.heights[u] > this.heights[top])) top = u;
+        this.eachNeighbour(u, (w, e) => {
+          const nd = d + e;
+          if (nd > CABLE.reach || nd >= (seen.get(w) ?? Infinity) || this.wet?.[w]) return;
+          seen.set(w, nd); prev.set(w, u); f.push(nd, w);
+        });
+      }
+      if (top < 0) continue; // no snow in reach yet; it may come if the ground is raised
+      const path = [top];
+      for (let w = top; prev.has(w); ) { w = prev.get(w)!; path.push(w); }
+      this.cables.push({ town: t.id, path: path.reverse() });
+      laid++;
+    }
+    return laid;
+  }
+
+  /**
+   * Where a harbour's fishing boats go: out over the water to grounds a
+   * little way off and back, each boat its own ground, all over water.
+   */
+  fishingRoutes(h: Harbour): number[][] {
+    if (!this.wet || h.drowned) return [];
+    const count = Math.max(0, Math.min(2, this.boatsAt(h) - 1));
+    if (!count) return [];
+    // Asked every frame by the boats themselves: worked out again only when the water or the fleet changes.
+    const cached = this.fishingCache.get(h);
+    if (cached && cached.wet === this.wet && cached.count === count) return cached.routes;
+    const routes = this.findFishingRoutes(h, count);
+    this.fishingCache.set(h, { wet: this.wet, count, routes });
+    return routes;
+  }
+  private fishingCache = new Map<Harbour, { wet: Uint8Array; count: number; routes: number[][] }>();
+
+  private findFishingRoutes(h: Harbour, count: number): number[][] {
+    const start = h.pier[h.pier.length - 1];
+    // Every wet vertex within reach, by distance over water.
+    const f = new Settlements.Frontier(), dist = new Map([[start, 0]]), prev = new Map<number, number>();
+    f.push(0, start);
+    while (f.size) {
+      const [d, u] = f.pop();
+      if (d > (dist.get(u) ?? Infinity)) continue;
+      this.eachNeighbour(u, (w, e) => {
+        const nd = d + e;
+        if (!this.wet![w] || nd > 0.3 || nd >= (dist.get(w) ?? Infinity)) return;
+        dist.set(w, nd); prev.set(w, u); f.push(nd, w);
+      });
+    }
+    // Grounds: the farthest reachable water, then the farthest from that ground, and so on.
+    const grounds: number[] = [];
+    const reachable = [...dist.keys()].sort((a, b) => a - b);
+    for (let i = 0; i < count; i++) {
+      let best = -1, bestScore = -Infinity;
+      for (const v of reachable) {
+        const apart = grounds.length ? Math.min(...grounds.map((g) => this.dist(g, v))) : 0;
+        const score = dist.get(v)! + 2 * apart;
+        if (score > bestScore) { bestScore = score; best = v; }
+      }
+      if (best < 0 || dist.get(best)! < 0.06) break;
+      grounds.push(best);
+    }
+    return grounds.map((g) => {
+      const path = [g];
+      for (let w = g; prev.has(w); ) { w = prev.get(w)!; path.push(w); }
+      return path.reverse();
+    });
   }
 
   // ------------------------------------------------------------ growth
@@ -714,6 +953,11 @@ export class Settlements {
     return Math.max(0, all - this.sailingFrom(this.harbours.indexOf(h)));
   }
 
+  /** Boats tied up at the pier: those not out on a ferry or fishing. */
+  mooredAt(h: Harbour): number {
+    return Math.max(0, this.boatsAt(h) - this.fishingRoutes(h).length);
+  }
+
   /**
    * A street that grew one at a time and stopped at the first street it met
    * makes a tree: every house on its own spur, and nothing loops. So after a
@@ -807,7 +1051,7 @@ export class Settlements {
           this.route(from, (u) => (pb !== undefined ? u === pb : this.network.get(u) === b.id), STREET.roadReach, -1, true) ??
           // No way between the harbours: the towns still get a road.
           (pa !== undefined || pb !== undefined ? this.route(everywhere, (u) => this.network.get(u) === b.id, STREET.roadReach, -1, true) : null);
-        if (path) { this.addStreet({ path, town: a.id, kind: 'road' }); laid++; }
+        if (path) { this.addStreet({ path, town: a.id, kind: 'road', joins: [a.id, b.id], grade: 0 }); laid++; }
       }
     }
     return laid;
@@ -831,7 +1075,7 @@ export class Settlements {
         if (this.joined.has(key)) continue;
         this.joined.add(key);
         const path = this.route([a.pier[0]], (u) => u === b.pier[0], STREET.roadReach, -1, true);
-        if (path) { this.addStreet({ path, town: a.town, kind: 'road' }); laid++; }
+        if (path) { this.addStreet({ path, town: a.town, kind: 'road', joins: [a.town, b.town], grade: 0 }); laid++; }
       }
     }
     return laid;
@@ -901,6 +1145,16 @@ export class Settlements {
     return this.nearestWhere(v, TOWN.searchRadius, (u) => this.squareFits(u));
   }
 
+  /** The town with a building nearest `v`, if any is within `reach`. */
+  private townWithin(v: number, reach: number): Town | null {
+    let best: Town | null = null, bd = reach;
+    for (const b of this.buildings) {
+      const d = this.dist(v, b.vertex);
+      if (d < bd) { bd = d; best = this.towns[b.town]; }
+    }
+    return best;
+  }
+
   private townNear(v: number): Town | null {
     let best: Town | null = null, bd = Math.max(TOWN.joinRadius, this.squareRadius);
     for (const b of this.buildings) {
@@ -912,6 +1166,7 @@ export class Settlements {
 
   private roomFor(v: number): boolean {
     if (this.reserved.has(v)) return false; // a square stays open (its hall was laid before it was reserved)
+    if (this.railAt.has(v)) return false; // nor is a house built on the line
     for (const o of this.occupied) if (this.dist(v, o) < this.spacing) return false;
     for (const u of this.network.keys()) if (this.dist(v, u) < STREET.clearance) return false;
     return !this.wouldEnclose(v);

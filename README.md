@@ -103,6 +103,21 @@ scan file ─► load.ts         merge meshes, centre, scale to radius 1, option
   * **Ferries.** Harbours on the same water get a ferry: a dashed way over the water from pier end to pier end.
   * **Sailing.** Each ferry's boat sails it in real time, easing out of one pier and into the other, resting, and coming back. It's life on the water, not building. Boats out on a ferry aren't also drawn moored.
   * **When water changes,** a ferry whose way is no longer all water, or whose harbour drowned, is dropped and looked for again.
+* **Transport.**
+  * **Roads wear in with use.** A road starts as a dashed track, is worn into a lane when the smaller of its towns reaches 12 houses, and becomes a made road (double lines) at 24. It never goes back.
+  * **Traffic.** Carts, then cars once the world is 30 days old, move along the roads in real time: one on a track, two on a lane, three on a made road.
+  * **Railways.** Two towns of 28 houses get a railway, drawn with cross-ties and running to a harbour where there is one. A railway is limited by its steepest pitch, so it's routed by that: first the least ruling gradient any line can have, then the shortest line within 1.2× of it.
+    * Costing the climb, or even its square, couldn't do this. Every line over a ridge climbs the same height in all, and the rail's ruling gradient came out equal to the road's (0.575 each).
+    * Measured over a test hill: the rail's ruling gradient is 0.474 against a road's 0.575. On the orange it winds 1.78× the direct distance; slack of 1.05 wound it 2.64×, and 1.4 made it steeper than a road.
+    * Rails keep off squares and their edges, never have a house on them, and cross streets on the level. Trains run on them.
+  * **Fishing.** Up to two of a harbour's boats go out over the water to fishing grounds and come back. Boats out fishing aren't drawn moored.
+  * **Cable cars.** A town of 16 houses with snow within reach gets a cable line from its square to the highest snow nearby, drawn with pylons and stations, and a cabin rides it.
+  * **Everything that moves** (ferries, fishing boats, traffic, trains, cabins) moves in real time, as life on the map rather than building. All of it costs 0.4 ms a frame.
+  * **Between planets** waits for a second world.
+* **Squares that read as places.** Tapping about had founded a crowd of hamlets square against square, each with a large pale disc, and they read as rendering bugs. Three fixes:
+  * No town is founded within 0.32 of another; a tap there grows the nearest town.
+  * Squares are smaller (0.07, or 1.8 mesh edges).
+  * A square's edge follows the ground it keeps, smoothed: neither a compass circle nor the lumpy raw ring. It's paved only once the town has a market.
 * **Legibility.** A screenshot of three towns near snow and water read as one tangle, because contours, streets, roads and square edges were all the same thin black line. The drawing now uses a map's hierarchy:
   * **Relief** is faint and brown, behind everything.
   * **Streets** are double lines, as a town plan draws them, and roads between towns are wider.

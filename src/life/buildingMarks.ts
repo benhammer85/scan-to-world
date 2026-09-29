@@ -9,7 +9,7 @@
  */
 import type { Topology } from '../mesh/topology';
 import type { Polyline } from '../terrain/contours';
-import { MARKET, type Building, type Harbour, type Stall, type Street, type Town } from './settlements';
+import { MARKET, type Building, type Cable, type Harbour, type Rail, type Settlements, type Stall, type Street, type Town } from './settlements';
 
 export const MARK = {
   long: 0.024,
@@ -60,6 +60,10 @@ export interface SquareFrame {
   angleOf(u: number): number;
   /** A point on the ground at `angle` and `r` from the hall, lifted for drawing. */
   at(angle: number, r: number): V3;
+  /** How far the square reaches at `angle`: its edge follows the ground it keeps, smoothed. */
+  radiusAt(angle: number): number;
+  /** The point on the square's edge at `angle`. */
+  edgeAt(angle: number): V3;
   /** Any point in the square, moved onto the ground and lifted. */
   onGround(q: V3): V3;
   /** How far the ground at `q` stands above it, along the hall's normal (negative if below). */
@@ -86,6 +90,20 @@ export function squareFrames(topo: Topology, streets: Street[], towns: Town[]): 
     for (const u of ring) { const d = off(u); radius += Math.hypot(d[0], d[1], d[2]); }
     radius /= ring.size;
     const angleOf = (u: number) => { const d = off(u); return Math.atan2(d[0] * bx + d[1] * by + d[2] * bz, d[0] * ax + d[1] * ay + d[2] * az); };
+    // The edge is the ground the square keeps, not a compass circle: at each
+    // angle, the distance to the ring's vertices, averaged over a wide angle
+    // so it is smooth. A true circle read as a rendering bug; the raw ring
+    // read as lumpy. This is the shape between them.
+    const ringAt = [...ring].map((u) => { const d = off(u); return { a: angleOf(u), r: Math.hypot(d[0], d[1], d[2]) }; });
+    const radiusAt = (angle: number) => {
+      let w = 0, r = 0;
+      for (const q of ringAt) {
+        const da = Math.atan2(Math.sin(angle - q.a), Math.cos(angle - q.a));
+        const k = Math.exp(-(da * da) / (2 * 0.45 * 0.45));
+        w += k; r += k * q.r;
+      }
+      return w ? r / w : radius;
+    };
     const onGround = (q: V3): V3 => {
       const d: V3 = [q[0] - p[h], q[1] - p[h + 1], q[2] - p[h + 2]];
       const dn = d[0] * nx + d[1] * ny + d[2] * nz;
@@ -95,6 +113,7 @@ export function squareFrames(topo: Topology, streets: Street[], towns: Town[]): 
       const c = Math.cos(angle) * r, s = Math.sin(angle) * r;
       return lay(c * ax + s * bx, c * ay + s * by, c * az + s * bz);
     };
+    const edgeAt = (angle: number) => at(angle, radiusAt(angle));
     // How far the ground at a point rises above the smooth surface `lay`
     // uses: the ground under a point is a triangle among its nearest
     // vertices, never higher than the highest of the three.
@@ -105,10 +124,10 @@ export function squareFrames(topo: Topology, streets: Street[], towns: Town[]): 
       near.sort((x, y) => x[0] - y[0]);
       return Math.max(...near.slice(0, 3).map((x) => x[1])) - qn;
     };
-    // The whole circle is lifted by the most any point of it needs, so it stays round and above ground.
+    // The whole edge is lifted by the most any point of it needs, so it stays smooth and above ground.
     let extra = 0;
     for (let i = 0; i < 32; i++) {
-      const a = (i / 32) * 2 * Math.PI, c = Math.cos(a) * radius, s = Math.sin(a) * radius;
+      const a = (i / 32) * 2 * Math.PI, ra = radiusAt(a), c = Math.cos(a) * ra, s = Math.sin(a) * ra;
       const q = lay(c * ax + s * bx, c * ay + s * by, c * az + s * bz);
       extra = Math.max(extra, clearance(q) + MARK.lift);
     }
@@ -116,22 +135,18 @@ export function squareFrames(topo: Topology, streets: Street[], towns: Town[]): 
       // Height above the hall's tangent plane, interpolated from the ring
       // and the hall by inverse distance, so the circle lies on the ground.
       let wsum = 0, hsum = 0;
-      const nearest: [number, number][] = [];
       for (const u of samples) {
         const d = off(u);
         const du = Math.hypot(d[0] - tx, d[1] - ty, d[2] - tz) + 1e-6;
-        const w = 1 / (du * du), hu = d[0] * nx + d[1] * ny + d[2] * nz;
+        const w = 1 / (du * du);
         wsum += w;
-        hsum += w * hu;
-        nearest.push([du, hu]);
+        hsum += w * (d[0] * nx + d[1] * ny + d[2] * nz);
       }
-      nearest.sort((x, y) => x[0] - y[0]);
-      // Smooth, so the circle is round; `clearance` below keeps it off the ground.
+      // Smooth, so the edge is smooth; `extra` keeps it off the ground.
       const up = hsum / wsum + MARK.lift + extra;
-      void nearest;
       return [p[h] + tx + nx * up, p[h + 1] + ty + ny * up, p[h + 2] + tz + nz * up];
     }
-    out.set(st.town, { hall, radius, ring, angleOf, at, onGround, clearance });
+    out.set(st.town, { hall, radius, ring, angleOf, at, radiusAt, edgeAt, onGround, clearance });
   }
   return out;
 }
@@ -222,7 +237,7 @@ export function stallMarks(stalls: Stall[], frames: Map<number, SquareFrame>, to
   for (const st of stalls) {
     const f = frames.get(st.town);
     if (!f) continue;
-    const c = f.at(stallAngle(st.slot), f.radius * MARKET.ring);
+    const a = stallAngle(st.slot), c = f.at(a, f.radiusAt(a) * MARKET.ring);
     const h = f.hall * 3;
     const nr: V3 = [n[h], n[h + 1], n[h + 2]];
     const toHall = tangent([p[h] - c[0], p[h + 1] - c[1], p[h + 2] - c[2]], nr) ?? anyDirection(f.hall, nr);
@@ -257,7 +272,12 @@ export function streetMarks(topo: Topology, streets: Street[], buildings: Buildi
     for (const run of runsOf(st.path, water)) {
       if (run.kind === 'dry') {
         const m = groundLine(topo, run.path, buildings, frames, run.first, run.last);
-        if (m) out.push(...twoSides(topo, m, run.path, STREET_WIDTH[st.kind] ?? 0.003));
+        if (!m) continue;
+        // A road is drawn by what it has worn into: a dashed track, a lane, a made road.
+        const grade = st.kind === 'road' ? st.grade ?? 2 : 2;
+        if (grade === 0) out.push(...dashes(m, 0.012));
+        else if (grade === 1) out.push(m);
+        else out.push(...twoSides(topo, m, run.path, STREET_WIDTH[st.kind] ?? 0.003));
       } else if (run.kind === 'bridge') {
         out.push(...deck(topo, run.path, BRIDGE_MARK.halfWidth, 'ticks'));
       }
@@ -315,7 +335,7 @@ function groundLine(topo: Topology, path: number[], buildings: Building[], frame
   let pts: number[][] = path.map((v) => lifted(topo, v));
   for (const [i, isEnd] of [[0, first], [pts.length - 1, last]] as [number, boolean][]) {
     const f = isEnd ? onSquare(path[i]) : undefined;
-    if (f) pts[i] = f.at(f.angleOf(path[i]), f.radius);
+    if (f) pts[i] = f.edgeAt(f.angleOf(path[i]));
   }
   for (let r = 0; r < 2; r++) pts = chaikin(pts);
   for (const end of [0, 1]) {
@@ -409,6 +429,74 @@ export function harbourMarks(topo: Topology, harbours: Harbour[], boats: (h: Har
   return out;
 }
 
+/** A line cut into dashes of `every` length, gaps as long. */
+function dashes(m: Polyline, every: number): Polyline[] {
+  const pts: number[][] = [];
+  for (let k = 0; k < m.points.length; k += 3) pts.push([m.points[k], m.points[k + 1], m.points[k + 2]]);
+  const out: Polyline[] = [];
+  let run: number[][] = [], along = 0, on = true;
+  for (let i = 1; i < pts.length; i++) {
+    const d = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1], pts[i][2] - pts[i - 1][2]);
+    if (on) { if (!run.length) run.push(pts[i - 1]); run.push(pts[i]); }
+    along += d;
+    if (along > every) { along = 0; if (on && run.length >= 2) out.push(polyline(run, m.level)); run = []; on = !on; }
+  }
+  if (on && run.length >= 2) out.push(polyline(run, m.level));
+  return out;
+}
+
+export const RAIL_MARK = { tie: 0.0045, every: 0.011 };
+export const CABLE_MARK = { height: 0.014, pylonEvery: 0.06 };
+
+/** A railway as maps draw one: a line with cross-ties. */
+export function railMarks(topo: Topology, rails: Rail[]): Polyline[] {
+  const out: Polyline[] = [];
+  for (const r of rails) {
+    const pts = chaikin(chaikin(r.path.map((v) => lifted(topo, v, 0.0035))));
+    out.push(polyline(pts, 0));
+    let along = RAIL_MARK.every / 2;
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1], b = pts[i];
+      const d = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+      while (along < d) {
+        const t = along / d, c = a.map((x, k) => x + (b[k] - x) * t);
+        const v = r.path[Math.min(r.path.length - 1, Math.round((i / (pts.length - 1)) * (r.path.length - 1)))] * 3;
+        const nr: V3 = [topo.normals[v], topo.normals[v + 1], topo.normals[v + 2]];
+        const across = tangent([nr[1] * (b[2] - a[2]) - nr[2] * (b[1] - a[1]), nr[2] * (b[0] - a[0]) - nr[0] * (b[2] - a[2]), nr[0] * (b[1] - a[1]) - nr[1] * (b[0] - a[0])], nr);
+        if (across) out.push(polyline([c.map((x, k) => x + across[k] * RAIL_MARK.tie), c.map((x, k) => x - across[k] * RAIL_MARK.tie)], 0));
+        along += RAIL_MARK.every;
+      }
+      along -= d;
+    }
+  }
+  return out;
+}
+
+/** A cable line: the cable held above the ground, and pylons down to it. */
+export function cableMarks(topo: Topology, cables: Cable[]): Polyline[] {
+  const out: Polyline[] = [];
+  for (const c of cables) {
+    const ground = c.path.map((v) => lifted(topo, v, 0.002));
+    const high = c.path.map((v, i) => lifted(topo, v, i === 0 || i === c.path.length - 1 ? 0.004 : CABLE_MARK.height));
+    out.push(polyline(chaikin(high), 0));
+    let since = CABLE_MARK.pylonEvery;
+    for (let i = 1; i < c.path.length - 1; i++) {
+      since += Math.hypot(ground[i][0] - ground[i - 1][0], ground[i][1] - ground[i - 1][1], ground[i][2] - ground[i - 1][2]);
+      if (since < CABLE_MARK.pylonEvery) continue;
+      since = 0;
+      out.push(polyline([ground[i], high[i]], 0));
+    }
+    // A station at each end.
+    for (const i of [0, c.path.length - 1]) {
+      const v = c.path[i] * 3, nr: V3 = [topo.normals[v], topo.normals[v + 1], topo.normals[v + 2]];
+      const across = anyDirection(c.path[i], nr);
+      const q: V3 = [ground[i][0], ground[i][1], ground[i][2]];
+      out.push(rectangle(q, nr, across, 0.012, 0.008, 1, () => 0));
+    }
+  }
+  return out;
+}
+
 /** A ferry's way across the water, dashed, as maps draw a ferry. */
 export function ferryRoute(topo: Topology, route: number[]): Polyline[] {
   const pts = chaikin(chaikin(route.map((v) => lifted(topo, v, 0.003))));
@@ -424,30 +512,24 @@ export function ferryRoute(topo: Topology, route: number[]): Polyline[] {
   return out;
 }
 
-export const SAIL = {
-  /** World units per second. */
-  speed: 0.05,
-  /** Seconds tied up at each end before sailing back. */
-  dwell: 2,
-};
-
 /**
- * Where each ferry's boat is at `seconds`: out along the route, a rest at
- * the far pier, back, a rest at home, and again. Pointed the way it sails.
+ * Where something travelling a path is at `seconds`: out along it, a rest at
+ * the far end, back, a rest at home, and again, eased at both ends so it
+ * slows into a stop and gathers way leaving it. Pointed the way it goes.
  */
-export function boatPosition(topo: Topology, route: number[], seconds: number, phase = 0): { at: V3; heading: V3; normal: V3 } {
+export function travel(topo: Topology, route: number[], seconds: number, speed: number, dwell: number, phase = 0, lift = 0.004):
+  { at: V3; heading: V3; normal: V3 } {
   const p = topo.positions, n = topo.normals;
   const pts = route.map((v) => [p[v * 3], p[v * 3 + 1], p[v * 3 + 2]] as V3);
   const cum = [0];
   for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1], pts[i][2] - pts[i - 1][2]));
-  const L = cum[cum.length - 1] || 1e-6, trip = L / SAIL.speed, cycle = 2 * (trip + SAIL.dwell);
-  let t = (seconds + phase * cycle) % cycle;
-  // Eased at both ends, so a boat slows into the pier and gathers way leaving it.
+  const L = cum[cum.length - 1] || 1e-6, trip = L / speed, cycle = 2 * (trip + dwell);
+  let t = (((seconds + phase * cycle) % cycle) + cycle) % cycle;
   const ease = (x: number) => x * x * (3 - 2 * x);
   let s: number, dir = 1;
   if (t < trip) s = ease(t / trip) * L;
-  else if ((t -= trip) < SAIL.dwell) s = L;
-  else if ((t -= SAIL.dwell) < trip) { s = L - ease(t / trip) * L; dir = -1; }
+  else if ((t -= trip) < dwell) s = L;
+  else if ((t -= dwell) < trip) { s = L - ease(t / trip) * L; dir = -1; }
   else { s = 0; dir = -1; }
   const i = Math.max(1, cum.findIndex((c) => c >= s));
   const k = Math.min(1, (s - cum[i - 1]) / Math.max(1e-9, cum[i] - cum[i - 1]));
@@ -455,18 +537,88 @@ export function boatPosition(topo: Topology, route: number[], seconds: number, p
   const nv = route[i - 1] * 3;
   const normal: V3 = [n[nv], n[nv + 1], n[nv + 2]];
   const heading = pts[i].map((x, j) => (x - pts[i - 1][j]) * dir) as V3;
-  const lift = 0.004;
   return { at: [at[0] + normal[0] * lift, at[1] + normal[1] * lift, at[2] + normal[2] * lift], heading, normal };
+}
+
+export const SAIL = {
+  /** World units per second. */
+  speed: 0.05,
+  /** Seconds tied up at each end before sailing back. */
+  dwell: 2,
+};
+
+export const MOVE = {
+  fishing: { speed: 0.025, dwell: 5 },
+  cart: { speed: 0.02, dwell: 3 },
+  car: { speed: 0.065, dwell: 1.5 },
+  train: { speed: 0.08, dwell: 3 },
+  cabin: { speed: 0.03, dwell: 2 },
+  /** Carts give way to cars after this many days. */
+  carsFrom: 30,
+};
+
+/** Ferry boat position: kept as its own name for the tests and the ferry. */
+export function boatPosition(topo: Topology, route: number[], seconds: number, phase = 0): { at: V3; heading: V3; normal: V3 } {
+  return travel(topo, route, seconds, SAIL.speed, SAIL.dwell, phase);
 }
 
 /** The boats out on the ferries, as they are at `seconds`. */
 export function sailingBoats(topo: Topology, ferries: { route: number[] }[], seconds: number): Polyline[] {
   return ferries.filter((f) => f.route.length >= 2).map((f, i) => {
     const { at, heading, normal } = boatPosition(topo, f.route, seconds, i * 0.37);
-    const along = tangent(heading, normal) ?? anyDirection(f.route[0], normal);
-    const across: V3 = [normal[1] * along[2] - normal[2] * along[1], normal[2] * along[0] - normal[0] * along[2], normal[0] * along[1] - normal[1] * along[0]];
-    return hull(at, along, across);
+    return hullAt(at, heading, normal, f.route[0]);
   });
+}
+
+function hullAt(at: V3, heading: V3, normal: V3, fallback: number): Polyline {
+  const along = tangent(heading, normal) ?? anyDirection(fallback, normal);
+  const across: V3 = [normal[1] * along[2] - normal[2] * along[1], normal[2] * along[0] - normal[0] * along[2], normal[0] * along[1] - normal[1] * along[0]];
+  return hull(at, along, across);
+}
+
+/**
+ * Everything that moves, as it is at `seconds`: ferry and fishing boats,
+ * traffic on the roads (carts, then cars as the world ages), trains on the
+ * railways, cabins on the cable lines. Not plotted: it's life, not building.
+ */
+export function movers(topo: Topology, st: Settlements, seconds: number): Polyline[] {
+  const out: Polyline[] = [...sailingBoats(topo, st.ferries, seconds)];
+  st.harbours.forEach((h, hi) => {
+    st.fishingRoutes(h).forEach((route, i) => {
+      if (route.length < 2) return;
+      const { at, heading, normal } = travel(topo, route, seconds, MOVE.fishing.speed, MOVE.fishing.dwell, hi * 0.29 + i * 0.5);
+      out.push(hullAt(at, heading, normal, route[0]));
+    });
+  });
+  const cars = st.day >= MOVE.carsFrom;
+  st.streets.forEach((r, ri) => {
+    if (r.kind !== 'road' || r.path.length < 2) return;
+    // Busier roads carry more: one on a track, two on a lane, three on a made road.
+    const count = (r.grade ?? 0) + 1;
+    for (let i = 0; i < count; i++) {
+      const m = cars ? MOVE.car : MOVE.cart;
+      const { at, heading, normal } = travel(topo, r.path, seconds, m.speed, m.dwell, ri * 0.23 + i / count, 0.005);
+      out.push(vehicle(at, heading, normal, r.path[0], cars ? 0.008 : 0.005, cars ? 0.004 : 0.004));
+    }
+  });
+  st.rails.forEach((r, ri) => {
+    // A short train: engine and two wagons, one behind the other.
+    for (let w = 0; w < 3; w++) {
+      const { at, heading, normal } = travel(topo, r.path, seconds - w * 0.16, MOVE.train.speed, MOVE.train.dwell, ri * 0.41, 0.006);
+      out.push(vehicle(at, heading, normal, r.path[0], 0.01, 0.0045));
+    }
+  });
+  st.cables.forEach((c, ci) => {
+    const { at, heading, normal } = travel(topo, c.path, seconds, MOVE.cabin.speed, MOVE.cabin.dwell, ci * 0.33, CABLE_MARK.height - 0.004);
+    out.push(vehicle(at, heading, normal, c.path[0], 0.005, 0.004));
+  });
+  return out;
+}
+
+function vehicle(at: V3, heading: V3, normal: V3, fallback: number, long: number, wide: number): Polyline {
+  const along = tangent(heading, normal) ?? anyDirection(fallback, normal);
+  const across: V3 = [normal[1] * along[2] - normal[2] * along[1], normal[2] * along[0] - normal[0] * along[2], normal[0] * along[1] - normal[1] * along[0]];
+  return rectangle(at, normal, across, long, wide, 2, () => 0);
 }
 
 function hull(c: V3, along: V3, across: V3): Polyline {
@@ -514,9 +666,9 @@ function squareEdge(f: SquareFrame, water: WaterState, want: 'dry' | 'sunk', sam
   for (let k = 0; k <= samples; k++) {
     const a = angles[(start + k) % samples], s = sunkAt(a);
     const mine = (want === 'sunk') === s;
-    if (mine) arc.push(f.at(a, f.radius));
+    if (mine) arc.push(f.edgeAt(a));
     if ((!mine || k === samples) && arc.length) {
-      if (mine === false) arc.push(f.at(a, f.radius)); // meet the next arc
+      if (mine === false) arc.push(f.edgeAt(a)); // meet the next arc
       if (arc.length >= 2) out.push(polyline(arc, 0));
       arc = [];
     }
@@ -526,7 +678,7 @@ function squareEdge(f: SquareFrame, water: WaterState, want: 'dry' | 'sunk', sam
 
 function circle(f: SquareFrame, samples = 64): Polyline {
   const pts = new Float32Array(samples * 3);
-  for (let i = 0; i < samples; i++) pts.set(f.at((i / samples) * 2 * Math.PI, f.radius), i * 3);
+  for (let i = 0; i < samples; i++) pts.set(f.edgeAt((i / samples) * 2 * Math.PI), i * 3);
   return { level: 0, iso: 0, points: pts, closed: true, length: 2 * Math.PI * f.radius };
 }
 

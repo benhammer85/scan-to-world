@@ -406,14 +406,23 @@ describe('clean drawing', () => {
     return { topo, h, s, frames, streets: streetMarks(topo, s.streets, s.buildings, frames) };
   }
 
-  it('a square is drawn round: every point of its edge is the same distance from the hall', () => {
+  it('a square is drawn smooth: its edge never jumps from one point to the next', () => {
+    const { topo, s, frames } = drawn();
+    const f = frames.get(0)!, P = topo.positions, hall = s.towns[0].centre * 3;
+    const ring = streetMarks(topo, s.streets.filter((x) => x.kind === 'square'), s.buildings, frames)[0];
+    const r: number[] = [];
+    for (let k = 0; k < ring.points.length; k += 3) r.push(Math.hypot(ring.points[k] - P[hall], ring.points[k + 1] - P[hall + 1], ring.points[k + 2] - P[hall + 2]));
+    for (let i = 0; i < r.length; i++) expect(Math.abs(r[i] - r[(i + 1) % r.length]) / f.radius).toBeLessThan(0.03);
+  });
+
+  it('a square is roughly round: within a quarter of its mean radius all the way round', () => {
     const { topo, s, frames } = drawn();
     const f = frames.get(0)!, P = topo.positions, hall = s.towns[0].centre * 3;
     const ring = streetMarks(topo, s.streets.filter((x) => x.kind === 'square'), s.buildings, frames)[0];
     expect(ring.closed).toBe(true);
     for (let k = 0; k < ring.points.length; k += 3) {
       const d = Math.hypot(ring.points[k] - P[hall], ring.points[k + 1] - P[hall + 1], ring.points[k + 2] - P[hall + 2]);
-      expect(Math.abs(d - f.radius) / f.radius).toBeLessThan(0.05);
+      expect(Math.abs(d - f.radius) / f.radius).toBeLessThan(0.25);
     }
   });
 
@@ -499,5 +508,26 @@ describe('marks lie on the ground', () => {
     // laid on the ground by interpolation, -0.0003, and wobbly; flat and lifted
     // by the most any point needs: clear of the ground, and straight.
     expect(worst).toBeGreaterThan(0);
+  });
+});
+
+describe('towns keep apart', () => {
+  it('a tap near a town, but outside it, grows that town rather than founding another', () => {
+    const { topo, h } = world();
+    const s = new Settlements(topo, h);
+    s.tap(FRONT);
+    s.advance(3);
+    const r = s.tap([0.22, 0, 0.975]); // well clear of its buildings, but close
+    expect(s.towns).toHaveLength(1);
+    expect(r.kind).not.toBe('founded');
+  });
+
+  it('far enough off, a tap founds a new town', () => {
+    const { topo, h } = world();
+    const s = new Settlements(topo, h);
+    s.tap(FRONT);
+    s.advance(3);
+    s.tap([-0.1, -0.5, 0.86]);
+    expect(s.towns).toHaveLength(2);
   });
 });

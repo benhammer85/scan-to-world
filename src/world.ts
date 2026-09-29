@@ -12,7 +12,7 @@ import { TerrainEdits, applyDisplacement, type BrushOptions } from './interact/s
 import { Settlements, type TapResult } from './life/settlements';
 import { buildingMarks, harbourMarks, ruinMarks, squareFrames, stallMarks, streetMarks, sunkenMarks } from './life/buildingMarks';
 import { findWater, seaFor, snowLines, streamLines, waterLines, type Sea, type Water } from './nature/water';
-import { ferryRoute, sailingBoats } from './life/buildingMarks';
+import { cableMarks, ferryRoute, movers, railMarks } from './life/buildingMarks';
 
 export type SurfaceStyle = 'scan' | 'paper' | 'elevation';
 
@@ -32,7 +32,7 @@ const WATER_INK = '#2a5680';
 const WATER_SHALLOW = '#9cc3e0';
 const SNOW_TINT = '#f6f7f9';
 const TOWN_FILL = '#2a2522';
-const SQUARE_FILL = '#efe3cc';
+const SQUARE_FILL = '#e8c79c';
 
 /** A flat fill lying just above the ground, in front of it and behind the ink. */
 function fillMesh(color: string, opacity: number, order: number): THREE.Mesh {
@@ -297,9 +297,10 @@ export class TerrainWorld {
     this.townWasDrawing = drawing;
     // Boats sail in real time: they are life on the water, not building.
     this.seconds += dt;
-    if (this.settlements?.ferries.length) {
+    const st = this.settlements;
+    if (st && (st.ferries.length || st.harbours.length || st.rails.length || st.cables.length || st.streets.some((x) => x.kind === 'road'))) {
       this.sailing.geometry.dispose();
-      this.sailing.geometry = segments(sailingBoats(this.topo, this.settlements.ferries, this.seconds));
+      this.sailing.geometry = segments(movers(this.topo, st, this.seconds));
     }
     if (this.waterFade < 1) {
       this.waterFade = Math.min(1, this.waterFade + dt / 0.9);
@@ -364,14 +365,19 @@ export class TerrainWorld {
       ...houses,
       ...ruinMarks(this.topo, this.heights, buildings),
       ...stalls,
-      ...harbourMarks(this.topo, st.harbours, (h) => st.boatsAt(h)),
+      ...harbourMarks(this.topo, st.harbours, (h) => st.mooredAt(h)),
+      ...railMarks(this.topo, st.rails),
+      ...cableMarks(this.topo, st.cables),
     ];
     const from = this.townFrom ?? this.lastTownCentre();
     // Keys before setLines: the pen may turn a line round to start at its nearer end.
     this.solid = [...houses, ...stalls].map((m) => ({ mark: m, key: lineKey(m) }));
-    this.squares = [...frames.values()].filter((f) => ![...f.ring].some((u) => st.submerged.has(u))).map((f) => {
+    // Paved only once the town has a market: a hamlet's square is a green,
+    // and eleven pale discs round eleven hamlets read as a rendering bug.
+    const marketed = new Set(st.stalls.map((x) => x.town));
+    this.squares = [...frames.entries()].filter(([town, f]) => marketed.has(town) && ![...f.ring].some((u) => st.submerged.has(u))).map(([, f]) => {
       const pts: number[][] = [];
-      for (let i = 0; i < 48; i++) pts.push(f.at((i / 48) * 2 * Math.PI, f.radius));
+      for (let i = 0; i < 48; i++) pts.push(f.edgeAt((i / 48) * 2 * Math.PI));
       return { centre: f.at(0, 0), pts };
     });
     this.townLines.setLines(marks, mode, from ?? undefined);
@@ -412,7 +418,7 @@ export class TerrainWorld {
   }
 
   private houseFill = fillMesh(TOWN_FILL, 0.92, 2);
-  private squareFill = fillMesh(SQUARE_FILL, 0.75, 1);
+  private squareFill = fillMesh(SQUARE_FILL, 0.55, 1);
 
   private lastTownCentre(): THREE.Vector3 | null {
     const b = this.settlements.buildings.at(-1);
