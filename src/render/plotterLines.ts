@@ -39,6 +39,9 @@ export interface PlotterStyle {
   minMarkLength: number;
   /** Every Nth level is drawn darker, like index contours on a topo map. */
   indexEvery: number;
+  /** How strong ordinary lines and index lines are drawn (0..1). */
+  alpha: number;
+  indexAlpha: number;
 }
 
 export const defaultPlotterStyle: PlotterStyle = {
@@ -50,6 +53,8 @@ export const defaultPlotterStyle: PlotterStyle = {
   maxSeconds: 20,
   minMarkLength: 0.05,
   indexEvery: 5,
+  alpha: 0.72,
+  indexAlpha: 1,
 };
 
 /**
@@ -88,6 +93,8 @@ const fragmentShader = /* glsl */ `
   uniform vec3 uPencil;
   uniform float uIndexEvery;
   uniform float uLevelCount;
+  uniform float uAlpha;
+  uniform float uIndexAlpha;
   varying float vAlong;
   varying float vProgress;
   varying float vLevel;
@@ -101,7 +108,7 @@ const fragmentShader = /* glsl */ `
     }
     vec3 ink = mix(uInk, uInkHigh, clamp(vLevel / max(uLevelCount - 1.0, 1.0), 0.0, 1.0));
     bool isIndex = mod(vLevel + 0.5, uIndexEvery) < 1.0;
-    gl_FragColor = vec4(ink, isIndex ? 1.0 : 0.72);
+    gl_FragColor = vec4(ink, isIndex ? uIndexAlpha : uAlpha);
   }
 `;
 
@@ -149,6 +156,8 @@ export class PlotterLines {
         uInkHigh: { value: new THREE.Color(style.inkHigh) },
         uPencil: { value: new THREE.Color(style.pencil) },
         uIndexEvery: { value: style.indexEvery },
+        uAlpha: { value: style.alpha },
+        uIndexAlpha: { value: style.indexAlpha },
         uLevelCount: { value: 1 },
       },
     });
@@ -167,6 +176,11 @@ export class PlotterLines {
     this.nib.add(dot, ring);
     this.nib.visible = false;
     this.object.add(this.lines, this.nib);
+  }
+
+  /** Has the pen inked this line (by `lineKey`)? */
+  isInked(key: string): boolean {
+    return this.inked.has(key) && !this.runs.some((r) => r.key === key);
   }
 
   get animating(): boolean {

@@ -103,6 +103,11 @@ scan file ─► load.ts         merge meshes, centre, scale to radius 1, option
   * **Ferries.** Harbours on the same water get a ferry: a dashed way over the water from pier end to pier end.
   * **Sailing.** Each ferry's boat sails it in real time, easing out of one pier and into the other, resting, and coming back. It's life on the water, not building. Boats out on a ferry aren't also drawn moored.
   * **When water changes,** a ferry whose way is no longer all water, or whose harbour drowned, is dropped and looked for again.
+* **Legibility.** A screenshot of three towns near snow and water read as one tangle, because contours, streets, roads and square edges were all the same thin black line. The drawing now uses a map's hierarchy:
+  * **Relief** is faint and brown, behind everything.
+  * **Streets** are double lines, as a town plan draws them, and roads between towns are wider.
+  * **Houses and stalls** are filled solid. The pen still draws each outline first, and the fill comes once it's inked.
+  * **Squares** are paved in a pale fill.
 * **Clean drawing.** The plan's shape is kept, and only the drawing is tidied:
   * **Squares are round.** A square's edge is drawn as a true circle through the mean radius of its ring. Streets that meet the square end exactly on that circle.
   * **Stalls are even.** Stalls fill even slots round the hall, in order, and never move.

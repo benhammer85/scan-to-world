@@ -24,6 +24,12 @@ export const MARK = {
 export const STALL = { long: 0.013, short: 0.008 };
 
 export const BRIDGE_MARK = { halfWidth: 0.006, tick: 0.008 };
+
+/**
+ * Streets are drawn as two lines, the way a town plan draws a street, so a
+ * street can never be mistaken for a contour. Wider for the ways between towns.
+ */
+export const STREET_WIDTH: Record<string, number> = { street: 0.0032, link: 0.0028, lane: 0.0026, road: 0.0046 };
 export const PIER_MARK = { halfWidth: 0.004, head: 0.012 };
 export const BOAT = { long: 0.012, beam: 0.005 };
 
@@ -251,7 +257,7 @@ export function streetMarks(topo: Topology, streets: Street[], buildings: Buildi
     for (const run of runsOf(st.path, water)) {
       if (run.kind === 'dry') {
         const m = groundLine(topo, run.path, buildings, frames, run.first, run.last);
-        if (m) out.push(m);
+        if (m) out.push(...twoSides(topo, m, run.path, STREET_WIDTH[st.kind] ?? 0.003));
       } else if (run.kind === 'bridge') {
         out.push(...deck(topo, run.path, BRIDGE_MARK.halfWidth, 'ticks'));
       }
@@ -322,6 +328,23 @@ function groundLine(topo: Topology, path: number[], buildings: Building[], frame
   if (pts.length < 2) return null;
   const m = polyline(pts, 0);
   return m.length < MARK.shortest ? null : m;
+}
+
+/** A street's two sides, either side of its drawn centre line. */
+function twoSides(topo: Topology, centre: Polyline, path: number[], half: number): Polyline[] {
+  const n = topo.normals, c: number[][] = [];
+  for (let k = 0; k < centre.points.length; k += 3) c.push([centre.points[k], centre.points[k + 1], centre.points[k + 2]]);
+  const side = (i: number): V3 => {
+    const a = c[Math.max(0, i - 1)], b = c[Math.min(c.length - 1, i + 1)];
+    const t: V3 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+    const v = path[Math.min(path.length - 1, Math.round((i / Math.max(1, c.length - 1)) * (path.length - 1)))] * 3;
+    const nr: V3 = [n[v], n[v + 1], n[v + 2]];
+    const s: V3 = [nr[1] * t[2] - nr[2] * t[1], nr[2] * t[0] - nr[0] * t[2], nr[0] * t[1] - nr[1] * t[0]];
+    const l = Math.hypot(s[0], s[1], s[2]) || 1;
+    return [s[0] / l, s[1] / l, s[2] / l];
+  };
+  const sides = c.map((_, i) => side(i));
+  return [1, -1].map((sign) => polyline(c.map((q, i) => q.map((x, k) => x + sign * half * sides[i][k])), 0));
 }
 
 /**

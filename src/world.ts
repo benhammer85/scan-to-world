@@ -6,7 +6,8 @@ import * as THREE from 'three';
 import { buildTopology, type Topology } from './mesh/topology';
 import { extractHeights, type HeightOptions } from './terrain/heightfield';
 import { extractContours } from './terrain/contours';
-import { PlotterLines, defaultPlotterStyle, type RevealMode } from './render/plotterLines';
+import { PlotterLines, defaultPlotterStyle, lineKey, type RevealMode } from './render/plotterLines';
+import type { Polyline } from './terrain/contours';
 import { TerrainEdits, applyDisplacement, type BrushOptions } from './interact/sculpt';
 import { Settlements, type TapResult } from './life/settlements';
 import { buildingMarks, harbourMarks, ruinMarks, squareFrames, stallMarks, streetMarks, sunkenMarks } from './life/buildingMarks';
@@ -30,6 +31,18 @@ const PAPER = new THREE.Color('#efe7d6');
 const WATER_INK = '#2a5680';
 const WATER_SHALLOW = '#9cc3e0';
 const SNOW_TINT = '#f6f7f9';
+const TOWN_FILL = '#2a2522';
+const SQUARE_FILL = '#efe3cc';
+
+/** A flat fill lying just above the ground, in front of it and behind the ink. */
+function fillMesh(color: string, opacity: number, order: number): THREE.Mesh {
+  const m = new THREE.Mesh(
+    new THREE.BufferGeometry(),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity, side: THREE.DoubleSide, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
+  );
+  m.renderOrder = order;
+  return m;
+}
 const SNOW_INK = '#9aaebf';
 const ICE_TINT = '#dcebf4';
 
@@ -69,7 +82,12 @@ export class TerrainWorld {
   readonly mesh: THREE.Mesh;
   readonly topo: Topology;
   readonly edits: TerrainEdits;
-  readonly lines = new PlotterLines();
+  /**
+   * Relief is drawn faint and brown, the way survey maps draw it, so the
+   * ground sits behind what is built on it. In the same black as the streets
+   * it read as one tangle, and a street could not be told from a contour.
+   */
+  readonly lines = new PlotterLines({ ...defaultPlotterStyle, ink: '#b48d64', inkHigh: '#8d5f3b', pencil: '#c9b79d', alpha: 0.45, indexAlpha: 0.8 });
   readonly settlements: Settlements;
   /** The town has its own pen, so building never waits on the terrain's plot. */
   readonly townLines = new PlotterLines({ ...defaultPlotterStyle, ink: '#15151c', inkHigh: '#15151c', indexEvery: 1 });
@@ -134,7 +152,7 @@ export class TerrainWorld {
     this.snowEdge = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: SNOW_INK, transparent: true, opacity: 0.9, depthWrite: false }));
     this.sailing = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: '#15151c', depthWrite: false, transparent: true }));
     this.sailing.renderOrder = 2;
-    this.group.add(this.mesh, this.waterLines, this.snowEdge, this.lines.object, this.townLines.object, this.sailing);
+    this.group.add(this.mesh, this.squareFill, this.waterLines, this.snowEdge, this.lines.object, this.houseFill, this.townLines.object, this.sailing);
 
     this.baseHeights = extractHeights(this.topo, settings.height);
     this.heights = new Float32Array(this.topo.vertexCount);
@@ -273,6 +291,10 @@ export class TerrainWorld {
   update(dt: number, now: number, diffusion: { rate: number; fade: number }, camera?: THREE.Camera, calm = true): void {
     this.lines.update(dt, camera);
     this.townLines.update(dt, camera);
+    // When the pen lifts, fill in what it has just drawn.
+    const drawing = this.townLines.animating;
+    if (this.townWasDrawing && !drawing) this.refreshFills();
+    this.townWasDrawing = drawing;
     // Boats sail in real time: they are life on the water, not building.
     this.seconds += dt;
     if (this.settlements?.ferries.length) {
@@ -335,17 +357,62 @@ export class TerrainWorld {
     const frames = squareFrames(this.topo, streets, towns);
     // A market is under water if its hall is.
     const drownedHall = new Set(towns.filter((t) => st.buildings.find((b) => b.vertex === t.centre)?.state === 'drowned').map((t) => t.id));
+    const houses = buildingMarks(this.topo, this.heights, buildings);
+    const stalls = stallMarks(st.stalls.filter((x) => !drownedHall.has(x.town)), frames, this.topo);
     const marks = [
       ...streetMarks(this.topo, streets, buildings, frames, st),
-      ...buildingMarks(this.topo, this.heights, buildings),
+      ...houses,
       ...ruinMarks(this.topo, this.heights, buildings),
-      ...stallMarks(st.stalls.filter((x) => !drownedHall.has(x.town)), frames, this.topo),
+      ...stalls,
       ...harbourMarks(this.topo, st.harbours, (h) => st.boatsAt(h)),
     ];
     const from = this.townFrom ?? this.lastTownCentre();
+    // Keys before setLines: the pen may turn a line round to start at its nearer end.
+    this.solid = [...houses, ...stalls].map((m) => ({ mark: m, key: lineKey(m) }));
+    this.squares = [...frames.values()].filter((f) => ![...f.ring].some((u) => st.submerged.has(u))).map((f) => {
+      const pts: number[][] = [];
+      for (let i = 0; i < 48; i++) pts.push(f.at((i / 48) * 2 * Math.PI, f.radius));
+      return { centre: f.at(0, 0), pts };
+    });
     this.townLines.setLines(marks, mode, from ?? undefined);
     if (mode === 'ink') this.townFrom = null;
+    this.refreshFills();
   }
+
+  // ---- fills: what a map fills in, once the pen has drawn its outline
+  private solid: { mark: Polyline; key: string }[] = [];
+  private squares: { centre: number[]; pts: number[][] }[] = [];
+  private townWasDrawing = false;
+
+  /**
+   * Houses and stalls are filled solid, the way a map fills buildings, and
+   * squares are paved pale. Only once their outline is inked: the pen draws
+   * the outline, then the inside, as whatwesaved's reveal does.
+   */
+  private refreshFills(): void {
+    const dark: number[] = [];
+    for (const { mark, key } of this.solid) {
+      if (!this.townLines.isInked(key)) continue;
+      const p = mark.points, n = p.length / 3, q = n / 4; // four corners of a rectangle drawn with its sides split
+      const corner = (i: number) => [p[i * q * 3], p[i * q * 3 + 1], p[i * q * 3 + 2]];
+      dark.push(...corner(0), ...corner(1), ...corner(2), ...corner(0), ...corner(2), ...corner(3));
+    }
+    const pale: number[] = [];
+    for (const sq of this.squares) {
+      for (let i = 0; i < sq.pts.length; i++) pale.push(...sq.centre, ...sq.pts[i], ...sq.pts[(i + 1) % sq.pts.length]);
+    }
+    const set = (mesh: THREE.Mesh, arr: number[]) => {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(arr), 3));
+      mesh.geometry.dispose();
+      mesh.geometry = g;
+    };
+    set(this.houseFill, dark);
+    set(this.squareFill, pale);
+  }
+
+  private houseFill = fillMesh(TOWN_FILL, 0.92, 2);
+  private squareFill = fillMesh(SQUARE_FILL, 0.75, 1);
 
   private lastTownCentre(): THREE.Vector3 | null {
     const b = this.settlements.buildings.at(-1);
