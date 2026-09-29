@@ -191,22 +191,32 @@ export interface LandmarkDrawing {
 
 /** Everything above, drawn. */
 /** `detail`: the survey's lines, the hachures and the milestones only once the world settles (see `countryMarks`). */
-export function landmarkMarks(topo: Topology, heights: Float32Array, st: Settlements, c: Countryside, lm: Landmarks, frames: Map<number, SquareFrame>, look: Look, ways: (st: Street) => Polyline | null, detail = true): LandmarkDrawing {
+/**
+ * `fromHigh`: the world seen from very high up, as the game draws it now. Nothing built is
+ * drawn there (walls, churches, houses, castles, abbeys, the coast's works, the roads' inns
+ * and milestones): all of it is part of the development's light. Only the ground's own
+ * marks are left: the summits, the canals as water, the survey and the hachures.
+ */
+export function landmarkMarks(topo: Topology, heights: Float32Array, st: Settlements, c: Countryside, lm: Landmarks, frames: Map<number, SquareFrame>, look: Look, ways: (st: Street) => Polyline | null, detail = true, fromHigh = false): LandmarkDrawing {
   const out: LandmarkDrawing = { lines: [], wash: { positions: [], colours: [] }, turning: [] };
   const { wet, depth, snow } = st.ground;
   const near = c.nearPeople();
   const surveyed = (v: number) => near.has(c.land.cellOf[v]);
 
-  walls(topo, st, lm, out, look);
-  churches(topo, st, frames, out);
-  estates(topo, st, c, look, out);
-  if (wet) coast(topo, st, c, wet, depth, out);
+  if (!fromHigh) {
+    walls(topo, st, lm, out, look);
+    churches(topo, st, frames, out);
+    estates(topo, st, c, look, out);
+    if (wet) coast(topo, st, c, wet, depth, out);
+  }
   const peaks = summits(topo, heights, surveyed);
   high(topo, heights, st, c, snow, surveyed, out, peaks);
-  avenues(st, look, ways, out);
-  castles(topo, st, lm, out);
-  abbeys(topo, heights, st, lm, out);
-  if (detail) roads(topo, st, c, lm, look, ways, out);
+  if (!fromHigh) {
+    avenues(st, look, ways, out);
+    castles(topo, st, lm, out);
+    abbeys(topo, heights, st, lm, out);
+    if (detail) roads(topo, st, c, lm, look, ways, out);
+  }
   canals(topo, heights, st, lm, out);
   if (detail) {
     survey(topo, st, c, surveyed, out, peaks);

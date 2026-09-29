@@ -12,10 +12,10 @@ import { TerrainEdits, applyDisplacement, type BrushOptions } from './interact/s
 import { Settlements, type TapResult } from './life/settlements';
 import { Countryside, type CountryTap } from './life/country';
 import { ESTATE, Landmarks, landmarkMarks } from './life/landmarks';
-import { Stipple, stippleDots } from './render/stipple';
-import { DEVELOPMENT, developedGround, developmentOutline, takenDots } from './life/development';
+import { Stipple } from './render/stipple';
+import { glowDots, glowField } from './life/development';
 import { countryMarks, isoLines, maturity, seasonColour, springFlood, turningMarks, winter, type Turning, type Wash } from './life/countryMarks';
-import { blockMarks, buildingMarks, harbourMarks, lookOf, squareFrames, stallMarks, streetMarks, sunkenMarks, terraceMarks, wingMarks, backGardens, wayLine } from './life/buildingMarks';
+import { blockMarks, buildingMarks, harbourMarks, lookOf, squareFrames, sunkenMarks, wingMarks, wayLine } from './life/buildingMarks';
 import { findWater, seaFor, snowLines, streamLines, waterLines, type Sea, type Water } from './nature/water';
 import { cableMarks, crossingFrames, crossingMarks, ferryRoute, movers, railMarks } from './life/buildingMarks';
 
@@ -461,33 +461,16 @@ export class TerrainWorld {
       const { buildings, streets, towns } = st;
       const look = lookOf(st);
       const frames = squareFrames(this.topo, streets, towns, look);
-      // A market is under water if its hall is.
-      const drownedHall = new Set(towns.filter((t) => st.buildings.find((b) => b.vertex === t.centre)?.state === 'drowned').map((t) => t.id));
       const crossings = crossingFrames(this.topo, st);
-      // Blocks first: one built round takes in the houses that stood on it.
+      // Blocks built round take in the houses that stood on them: the ways are drawn round what is left.
       const blocks = blockMarks(this.topo, st.blocks, (k) => st.blockStage(k), buildings, streets, look);
       const shown = buildings.filter((b) => !blocks.absorbed.has(b.vertex));
-      // Then terraces: the old core's houses along one side of a street, built into one row.
-      const rows = terraceMarks(this.topo, streets, shown, frames, look, st.spacing);
-      const single = shown.filter((b) => !rows.joined.has(b));
-      const houses = [
-        ...buildingMarks(this.topo, this.heights, single, 'standing', look),
-        ...wingMarks(this.topo, this.heights, single, 'standing', look),
-        ...rows.marks,
-      ];
-      const stalls = stallMarks(st.stalls.filter((x) => !drownedHall.has(x.town)), frames, this.topo);
-      // Development, not a town you could walk down: everything built is dotted, the taken ground
-      // is outlined and lightly dotted, and only the roads out, the water's edge and the rails
-      // are drawn as lines (see life/development.ts, STYLE.md).
-      const built = [...houses, ...blocks.lines.filter((m) => m.fill), ...stalls];
+      // Development as light seen from very high up: no buildings, no outlines, only a stipple
+      // whose density is the light the houses give (see life/development.ts, STYLE.md). The roads
+      // are threads of that light, not lines; only the water's edge and the rails are drawn.
       const { wet, stream } = st.ground;
-      const ground = developedGround(this.topo, buildings.map((b) => b.vertex), (v) => !wet?.[v] && !stream?.[v]);
-      const taken = (v: number) => ground[v] === 1;
-      const dots = [...stippleDots(built.flatMap((m) => m.fill ?? rectangleTris(m)), DEVELOPMENT.core), ...takenDots(this.topo, taken)];
+      const dots = glowDots(this.topo, glowField(this.topo, buildings, streets, (b) => st.houseStage(b)), (v) => !wet?.[v] && !stream?.[v]);
       const lines = [
-        ...developmentOutline(this.topo, taken),
-        ...backGardens(this.topo, single, look, (b) => st.hasGarden(b)),
-        ...streetMarks(this.topo, streets.filter((x) => x.kind === 'road'), shown, frames, st, look),
         ...harbourMarks(this.topo, st.harbours, (h) => st.mooredAt(h)),
         ...railMarks(this.topo, st.rails, crossings.map((x) => x.at)),
         ...crossingMarks(crossings),
@@ -502,7 +485,7 @@ export class TerrainWorld {
     const country = this.layer('country', `${ground}|${detail}|${Math.floor(st.buildings.length / 5)}|${Math.floor(st.streets.length / 4)}|${c.signature()}|${c.claims.size}|${c.planted.size}|${c.felled.size}|${c.remembered.size}|${c.commons.size}|${c.drained.size}|${Math.floor(m * 10)}`,
       () => countryMarks(this.topo, st, c, detail));
     const land = this.layer('land', `${ground}|${detail}|${lm.signature()}|${st.towns.map((t) => Math.floor(st.size(t.id) / 8)).join(',')}|${Math.floor(c.claims.size / 3)}|${st.harbours.length}|${st.harbours.filter((h) => h.silted !== undefined).length}|${st.farms.filter((f) => f.estate !== undefined).length}|${Math.floor(m * 4)}|${Math.floor(st.lookSignature() / 50)}`,
-      () => landmarkMarks(this.topo, this.heights, st, c, lm, town.frames, town.look, (x) => wayLine(this.topo, x, town.shown, town.frames, town.look), detail));
+      () => landmarkMarks(this.topo, this.heights, st, c, lm, town.frames, town.look, (x) => wayLine(this.topo, x, town.shown, town.frames, town.look), detail, true));
     this.turning = [...country.turning, ...land.turning];
     // Washes are set again only when their layer was drawn again.
     const washKey = `${this.layers.get('country')!.key}|${this.layers.get('land')!.key}`;
@@ -513,12 +496,8 @@ export class TerrainWorld {
       setWash(this.meadow, country.meadow, floodTint(st.day));
       this.seasonDay = st.day;
     }
-    // A landmark's buildings are dotted too: only its lines on the ground are drawn.
-    if (land !== this.dotted.land) this.dotted.landDots = stippleDots(land.lines.filter((x) => x.fill).flatMap((x) => x.fill!), DEVELOPMENT.core);
-    if (town.dots !== this.dotted.town || land !== this.dotted.land) {
-      this.dotted = { town: town.dots, land, landDots: this.dotted.landDots };
-      this.stipple.set([...town.dots, ...this.dotted.landDots]);
-    }
+    if (town.dots !== this.dotted) { this.dotted = town.dots; this.stipple.set(town.dots); }
+    // A landmark's buildings are part of the light, not drawn: only its lines on the ground are.
     const marks = [...country.lines, ...land.lines.filter((x) => !x.fill), ...town.lines];
     const from = this.townFrom ?? this.lastTownCentre();
     this.townLines.setLines(marks, mode, from ?? undefined);
@@ -526,7 +505,7 @@ export class TerrainWorld {
   }
   private washKey = '';
   readonly stipple = new Stipple(TOWN_INK);
-  private dotted: { town: number[] | null; land: unknown; landDots: number[] } = { town: null, land: null, landDots: [] };
+  private dotted: number[] | null = null;
 
   /** Hand colour on the fields and woods; the ploughland's on its own, tinted by the season. */
   private wash = washMesh(0);
@@ -725,12 +704,6 @@ function hypsometric(h: number, out: THREE.Color): THREE.Color {
 }
 
 /** The two triangles of a rectangle mark (drawn with each side split in four). */
-function rectangleTris(mark: Polyline): number[] {
-  const p = mark.points, n = p.length / 3, q = n / 4;
-  const corner = (i: number) => [p[i * q * 3], p[i * q * 3 + 1], p[i * q * 3 + 2]];
-  return [...corner(0), ...corner(1), ...corner(2), ...corner(0), ...corner(2), ...corner(3)];
-}
-
 /**
  * A mesh for washes. Watercolour darkens the paper it's laid on, never
  * lightens it, so washes multiply what's under them: a tint strength of

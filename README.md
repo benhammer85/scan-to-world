@@ -12,7 +12,7 @@ recognises "this is an orange" and swaps in a library mesh.
 The look follows **[STYLE.md](STYLE.md)**. The world is a survey sheet of about 1780–1850, and the atlas a star atlas of the same years. Every new mark has to pass one test: would a surveyor of about 1820 have drawn it this way?
 
 * **Purely ink, purely flat.** Everything lies on the ground, drawn from above. Nothing stands up off the world.
-* **Development, not towns.** The simulation still grows streets, houses, farms and markets underneath, but none of them is drawn as a building. What you see is the development's extent: a fine outline round the taken ground, a light stipple over it, and dots thickening where it is most built. The old streets show only as lines of dots. Farms and gardens show as rows, and woods as trees (`src/life/development.ts`, `src/render/stipple.ts`).
+* **Development as light.** The simulation still grows streets, houses, farms and markets underneath, but the map draws only their light, as the Earth is seen at night from space. Every house is a small light (old cores brightest, farms faint). Roads are threads of light, and it spreads and fades over the ground. It is drawn in ink as stipple: nearly solid at the cores, thinning to a halo, to specks. No buildings, outlines, walls or traffic on land (`src/life/development.ts`).
 * **You can't come close.** Zoom stops well short of seeing what anything is. You see how much, where and how it spreads; the rest is for the imagination.
 
 ## Run it

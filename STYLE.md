@@ -42,15 +42,16 @@ If a convention is not in those, it does not go in.
 
 Everything lies on the ground, drawn from above. **Nothing stands up off the world**: no pictures in profile, no cutouts. A standing-figure prototype was tried and dropped, because it looked like a fantasy map.
 
-## Development, not towns
+## Development as light
 
-The world is somewhere else, and its people are not drawn as ours would be. The simulation still grows paths into streets, huts into rows and markets into cities, because that is what makes development spread, thicken and follow the ground. But the map never draws a building. It shows the development the way a small-scale survey shows built-up land:
+Development is drawn the way the Earth looks at night from space. There are no buildings and no outlines, only light, drawn in ink as stipple (`src/life/development.ts`):
 
-- **Its extent:** one fine line round the developed ground. Small holes and specks are left out, so the edge runs easily, as a surveyor would draw it.
-- **Its density:** a light stipple over all of it, and dots thickening where it is most built. A hamlet is a few dots, and a city a dark field of them. The old streets show only as lines of dots.
-- **Working ground:** fields, gardens and terraces in rows; woods as small trees; walls, hedges and water as lines.
-- **Landmarks are dots too.** Whatever a landmark built is stippled. Only its lines on the ground are drawn.
-- **Roads out, rails and the water's edge** stay as lines, because they join places.
+- **Every house is a small light.** An old core's terraces and courts shine most, a new hut at the edge least, and a farm faintly.
+- **The light spreads over the ground and fades with distance**, as a city's density falls off from its core.
+- **Crowding counts:** light counts for more where there is more of it. Dim light gives only rare specks, and bright light nearly solid ground: bright cores, dark gaps, faint scattered points.
+- **Roads are threads of light, not lines.** Only the water's edge and the rails are drawn as lines.
+- **Nothing built is drawn from this height:** walls, churches, castles, abbeys and inns are part of the light. Carts and trains are too small to see; boats on the water stay.
+- **Working ground stays as texture:** fields in rows, woods as small trees, hedges and water as lines.
 
 ## You can't come close
 
