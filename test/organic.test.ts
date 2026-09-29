@@ -56,4 +56,15 @@ describe('organic growth', () => {
     const again = grown(true, 40).s;
     expect(again.buildings.map((b) => b.vertex)).toEqual(s.buildings.map((b) => b.vertex));
   });
+
+  it('a tap near a place, not on it, draws the place that way rather than planting a farm', () => {
+    const { s: t } = grown(true, 6);
+    const town = t.towns[0], p0 = topo.positions;
+    const c = [p0[town.centre * 3], p0[town.centre * 3 + 1], p0[town.centre * 3 + 2]];
+    // A little way off the edge of what is built, towards +x.
+    const far = Math.max(...town.buildings.map((v) => dist(v, town.centre)));
+    const at = [c[0] + far + 0.07, c[1], c[2]];
+    const r = t.tap(at);
+    expect(r.kind).toBe('grew');
+  });
 });

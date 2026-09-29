@@ -30,7 +30,7 @@ describe('development as light', () => {
 
   it('is kept, not lost, as it spreads', () => {
     const total = light.reduce((s, x) => s + x, 0);
-    const given = town.length * GLOW.stages[3] + GLOW.farm;
+    const given = town.length * GLOW.stages[3] + GLOW.farm; // no hall among them: every house has order 1
     expect(total / given).toBeGreaterThan(0.9);
     expect(total / given).toBeLessThan(1.1);
   });

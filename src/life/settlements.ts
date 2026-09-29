@@ -182,7 +182,8 @@ export interface Block {
  *    distances, on good ground by water or a way (central places, never a lattice).
  */
 export const GROW = {
-  /** Growth per day: base + bySize * houses^pull, times the place's vigour. */
+  /** Growth per day (a day is a turn of the world): base + bySize * houses^pull, times the place's vigour. */
+  base: 2.8,
   bySize: 0.12,
   pull: 0.75,
   /** Spread of vigour between places (log-normal): most near 1, a few far above or below. */
@@ -490,8 +491,13 @@ export class Settlements {
     const near = this.nearestVertex(point);
     this.now = this.day;
     const on = this.townNear(near);
-    // Near a town but not on it: a farm, out in its country.
+    // Near a town but not on it: organically, the town is drawn that way (a farm if it can't reach);
+    // in the compact model, a farm out in its country.
     const by = on ? null : this.townWithin(near, TOWN.apart);
+    if (by && this.organic) {
+      const grown = this.growNear(by, near, 3);
+      if (grown !== null) { this.refreshBlocks(); return { kind: 'grew', town: by.id, vertex: grown }; }
+    }
     if (by) {
       const farm = this.plantFarm(near, by);
       if (farm !== null) { this.refreshBlocks(); return { kind: 'farm', town: by.id, vertex: farm }; }
@@ -620,7 +626,7 @@ export class Settlements {
     let laid = 0, left = days;
     // A town that lost houses to the water rebuilds them faster than it grows.
     const rate = (t: Town) => this.organic
-      ? (TOWN.baseRate + GROW.bySize * Math.pow(t.buildings.length, GROW.pull)) * this.vigour(t) + TOWN.rebuildRate * t.rebuild
+      ? (GROW.base + GROW.bySize * Math.pow(t.buildings.length, GROW.pull)) * this.vigour(t) + TOWN.rebuildRate * t.rebuild
       : TOWN.baseRate + TOWN.rateBySize * Math.sqrt(t.buildings.length) + TOWN.rebuildRate * t.rebuild;
     const live = new Set(this.towns.filter((t) => t.frontier.length > 0));
     while (left > 0 && live.size) {

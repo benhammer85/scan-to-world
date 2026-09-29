@@ -334,10 +334,17 @@ export function countryMarks(topo: Topology, st: Settlements, c: Countryside, de
       }
     }
     for (const v of cells[cell].vertices) {
-      if (!own(v) || hash(v, 51) > COUNTRY.trees) continue;
-      const fr = frameAt(nm, v), j = 0.012;
-      const at = [0, 1, 2].map((k) => p[v * 3 + k] + fr.ax[k] * (hash(v, 52) - 0.5) * j + fr.bx[k] * (hash(v, 53) - 0.5) * j + nm[v * 3 + k] * COUNTRY.lift) as V3;
-      out.lines.push(...tree(at, fr, COUNTRY.crown * (0.75 + 0.5 * hash(v, 54)) * (0.35 + 0.65 * g), v));
+      if (!own(v)) continue;
+      // Woods as a small-scale map draws them: clumps of trees with clearings between, not
+      // one tree to every vertex, which spread evenly over the country and read as the mesh.
+      // Where the wood is thick, two or three trees stand together, scattered off the vertex.
+      const thick = clump(p, v);
+      const count = hash(v, 51) < COUNTRY.trees * thick ? (thick > 0.7 ? 2 + (hash(v, 55) < 0.4 ? 1 : 0) : 1) : 0;
+      for (let k2 = 0; k2 < count; k2++) {
+        const fr = frameAt(nm, v), j = 0.036;
+        const at = [0, 1, 2].map((k) => p[v * 3 + k] + fr.ax[k] * (hash(v, 52 + k2 * 7) - 0.5) * j + fr.bx[k] * (hash(v, 53 + k2 * 7) - 0.5) * j + nm[v * 3 + k] * COUNTRY.lift) as V3;
+        out.lines.push(...tree(at, fr, COUNTRY.crown * (0.6 + 0.5 * hash(v, 54 + k2)) * (0.35 + 0.65 * g), v * 3 + k2));
+      }
     }
   }
 
@@ -396,6 +403,13 @@ export function turningMarks(turning: Turning[], seconds: number): Polyline[] {
 }
 
 // ------------------------------------------------------------ symbols
+
+/** How thick the wood is here: a smooth, fixed pattern over the ground, 0 (a clearing) to 1. */
+function clump(p: Float32Array, v: number): number {
+  const k = 1 / 0.09, x = p[v * 3] * k, y = p[v * 3 + 1] * k, z = p[v * 3 + 2] * k;
+  const n = (Math.sin(x * 1.1 + y * 0.5 + 0.3) + Math.sin(y * 1.3 - z * 0.6 + 2.2) + Math.sin(z * 0.9 + x * 0.8 - 1.1)) / 6 + 0.5;
+  return Math.max(0, Math.min(1, (n - 0.35) / 0.4));
+}
 
 /**
  * A tree, as an old map draws one: a round crown, shaded down one side

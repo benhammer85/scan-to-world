@@ -11,7 +11,7 @@ import type { Polyline } from './terrain/contours';
 import { TerrainEdits, applyDisplacement, type BrushOptions } from './interact/sculpt';
 import { Settlements, type TapResult } from './life/settlements';
 import { Countryside, type CountryTap } from './life/country';
-import { ESTATE, Landmarks, landmarkMarks } from './life/landmarks';
+import { Landmarks, landmarkMarks } from './life/landmarks';
 import { Stipple } from './render/stipple';
 import { glowDots, glowField } from './life/development';
 import { countryMarks, isoLines, maturity, seasonColour, springFlood, turningMarks, winter, type Turning, type Wash } from './life/countryMarks';
@@ -185,18 +185,19 @@ export class TerrainWorld {
    * too steep to build: a wood planted. Near a town: a farm. Anywhere else
    * open: people, a new town.
    */
-  tap(worldPoint: THREE.Vector3): TapResult | { kind: CountryTap | 'estate'; vertex: number } {
+  /**
+   * A tap, as the world is seen now, from very high up: only what can be seen
+   * from there can be touched. On a wood the map shows, it is cleared; on
+   * farmland, it goes back to the wild; on steep open ground, a wood is
+   * planted. Anywhere else it is about people: on or near a place it grows
+   * that way, and out in empty country it sows a new one.
+   */
+  tap(worldPoint: THREE.Vector3): TapResult | { kind: CountryTap; vertex: number } {
     const local = this.mesh.worldToLocal(worldPoint.clone());
     const at = [local.x, local.y, local.z];
-    let r: TapResult | { kind: CountryTap | 'estate'; vertex: number } | null = null;
-    // On a farm of a grown town: it becomes a country house.
-    const farm = this.settlements.farmAt(at, 0.035);
-    if (farm && farm.estate === undefined && this.settlements.size(farm.town) >= ESTATE.at) {
-      farm.estate = this.settlements.day;
-      r = { kind: 'estate', vertex: farm.vertex };
-    }
-    if (!r && !this.settlements.onTown(at)) {
-      const v = this.settlements.nearest(at), kind = this.country.tap(v);
+    let r: TapResult | { kind: CountryTap; vertex: number } | null = null;
+    if (!this.settlements.onTown(at)) {
+      const v = this.settlements.nearest(at), kind = this.country.tap(v, true);
       if (kind) r = { kind, vertex: v };
     }
     r ??= this.settlements.tap(at);

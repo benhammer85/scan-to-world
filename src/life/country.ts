@@ -296,20 +296,21 @@ export class Countryside {
    * felled. On ground too steep to build on: a wood planted. Anything else
    * is for the settlements (null).
    */
-  tap(v: number): CountryTap | null {
+  /** `fromHigh`: as the game is seen now, where commons and wet meadows can't be told from other ground, so a tap there is about the land itself. */
+  tap(v: number, fromHigh = false): CountryTap | null {
     const cell = this.land.cellOf[v];
     if (cell < 0) return null;
     const { wet, stream, snow } = this.st.ground;
     if (wet?.[v] || stream?.[v] || snow?.[v]) return null;
     const common = [...this.commons.values()].find((x) => x.cell === cell);
-    if (common && common.enclosed === undefined && common.kept === undefined) {
+    if (!fromHigh && common && common.enclosed === undefined && common.kept === undefined) {
       common.kept = this.st.day;
       return 'kept';
     }
     if (this.claims.has(cell)) {
       // A wet meadow of a grown town is drained, not given up.
       const owner = this.claims.get(cell)!.owner;
-      if (this.cropOf(cell) === 'meadow' && owner.startsWith('t') && this.st.size(Number(owner.slice(1))) >= MARSH.at) {
+      if (!fromHigh && this.cropOf(cell) === 'meadow' && owner.startsWith('t') && this.st.size(Number(owner.slice(1))) >= MARSH.at) {
         this.drained.set(cell, this.st.day);
         return 'drained';
       }

@@ -49,12 +49,25 @@ scene.add(sun);
 
 // The acknowledgement that a finger has taken hold of the ground. It shows the
 // moment the hold lands, before any work, so the player knows they were heard.
+/** The answer to a touch, in the map's own ink: a fine ring while held, a ripple for a tap. */
+const TOUCH_INK = '#2e2118', PENCIL = '#8a8578';
 const holdRing = new THREE.Mesh(
-  new THREE.RingGeometry(0.92, 1, 48),
-  new THREE.MeshBasicMaterial({ color: '#c8541a', transparent: true, opacity: 0, side: THREE.DoubleSide, depthTest: false }),
+  new THREE.RingGeometry(0.95, 1, 64),
+  new THREE.MeshBasicMaterial({ color: TOUCH_INK, transparent: true, opacity: 0, side: THREE.DoubleSide, depthTest: false }),
 );
 holdRing.renderOrder = 2;
 scene.add(holdRing);
+/** A tap's ripple: three fine rings opening one after another, as a drop spreads on water. */
+const ripple = new THREE.Group();
+for (let i = 0; i < 3; i++) {
+  ripple.add(new THREE.Mesh(
+    new THREE.RingGeometry(0.97, 1, 64),
+    new THREE.MeshBasicMaterial({ color: TOUCH_INK, transparent: true, opacity: 0, side: THREE.DoubleSide, depthTest: false }),
+  ));
+}
+ripple.renderOrder = 2;
+ripple.children.forEach((m) => { m.renderOrder = 2; });
+scene.add(ripple);
 
 // ---------------------------------------------------------------- state
 const settings: WorldSettings = {
@@ -452,17 +465,31 @@ renderer.setAnimationLoop(() => {
       holdRing.lookAt(held.point.clone().add(held.normal));
       holdRing.scale.setScalar(held.radius * (0.6 + 0.4 * grow));
       mat.opacity = 0.75 * grow;
-    } else if (flash) {
-      // A tap: a small ring that opens and fades. Grey if the ground refused.
-      const t = (now - flash.since) / 500;
-      holdRing.position.copy(flash.point).addScaledVector(flash.normal, 0.01);
-      holdRing.lookAt(flash.point.clone().add(flash.normal));
-      holdRing.scale.setScalar(0.03 + 0.05 * Math.min(1, t));
-      mat.color.set(flash.refused ? '#8a8578' : '#c8541a');
-      mat.opacity = 0.8 * Math.max(0, 1 - t);
-      if (t >= 1) { flash = null; mat.color.set('#c8541a'); }
     } else {
       mat.opacity = Math.max(0, mat.opacity - dt * 3);
+    }
+    if (flash) {
+      // A tap: fine ink rings opening one after another and fading, as a drop spreads.
+      // Refused, one pencil ring that closes instead: the ground would not take it.
+      const t = (now - flash.since) / 1100;
+      ripple.position.copy(flash.point).addScaledVector(flash.normal, 0.01);
+      ripple.lookAt(flash.point.clone().add(flash.normal));
+      ripple.children.forEach((m, i) => {
+        const rm = (m as THREE.Mesh).material as THREE.MeshBasicMaterial;
+        if (flash!.refused) {
+          rm.color.set(PENCIL);
+          m.scale.setScalar(0.05 * (1 - 0.5 * Math.min(1, t)));
+          rm.opacity = i === 0 ? 0.7 * Math.max(0, 1 - t) : 0;
+          return;
+        }
+        rm.color.set(TOUCH_INK);
+        const u = THREE.MathUtils.clamp(t * 1.4 - i * 0.2, 0, 1);
+        m.scale.setScalar(0.012 + 0.07 * Math.sqrt(u));
+        rm.opacity = u > 0 ? 0.65 * (1 - u) : 0;
+      });
+      if (t >= 1) flash = null;
+    } else {
+      ripple.children.forEach((m) => { ((m as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = 0; });
     }
 
     // Calm is when nothing is being held and the world has nearly stopped:

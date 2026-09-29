@@ -20,7 +20,9 @@ export const GLOW = {
    * house more, one with its wings more again, and the terraces and courts of an old core
    * most. Then a farm, a street's vertex, a road's.
    */
-  stages: [0.2, 0.5, 1, 3.5],
+  stages: [0.45, 0.75, 1.1, 2.6],
+  /** A place's first building, its hall: the first fire, seen at once when a place is sown. */
+  hall: 1.6,
   farm: 0.22,
   street: 0.18,
   road: 0.3,
@@ -33,7 +35,7 @@ export const GLOW = {
    * space has it: bright cores, dark gaps, faint scattered points. The densest, in dots per unit of area.
    */
   scale: 0.45,
-  contrast: 2.6,
+  contrast: 2.2,
   /** Crowding: light counts for more where there is more of it, as a city's life grows faster than its size. */
   crowding: 1.4,
   dense: 55000,
@@ -49,7 +51,7 @@ export function glowField(topo: Topology, buildings: Building[], streets: Street
     if (b.state === 'drowned') continue;
     if (b.state === 'ruin') { f[b.vertex] += GLOW.farm * 0.5; continue; }
     if (b.farm) { f[b.vertex] += GLOW.farm; continue; }
-    f[b.vertex] += GLOW.stages[Math.max(0, Math.min(GLOW.stages.length - 1, stage(b)))];
+    f[b.vertex] += GLOW.stages[Math.max(0, Math.min(GLOW.stages.length - 1, stage(b)))] + (b.order === 0 ? GLOW.hall : 0);
   }
   for (const s of streets) {
     const w = s.kind === 'road' ? GLOW.road : GLOW.street;
