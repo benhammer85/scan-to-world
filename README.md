@@ -77,7 +77,17 @@ scan file ─► load.ts         merge meshes, centre, scale to radius 1, option
   * **Drawing.** Water is drawn as a map draws it: a shoreline, blue depth lines parallel to it, and the ground tinted blue, deeper bluer. Land contours stop at the shore. Water fades in rather than being plotted, because nobody made it.
   * **Towns keep out.** No house, street or square is laid on water. The mask they keep out of is the same one the shore is drawn from (whatwesaved PRINCIPLES.md, 1).
   * **On the demo orange:** a southern sea and 4 lakes, 40% of the surface. An update takes 3.6 ms, down from 49 ms once the mesh's fixed facts were cached.
-  * **Not yet:** houses already built can be flooded if you dig beside them; springs and streams; harbours and bridges.
+* **Harbours and bridges.**
+  * **Harbours.** A town with 6 houses and a street on the shore gets a harbour: a pier from the shore street nearest its square, out into ever-deeper water, with a head across its end. Boats moor alongside, one more every 8 houses, up to 4.
+  * **Bridges.** Roads and loop lanes may cross water, but only where the water is at most 0.14 wide. A step over water costs 3× a step on land, so a bridge is only built where it saves a real detour. A bridge is drawn as a deck: two rails with splayed ticks at each end.
+  * **Wider water.** No street stands in water except as a bridge, and nothing bridges water wider than the span.
+* **Floods and rebuilding.**
+  * **Drowning.** When water rises over what was built, it drowns. Nothing is removed (the record only grows). Drowned houses and sunken streets move from ink to the water's blue and show through it like a drowned village.
+  * **Streets.** Sunken streets leave the network, so nothing is routed along them.
+  * **Squares.** A flooded square is drawn in ink only where it's still dry.
+  * **Rebuilding.** The town owes what it lost and rebuilds it on dry ground, one extra house a day for each loss. On the orange, a pit dug into a town drowned 5 houses, and four days later it had grown back past where it was.
+  * **When the water goes down,** drowned houses become ruins (the corners of their outline), their ground is free, and sunken streets are streets again.
+* **Not yet:** springs and streams; roads that prefer harbours; boats that sail.
 * **Clean drawing.** The plan's shape is kept, and only the drawing is tidied:
   * **Squares are round.** A square's edge is drawn as a true circle through the mean radius of its ring. Streets that meet the square end exactly on that circle.
   * **Stalls are even.** Stalls fill even slots round the hall, in order, and never move.

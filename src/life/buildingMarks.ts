@@ -9,7 +9,7 @@
  */
 import type { Topology } from '../mesh/topology';
 import type { Polyline } from '../terrain/contours';
-import { MARKET, type Building, type Stall, type Street, type Town } from './settlements';
+import { MARKET, type Building, type Harbour, type Stall, type Street, type Town } from './settlements';
 
 export const MARK = {
   long: 0.024,
@@ -22,6 +22,18 @@ export const MARK = {
 };
 
 export const STALL = { long: 0.013, short: 0.008 };
+
+export const BRIDGE_MARK = { halfWidth: 0.006, tick: 0.008 };
+export const PIER_MARK = { halfWidth: 0.004, head: 0.012 };
+export const BOAT = { long: 0.012, beam: 0.005 };
+
+/** What the drawing needs to know about each street vertex. */
+export interface WaterState {
+  bridgeAt: Set<number>;
+  submerged: Map<number, number>;
+}
+
+const DRY: WaterState = { bridgeAt: new Set(), submerged: new Map() };
 
 type V3 = [number, number, number];
 
@@ -150,9 +162,10 @@ function groundWithin(topo: Topology, from: number, r: number, rings = 2): numbe
  * street point it fronts, so a row along one street stands in line. A hall
  * (no front) runs along the contour.
  */
-export function buildingMarks(topo: Topology, heights: Float32Array, buildings: Building[]): Polyline[] {
+export function buildingMarks(topo: Topology, heights: Float32Array, buildings: Building[], which: 'standing' | 'drowned' = 'standing'): Polyline[] {
   const { positions: p, normals: n } = topo;
-  return buildings.map((b) => {
+  const shown = buildings.filter((b) => (which === 'standing' ? b.state === undefined : b.state === 'drowned'));
+  return shown.map((b) => {
     const v = b.vertex, o = v * 3;
     const nr: V3 = [n[o], n[o + 1], n[o + 2]];
     let g: V3 = [0, 0, 0];
@@ -172,6 +185,28 @@ export function buildingMarks(topo: Topology, heights: Float32Array, buildings: 
     const c: V3 = [p[o], p[o + 1], p[o + 2]];
     return rectangle(c, nr, across, MARK.long * s, MARK.short * s, 1, clearanceNear(topo, v, nr, MARK.long * s));
   });
+}
+
+/**
+ * Where a house drowned and the water has since gone: the corners of its
+ * outline and nothing else, unless something new stands on the spot.
+ */
+export function ruinMarks(topo: Topology, heights: Float32Array, buildings: Building[]): Polyline[] {
+  const standingAt = new Set(buildings.filter((b) => b.state === undefined).map((b) => b.vertex));
+  const ruins = buildings.filter((b) => b.state === 'ruin' && !standingAt.has(b.vertex));
+  const whole = buildingMarks(topo, heights, ruins.map((b) => ({ ...b, state: undefined })));
+  const out: Polyline[] = [];
+  for (const m of whole) {
+    const n = m.points.length / 3, per = n / 4;
+    for (let c = 0; c < 4; c++) {
+      const at = (i: number) => m.points.subarray((((i % n) + n) % n) * 3, (((i % n) + n) % n) * 3 + 3);
+      const pts = new Float32Array([...at(c * per - 1), ...at(c * per), ...at(c * per + 1)]);
+      let length = 0;
+      for (let k = 3; k < 9; k += 3) length += Math.hypot(pts[k] - pts[k - 3], pts[k + 1] - pts[k - 2], pts[k + 2] - pts[k - 1]);
+      out.push({ level: 1, iso: 0, points: pts, closed: false, length });
+    }
+  }
+  return out;
 }
 
 /** Market stalls in even slots on a ring round the hall, each facing it. */
@@ -204,39 +239,204 @@ export function stallAngle(slot: number): number {
  * a house or hall is trimmed back to the footprint; an end on a square is
  * moved onto the square's drawn circle.
  */
-export function streetMarks(topo: Topology, streets: Street[], buildings: Building[], frames: Map<number, SquareFrame>): Polyline[] {
-  const { positions: p, normals: n } = topo;
-  const byVertex = new Map(buildings.map((b) => [b.vertex, b]));
-  const onSquare = (v: number) => { for (const f of frames.values()) if (f.ring.has(v)) return f; return undefined; };
+export function streetMarks(topo: Topology, streets: Street[], buildings: Building[], frames: Map<number, SquareFrame>, water: WaterState = DRY): Polyline[] {
   const out: Polyline[] = [];
   for (const st of streets) {
     if (st.path.length < 2) continue;
     if (st.kind === 'square') {
       const f = frames.get(st.town);
-      if (f) out.push(circle(f));
+      if (f) out.push(...squareEdge(f, water, 'dry'));
       continue;
     }
-    let pts: number[][] = st.path.map((v) => {
-      const o = v * 3;
-      return [p[o] + n[o] * MARK.lift, p[o + 1] + n[o + 1] * MARK.lift, p[o + 2] + n[o + 2] * MARK.lift];
-    });
-    for (const i of [0, pts.length - 1]) {
-      const f = onSquare(st.path[i]);
-      if (f) pts[i] = f.at(f.angleOf(st.path[i]), f.radius);
+    for (const run of runsOf(st.path, water)) {
+      if (run.kind === 'dry') {
+        const m = groundLine(topo, run.path, buildings, frames, run.first, run.last);
+        if (m) out.push(m);
+      } else if (run.kind === 'bridge') {
+        out.push(...deck(topo, run.path, BRIDGE_MARK.halfWidth, 'ticks'));
+      }
     }
-    for (let r = 0; r < 2; r++) pts = chaikin(pts);
-    for (const end of [0, 1]) {
-      const b = byVertex.get(end === 0 ? st.path[0] : st.path[st.path.length - 1]);
-      if (!b || pts.length < 2) continue;
-      if (end === 1) pts.reverse();
-      pts = trimStart(pts, pts[0], footprintRadius(b) * 1.05);
-      if (end === 1) pts.reverse();
+  }
+  return out;
+}
+
+/** The parts of streets now under water, for drawing with the water. */
+export function sunkenMarks(topo: Topology, streets: Street[], water: WaterState, frames?: Map<number, SquareFrame>): Polyline[] {
+  const out: Polyline[] = [];
+  for (const st of streets) {
+    if (st.kind === 'square') {
+      const f = frames?.get(st.town);
+      if (f) out.push(...squareEdge(f, water, 'sunk'));
+      continue;
     }
-    if (pts.length < 2) continue;
-    let length = 0;
-    for (let i = 1; i < pts.length; i++) length += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1], pts[i][2] - pts[i - 1][2]);
-    if (length < MARK.shortest) continue;
-    out.push({ level: 0, iso: 0, points: new Float32Array(pts.flat()), closed: false, length });
+    for (const run of runsOf(st.path, water)) {
+      if (run.kind !== 'sunk') continue;
+      const pts = chaikin(chaikin(run.path.map((v) => lifted(topo, v))));
+      out.push(polyline(pts, 0));
+    }
+  }
+  return out;
+}
+
+type Run = { kind: 'dry' | 'bridge' | 'sunk'; path: number[]; first: boolean; last: boolean };
+
+/**
+ * A street split where it goes over water (a bridge) or under it (sunk).
+ * Neighbouring runs share their boundary vertex, so a bridge reaches from
+ * bank to bank and the street on either side meets it.
+ */
+function runsOf(path: number[], water: WaterState): Run[] {
+  const kind = (v: number): Run['kind'] => (water.bridgeAt.has(v) ? 'bridge' : water.submerged.has(v) ? 'sunk' : 'dry');
+  const runs: Run[] = [];
+  let start = 0;
+  for (let i = 1; i <= path.length; i++) {
+    const k = kind(path[start]);
+    if (i < path.length && kind(path[i]) === k) continue;
+    // Wet runs take the bank vertex on each side; dry runs stop at the bank.
+    const from = k === 'dry' ? start : Math.max(0, start - 1);
+    const to = k === 'dry' ? i - 1 : Math.min(path.length - 1, i);
+    const piece = path.slice(from, to + 1);
+    if (piece.length >= 2) runs.push({ kind: k, path: piece, first: from === 0, last: to === path.length - 1 });
+    start = i;
+  }
+  return runs;
+}
+
+/** A street on the ground: smoothed, its ends snapped onto squares and trimmed at buildings. */
+function groundLine(topo: Topology, path: number[], buildings: Building[], frames: Map<number, SquareFrame>, first: boolean, last: boolean): Polyline | null {
+  const byVertex = new Map(buildings.filter((b) => b.state === undefined).map((b) => [b.vertex, b]));
+  const onSquare = (v: number) => { for (const f of frames.values()) if (f.ring.has(v)) return f; return undefined; };
+  let pts: number[][] = path.map((v) => lifted(topo, v));
+  for (const [i, isEnd] of [[0, first], [pts.length - 1, last]] as [number, boolean][]) {
+    const f = isEnd ? onSquare(path[i]) : undefined;
+    if (f) pts[i] = f.at(f.angleOf(path[i]), f.radius);
+  }
+  for (let r = 0; r < 2; r++) pts = chaikin(pts);
+  for (const end of [0, 1]) {
+    const b = byVertex.get(end === 0 ? path[0] : path[path.length - 1]);
+    if (!b || pts.length < 2) continue;
+    if (end === 1) pts.reverse();
+    pts = trimStart(pts, pts[0], footprintRadius(b) * 1.05);
+    if (end === 1) pts.reverse();
+  }
+  if (pts.length < 2) return null;
+  const m = polyline(pts, 0);
+  return m.length < MARK.shortest ? null : m;
+}
+
+/**
+ * Two rails either side of a centreline: a bridge deck (with the splayed
+ * end ticks maps give a bridge) or a pier (with a head across its end).
+ */
+function deck(topo: Topology, path: number[], half: number, ends: 'ticks' | 'head'): Polyline[] {
+  const centre = chaikin(path.map((v) => lifted(topo, v, 0.004)));
+  const n = topo.normals;
+  const side = (i: number): V3 => {
+    const a = centre[Math.max(0, i - 1)], b = centre[Math.min(centre.length - 1, i + 1)];
+    const t: V3 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+    const v = path[Math.min(path.length - 1, Math.round((i / (centre.length - 1)) * (path.length - 1)))] * 3;
+    const nr: V3 = [n[v], n[v + 1], n[v + 2]];
+    const s: V3 = [nr[1] * t[2] - nr[2] * t[1], nr[2] * t[0] - nr[0] * t[2], nr[0] * t[1] - nr[1] * t[0]];
+    const l = Math.hypot(s[0], s[1], s[2]) || 1;
+    return [s[0] / l, s[1] / l, s[2] / l];
+  };
+  const sides = centre.map((_, i) => side(i));
+  const rail = (sign: number) => centre.map((c, i) => c.map((x, k) => x + sign * half * sides[i][k]));
+  const out = [polyline(rail(1), 1), polyline(rail(-1), 1)];
+  const last = centre.length - 1;
+  if (ends === 'ticks') {
+    for (const [i, dir] of [[0, -1], [last, 1]] as [number, number][]) {
+      const a = centre[Math.max(0, Math.min(last, i - dir))], c = centre[i];
+      const along = c.map((x, k) => x - a[k]), al = Math.hypot(along[0], along[1], along[2]) || 1;
+      for (const sign of [1, -1]) {
+        const root = c.map((x, k) => x + sign * half * sides[i][k]);
+        const tip = root.map((x, k) => x + (along[k] / al) * BRIDGE_MARK.tick * 0.7 + sign * sides[i][k] * BRIDGE_MARK.tick * 0.7);
+        out.push(polyline([root, tip], 1));
+      }
+    }
+  } else {
+    const c = centre[last];
+    out.push(polyline([c.map((x, k) => x + PIER_MARK.head * sides[last][k]), c.map((x, k) => x - PIER_MARK.head * sides[last][k])], 1));
+  }
+  return out;
+}
+
+/** Harbours: a pier out over the water, and boats moored beside it. */
+export function harbourMarks(topo: Topology, harbours: Harbour[], boats: (h: Harbour) => number): Polyline[] {
+  const out: Polyline[] = [];
+  for (const h of harbours) {
+    if (h.drowned) continue;
+    const rails = deck(topo, h.pier, PIER_MARK.halfWidth, 'head');
+    out.push(...rails);
+    const count = boats(h);
+    if (!count) continue;
+    // Alongside the pier's outer half, alternating sides.
+    const p = topo.positions, nm = topo.normals;
+    const end = h.pier[h.pier.length - 1], root = h.pier[0];
+    const t: V3 = [p[end * 3] - p[root * 3], p[end * 3 + 1] - p[root * 3 + 1], p[end * 3 + 2] - p[root * 3 + 2]];
+    const nr: V3 = [nm[end * 3], nm[end * 3 + 1], nm[end * 3 + 2]];
+    const along = tangent(t, nr) ?? anyDirection(end, nr);
+    const across: V3 = [nr[1] * along[2] - nr[2] * along[1], nr[2] * along[0] - nr[0] * along[2], nr[0] * along[1] - nr[1] * along[0]];
+    for (let i = 0; i < count; i++) {
+      const back = (Math.floor(i / 2) + 0.5) * BOAT.long * 1.3, side = i % 2 ? -1 : 1;
+      const c: V3 = [0, 1, 2].map((k) => p[end * 3 + k] - along[k] * back + across[k] * side * (PIER_MARK.halfWidth + BOAT.beam * 1.6) + nr[k] * 0.004) as V3;
+      out.push(hull(c, along, across));
+    }
+  }
+  return out;
+}
+
+function hull(c: V3, along: V3, across: V3): Polyline {
+  const pts: number[][] = [];
+  for (let i = 0; i < 10; i++) {
+    const a = (i / 10) * 2 * Math.PI;
+    const x = Math.cos(a) * BOAT.long / 2, y = Math.sin(a) * BOAT.beam / 2 * (1 - 0.4 * Math.cos(a)); // pointed bow
+    pts.push(c.map((v, k) => v + along[k] * x + across[k] * y));
+  }
+  const m = polyline(pts, 2);
+  return { ...m, closed: true };
+}
+
+function lifted(topo: Topology, v: number, lift = MARK.lift): number[] {
+  const p = topo.positions, n = topo.normals, o = v * 3;
+  return [p[o] + n[o] * lift, p[o + 1] + n[o + 1] * lift, p[o + 2] + n[o + 2] * lift];
+}
+
+function polyline(pts: number[][], level: number): Polyline {
+  let length = 0;
+  for (let i = 1; i < pts.length; i++) length += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1], pts[i][2] - pts[i - 1][2]);
+  return { level, iso: 0, points: new Float32Array(pts.flat()), closed: false, length };
+}
+
+/**
+ * A square's edge, dry arcs or sunken ones. Whole and round while the square
+ * is dry; where water has come over part of its ring, that part goes to the
+ * water and the rest stays in ink, as for any other street.
+ */
+function squareEdge(f: SquareFrame, water: WaterState, want: 'dry' | 'sunk', samples = 64): Polyline[] {
+  const ring = [...f.ring].map((u) => ({ a: f.angleOf(u), sunk: water.submerged.has(u) }));
+  if (!ring.some((r) => r.sunk)) return want === 'dry' ? [circle(f, samples)] : [];
+  if (ring.every((r) => r.sunk)) return want === 'sunk' ? [circle(f, samples)] : [];
+  const sunkAt = (a: number) => {
+    let best = ring[0], bd = Infinity;
+    for (const r of ring) { const d = Math.abs(Math.atan2(Math.sin(a - r.a), Math.cos(a - r.a))); if (d < bd) { bd = d; best = r; } }
+    return best.sunk;
+  };
+  // Start the walk where the kind changes, so no arc is split across the seam.
+  const angles = Array.from({ length: samples }, (_, i) => (i / samples) * 2 * Math.PI);
+  let start = angles.findIndex((a, i) => sunkAt(a) !== sunkAt(angles[(i + samples - 1) % samples]));
+  if (start < 0) start = 0;
+  const out: Polyline[] = [];
+  let arc: number[][] = [];
+  for (let k = 0; k <= samples; k++) {
+    const a = angles[(start + k) % samples], s = sunkAt(a);
+    const mine = (want === 'sunk') === s;
+    if (mine) arc.push(f.at(a, f.radius));
+    if ((!mine || k === samples) && arc.length) {
+      if (mine === false) arc.push(f.at(a, f.radius)); // meet the next arc
+      if (arc.length >= 2) out.push(polyline(arc, 0));
+      arc = [];
+    }
   }
   return out;
 }

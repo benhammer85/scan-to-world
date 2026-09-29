@@ -47,6 +47,8 @@ export const TOWN = {
   /** Buildings per day: a hamlet grows steadily, a town faster. */
   baseRate: 2,
   rateBySize: 0.25,
+  /** Extra houses per day, for each house the water took that is not yet rebuilt. */
+  rebuildRate: 1,
   /** Cost of climbing, relative to distance, and of height itself. */
   slopeCost: 4,
   heightCost: 1.5,
@@ -102,6 +104,31 @@ export const MARKET = {
   ring: 0.55,
 };
 
+export const BRIDGE = {
+  /** A bridge may cross water up to this wide (world units)... */
+  span: 0.14,
+  /** ...and a step over water costs this many times a step on land, so a
+   *  bridge is only built where it saves a real detour. */
+  cost: 3,
+};
+
+export const HARBOUR = {
+  /** A town gets a harbour at this many houses, if it has a street on the shore... */
+  at: 6,
+  /** ...with a pier out into the water up to this long... */
+  pier: 0.08,
+  /** ...and one boat for every this many houses, up to `boats`. */
+  perBoat: 8,
+  boats: 4,
+};
+
+export interface Harbour {
+  town: number;
+  /** From the shore street out over the water. */
+  pier: number[];
+  drowned?: boolean;
+}
+
 export interface Stall {
   town: number;
   /** Which of the market's even slots round the hall; slots fill in order and never move. */
@@ -130,6 +157,12 @@ export interface Building {
   order: number;
   /** The street vertex this house faces. Every house but a hall has one. */
   front?: number;
+  /**
+   * Standing unless the water came: a drowned house is under water, and a
+   * ruin is where one stood when the water went down. Never removed: the
+   * record only grows (whatwesaved PRINCIPLES.md, 3).
+   */
+  state?: 'drowned' | 'ruin';
 }
 
 export interface Town {
@@ -141,6 +174,8 @@ export interface Town {
   /** Dijkstra frontier: [cost, vertex], kept sorted by cost then vertex. */
   frontier: [number, number][];
   settled: Map<number, number>;
+  /** Houses the water took that the town has yet to build again. */
+  rebuild: number;
 }
 
 export type TapResult =
@@ -153,6 +188,14 @@ export class Settlements {
   readonly buildings: Building[] = [];
   readonly streets: Street[] = [];
   readonly stalls: Stall[] = [];
+  readonly harbours: Harbour[] = [];
+  /** Street vertices carried over water. */
+  readonly bridgeAt = new Set<number>();
+  /** Street vertices under water now (not bridges): out of the network until the water goes. */
+  readonly submerged = new Map<number, number>();
+  /** For each wet vertex, how far it is to dry ground; a bridge may cross only narrow water. */
+  private shoreDist: Float32Array | null = null;
+  private depth: Float32Array | null = null;
   /** Vertex -> town, for the open ground of each town's square (its edge is street). */
   private reserved = new Map<number, number>();
   /** Radius of a square on this mesh. */
@@ -184,9 +227,43 @@ export class Settlements {
     return !this.wet?.[v] && this.localSlope(v) <= this.buildableSlope;
   }
 
-  /** Water on the ground now: nothing is built or routed on it. The same mask the shore is drawn from. */
-  setWater(wet: Uint8Array): void {
+  /**
+   * Water on the ground now: nothing is built or routed on it (but bridges),
+   * and it is the same mask the shore is drawn from. Where water has come up
+   * over what was built, that is drowned; where it has gone down, what
+   * drowned is a ruin, and the ground is free again.
+   */
+  setWater(wet: Uint8Array, depth?: Float32Array): void {
     this.wet = wet;
+    this.depth = depth ?? null;
+    this.shoreDist = distanceToDry(this.topo, wet);
+    this.flood();
+  }
+
+  private flood(): void {
+    const wet = this.wet!;
+    for (const b of this.buildings) {
+      if (b.state === undefined && wet[b.vertex]) {
+        b.state = 'drowned';
+        this.buildingAt.delete(b.vertex);
+        this.occupied.splice(this.occupied.indexOf(b.vertex), 1);
+        this.towns[b.town].rebuild++;
+      } else if (b.state === 'drowned' && !wet[b.vertex]) {
+        b.state = 'ruin';
+      }
+    }
+    for (const [u, town] of this.network) {
+      if (wet[u] && !this.bridgeAt.has(u)) { this.network.delete(u); this.submerged.set(u, town); }
+    }
+    for (const [u, town] of this.submerged) {
+      if (!wet[u]) { this.submerged.delete(u); this.network.set(u, town); }
+    }
+    for (const h of this.harbours) if (wet[h.pier[0]]) h.drowned = true;
+  }
+
+  /** How many houses are standing (not drowned, not ruins). */
+  get standing(): number {
+    return this.buildings.filter((b) => b.state === undefined).length;
   }
   private wet: Uint8Array | null = null;
 
@@ -200,7 +277,7 @@ export class Settlements {
     }
     const site = this.findSite(near);
     if (site === null) return { kind: 'refused' };
-    const t: Town = { id: this.towns.length, centre: site, buildings: [], owed: 0, frontier: [], settled: new Map() };
+    const t: Town = { id: this.towns.length, centre: site, buildings: [], owed: 0, frontier: [], settled: new Map(), rebuild: 0 };
     this.towns.push(t);
     this.lay(t, site);
     this.openSquare(t);
@@ -216,7 +293,8 @@ export class Settlements {
     // for the whole step and then the next would make the world depend on
     // the frame rate.
     let laid = 0, left = days;
-    const rate = (t: Town) => TOWN.baseRate + TOWN.rateBySize * Math.sqrt(t.buildings.length);
+    // A town that lost houses to the water rebuilds them faster than it grows.
+    const rate = (t: Town) => TOWN.baseRate + TOWN.rateBySize * Math.sqrt(t.buildings.length) + TOWN.rebuildRate * t.rebuild;
     const live = new Set(this.towns.filter((t) => t.frontier.length > 0));
     while (left > 0 && live.size) {
       let next: Town | null = null, soonest = Infinity;
@@ -511,6 +589,53 @@ export class Settlements {
     t.buildings.push(v);
     this.occupied.push(v);
     this.buildingAt.add(v);
+    if (front !== undefined && t.rebuild > 0) t.rebuild--;
+    if (front !== undefined) this.maybeHarbour(t);
+  }
+
+  // ------------------------------------------------------------ harbour
+
+  /**
+   * A town on the water gets a harbour once it has grown: a pier from its
+   * shore street nearest the square, out into deepening water.
+   */
+  private maybeHarbour(t: Town): void {
+    if (!this.wet || !this.depth || this.harbours.some((h) => h.town === t.id)) return;
+    const houses = this.buildings.filter((b) => b.town === t.id && b.state === undefined).length - 1;
+    if (houses < HARBOUR.at) return;
+    let best = -1, bestD = Infinity;
+    for (const [u, town] of this.network) {
+      if (town !== t.id || this.bridgeAt.has(u) || this.reserved.has(u)) continue;
+      let shore = false;
+      this.eachNeighbour(u, (w) => { if (this.wet![w]) shore = true; });
+      if (!shore) continue;
+      const d = this.dist(u, t.centre) + u * 1e-9;
+      if (d < bestD) { bestD = d; best = u; }
+    }
+    if (best < 0) return;
+    // Out over the water, always into deeper water, up to a pier's length.
+    const pier = [best];
+    let tip = best, length = 0;
+    while (length < HARBOUR.pier) {
+      let next = -1, nd = -Infinity, step = 0;
+      this.eachNeighbour(tip, (w, d) => {
+        if (!this.wet![w] || pier.includes(w)) return;
+        const deeper = this.depth![w] - (this.wet![tip] ? this.depth![tip] : 0) + w * 1e-9;
+        if (deeper > nd) { nd = deeper; next = w; step = d; }
+      });
+      if (next < 0 || (pier.length > 1 && nd < 0)) break;
+      pier.push(next);
+      tip = next;
+      length += step;
+    }
+    if (pier.length < 2) return;
+    this.harbours.push({ town: t.id, pier });
+  }
+
+  /** Boats moored at a harbour: more as its town grows. */
+  boatsAt(h: Harbour): number {
+    const houses = this.buildings.filter((b) => b.town === h.town && b.state === undefined).length - 1;
+    return h.drowned ? 0 : Math.min(HARBOUR.boats, Math.floor((houses - HARBOUR.at) / HARBOUR.perBoat) + 1);
   }
 
   /**
@@ -535,6 +660,7 @@ export class Settlements {
         (u, len) => this.network.has(u) && !own.has(u) && (byStreet.get(u) ?? Infinity) > STREET.loopDetour * len,
         STREET.loopReach,
         -1,
+        true,
       );
       const len = lane ? this.pathLength(lane) : Infinity;
       if (len < bestLen) { best = lane; bestLen = len; }
@@ -575,6 +701,8 @@ export class Settlements {
 
   private addStreet(st: Street): void {
     this.streets.push(st);
+    // What it carries over water is bridge; the rest is street on the ground.
+    if (this.wet) for (const u of st.path) if (this.wet[u]) this.bridgeAt.add(u);
     for (const u of streetVertices(st)) if (!this.network.has(u)) this.network.set(u, st.town);
   }
 
@@ -591,7 +719,7 @@ export class Settlements {
         if (this.joined.has(key)) continue;
         this.joined.add(key); // tried once; a road that can't be found isn't retried every frame
         const from = [...this.network].filter(([, t]) => t === a.id).map(([u]) => u).sort((x, y) => x - y);
-        const path = this.route(from, (u) => this.network.get(u) === b.id, STREET.roadReach, -1);
+        const path = this.route(from, (u) => this.network.get(u) === b.id, STREET.roadReach, -1, true);
         if (path) { this.addStreet({ path, town: a.id, kind: 'road' }); laid++; }
       }
     }
@@ -603,7 +731,7 @@ export class Settlements {
    * satisfies `isTarget`: distance, plus climbing. Passes only where a street
    * may run. `own` is the building the route serves, which it may start from.
    */
-  private route(sources: number[], isTarget: (u: number, len: number) => boolean, reach: number, own: number): number[] | null {
+  private route(sources: number[], isTarget: (u: number, len: number) => boolean, reach: number, own: number, bridging = false): number[] | null {
     const f = new Settlements.Frontier();
     const cost = new Map<number, number>(), prev = new Map<number, number>(), length = new Map<number, number>();
     for (const s of sources) { f.push(0, s); cost.set(s, 0); length.set(s, 0); }
@@ -624,8 +752,11 @@ export class Settlements {
         if (len > reach) return;
         // Only the end may be on the network: a new way never runs along an
         // existing street, or the pen would draw the same street twice.
-        if (!isTarget(w, len) && (this.network.has(w) || !this.streetMayRun(w, own))) return;
-        const step = d * (1 + STREET.climb * Math.abs(this.heights[w] - this.heights[u]) / d / (this.buildableSlope || 1));
+        if (!isTarget(w, len) && (this.network.has(w) || !this.streetMayRun(w, own, bridging))) return;
+        const overWater = !!this.wet?.[w];
+        const step = overWater
+          ? d * BRIDGE.cost // a bridge is level, but dear
+          : d * (1 + STREET.climb * Math.abs(this.heights[w] - this.heights[u]) / d / (this.buildableSlope || 1));
         const nc = c + step;
         if (nc < (cost.get(w) ?? Infinity)) {
           cost.set(w, nc); prev.set(w, u); length.set(w, len);
@@ -636,10 +767,13 @@ export class Settlements {
     return null;
   }
 
-  private streetMayRun(u: number, own: number): boolean {
+  private streetMayRun(u: number, own: number, bridging = false): boolean {
     if (this.reserved.has(u)) return false; // not across a square; its edge is already street
-    if (this.wet?.[u]) return false; // not through water (bridges would be their own thing)
-    if (this.localSlope(u) > this.buildableSlope * STREET.steepness) return false;
+    if (this.submerged.has(u)) return false;
+    if (this.wet?.[u]) {
+      // Over water only as a bridge, and only where the water is narrow.
+      if (!bridging || (this.shoreDist?.[u] ?? Infinity) > BRIDGE.span / 2) return false;
+    } else if (this.localSlope(u) > this.buildableSlope * STREET.steepness) return false;
     for (const o of this.occupied) if (o !== own && this.dist(u, o) < STREET.clearance) return false;
     return true;
   }
@@ -798,4 +932,23 @@ function meanEdge(topo: Topology): number {
     }
   }
   return n ? sum / n : 0;
+}
+
+/** For each wet vertex, the distance over the surface to the nearest dry one; 0 where dry. */
+function distanceToDry(topo: Topology, wet: Uint8Array): Float32Array {
+  const n = topo.vertexCount, p = topo.positions;
+  const out = new Float32Array(n).fill(Infinity);
+  const f = new Settlements.Frontier();
+  for (let v = 0; v < n; v++) if (!wet[v]) { out[v] = 0; f.push(0, v); }
+  while (f.size) {
+    const [d, u] = f.pop();
+    if (d > out[u]) continue;
+    for (let k = topo.nbrOffsets[u]; k < topo.nbrOffsets[u + 1]; k++) {
+      const w = topo.nbrList[k];
+      if (!wet[w]) continue;
+      const nd = d + Math.hypot(p[u * 3] - p[w * 3], p[u * 3 + 1] - p[w * 3 + 1], p[u * 3 + 2] - p[w * 3 + 2]);
+      if (nd < out[w]) { out[w] = nd; f.push(nd, w); }
+    }
+  }
+  return out;
 }

@@ -9,7 +9,7 @@ import { extractContours } from './terrain/contours';
 import { PlotterLines, defaultPlotterStyle, type RevealMode } from './render/plotterLines';
 import { TerrainEdits, applyDisplacement, type BrushOptions } from './interact/sculpt';
 import { Settlements, type TapResult } from './life/settlements';
-import { buildingMarks, squareFrames, stallMarks, streetMarks } from './life/buildingMarks';
+import { buildingMarks, harbourMarks, ruinMarks, squareFrames, stallMarks, streetMarks, sunkenMarks } from './life/buildingMarks';
 import { findWater, seaFor, waterLines, type Sea, type Water } from './nature/water';
 
 export type SurfaceStyle = 'scan' | 'paper' | 'elevation';
@@ -115,7 +115,7 @@ export class TerrainWorld {
     // the player's own object and the thing they came to see, so it is plotted.
     this.rebuildContours('plot', penFrom);
     this.settlements = new Settlements(this.topo, this.heights);
-    this.settlements.setWater(this.water.wet);
+    this.settlements.setWater(this.water.wet, this.water.depth);
     this.drawWater(false);
   }
 
@@ -293,12 +293,17 @@ export class TerrainWorld {
 
   private rebuildTown(mode: RevealMode): void {
     this.lastTownBuild = performance.now();
-    const { buildings, streets, stalls, towns } = this.settlements;
+    const st = this.settlements;
+    const { buildings, streets, towns } = st;
     const frames = squareFrames(this.topo, streets, towns);
+    // A market is under water if its hall is.
+    const drownedHall = new Set(towns.filter((t) => st.buildings.find((b) => b.vertex === t.centre)?.state === 'drowned').map((t) => t.id));
     const marks = [
-      ...streetMarks(this.topo, streets, buildings, frames),
+      ...streetMarks(this.topo, streets, buildings, frames, st),
       ...buildingMarks(this.topo, this.heights, buildings),
-      ...stallMarks(stalls, frames, this.topo),
+      ...ruinMarks(this.topo, this.heights, buildings),
+      ...stallMarks(st.stalls.filter((x) => !drownedHall.has(x.town)), frames, this.topo),
+      ...harbourMarks(this.topo, st.harbours, (h) => st.boatsAt(h)),
     ];
     const from = this.townFrom ?? this.lastTownCentre();
     this.townLines.setLines(marks, mode, from ?? undefined);
@@ -323,8 +328,10 @@ export class TerrainWorld {
     if (this.settlements) {
       const before = this.water;
       this.water = findWater(this.topo, this.heights, this.sea);
-      this.settlements.setWater(this.water.wet);
-      this.drawWater(!sameWet(before.wet, this.water.wet));
+      const changed = !sameWet(before.wet, this.water.wet);
+      this.settlements.setWater(this.water.wet, this.water.depth);
+      this.drawWater(changed);
+      if (changed) this.townDirty = true; // the water may have taken, or given back, what was built
       if (this.settings.surface !== 'elevation') this.applySurface();
     }
     const lines = extractContours(this.topo, this.heights, {
@@ -337,7 +344,14 @@ export class TerrainWorld {
   }
 
   private drawWater(changed: boolean): void {
-    const lines = waterLines(this.topo, this.water);
+    // The water, and whatever it has taken: drowned houses and sunken
+    // streets show through it in the water's own ink, like a drowned village.
+    const st = this.settlements;
+    const lines = [
+      ...waterLines(this.topo, this.water),
+      ...(st ? buildingMarks(this.topo, this.heights, st.buildings, 'drowned') : []),
+      ...(st ? sunkenMarks(this.topo, st.streets, st, squareFrames(this.topo, st.streets, st.towns)) : []),
+    ];
     let segs = 0;
     for (const l of lines) segs += l.points.length / 3 - 1 + (l.closed ? 1 : 0);
     const pos = new Float32Array(segs * 6);
