@@ -138,3 +138,15 @@ describe('seeds and changing course', () => {
     }
   });
 });
+
+describe('a first tap', () => {
+  it('on a new world founds a town, never fells a wood nobody can see', () => {
+    const { topo, h } = world();
+    const s = new Settlements(topo, h), c = new Countryside(topo, s, h);
+    c.update(true);
+    // Every cell that would be wood, if anybody were there to see it.
+    const woods = c.land.cells.filter((x) => c.isWood(x.id));
+    expect(woods.length).toBeGreaterThan(0);
+    for (const cell of woods.slice(0, 20)) expect(c.tap(cell.centre)).not.toBe('felled');
+  });
+});

@@ -157,8 +157,8 @@ export function surfaceNets(sdf: Sdf, lo: V, hi: V, cell: number, colour: (p: V)
   }
 }
 
-/** About as many triangles as the demo orange: enough for towns, few enough for a phone. */
-export const MOST_TRIANGLES = 20000;
+/** About as many triangles as the demo orange: enough for towns, few enough for any phone to turn smoothly. */
+export const MOST_TRIANGLES = 12000;
 
 function nets(sdf: Sdf, lo: V, hi: V, cell: number, colour: (p: V) => THREE.Color): THREE.BufferGeometry {
   // Padded a cell each side, so the surface closes inside the grid.

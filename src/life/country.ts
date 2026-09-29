@@ -314,7 +314,9 @@ export class Countryside {
       this.plant(cell);
       return 'spared';
     }
-    if (this.isWood(cell) && !this.townGround[v]) {
+    // Only a wood on the map: unsurveyed country has its woods, but nobody can see them to fell
+    // them, and a first tap on a new world felled one instead of founding a town.
+    if (this.isWood(cell) && !this.townGround[v] && this.nearPeople().has(cell)) {
       this.planted.delete(cell);
       this.felled.add(cell);
       this.keepOut();

@@ -402,6 +402,7 @@ export class TerrainWorld {
         this.topo.normals.set(this.topo.baseNormals);
       }
       this.syncRenderGeometry();
+      this.shapeVersion++;
       if (this.settings.surface === 'elevation') this.applySurface();
       if (this.settlements?.buildings.length) this.townDirty = true; // they ride the ground
     }
@@ -443,55 +444,89 @@ export class TerrainWorld {
     this.townBuildMs = performance.now() - started;
   }
 
+  /**
+   * The town, the country and the landmarks are drawn as three layers, each
+   * kept until something it is drawn from changes: a new house redraws the
+   * town, not every hedge and summit on the object. Before, one house redrew
+   * everything, 120-200 ms in a grown world.
+   */
+  private layers = new Map<string, { key: string; value: unknown }>();
+  private layer<T>(name: string, key: string, make: () => T): T {
+    const had = this.layers.get(name);
+    if (had && had.key === key) return had.value as T;
+    const value = make();
+    this.layers.set(name, { key, value });
+    return value;
+  }
+  /** Counted up whenever the ground's shape or its water changes: everything drawn on it moves. */
+  private shapeVersion = 0;
+  private waterVersion = 0;
+
   private buildTown(mode: RevealMode): void {
-    const st = this.settlements;
-    const { buildings, streets, towns } = st;
-    const look = lookOf(st);
-    const frames = squareFrames(this.topo, streets, towns, look);
-    // A market is under water if its hall is.
-    const drownedHall = new Set(towns.filter((t) => st.buildings.find((b) => b.vertex === t.centre)?.state === 'drowned').map((t) => t.id));
-    this.crossings = crossingFrames(this.topo, st);
-    // Blocks first: one built round takes in the houses that stood on it.
-    const blocks = blockMarks(this.topo, st.blocks, (k) => st.blockStage(k), buildings, streets, look);
-    const shown = buildings.filter((b) => !blocks.absorbed.has(b.vertex));
-    // Then terraces: the old core's houses along one side of a street, built into one row.
-    const rows = terraceMarks(this.topo, streets, shown, frames, look, st.spacing);
-    const single = shown.filter((b) => !rows.joined.has(b));
-    const houses = [
-      ...buildingMarks(this.topo, this.heights, single, 'standing', look),
-      ...wingMarks(this.topo, this.heights, single, 'standing', look),
-      ...rows.marks,
-    ];
-    const stalls = stallMarks(st.stalls.filter((x) => !drownedHall.has(x.town)), frames, this.topo);
-    const country = countryMarks(this.topo, st, this.country);
-    const land = landmarkMarks(this.topo, this.heights, st, this.country, this.landmarks, frames, look, (x) => wayLine(this.topo, x, shown, frames, look));
+    const st = this.settlements, c = this.country, lm = this.landmarks;
+    const detail = mode === 'ink';
+    const ground = `${this.shapeVersion}|${this.waterVersion}`;
+    const town = this.layer('town', `${ground}|${st.buildings.length}|${st.streets.length}|${st.stalls.length}|${st.harbours.length}|${st.harbours.filter((h) => h.silted !== undefined).length}|${st.rails.length}|${st.cables.length}|${st.blocks.length}|${st.lookSignature()}`, () => {
+      const { buildings, streets, towns } = st;
+      const look = lookOf(st);
+      const frames = squareFrames(this.topo, streets, towns, look);
+      // A market is under water if its hall is.
+      const drownedHall = new Set(towns.filter((t) => st.buildings.find((b) => b.vertex === t.centre)?.state === 'drowned').map((t) => t.id));
+      const crossings = crossingFrames(this.topo, st);
+      // Blocks first: one built round takes in the houses that stood on it.
+      const blocks = blockMarks(this.topo, st.blocks, (k) => st.blockStage(k), buildings, streets, look);
+      const shown = buildings.filter((b) => !blocks.absorbed.has(b.vertex));
+      // Then terraces: the old core's houses along one side of a street, built into one row.
+      const rows = terraceMarks(this.topo, streets, shown, frames, look, st.spacing);
+      const single = shown.filter((b) => !rows.joined.has(b));
+      const houses = [
+        ...buildingMarks(this.topo, this.heights, single, 'standing', look),
+        ...wingMarks(this.topo, this.heights, single, 'standing', look),
+        ...rows.marks,
+      ];
+      const stalls = stallMarks(st.stalls.filter((x) => !drownedHall.has(x.town)), frames, this.topo);
+      const lines = [
+        ...backGardens(this.topo, single, look, (b) => st.hasGarden(b)),
+        ...streetMarks(this.topo, streets, shown, frames, st, look),
+        ...yardPaths(this.topo, shown, frames, look),
+        ...blocks.lines,
+        ...houses,
+        ...ruinMarks(this.topo, this.heights, buildings),
+        ...stalls,
+        ...harbourMarks(this.topo, st.harbours, (h) => st.mooredAt(h)),
+        ...railMarks(this.topo, st.rails, crossings.map((x) => x.at)),
+        ...crossingMarks(crossings),
+        ...cableMarks(this.topo, st.cables),
+      ];
+      const solids = [...houses, ...stalls, ...blocks.lines.filter((m) => m.fill)];
+      return { look, frames, shown, crossings, lines, solids };
+    });
+    this.crossings = town.crossings;
+    // The country follows the town only loosely: redrawn every few houses, not each one.
+    const m = maturity(st.day);
+    const country = this.layer('country', `${ground}|${detail}|${Math.floor(st.buildings.length / 5)}|${Math.floor(st.streets.length / 4)}|${c.signature()}|${c.claims.size}|${c.planted.size}|${c.felled.size}|${c.remembered.size}|${c.commons.size}|${c.drained.size}|${Math.floor(m * 10)}`,
+      () => countryMarks(this.topo, st, c, detail));
+    const land = this.layer('land', `${ground}|${detail}|${lm.signature()}|${st.towns.map((t) => Math.floor(st.size(t.id) / 8)).join(',')}|${Math.floor(c.claims.size / 3)}|${st.harbours.length}|${st.harbours.filter((h) => h.silted !== undefined).length}|${st.farms.filter((f) => f.estate !== undefined).length}|${Math.floor(m * 4)}|${Math.floor(st.lookSignature() / 50)}`,
+      () => landmarkMarks(this.topo, this.heights, st, c, lm, town.frames, town.look, (x) => wayLine(this.topo, x, town.shown, town.frames, town.look), detail));
     this.turning = [...country.turning, ...land.turning];
-    setWash(this.wash, { positions: [...country.wash.positions, ...land.wash.positions], colours: [...country.wash.colours, ...land.wash.colours] });
-    setWash(this.seasonal, country.seasonal, seasonColour(st.day));
-    setWash(this.meadow, country.meadow, floodTint(st.day));
-    this.seasonDay = st.day;
-    const marks = [
-      ...country.lines,
-      ...land.lines,
-      ...backGardens(this.topo, single, look, (b) => st.hasGarden(b)),
-      ...streetMarks(this.topo, streets, shown, frames, st, look),
-      ...yardPaths(this.topo, shown, frames, look),
-      ...blocks.lines,
-      ...houses,
-      ...ruinMarks(this.topo, this.heights, buildings),
-      ...stalls,
-      ...harbourMarks(this.topo, st.harbours, (h) => st.mooredAt(h)),
-      ...railMarks(this.topo, st.rails, this.crossings.map((c) => c.at)),
-      ...crossingMarks(this.crossings),
-      ...cableMarks(this.topo, st.cables),
-    ];
+    // Washes are set again only when their layer was drawn again.
+    const washKey = `${this.layers.get('country')!.key}|${this.layers.get('land')!.key}`;
+    if (washKey !== this.washKey) {
+      this.washKey = washKey;
+      setWash(this.wash, { positions: [...country.wash.positions, ...land.wash.positions], colours: [...country.wash.colours, ...land.wash.colours] });
+      setWash(this.seasonal, country.seasonal, seasonColour(st.day));
+      setWash(this.meadow, country.meadow, floodTint(st.day));
+      this.seasonDay = st.day;
+    }
+    const marks = [...country.lines, ...land.lines, ...town.lines];
     const from = this.townFrom ?? this.lastTownCentre();
     // Keys before setLines: the pen may turn a line round to start at its nearer end.
-    this.solid = [...houses, ...stalls, ...blocks.lines.filter((m) => m.fill), ...land.lines.filter((m) => m.fill)].map((m) => ({ key: lineKey(m), tris: m.fill ?? rectangleTris(m) }));
+    this.solid = [...town.solids, ...land.lines.filter((x) => x.fill)].map((x) => ({ key: lineKey(x), tris: x.fill ?? rectangleTris(x) }));
     this.townLines.setLines(marks, mode, from ?? undefined);
     if (mode === 'ink') this.townFrom = null;
     this.refreshFills();
   }
+  private washKey = '';
 
   // ---- fills: what a map fills in, once the pen has drawn its outline
   private solid: { key: string; tris: number[] }[] = [];
@@ -545,7 +580,7 @@ export class TerrainWorld {
       const changed = !sameWet(before.wet, this.water.wet) || !sameWet(before.stream, this.water.stream) || !sameWet(before.snow, this.water.snow);
       this.settlements.setWater(this.water.wet, this.water.depth, this.water.stream, this.water.snow);
       this.drawWater(changed);
-      if (changed) this.townDirty = true; // the water may have taken, or given back, what was built
+      if (changed) { this.townDirty = true; this.waterVersion++; } // the water may have taken, or given back, what was built
       if (this.settings.surface !== 'elevation') this.applySurface();
     }
     const lines = extractContours(this.topo, this.heights, {

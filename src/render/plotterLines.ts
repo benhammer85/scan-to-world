@@ -205,6 +205,11 @@ export class PlotterLines {
     if (this.animating) this.finish();
 
     const keys = lines.map(lineKey);
+    // The same lines, all inked, asked for again: nothing to do. (A grown
+    // world is thousands of lines, and rebuilding them all cost 370 ms.)
+    const same = keys.join('\n');
+    if (mode !== 'plot' && same === this.lastKeys && keys.every((k) => this.inked.has(k))) return;
+    this.lastKeys = same;
     if (mode === 'plot') this.inked.clear();
     if (mode === 'settle') this.inked = new Set(keys);
     if (mode === 'ink') {
@@ -230,7 +235,14 @@ export class PlotterLines {
     this.update(0);
   }
 
-  /** Nearest-neighbour, one level (window) at a time, bottom-up. */
+  private lastKeys = '';
+
+  /**
+   * Nearest-neighbour, one level (window) at a time, bottom-up. Line ends are
+   * kept in a grid, so the nearest next line is found among its neighbours
+   * rather than by measuring every line left: with thousands of lines that
+   * search was a second and more.
+   */
   private order(lines: Polyline[], keys: string[], pending: number[], from: THREE.Vector3): Run[] {
     const byLevel = new Map<number, number[]>();
     for (const i of pending) {
@@ -241,24 +253,19 @@ export class PlotterLines {
     const runs: Run[] = [];
     let at = 0;
     for (const level of [...byLevel.keys()].sort((a, b) => a - b)) {
-      const left = byLevel.get(level)!;
-      while (left.length) {
-        let best = 0, bd = Infinity, flip = false;
-        for (let j = 0; j < left.length; j++) {
-          const l = lines[left[j]], n = l.points.length;
-          const da = dist(l.points, 0, here);
-          const db = l.closed ? Infinity : dist(l.points, n - 3, here);
-          if (da < bd) { bd = da; best = j; flip = false; }
-          if (db < bd) { bd = db; best = j; flip = true; }
-        }
-        const i = left.splice(best, 1)[0];
+      const grid = new EndGrid(lines, byLevel.get(level)!);
+      for (;;) {
+        const pick = grid.nearest(here);
+        if (!pick) break;
+        const { i, flip } = pick;
         const l = lines[i];
-        // Keep the geometry and the run going the same way (the key was taken first).
-        if (flip) l.points = reversePoints(l.points);
+        // The run goes the way the pen goes; the line itself is left as it was given. (Turned
+        // round in place, a line kept by its caller changed its key, and came back as new.)
+        const points = flip ? reversePoints(l.points) : l.points;
         const cost = Math.max(l.length, this.style.minMarkLength);
-        runs.push({ key: keys[i], points: l.points, start: at, cost, length: l.length, closed: l.closed });
+        runs.push({ key: keys[i], points, start: at, cost, length: l.length, closed: l.closed });
         at += cost;
-        const p = l.points, n = p.length;
+        const p = points, n = p.length;
         if (l.closed) here.set(p[0], p[1], p[2]);
         else here.set(p[n - 3], p[n - 2], p[n - 1]);
       }
@@ -291,7 +298,7 @@ export class PlotterLines {
       const isPencil = !isInked && (!run || underlay) ? 1 : 0;
       maxLevel = Math.max(maxLevel, line.level);
 
-      const pts = line.points, n = pts.length / 3;
+      const pts = run ? run.points : line.points, n = pts.length / 3;
       const segs = n - 1 + (line.closed ? 1 : 0);
       let d = 0;
       for (let s = 0; s < segs; s++) {
@@ -399,3 +406,77 @@ export function pointAlong(p: Float32Array, closed: boolean, upto: number, out: 
 const NIB_FACE = new THREE.Vector3(0, 0, 1);
 const NIB_UP = new THREE.Vector3();
 const NIB_EYE = new THREE.Vector3();
+
+/**
+ * The ends of the lines still to draw, in a grid of cells, for finding the
+ * nearest to the pen quickly: search the pen's cell, then rings of cells
+ * round it, until no nearer end can be further out.
+ */
+class EndGrid {
+  private cells = new Map<string, { i: number; end: number }[]>();
+  private used = new Set<number>();
+  private left: number;
+  private size: number;
+
+  constructor(private lines: Polyline[], items: number[]) {
+    this.left = items.length;
+    // About a line's length on a side: a few ends to a cell.
+    let span = 0;
+    for (const i of items) span += lines[i].length;
+    const size = (span / Math.max(1, items.length)) * 2;
+    this.size = Number.isFinite(size) ? Math.max(0.01, Math.min(0.2, size)) : 0.05;
+    for (const i of items) {
+      const l = lines[i], n = l.points.length;
+      this.put(i, 0, l.points[0], l.points[1], l.points[2]);
+      if (!l.closed) this.put(i, n - 3, l.points[n - 3], l.points[n - 2], l.points[n - 1]);
+    }
+  }
+
+  private key(x: number, y: number, z: number): string {
+    return `${Math.floor(x / this.size)},${Math.floor(y / this.size)},${Math.floor(z / this.size)}`;
+  }
+
+  private put(i: number, end: number, x: number, y: number, z: number): void {
+    const k = this.key(x, y, z);
+    (this.cells.get(k) ?? this.cells.set(k, []).get(k)!).push({ i, end });
+  }
+
+  nearest(p: THREE.Vector3): { i: number; flip: boolean } | null {
+    if (!this.left) return null;
+    const cx = Math.floor(p.x / this.size), cy = Math.floor(p.y / this.size), cz = Math.floor(p.z / this.size);
+    let best: { i: number; end: number } | null = null, bd = Infinity;
+    // Rings of mostly empty cells soon cost more than looking at every end
+    // left; past that point, just look at every end.
+    const most = this.cells.size;
+    let sure = false;
+    for (let r = 0, looked = 0; r < 64 && looked < most; r++) {
+      for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++) for (let dz = -r; dz <= r; dz++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy), Math.abs(dz)) !== r) continue; // this ring's shell only
+        looked++;
+        const key = `${cx + dx},${cy + dy},${cz + dz}`, cell = this.cells.get(key);
+        if (!cell) continue;
+        for (let k = cell.length - 1; k >= 0; k--) {
+          const e = cell[k];
+          if (this.used.has(e.i)) { cell.splice(k, 1); continue; }
+          const d = dist(this.lines[e.i].points, e.end, p);
+          if (d < bd) { bd = d; best = e; }
+        }
+        if (!cell.length) this.cells.delete(key);
+      }
+      // Nothing in a further ring can be nearer than this ring's inside edge.
+      if (best && bd <= r * this.size) { sure = true; break; }
+    }
+    if (!sure) {
+      // Far from everything left (the pen jumped): nearest by a plain look.
+      for (const cell of this.cells.values()) for (const e of cell) {
+        if (this.used.has(e.i)) continue;
+        const d = dist(this.lines[e.i].points, e.end, p);
+        if (d < bd) { bd = d; best = e; }
+      }
+    }
+    if (!best) return null;
+    this.used.add(best.i);
+    this.left--;
+    return { i: best.i, flip: best.end !== 0 };
+  }
+}

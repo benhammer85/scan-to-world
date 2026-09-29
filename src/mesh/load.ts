@@ -5,6 +5,8 @@
  * Deliberately no "recognition": whatever the player scanned is the terrain.
  */
 import * as THREE from 'three';
+import { normaliseGeometry, triangleCount } from './geometry';
+export { normaliseGeometry, triangleCount };
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
 import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader.js';
@@ -73,20 +75,6 @@ function collectMeshes(root: THREE.Object3D): Omit<LoadedScan, 'name'> {
 }
 
 /** Centre on the bounding-sphere centre and scale to radius 1. */
-export function normaliseGeometry(geometry: THREE.BufferGeometry): THREE.BufferGeometry {
-  geometry.computeBoundingSphere();
-  const s = geometry.boundingSphere!;
-  geometry.translate(-s.center.x, -s.center.y, -s.center.z);
-  geometry.scale(1 / s.radius, 1 / s.radius, 1 / s.radius);
-  geometry.computeBoundingSphere();
-  geometry.computeVertexNormals();
-  return geometry;
-}
-
-export function triangleCount(geometry: THREE.BufferGeometry): number {
-  return (geometry.index ? geometry.index.count : geometry.attributes.position.count) / 3;
-}
-
 /**
  * Decimate towards `targetTris` (meshoptimizer, UV-seam aware). Handles a few
  * hundred thousand triangles in the browser; for multi-million-triangle raw scans,

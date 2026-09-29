@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { TerrainWorld, type SurfaceStyle, type WorldSettings } from './world';
-import { decimate, loadScanFile, normaliseGeometry, triangleCount } from './mesh/load';
+import { normaliseGeometry, triangleCount } from './mesh/geometry';
+// The scan loaders and the simplifier are big and only wanted when a scan is opened: fetched then.
+const loaders = () => import('./mesh/load');
 import { makeDemoOrange } from './demo/orange';
 import { SPECIMENS } from './demo/specimens';
 import { ATLAS, chartLines, layout, railwayCurve, railwayLines, segments as skySegments, sketchLines, trainAt, trainLines, unchartedLines, type Railway } from './atlas/atlas';
@@ -329,7 +331,7 @@ $('panel-toggle').addEventListener('click', toggleDrawer);
 async function openScan(file: File): Promise<void> {
   try {
     toast(`Loading ${file.name}…`);
-    const scan = await loadScanFile(file);
+    const scan = await (await loaders()).loadScanFile(file);
     setWorld(scan.geometry, scan.map, scan.name);
     toast(`Loaded ${scan.name}`);
   } catch (err) {
@@ -367,7 +369,7 @@ $('decimate').addEventListener('click', () => {
   if (!sourceGeometry) return;
   const target = Number($<HTMLInputElement>('target-tris').value) || 15000;
   toast('Decimating…');
-  decimate(sourceGeometry, target)
+  loaders().then((m) => m.decimate(sourceGeometry!, target))
     .then((g) => {
       setWorld(g, sourceMap, statsName);
       toast(`Decimated to ${triangleCount(g).toLocaleString()} triangles`);

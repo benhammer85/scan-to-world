@@ -292,6 +292,16 @@ there. Here the terrain is the whole point. It's the player's own object turned 
 world, so the first load plots it in. Only the "only animate the response" rule carries
 over, and it applies to the player's edits.
 
+## Staying light
+
+This is meant to be a quick sketchbook, not a heavy engine. What keeps it that way:
+
+* **A small download.** The file loaders (OBJ, PLY, STL, glTF) load only when you open a file of your own. The first load is about 212 KB gzipped, and most of that is Three.js.
+* **Coarse worlds.** Specimens are kept under about 12k triangles, and the orange is 11.5k. Ink hides the facets.
+* **Redraw only what changed.** The map is built as three layers: town, country and landmarks. Each layer has a key, and it is rebuilt only when its key changes. If nothing changed, the pen does nothing: a full redraw of a grown town now takes about 15 ms, down from 370 ms.
+* **Fine detail waits.** Details are drawn only when the world is at rest, not while it grows: hedge trees, ghost hedges, gorse, meadow tufts, roads, the survey and hachures.
+* **A quick pen.** The pen picks its next line from a grid of line ends, not by measuring every line. With a grown town, the first ink went from about 1.5 s to 0.27 s. `test/light.test.ts` fails if this becomes slow again.
+
 ## Known limits / next steps
 
 * WebGL lines are 1 px. For thicker, pen-like strokes, switch to `Line2` / `LineSegments2` and port the reveal attributes.

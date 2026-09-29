@@ -107,7 +107,13 @@ export function winter(day: number): number {
   return Math.max(0, Math.cos(t * 2 * Math.PI));
 }
 
-export function countryMarks(topo: Topology, st: Settlements, c: Countryside): CountryDrawing {
+/**
+ * `detail`: the fine work (hedge trees, the ghosts of old hedges, gorse,
+ * marsh tufts) is left out while the world is turning, and drawn once it
+ * settles, when the pen inks: it is most of the strokes and the least of
+ * what a turning map needs.
+ */
+export function countryMarks(topo: Topology, st: Settlements, c: Countryside, detail = true): CountryDrawing {
   const out: CountryDrawing = { lines: [], wash: { positions: [], colours: [] }, seasonal: { positions: [], colours: [] }, meadow: { positions: [], colours: [] }, turning: [] };
   const rich = 0.7 + 0.3 * maturity(st.day);
   const { cells, cellOf } = c.land;
@@ -151,6 +157,7 @@ export function countryMarks(topo: Topology, st: Settlements, c: Countryside): C
       continue;
     }
     out.lines.push(line);
+    if (!detail) continue;
     // Hedge trees, here and there along it.
     let since = COUNTRY.hedgeTree * hash(k0 % 100003, 81);
     for (let i = 1; i < pts.length; i++) {
@@ -164,7 +171,7 @@ export function countryMarks(topo: Topology, st: Settlements, c: Countryside): C
 
   // ---- what the map remembers: where the hedges ran round fields the town has built over
   const ghost = new Int32Array(n).fill(-1);
-  for (const [cell] of c.remembered) for (const v of cells[cell].vertices) if (!water(v)) ghost[v] = cell;
+  if (detail) for (const [cell] of c.remembered) for (const v of cells[cell].vertices) if (!water(v)) ghost[v] = cell;
   const ghostFlat: number[] = [];
   for (let i = 0; i < t.length; i += 3) {
     const a = t[i], b = t[i + 1], cc = t[i + 2];
@@ -251,7 +258,7 @@ export function countryMarks(topo: Topology, st: Settlements, c: Countryside): C
     } else if (crop === 'park') {
       // Parkland: trees stood singly, far apart, in the grass.
       for (const v of cells[cell].vertices) if (label[v] === cell && !edge(v) && hash(v, 94) < 0.18) out.lines.push(...tree(lifted(p, nm, v, COUNTRY.lift) as V3, frameAt(nm, v), COUNTRY.crown * 1.1, v));
-    } else if (crop === 'meadow' && age >= FIELD.plough) {
+    } else if (crop === 'meadow' && age >= FIELD.plough && detail) {
       for (const v of cells[cell].vertices) if (label[v] === cell && !edge(v) && hash(v, 91) < 0.35) out.lines.push(...tuft(lifted(p, nm, v, COUNTRY.lift) as V3, frameAt(nm, v), v));
     }
   }
@@ -280,7 +287,7 @@ export function countryMarks(topo: Topology, st: Settlements, c: Countryside): C
     const kept = common.kept !== undefined, park = kept && st.size(town) >= COMMON.park;
     for (const v of vs) {
       if (edge(v)) { if (kept && hash(v, 105) < 0.5) out.lines.push(...tree(lifted(p, nm, v, COUNTRY.lift) as V3, frameAt(nm, v), COUNTRY.crown, v)); continue; }
-      if (!park && hash(v, 103) < 0.3) out.lines.push(...gorse(lifted(p, nm, v, COUNTRY.lift) as V3, frameAt(nm, v), v));
+      if (detail && !park && hash(v, 103) < 0.3) out.lines.push(...gorse(lifted(p, nm, v, COUNTRY.lift) as V3, frameAt(nm, v), v));
     }
     const low = vs.reduce((a, b) => (c.heightAt(b) < c.heightAt(a) ? b : a), vs[0]);
     const pond = lifted(p, nm, low, COUNTRY.lift), pf = frameAt(nm, low), r = park ? 0.012 : 0.0065, ring: number[][] = [];

@@ -190,7 +190,8 @@ export interface LandmarkDrawing {
 }
 
 /** Everything above, drawn. */
-export function landmarkMarks(topo: Topology, heights: Float32Array, st: Settlements, c: Countryside, lm: Landmarks, frames: Map<number, SquareFrame>, look: Look, ways: (st: Street) => Polyline | null): LandmarkDrawing {
+/** `detail`: the survey's lines, the hachures and the milestones only once the world settles (see `countryMarks`). */
+export function landmarkMarks(topo: Topology, heights: Float32Array, st: Settlements, c: Countryside, lm: Landmarks, frames: Map<number, SquareFrame>, look: Look, ways: (st: Street) => Polyline | null, detail = true): LandmarkDrawing {
   const out: LandmarkDrawing = { lines: [], wash: { positions: [], colours: [] }, turning: [] };
   const { wet, depth, snow } = st.ground;
   const near = c.nearPeople();
@@ -205,10 +206,12 @@ export function landmarkMarks(topo: Topology, heights: Float32Array, st: Settlem
   avenues(st, look, ways, out);
   castles(topo, st, lm, out);
   abbeys(topo, heights, st, lm, out);
-  roads(topo, st, c, lm, look, ways, out);
+  if (detail) roads(topo, st, c, lm, look, ways, out);
   canals(topo, heights, st, lm, out);
-  survey(topo, st, c, surveyed, out, peaks);
-  hachures(topo, heights, st, c, surveyed, out);
+  if (detail) {
+    survey(topo, st, c, surveyed, out, peaks);
+    hachures(topo, heights, st, c, surveyed, out);
+  }
   return out;
 }
 
