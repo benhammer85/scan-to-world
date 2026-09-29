@@ -94,7 +94,12 @@ export class TerrainWorld {
   readonly country: Countryside;
   readonly landmarks: Landmarks;
   /** The town has its own pen, so building never waits on the terrain's plot. */
-  readonly townLines = new PlotterLines({ ...defaultPlotterStyle, ink: TOWN_INK, inkHigh: TOWN_INK, indexEvery: 1 });
+  /**
+   * The land's life (fields, woods, the water's works, the rails) is not plotted: only the
+   * terrain has a pen. Everything else comes into being, fading in over time or where it
+   * was touched, as growth does; a busy pen over all of it was frantic.
+   */
+  readonly townLines = new PlotterLines({ ...defaultPlotterStyle, ink: TOWN_INK, inkHigh: TOWN_INK, indexEvery: 1, pen: false, fadeSeconds: 0 });
   private townDirty = false;
   private lastTownBuild = 0;
   private townFrom: THREE.Vector3 | null = null;
@@ -402,6 +407,7 @@ export class TerrainWorld {
   update(dt: number, now: number, diffusion: { rate: number; fade: number }, camera?: THREE.Camera, calm = true): void {
     this.lines.update(dt, camera);
     this.townLines.update(dt, camera);
+    this.stipple.update(dt);
     // Boats sail in real time: they are life on the water, not building. While a pen is drawing,
     // they fall quiet, so one thing moves at a time.
     this.seconds += dt;
@@ -464,10 +470,9 @@ export class TerrainWorld {
       this.strokeFrom = null;
     }
 
-    // Fading ink: when the world is at rest, the pen comes back for what faded
-    // out of sight and has been turned back into view (the terrain's contours
-    // first, then the map on them).
-    if (calm && !this.townDirty && !this.dirty && !this.inkWanted) this.lines.reinkFaded() || this.townLines.reinkFaded();
+    // Fading ink: when the world is at rest, the pen comes back for the terrain's
+    // contours that faded out of sight and have been turned back into view.
+    if (calm && !this.townDirty && !this.dirty && !this.inkWanted) this.lines.reinkFaded();
 
     // New buildings are pencilled in while the world is turning or being
     // worked, and inked once it's calm, from where the town was touched.
@@ -822,7 +827,7 @@ function distanceToShore(topo: Topology, wet: Uint8Array): Float32Array {
 function outlineOf(geometry: THREE.BufferGeometry): THREE.Mesh {
   const m = new THREE.ShaderMaterial({
     side: THREE.BackSide,
-    uniforms: { uInk: { value: new THREE.Color(TOWN_INK) }, uWidth: { value: 1.2 * Math.min(2, (typeof window !== 'undefined' && window.devicePixelRatio) || 1) }, uView: { value: new THREE.Vector2(1, 1) } },
+    uniforms: { uInk: { value: new THREE.Color(TOWN_INK) }, uWidth: { value: 1.7 * Math.min(2, (typeof window !== 'undefined' && window.devicePixelRatio) || 1) }, uView: { value: new THREE.Vector2(1, 1) } },
     vertexShader: /* glsl */ `
       uniform float uWidth;
       uniform vec2 uView;
@@ -836,10 +841,9 @@ function outlineOf(geometry: THREE.BufferGeometry): THREE.Mesh {
     fragmentShader: /* glsl */ `
       uniform vec3 uInk;
       void main() {
-        gl_FragColor = vec4(uInk, 0.8);
+        gl_FragColor = vec4(uInk, 1.0);
         #include <colorspace_fragment>
       }`,
-    transparent: true,
   });
   const o = new THREE.Mesh(geometry, m);
   o.renderOrder = 0;

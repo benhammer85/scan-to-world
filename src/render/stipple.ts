@@ -15,6 +15,8 @@ export const STIPPLE = {
   density: 70000,
   /** A dot's size, in pixels on a phone-sharp screen. */
   size: 2.1,
+  /** Seconds a new dot takes to come in. */
+  appear: 6,
 };
 
 /** Dots over these triangles (xyz triples, three to a triangle). */
@@ -46,9 +48,12 @@ export class Stipple {
     const material = new THREE.ShaderMaterial({
       transparent: true,
       depthWrite: false,
-      uniforms: { uInk: { value: new THREE.Color(ink) }, uSize: { value: STIPPLE.size * Math.min(2, window.devicePixelRatio || 1) } },
+      uniforms: { uInk: { value: new THREE.Color(ink) }, uSize: { value: STIPPLE.size * Math.min(2, window.devicePixelRatio || 1) }, uNow: { value: 0 }, uAppear: { value: STIPPLE.appear } },
       vertexShader: /* glsl */ `
         uniform float uSize;
+        uniform float uNow;
+        uniform float uAppear;
+        attribute float aBorn;
         varying float vRim;
         ${rimGlsl}
         void main() {
@@ -56,7 +61,8 @@ export class Stipple {
           gl_Position = projectionMatrix * v;
           // Finer from further off, so a town far away is a grey of dots, not a black blot.
           gl_PointSize = uSize * clamp(2.6 / -v.z, 0.5, 1.3);
-          vRim = rimFade(position, v);
+          // A new dot comes in slowly, as light does when a place grows: never all at once.
+          vRim = rimFade(position, v) * smoothstep(0.0, uAppear, uNow - aBorn);
         }`,
       fragmentShader: /* glsl */ `
         uniform vec3 uInk;
@@ -73,9 +79,27 @@ export class Stipple {
     this.object.renderOrder = 3;
   }
 
+  private clock = 0;
+  /** When each dot (by where it is) first came: it keeps that however often the dots are set again. */
+  private bornAt = new Map<string, number>();
+
+  update(dt: number): void {
+    this.clock += dt;
+    (this.object.material as THREE.ShaderMaterial).uniforms.uNow.value = this.clock;
+  }
+
   set(dots: number[]): void {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(dots), 3));
+    const born = new Float32Array(dots.length / 3), next = new Map<string, number>();
+    for (let i = 0; i < born.length; i++) {
+      const key = `${Math.round(dots[i * 3] * 4096)},${Math.round(dots[i * 3 + 1] * 4096)},${Math.round(dots[i * 3 + 2] * 4096)}`;
+      const when = this.bornAt.get(key) ?? this.clock;
+      next.set(key, when);
+      born[i] = when;
+    }
+    this.bornAt = next;
+    g.setAttribute('aBorn', new THREE.BufferAttribute(born, 1));
     this.object.geometry.dispose();
     this.object.geometry = g;
   }

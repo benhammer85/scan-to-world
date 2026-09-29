@@ -112,8 +112,6 @@ function returnTo(name: string): boolean {
   world = w;
   statsName = name;
   spin.set(0, 0);
-  // Turned in the atlas to face its railways: its turn is read again from how it stands now.
-  delete (w.group.userData as { yaw?: number }).yaw;
   scene.add(world.group);
   updateStats();
   if (import.meta.env.DEV) (window as unknown as { world: TerrainWorld }).world = world;
@@ -213,29 +211,21 @@ const SPIN_PER_PX = 0.006;
 const DAYS_PER_RADIAN = 1 / (2 * Math.PI);
 
 /**
- * The world turns as a globe on its stand: round its own axis (north stays up), and tips
- * towards or away from you only so far. Tumbling freely, it came to rest at any odd angle.
- * Each world keeps its own turn and tilt.
+ * The world turns freely, any way you drag it: round the screen's up for a sideways drag,
+ * round its right for an up-and-down one, so it can be seen from any angle.
  */
-const TILT = 0.6;
-const TURN_EULER = new THREE.Euler();
-function turnOf(w: TerrainWorld): { yaw: number; pitch: number } {
-  const u = w.group.userData as { yaw?: number; pitch?: number };
-  if (u.yaw === undefined || u.pitch === undefined) {
-    TURN_EULER.setFromQuaternion(w.group.quaternion, 'XYZ');
-    u.yaw = TURN_EULER.y;
-    u.pitch = THREE.MathUtils.clamp(TURN_EULER.x, -TILT, TILT);
-  }
-  return u as { yaw: number; pitch: number };
-}
-
+const axisUp = new THREE.Vector3();
+const axisRight = new THREE.Vector3();
+const turn = new THREE.Quaternion();
 function rotateWorld(ax: number, ay: number): void {
   if (!world || mode !== 'world') return;
   world.advance(Math.hypot(ax, ay) * DAYS_PER_RADIAN);
-  const t = turnOf(world);
-  t.yaw += ax;
-  t.pitch = THREE.MathUtils.clamp(t.pitch + ay, -TILT, TILT);
-  world.group.quaternion.setFromEuler(TURN_EULER.set(t.pitch, t.yaw, 0, 'XYZ'));
+  axisUp.set(0, 1, 0).applyQuaternion(camera.quaternion);
+  axisRight.set(1, 0, 0).applyQuaternion(camera.quaternion);
+  turn.setFromAxisAngle(axisUp, ax);
+  world.group.quaternion.premultiply(turn);
+  turn.setFromAxisAngle(axisRight, ay);
+  world.group.quaternion.premultiply(turn);
 }
 
 let held: { point: THREE.Vector3; normal: THREE.Vector3; radius: number; since: number } | null = null;
@@ -474,7 +464,7 @@ renderer.setAnimationLoop(() => {
     // Momentum, fading the way a spun globe does.
     if (spin.lengthSq() > 1e-6) {
       rotateWorld(spin.x * dt, spin.y * dt);
-      spin.multiplyScalar(Math.exp(-1.5 * dt)); // a globe's weight: it coasts, slowly
+      spin.multiplyScalar(Math.exp(-2.2 * dt));
     }
 
     // The hold ring grows in as the finger takes hold, and stays while held.

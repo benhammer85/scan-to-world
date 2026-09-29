@@ -14,7 +14,8 @@ The look follows **[STYLE.md](STYLE.md)**. The world is a survey sheet of about 
 * **Purely ink, purely flat.** Everything lies on the ground, drawn from above. Nothing stands up off the world.
 * **Development as light.** The simulation still grows streets, houses, farms and markets underneath, but the map draws only their light, as the Earth is seen at night from space. Every house is a small light (old cores brightest, farms faint). Roads are threads of light, and it spreads and fades over the ground. It is drawn in ink as stipple: nearly solid at the cores, thinning to a halo, to specks. No buildings, outlines, walls or traffic on land (`src/life/development.ts`).
 * **Organic growth.** Places grow as real settlement does seen from high up (`GROW` in `src/life/settlements.ts`). Sizes are unequal, since growth rises with size and each place has its own vigour. Edges are ragged and fingered, and growth runs along roads and the water. A grown place buds villages along its ways, and farms gather in hamlets. The field cells are never outlined, so no pattern shows through. (The tests of streets and squares use the compact model with `organic` off.)
-* **Fading ink.** Ink out of sight fades slowly back to pencil (held 25 s, then over 45 s), never further. When it turns back into view and the world is at rest, the pen comes and inks it again. After whatwesaved's fading plate: the pen is the only light on the sheet.
+* **Only the terrain is plotted.** The pen draws the contours; everything that lives on the land fades in by itself as it grows.
+* **Fading ink.** The terrain's ink out of sight fades slowly back to pencil (held 25 s, then over 45 s), never further. When it turns back into view and the world is at rest, the pen comes and inks it again. After whatwesaved's fading plate: the pen is the only light on the sheet.
 * **You can't come close.** Zoom stops well short of seeing what anything is. You see how much, where and how it spreads; the rest is for the imagination.
 
 ## Your universe is kept
@@ -71,7 +72,7 @@ There are no buttons, modes or menus. The screen is the object and nothing else.
 | Gesture | What it does |
 |---|---|
 | Tap | Only what can be seen from high up can be touched. In empty country it sows a new place; on or near a light, that place grows towards your finger; on a wood it is cleared, on farmland it goes back to the wild, on a steep slope a wood is planted. Fine ink rings open where you tapped (one pencil ring closes if the ground refused) |
-| Drag | Turns the world like a globe on its stand: round its axis, north up, tipping only a little. Turning is time: a full turn is a day. A place grows two or three houses a turn at first, faster as it grows, and its light spreads and brightens |
+| Drag | Turns the world freely, to any angle. Turning is time: a full turn is a day. A place grows two or three houses a turn at first, faster as it grows, and its light spreads and brightens |
 | Hold still on the object | Presses into the ground, deeper the longer you hold |
 | Hold, then pull | Pulls the ground up. How far you pull is how high it goes, and moving back lets it down again |
 | Arrow keys | On a desktop, a push on the spin like a small fling: they turn the world and pass the days the same way a drag does |

@@ -51,6 +51,12 @@ export interface PlotterStyle {
    */
   holdSeconds: number;
   fadeSeconds: number;
+  /**
+   * Whether a pen draws these lines at all. Without one, nothing is plotted: a new line
+   * simply comes into being, fading in over `appearSeconds`, as the land's life does.
+   */
+  pen: boolean;
+  appearSeconds: number;
 }
 
 export const defaultPlotterStyle: PlotterStyle = {
@@ -66,6 +72,8 @@ export const defaultPlotterStyle: PlotterStyle = {
   indexAlpha: 1,
   holdSeconds: 25,
   fadeSeconds: 45,
+  pen: true,
+  appearSeconds: 4,
 };
 
 /** A line faces the eye, for fading, if the ground under it looks at least this much towards it. */
@@ -92,6 +100,9 @@ const vertexShader = /* glsl */ `
   attribute float aLevel;
   attribute float aPencil;
   attribute float aSeen;
+  attribute float aBorn;
+  uniform float uAppear;
+  varying float vAppear;
   uniform float uDrawn;
   uniform float uNow;
   uniform float uHold;
@@ -107,6 +118,7 @@ const vertexShader = /* glsl */ `
     vPencil = aPencil;
     vProgress = aTiming.y <= 0.0 ? 1.0 : clamp((uDrawn - aTiming.x) / aTiming.y, 0.0, 1.0);
     vFaded = uFade <= 0.0 ? 0.0 : smoothstep(0.0, 1.0, (uNow - aSeen - uHold) / uFade);
+    vAppear = uAppear <= 0.0 ? 1.0 : smoothstep(0.0, uAppear, uNow - aBorn);
     vec4 mv = modelViewMatrix * vec4(position, 1.0);
     vRim = rimFade(position, mv);
     gl_Position = projectionMatrix * mv;
@@ -127,18 +139,19 @@ const fragmentShader = /* glsl */ `
   varying float vPencil;
   varying float vFaded;
   varying float vRim;
+  varying float vAppear;
   void main() {
-    if (vRim <= 0.0) discard;
+    if (vRim <= 0.0 || vAppear <= 0.0) discard;
     bool inked = vProgress > 0.0 && vAlong <= vProgress;
     if (!inked) {
       if (vPencil < 0.5) discard;
-      gl_FragColor = vec4(uPencil, 0.55 * vRim);
+      gl_FragColor = vec4(uPencil, 0.55 * vRim * vAppear);
       return;
     }
     vec3 ink = mix(uInk, uInkHigh, clamp(vLevel / max(uLevelCount - 1.0, 1.0), 0.0, 1.0));
     bool isIndex = mod(vLevel + 0.5, uIndexEvery) < 1.0;
     // Out of sight long enough, ink fades back to pencil, and no further.
-    gl_FragColor = vec4(mix(ink, uPencil, vFaded), mix(isIndex ? uIndexAlpha : uAlpha, 0.55, vFaded) * vRim);
+    gl_FragColor = vec4(mix(ink, uPencil, vFaded), mix(isIndex ? uIndexAlpha : uAlpha, 0.55, vFaded) * vRim * vAppear);
   }
 `;
 
@@ -193,6 +206,7 @@ export class PlotterLines {
         uNow: { value: 0 },
         uHold: { value: style.holdSeconds },
         uFade: { value: style.fadeSeconds },
+        uAppear: { value: style.pen ? 0 : style.appearSeconds },
       },
     });
     this.lines = new THREE.LineSegments(new THREE.BufferGeometry(), this.material);
@@ -238,6 +252,8 @@ export class PlotterLines {
     if (this.animating) this.finish();
 
     const keys = lines.map(lineKey);
+    // Without a pen, nothing waits to be drawn: every line is there, each fading in from when it first came.
+    if (!this.style.pen) mode = 'settle';
     // The same lines, all inked, asked for again: nothing to do. (A grown
     // world is thousands of lines, and rebuilding them all cost 370 ms.)
     const same = keys.join('\n');
@@ -275,6 +291,8 @@ export class PlotterLines {
   /** Seconds since this pen was made: the clock the fading runs on. */
   private clock = 0;
   private lastSurvey = -1;
+  /** When each line (by key) first came, on `clock`: without a pen, it fades in from then. */
+  private bornAt = new Map<string, number>();
   /** When each line (by key) last faced the eye, on `clock`. */
   private seenAt = new Map<string, number>();
   /** Each drawn line's vertices in the geometry, and a point on it. */
@@ -408,6 +426,9 @@ export class PlotterLines {
     const level = new Float32Array(segCount * 2);
     const pencil = new Float32Array(segCount * 2);
     const seen = new Float32Array(segCount * 2);
+    const born = new Float32Array(segCount * 2);
+    const live = new Set(keys);
+    for (const k of this.bornAt.keys()) if (!live.has(k)) this.bornAt.delete(k);
     this.ranges = [];
     let maxLevel = 0, o = 0;
 
@@ -425,6 +446,8 @@ export class PlotterLines {
       // When it was last seen: a line just drawn, or queued for the pen, is fresh.
       if (!isInked || !this.seenAt.has(keys[li])) this.seenAt.set(keys[li], this.clock);
       const when = this.seenAt.get(keys[li])!;
+      if (!this.bornAt.has(keys[li])) this.bornAt.set(keys[li], this.clock);
+      const came = this.bornAt.get(keys[li])!;
       const m = Math.floor(n / 2) * 3;
       this.ranges.push({ from: o * 2, to: (o + segs) * 2, mid: [pts[m], pts[m + 1], pts[m + 2]] });
       let d = 0;
@@ -440,6 +463,7 @@ export class PlotterLines {
           level[v] = line.level;
           pencil[v] = isPencil;
           seen[v] = when;
+          born[v] = came;
         }
         d += seg;
         o++;
@@ -453,6 +477,7 @@ export class PlotterLines {
     geom.setAttribute('aLevel', new THREE.BufferAttribute(level, 1));
     geom.setAttribute('aPencil', new THREE.BufferAttribute(pencil, 1));
     geom.setAttribute('aSeen', new THREE.BufferAttribute(seen, 1));
+    geom.setAttribute('aBorn', new THREE.BufferAttribute(born, 1));
     this.lines.geometry.dispose();
     this.lines.geometry = geom;
     this.material.uniforms.uLevelCount.value = maxLevel + 1;
