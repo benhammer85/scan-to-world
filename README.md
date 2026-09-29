@@ -32,6 +32,7 @@ There are no buttons, modes or menus. The screen is the object and nothing else.
 | Drag | Turns the world, and turning is time: a full turn is a day, and towns grow as the days pass |
 | Hold still on the object | Presses into the ground, deeper the longer you hold |
 | Hold, then pull | Pulls the ground up. How far you pull is how high it goes, and moving back lets it down again |
+| Arrow keys | On a desktop, a push on the spin like a small fling: they turn the world and pass the days the same way a drag does |
 | Pinch or scroll | Comes closer. The brush is a fixed size on screen, so closer means finer edits |
 | Drop a file on the window | Loads a scan (GLB, OBJ or PLY) |
 | Three fingers held, or the <code>`</code> key | Opens the tuning drawer, which is for development and not part of the product |
@@ -125,11 +126,16 @@ scan file ─► load.ts         merge meshes, centre, scale to radius 1, option
   * **Houses and stalls** are filled solid. The pen still draws each outline first, and the fill comes once it's inked.
   * **Squares** are paved in a pale fill.
 * **Clean drawing.** The plan's shape is kept, and only the drawing is tidied:
-  * **Squares are round.** A square's edge is drawn as a true circle through the mean radius of its ring. Streets that meet the square end exactly on that circle.
-  * **Stalls are even.** Stalls fill even slots round the hall, in order, and never move.
-  * **Houses face their front.** Each house is turned to face the street point it fronts. Reading the street's own direction instead gave odd angles on links and loops.
+  * **Squares have a smoothed edge.** Streets that meet the square end exactly on it.
+  * **Stalls keep their slots.** Stalls fill slots round the hall in order and never move (see *Organic* for how each sits in its slot).
+  * **Houses face their front.** Each house is turned towards the street point it fronts, give or take its own small turn. Reading the street's own direction instead gave odd angles on links and loops.
   * **No stray ticks.** Street runs under two mesh edges are refused before they're laid, and fragments under 0.015 after trimming aren't drawn.
   * **Nothing is buried.** Houses and stalls are flat and lifted as a whole by the most any point of them needs. A flat mark at a fixed lift over a bump in the peel buried its short sides and drew as "//". Laying each point on the ground separately fixed that but made houses wobble. A test on steep bumps catches both. Two lessons from the old app came back while building it. The first version of the burial test passed with the fix switched off, because its reference was wrong (principle 4b). And the draping's sampling radius held only one vertex on a coarse mesh, so it did nothing at all (principle 12).
+* **Organic, not procedural.** Every house was once the same rectangle and every street the same smoothed staircase, so towns read as a grid pasted onto the ground. Each mark now varies, seeded only by itself (a hash of its vertex), so it never changes when the town grows, a turn is sliced differently, or the town is redrawn (principle 20):
+  * **Houses** vary in size and proportion. Outer houses are bigger and squarer, and houses near the hall are narrow. Each turns up to ±10° off square to its street and sits a little forward or back. About a third have a wing, making an L.
+  * **Streets** are cut round four times, not two, then meander with three stacked waves of their own length and phase. The waves fade to nothing at both ends so junctions still meet exactly. Lanes wander more than streets, and the steep track more than the graded road. A street's two sides swell and narrow slightly along its length.
+  * **Stalls** are nudged along and across their slot, turned a little and sized a little differently, so a market reads as a crowd, not a clock face.
+  * Tests check that a house still faces its street to within its own turn, that streets are no longer straight between junctions, and that they still end exactly on them.
 
 ## The reveal (ported from whatwesaved)
 

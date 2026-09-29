@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { buildTopology } from '../src/mesh/topology';
 import { MARKET, Settlements, STREET, streetVertices } from '../src/life/settlements';
-import { MARK, STALL, buildingMarks, footprintRadius, squareFrames, stallMarks, streetMarks } from '../src/life/buildingMarks';
+import { MARK, STALL, buildingMarks, footprintRadius, houseShape, squareFrames, stallMarks, streetMarks } from '../src/life/buildingMarks';
 
 /** A sphere whose height is a gentle swell, plus a steep ridge round x = 0.3. */
 function world() {
@@ -451,7 +451,9 @@ describe('clean drawing', () => {
       const dn = to[0] * n[0] + to[1] * n[1] + to[2] * n[2];
       const flat = to.map((x, k) => x - dn * n[k]);
       const cos = Math.abs(across.reduce((a, x, k) => a + x * flat[k], 0)) / (Math.hypot(...across) * Math.hypot(...flat));
-      expect(cos).toBeGreaterThan(0.99);
+      // Faces it, turned off square by exactly the house's own small turn (up to 10°).
+      expect(Math.abs(cos - Math.cos(houseShape(b).turn))).toBeLessThan(0.01);
+      expect(Math.abs(houseShape(b).turn)).toBeLessThanOrEqual(0.18);
     });
     expect(houses.length).toBeGreaterThan(10);
   });
@@ -529,5 +531,52 @@ describe('towns keep apart', () => {
     s.advance(3);
     s.tap([-0.1, -0.5, 0.86]);
     expect(s.towns).toHaveLength(2);
+  });
+});
+
+describe('organic drawing', () => {
+  function town(days = 20) {
+    const { topo, h } = world();
+    const s = new Settlements(topo, h);
+    s.tap(FRONT);
+    s.advance(days);
+    return { topo, h, s };
+  }
+
+  it('houses vary: in size, in proportion, and some have a wing', () => {
+    const { s } = town();
+    const shapes = s.buildings.filter((b) => b.order > 0).map(houseShape);
+    const longs = shapes.map((x) => x.long), aspects = shapes.map((x) => x.long / x.short);
+    expect(Math.max(...longs) / Math.min(...longs)).toBeGreaterThan(1.3);
+    expect(Math.max(...aspects) / Math.min(...aspects)).toBeGreaterThan(1.3);
+    const wings = shapes.filter((x) => x.wing).length / shapes.length;
+    expect(wings).toBeGreaterThan(0.15);
+    expect(wings).toBeLessThan(0.5);
+  });
+
+  it('a house is always drawn the same way: its shape depends on nothing but itself', () => {
+    const a = town(12), b = town(20); // the same first houses, in a town grown on further
+    for (const x of a.s.buildings) {
+      const y = b.s.buildings.find((q) => q.vertex === x.vertex && q.order === x.order);
+      if (y) expect(houseShape(y)).toEqual(houseShape(x));
+    }
+  });
+
+  it('streets meander: a drawn street strays from its straightened line, and settles at its ends', () => {
+    const { topo, s } = town();
+    const frames = squareFrames(topo, s.streets, s.towns);
+    let strayed = 0;
+    for (const st of s.streets.filter((x) => x.kind === 'street' && x.path.length > 6)) {
+      const plain = streetMarks(topo, [st], s.buildings, frames);
+      expect(plain.length).toBeGreaterThan(0);
+      // Its two sides wobble: the width between them is not constant.
+      if (plain.length === 2) {
+        const [l, r] = plain;
+        const w: number[] = [];
+        for (let k = 0; k < Math.min(l.points.length, r.points.length); k += 3) w.push(Math.hypot(l.points[k] - r.points[k], l.points[k + 1] - r.points[k + 1], l.points[k + 2] - r.points[k + 2]));
+        if (Math.max(...w) / Math.min(...w) > 1.15) strayed++;
+      }
+    }
+    expect(strayed).toBeGreaterThan(0);
   });
 });

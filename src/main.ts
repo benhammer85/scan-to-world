@@ -223,7 +223,20 @@ for (const type of ['pointerup', 'pointercancel'] as const) {
 stage.addEventListener('wheel', (e) => { e.preventDefault(); gestures.wheel(e.deltaY); }, { passive: false });
 stage.addEventListener('contextmenu', (e) => e.preventDefault());
 
-window.addEventListener('keydown', (e) => { if (e.key === '`') toggleDrawer(); });
+// Arrow keys turn the world, like a drag: each press pushes it round, and
+// held keys keep it turning. Turning is time, so the days go by too.
+const ARROW_PUSH = 2.2; // radians per second added per keypress (and per key repeat)
+const ARROW_MAX = 5;
+window.addEventListener('keydown', (e) => {
+  if (e.key === '`') { toggleDrawer(); return; }
+  const push: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+  const d = push[e.key];
+  if (!d) return;
+  e.preventDefault();
+  firstTouch();
+  spin.x = THREE.MathUtils.clamp(spin.x + d[0] * ARROW_PUSH, -ARROW_MAX, ARROW_MAX);
+  spin.y = THREE.MathUtils.clamp(spin.y + d[1] * ARROW_PUSH, -ARROW_MAX, ARROW_MAX);
+});
 
 // A scan arrives by being dropped on the world, not through a button.
 window.addEventListener('dragover', (e) => { e.preventDefault(); document.body.classList.add('dropping'); });

@@ -10,7 +10,7 @@ import { PlotterLines, defaultPlotterStyle, lineKey, type RevealMode } from './r
 import type { Polyline } from './terrain/contours';
 import { TerrainEdits, applyDisplacement, type BrushOptions } from './interact/sculpt';
 import { Settlements, type TapResult } from './life/settlements';
-import { buildingMarks, harbourMarks, ruinMarks, squareFrames, stallMarks, streetMarks, sunkenMarks } from './life/buildingMarks';
+import { buildingMarks, harbourMarks, ruinMarks, squareFrames, stallMarks, streetMarks, sunkenMarks, wingMarks } from './life/buildingMarks';
 import { findWater, seaFor, snowLines, streamLines, waterLines, type Sea, type Water } from './nature/water';
 import { cableMarks, crossingFrames, crossingMarks, ferryRoute, movers, railMarks } from './life/buildingMarks';
 
@@ -362,7 +362,7 @@ export class TerrainWorld {
     // A market is under water if its hall is.
     const drownedHall = new Set(towns.filter((t) => st.buildings.find((b) => b.vertex === t.centre)?.state === 'drowned').map((t) => t.id));
     this.crossings = crossingFrames(this.topo, st);
-    const houses = buildingMarks(this.topo, this.heights, buildings);
+    const houses = [...buildingMarks(this.topo, this.heights, buildings), ...wingMarks(this.topo, this.heights, buildings)];
     const stalls = stallMarks(st.stalls.filter((x) => !drownedHall.has(x.town)), frames, this.topo);
     const marks = [
       ...streetMarks(this.topo, streets, buildings, frames, st),
@@ -467,6 +467,7 @@ export class TerrainWorld {
       ...streamLines(this.topo, this.water),
       ...(st ? st.ferries.flatMap((f) => ferryRoute(this.topo, f.route)) : []),
       ...(st ? buildingMarks(this.topo, this.heights, st.buildings, 'drowned') : []),
+      ...(st ? wingMarks(this.topo, this.heights, st.buildings, 'drowned') : []),
       ...(st ? sunkenMarks(this.topo, st.streets, st, squareFrames(this.topo, st.streets, st.towns)) : []),
     ];
     this.waterLines.geometry.dispose();
