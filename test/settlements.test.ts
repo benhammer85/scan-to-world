@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { buildTopology } from '../src/mesh/topology';
-import { Settlements, STREET } from '../src/life/settlements';
+import { Settlements, STREET, streetVertices } from '../src/life/settlements';
 import { buildingMarks, footprintRadius, streetMarks } from '../src/life/buildingMarks';
 
 /** A sphere whose height is a gentle swell, plus a steep ridge round x = 0.3. */
@@ -111,20 +111,42 @@ describe('streets', () => {
     return { ...w, s };
   }
 
-  it('every building but the hall has a street, and it leads to the network', () => {
-    const { s } = grown();
+  it('every house but a hall faces a street, one step away', () => {
+    const { topo, s } = grown();
+    const onStreet = new Set<number>();
+    for (const st of s.streets) streetVertices(st).forEach((v) => onStreet.add(v));
     const halls = new Set(s.towns.map((t) => t.centre));
-    const served = new Map(s.streets.filter((st) => st.kind === 'street').map((st) => [st.path[0], st]));
-    const reached = new Set<number>([...halls]);
-    for (const st of s.streets) for (const v of st.path.slice(1)) reached.add(v);
     for (const b of s.buildings) {
       if (halls.has(b.vertex)) continue;
-      const st = served.get(b.vertex);
-      expect(st, `building ${b.vertex} has no street`).toBeDefined();
-      // It ends on a street laid before it, or on the hall.
-      const end = st!.path[st!.path.length - 1];
-      expect(reached.has(end)).toBe(true);
+      expect(b.front, `house ${b.vertex} has no front`).toBeDefined();
+      expect(onStreet.has(b.front!)).toBe(true);
+      const nb = Array.from(topo.nbrList.subarray(topo.nbrOffsets[b.vertex], topo.nbrOffsets[b.vertex + 1]));
+      expect(nb).toContain(b.front);
     }
+  });
+
+  it('every street reaches its hall', () => {
+    const { s } = grown();
+    const d = (s as unknown as { networkDistances(v: number, l: number): Map<number, number> }).networkDistances.bind(s);
+    for (const t of s.towns) {
+      const reach = d(t.centre, Infinity);
+      for (const st of s.streets.filter((x) => x.town === t.id)) for (const v of streetVertices(st)) expect(reach.has(v)).toBe(true);
+    }
+  });
+
+  it('streets are lined with houses, not spurs to them', () => {
+    const { s } = grown(14);
+    // Houses per street, averaged: the old one-spur-per-house model was exactly 1.
+    const streets = s.streets.filter((st) => st.kind === 'street');
+    const houses = s.buildings.filter((b) => b.front !== undefined);
+    expect(houses.length / streets.length).toBeGreaterThan(2);
+    // And the sharper question: does a house share its street with others?
+    const wayOf = new Map<number, number>();
+    s.streets.forEach((st, i) => streetVertices(st).forEach((v) => { if (!wayOf.has(v)) wayOf.set(v, i); }));
+    const perWay = new Map<number, number>();
+    for (const b of houses) { const w = wayOf.get(b.front!)!; perWay.set(w, (perWay.get(w) ?? 0) + 1); }
+    const shared = houses.filter((b) => perWay.get(wayOf.get(b.front!)!)! >= 2).length;
+    expect(shared / houses.length).toBeGreaterThan(0.8);
   });
 
   it('no street runs through a building, as laid or as drawn', () => {
@@ -139,7 +161,7 @@ describe('streets', () => {
     marks.forEach((m, i) => {
       const st = s.streets.filter((x) => x.path.length >= 2)[i];
       for (const b of s.buildings) {
-        if (st.kind === 'street' && b.vertex === st.path[0]) continue;
+        if (st.fromHouse && b.vertex === st.path[0]) continue;
         const o = b.vertex * 3;
         for (let k = 0; k < m.points.length; k += 3) {
           const d = Math.hypot(m.points[k] - topo.positions[o], m.points[k + 1] - topo.positions[o + 1], m.points[k + 2] - topo.positions[o + 2]);
@@ -150,18 +172,35 @@ describe('streets', () => {
     expect(worst).toBeGreaterThan(0);
   });
 
-  it('streets follow the contours: they climb less than the ground around them', () => {
-    const { topo, h, s } = grown(14);
+  // Measured against what the mesh allows, not against the mean: on a triangle
+  // mesh even the least-climbing edge at each point climbs 0.72 of the mean
+  // here, so "less than the ground" alone is nearly true of any path
+  // (whatwesaved PRINCIPLES.md, 4). Measured: contour streets 0.84 of the mean.
+  it('streets run along the contours, close to the least climb the mesh allows', () => {
+    const g = new THREE.IcosahedronGeometry(1, 24);
+    const topo = buildTopology(g.attributes.position.array, null);
+    const h = new Float32Array(topo.vertexCount);
+    for (let v = 0; v < topo.vertexCount; v++) h[v] = 0.3 + 0.8 * topo.positions[v * 3 + 1];
+    const s = new Settlements(topo, h);
+    s.tap(FRONT);
+    s.advance(14);
     const climb = (a: number, b: number) => Math.abs(h[a] - h[b]) / dist(topo, a, b);
     let sc = 0, sn = 0;
-    for (const st of s.streets) for (let i = 1; i < st.path.length; i++) { sc += climb(st.path[i - 1], st.path[i]); sn++; }
-    // Every mesh edge in the same patch of ground, for comparison.
     const near = new Set<number>();
-    for (const st of s.streets) for (const v of st.path) near.add(v);
-    let gc = 0, gn = 0;
-    for (const v of near) for (let k = topo.nbrOffsets[v]; k < topo.nbrOffsets[v + 1]; k++) { gc += climb(v, topo.nbrList[k]); gn++; }
+    for (const st of s.streets.filter((x) => x.kind === 'street')) {
+      const p = streetVertices(st);
+      p.forEach((v) => near.add(v));
+      for (let i = 1; i < p.length; i++) { sc += climb(p[i - 1], p[i]); sn++; }
+    }
+    let mean = 0, mn = 0, least = 0;
+    for (const v of near) {
+      let m = Infinity;
+      for (let k = topo.nbrOffsets[v]; k < topo.nbrOffsets[v + 1]; k++) { const c = climb(v, topo.nbrList[k]); mean += c; mn++; m = Math.min(m, c); }
+      least += m;
+    }
     expect(sn).toBeGreaterThan(20);
-    expect(sc / sn).toBeLessThan((gc / gn) * 0.8);
+    expect(sc / sn).toBeLessThan((least / near.size) * 1.3);
+    expect(sc / sn).toBeLessThan((mean / mn) * 0.95);
   });
 
   it('two grown towns are joined by a road', () => {
@@ -195,7 +234,7 @@ describe('loops', () => {
     const edges = new Set<string>(), verts = new Set<number>();
     const adj = new Map<number, number[]>();
     for (const st of s.streets) {
-      const p = st.kind === 'street' ? st.path.slice(1) : st.path;
+      const p = streetVertices(st);
       p.forEach((v) => verts.add(v));
       for (let i = 1; i < p.length; i++) {
         const [a, b] = [p[i - 1], p[i]].sort((x, y) => x - y);
@@ -219,7 +258,8 @@ describe('loops', () => {
 
   /** Mean of (distance by street / distance over the ground) between house doors. */
   function detour(s: Settlements, topo: ReturnType<typeof world>['topo']) {
-    const doors = s.streets.filter((st) => st.kind === 'street').map((st) => st.path[1]);
+    // A house's door is the street vertex it faces.
+    const doors = s.buildings.filter((b) => b.front !== undefined).map((b) => b.front!);
     const d = (s as unknown as { networkDistances(v: number, l: number): Map<number, number> }).networkDistances.bind(s);
     let sum = 0, n = 0;
     for (let i = 0; i < doors.length; i++) {
@@ -247,29 +287,30 @@ describe('loops', () => {
     }
   }
 
-  it('without lanes the streets are a tree; with them the town has loops', () => {
+  it('lanes close loops: the town has cycles that the streets alone do not', () => {
     const tree = grow(Infinity), town = grow(STREET.loopDetour);
-    expect(cycles(tree.s)).toBe(0);
-    expect(cycles(town.s)).toBeGreaterThanOrEqual(3);
+    expect(cycles(town.s)).toBeGreaterThanOrEqual(cycles(tree.s) + 3);
   });
 
   // Three towns, not one: one seed measures the seed (whatwesaved PRINCIPLES.md, 4a).
-  // Measured on three sites: 1.80, 1.81, 1.98 without lanes; 1.47, 1.40, 1.42 with.
+  // Measured with frontage on three sites: 1.77, 1.72, 1.80 without lanes;
+  // 1.49, 1.58, 1.62 with. Smaller than before frontage (1.80 -> 1.43),
+  // because streets laid along the contour already connect better.
   it('loops make towns easier to cross: less detour between houses, over three towns', () => {
     const sites = [FRONT, [-0.5, 0.3, 0.81], [-0.3, -0.6, 0.74]];
     const mean = (ld: number) => sites.reduce((sum, site) => { const g = grow(ld, site); return sum + detour(g.s, g.topo); }, 0) / sites.length;
-    expect(mean(STREET.loopDetour)).toBeLessThan(mean(Infinity) * 0.85);
+    expect(mean(STREET.loopDetour)).toBeLessThan(mean(Infinity) * 0.93);
   });
 
   it('no two streets cross without a junction: a way only ever meets another at its end', () => {
     const { s } = grow(STREET.loopDetour);
     const interior = new Map<number, number>(); // vertex -> the way it's inside of
     s.streets.forEach((st, i) => {
-      const p = st.kind === 'street' ? st.path.slice(1) : st.path;
+      const p = streetVertices(st);
       for (const v of p.slice(1, -1)) interior.set(v, i);
     });
     s.streets.forEach((st, i) => {
-      const p = st.kind === 'street' ? st.path.slice(1) : st.path;
+      const p = streetVertices(st);
       for (const v of p.slice(1, -1)) expect(interior.get(v)).toBe(i); // no other way passes through
     });
   });
@@ -278,7 +319,7 @@ describe('loops', () => {
     const { s } = grow(STREET.loopDetour);
     const count = new Map<string, number>();
     for (const st of s.streets) {
-      const p = st.kind === 'street' ? st.path.slice(1) : st.path;
+      const p = streetVertices(st);
       for (let i = 1; i < p.length; i++) {
         const k = [p[i - 1], p[i]].sort((x, y) => x - y).join('-');
         count.set(k, (count.get(k) ?? 0) + 1);

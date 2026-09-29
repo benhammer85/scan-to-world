@@ -70,14 +70,29 @@ export const STREET = {
    *  the lane's own length, and the lane is no longer than `loopReach`. */
   loopDetour: 3,
   loopReach: 0.16,
+  /** A new street run keeps going along the contour for up to this far... */
+  runLength: 0.26,
+  /** ...and keeps this many mesh edges from other streets, so a row of houses fits between. */
+  runGapEdges: 2.6,
+  /** How straight a run must keep: the least cosine between one step and the next. */
+  runStraightness: 0.45,
+
   roadReach: 3.5,
 };
 
 export interface Street {
-  /** Welded vertices, from the building (or town) it serves to where it met the network. */
+  /** Welded vertices, from its start to where it met the network. */
   path: number[];
   town: number;
-  kind: 'street' | 'road' | 'lane';
+  /** street: along the contour, houses front it. link: climbs from the network to a street. */
+  kind: 'street' | 'link' | 'road' | 'lane';
+  /** Its first vertex is a house (the old per-house spur). The house isn't street. */
+  fromHouse?: boolean;
+}
+
+/** The vertices of a way that are street, not house. */
+export function streetVertices(st: Street): number[] {
+  return st.fromHouse ? st.path.slice(1) : st.path;
 }
 
 export interface Building {
@@ -85,6 +100,8 @@ export interface Building {
   town: number;
   /** 0 for the first building of a town (its hall), counting up. */
   order: number;
+  /** The street vertex this house faces. Every house but a hall has one. */
+  front?: number;
 }
 
 export interface Town {
@@ -115,6 +132,8 @@ export class Settlements {
   readonly buildableSlope: number;
   /** House spacing for this mesh: `TOWN.spacing`, or wider on a coarse mesh. */
   readonly spacing: number;
+  /** Mean mesh edge length. */
+  readonly edge: number;
   private occupied: number[] = []; // vertex per building, for spacing checks
   private buildingAt = new Set<number>();
 
@@ -122,7 +141,8 @@ export class Settlements {
     this.slope = slopes(topo, heights);
     const sorted = Float32Array.from(this.slope).sort();
     this.buildableSlope = Math.max(TOWN.gentle, sorted[Math.floor(TOWN.buildableRank * (sorted.length - 1))]);
-    this.spacing = Math.max(TOWN.spacing, TOWN.edgesBetween * meanEdge(topo));
+    this.edge = meanEdge(topo);
+    this.spacing = Math.max(TOWN.spacing, TOWN.edgesBetween * this.edge);
   }
 
   /** Can a building stand on this vertex, given the ground as it is now? */
@@ -142,7 +162,7 @@ export class Settlements {
     if (site === null) return { kind: 'refused' };
     const t: Town = { id: this.towns.length, centre: site, buildings: [], owed: 0, frontier: [], settled: new Map() };
     this.towns.push(t);
-    this.lay(t, site, null);
+    this.lay(t, site);
     this.network.set(site, t.id); // the hall is where the first streets lead
     this.expand(t, site, 0);
     return { kind: 'founded', town: t.id, vertex: site };
@@ -180,45 +200,179 @@ export class Settlements {
 
   // ------------------------------------------------------------ growth
 
+  /**
+   * One house. Streets come first and houses fill the frontage along them:
+   * a house goes on the best free plot beside one of its town's streets,
+   * facing it. Only when there is no frontage left does the town lay a new
+   * street run, towards the cheapest ground, and then build on that.
+   */
   private growOne(t: Town): number | null {
+    const plot = this.bestFrontage(t);
+    if (plot) return this.layHouse(t, plot);
     while (t.frontier.length) {
       const [cost, v] = t.frontier.shift()!;
       if (t.settled.has(v)) continue;
       t.settled.set(v, cost);
       this.expand(t, v, cost);
-      // Refused here, not undone later: the ground may have been sculpted
-      // steep since this vertex was queued.
-      if (this.buildable(v) && this.roomFor(v)) {
-        const path = this.connect(v);
-        if (!path) continue; // unreachable: refused, never built and then stranded
-        this.lay(t, v, path);
-        return v;
-      }
+      if (!this.layRun(t, v)) continue;
+      const next = this.bestFrontage(t);
+      if (next) return this.layHouse(t, next);
     }
     return null;
   }
 
-  /** A tap on a town: lay up to `count` buildings nearest to where it landed. */
+  /** A tap on a town: up to `count` houses on the frontage nearest where it landed. */
   private growNear(t: Town, v: number, count: number): number | null {
     let first: number | null = null;
-    const local = new Settlements.Frontier();
-    local.push(0, v);
-    const seen = new Set<number>();
-    let laid = 0;
-    while (local.size && laid < count) {
-      const [cost, u] = local.pop();
-      if (seen.has(u) || cost > TOWN.searchRadius) continue;
-      seen.add(u);
-      const path = this.buildable(u) && this.roomFor(u) ? this.connect(u) : null;
-      if (path) {
-        this.lay(t, u, path);
-        if (!t.settled.has(u)) { t.settled.set(u, 0); this.expand(t, u, 0); }
-        first ??= u;
-        laid++;
+    for (let i = 0; i < count; i++) {
+      let plot = this.bestFrontage(t, v);
+      if (!plot) {
+        // No frontage near the finger: lay a street out towards it first.
+        const start = this.nearestWhere(v, TOWN.searchRadius, (u) => this.runMayStart(u));
+        if (start === null || !this.layRun(t, start)) break;
+        plot = this.bestFrontage(t, v);
+        if (!plot) break;
       }
-      this.eachNeighbour(u, (w, d) => { if (!seen.has(w)) local.push(cost + d, w); });
+      const laid = this.layHouse(t, plot);
+      first ??= laid;
     }
     return first;
+  }
+
+  /**
+   * The best free plot beside one of this town's streets: nearest to `near`
+   * if given, else cheapest by the town's growth cost, so it grows compactly.
+   */
+  private bestFrontage(t: Town, near?: number): { v: number; front: number } | null {
+    let best: { v: number; front: number } | null = null, bestScore = Infinity;
+    const halls = new Set(this.towns.map((x) => x.centre));
+    for (const [s, town] of this.network) {
+      if (town !== t.id || halls.has(s)) continue; // a hall isn't frontage: streets lead out from it
+      this.eachNeighbour(s, (w, d) => {
+        if (this.network.has(w) || this.buildingAt.has(w)) return;
+        const score = near !== undefined ? this.dist(w, near) : (t.settled.get(w) ?? 2 * this.dist(w, t.centre)) + d * 1e-3;
+        if (near !== undefined && score > TOWN.searchRadius) return;
+        if (score > bestScore || (score === bestScore && best && w > best.v)) return;
+        if (!this.buildable(w) || !this.roomFor(w)) return;
+        best = { v: w, front: s };
+        bestScore = score;
+      });
+    }
+    return best;
+  }
+
+  private layHouse(t: Town, plot: { v: number; front: number }): number {
+    this.lay(t, plot.v, plot.front);
+    return plot.v;
+  }
+
+  private runMayStart(v: number): boolean {
+    return !this.network.has(v) && !this.buildingAt.has(v) && this.streetMayRun(v, -1);
+  }
+
+  /**
+   * A new street: from `v` back to the network by the cheapest way, then on
+   * outwards from `v` along the contour, keeping straight and keeping clear
+   * of other streets so a row of houses fits between. Returns false if it
+   * can't be laid, before anything is committed.
+   */
+  private layRun(t: Town, v: number): boolean {
+    if (!this.runMayStart(v)) return false;
+    const head = this.route([v], (u) => this.network.get(u) === t.id, STREET.reach, -1);
+    if (!head) return false;
+    const junction = head[head.length - 1];
+    const gap = STREET.runGapEdges * this.edge;
+    const inRun = new Set(head);
+    const clearOfOthers = (w: number) => {
+      for (const u of this.network.keys()) {
+        if (inRun.has(u)) continue;
+        if (this.dist(u, junction) < gap * 1.5) continue; // the street it branched from is close by at first
+        if (this.dist(w, u) < gap) return false;
+      }
+      return true;
+    };
+    // The street runs both ways along the contour from `v`, and the head is
+    // the link that climbs to it. Continuing the link's own direction instead
+    // sent streets straight uphill: measured, weighting the climb four times
+    // harder moved street climb from 0.82 to 0.81 of the ground's, because
+    // the direction was already set before the weight could act.
+    const p = this.topo.positions;
+    const steps: { w: number; d: number; score: number; dir: number[] }[] = [];
+    this.eachNeighbour(v, (w, d) => {
+      if (inRun.has(w) || !this.runMayStart(w) || !this.buildable(w) || !clearOfOthers(w)) return;
+      const dir = [(p[w * 3] - p[v * 3]) / d, (p[w * 3 + 1] - p[v * 3 + 1]) / d, (p[w * 3 + 2] - p[v * 3 + 2]) / d];
+      steps.push({ w, d, dir, score: Math.abs(this.heights[w] - this.heights[v]) / d + w * 1e-9 });
+    });
+    steps.sort((x, y) => x.score - y.score);
+    const first = steps[0];
+    const second = first && steps.find((x) => x.dir[0] * first.dir[0] + x.dir[1] * first.dir[1] + x.dir[2] * first.dir[2] < -0.3);
+    const arms = [first, second].filter((x): x is (typeof steps)[number] => !!x).map((f) => {
+      inRun.add(f.w);
+      return this.extend(f.w, v, f.d, inRun, clearOfOthers);
+    });
+    if (!arms.length) return false;
+    const street = [...arms[0].reverse(), v, ...(arms[1] ?? [])];
+    // No street is laid that no house could front: refused here, before it
+    // exists (whatwesaved PRINCIPLES.md, 3), rather than a town of empty roads.
+    if (!this.couldFront(street)) return false;
+    this.addStreet({ path: head, town: t.id, kind: 'link' });
+    this.addStreet({ path: street, town: t.id, kind: 'street' });
+    this.closeLoop(street, t.id);
+    return true;
+  }
+
+  /** Carry a street on from `tip` (having come from `prev`) along the contour, keeping fairly straight. */
+  private extend(tip: number, prev: number, travelled: number, inRun: Set<number>, clear: (w: number) => boolean): number[] {
+    const p = this.topo.positions;
+    const out = [tip];
+    let length = travelled;
+    while (length < STREET.runLength) {
+      const dx = p[tip * 3] - p[prev * 3], dy = p[tip * 3 + 1] - p[prev * 3 + 1], dz = p[tip * 3 + 2] - p[prev * 3 + 2];
+      const dl = Math.hypot(dx, dy, dz) || 1;
+      let pick = -1, pickScore = Infinity, pickD = 0;
+      this.eachNeighbour(tip, (w, d) => {
+        if (inRun.has(w) || !this.runMayStart(w) || !this.buildable(w)) return;
+        const cos = ((p[w * 3] - p[tip * 3]) * dx + (p[w * 3 + 1] - p[tip * 3 + 1]) * dy + (p[w * 3 + 2] - p[tip * 3 + 2]) * dz) / (d * dl);
+        if (cos < STREET.runStraightness) return;
+        // Along the contour first, then straight.
+        const score = Math.abs(this.heights[w] - this.heights[tip]) / d / (this.buildableSlope || 1) + 0.25 * (1 - cos) + w * 1e-9;
+        if (score < pickScore && clear(w)) { pick = w; pickScore = score; pickD = d; }
+      });
+      if (pick < 0) break;
+      out.push(pick);
+      inRun.add(pick);
+      prev = tip; tip = pick; length += pickD;
+    }
+    return out;
+  }
+
+  private couldFront(path: number[]): boolean {
+    const on = new Set(path);
+    for (const s of path.slice(0, -1)) { // not the junction: that frontage belongs to the old street
+      let ok = false;
+      this.eachNeighbour(s, (w) => {
+        if (ok || on.has(w) || this.network.has(w) || this.buildingAt.has(w)) return;
+        if (!this.buildable(w)) return;
+        for (const u of on) if (this.dist(w, u) < STREET.clearance) return;
+        if (this.roomFor(w)) ok = true;
+      });
+      if (ok) return true;
+    }
+    return false;
+  }
+
+  private nearestWhere(v: number, reach: number, ok: (u: number) => boolean): number | null {
+    const f = new Settlements.Frontier();
+    f.push(0, v);
+    const seen = new Set<number>();
+    while (f.size) {
+      const [d, u] = f.pop();
+      if (seen.has(u) || d > reach) continue;
+      seen.add(u);
+      if (ok(u)) return u;
+      this.eachNeighbour(u, (w, e) => { if (!seen.has(w)) f.push(d + e, w); });
+    }
+    return null;
   }
 
   private expand(t: Town, v: number, cost: number): void {
@@ -229,15 +383,11 @@ export class Settlements {
     });
   }
 
-  private lay(t: Town, v: number, path: number[] | null): void {
-    this.buildings.push({ vertex: v, town: t.id, order: t.buildings.length });
+  private lay(t: Town, v: number, front?: number): void {
+    this.buildings.push({ vertex: v, town: t.id, order: t.buildings.length, front });
     t.buildings.push(v);
     this.occupied.push(v);
     this.buildingAt.add(v);
-    if (path) {
-      this.addStreet({ path, town: t.id, kind: 'street' });
-      this.closeLoop(path, t.id);
-    }
   }
 
   /**
@@ -283,7 +433,7 @@ export class Settlements {
       (adj.get(b) ?? adj.set(b, []).get(b)!).push(a);
     };
     for (const st of this.streets) {
-      const path = st.kind === 'street' ? st.path.slice(1) : st.path; // the house itself isn't street
+      const path = streetVertices(st);
       for (let i = 1; i < path.length; i++) link(path[i - 1], path[i]);
     }
     const out = new Map<number, number>([[from, 0]]);
@@ -302,16 +452,10 @@ export class Settlements {
 
   private addStreet(st: Street): void {
     this.streets.push(st);
-    // The building's own vertex is the building, not street.
-    for (const u of st.kind === 'street' ? st.path.slice(1) : st.path) if (!this.network.has(u)) this.network.set(u, st.town);
+    for (const u of streetVertices(st)) if (!this.network.has(u)) this.network.set(u, st.town);
   }
 
   // ------------------------------------------------------------ streets
-
-  /** The way from a new building to the nearest street, or null if there is none in reach. */
-  private connect(v: number): number[] | null {
-    return this.route([v], (u) => this.network.has(u), STREET.reach, v);
-  }
 
   /** Roads between towns that have both grown, once per pair. */
   private joinTowns(): number {
@@ -379,17 +523,7 @@ export class Settlements {
 
   private findSite(v: number): number | null {
     // Nearest buildable ground with room, within reach of the tap, by distance over the surface.
-    const f = new Settlements.Frontier();
-    f.push(0, v);
-    const seen = new Set<number>();
-    while (f.size) {
-      const [d, u] = f.pop();
-      if (seen.has(u) || d > TOWN.searchRadius) continue;
-      seen.add(u);
-      if (this.buildable(u) && this.roomFor(u)) return u;
-      this.eachNeighbour(u, (w, e) => { if (!seen.has(w)) f.push(d + e, w); });
-    }
-    return null;
+    return this.nearestWhere(v, TOWN.searchRadius, (u) => this.buildable(u) && this.roomFor(u));
   }
 
   private townNear(v: number): Town | null {

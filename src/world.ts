@@ -264,7 +264,7 @@ export class TerrainWorld {
   private rebuildTown(mode: RevealMode): void {
     this.lastTownBuild = performance.now();
     const { buildings, streets } = this.settlements;
-    const marks = [...streetMarks(this.topo, streets, buildings), ...buildingMarks(this.topo, this.heights, buildings)];
+    const marks = [...streetMarks(this.topo, streets, buildings), ...buildingMarks(this.topo, this.heights, buildings, streets)];
     const from = this.townFrom ?? this.lastTownCentre();
     this.townLines.setLines(marks, mode, from ?? undefined);
     if (mode === 'ink') this.townFrom = null;

@@ -6,7 +6,7 @@
  */
 import type { Topology } from '../mesh/topology';
 import type { Polyline } from '../terrain/contours';
-import type { Building, Street } from './settlements';
+import { streetVertices, type Building, type Street } from './settlements';
 
 export const MARK = {
   long: 0.024,
@@ -16,17 +16,27 @@ export const MARK = {
   lift: 0.003,
 };
 
-export function buildingMarks(topo: Topology, heights: Float32Array, buildings: Building[]): Polyline[] {
+export function buildingMarks(topo: Topology, heights: Float32Array, buildings: Building[], streets: Street[] = []): Polyline[] {
   const { positions: p, normals: n } = topo;
+  const along = streetDirections(streets);
   return buildings.map((b) => {
     const v = b.vertex, o = v * 3;
     const nx = n[o], ny = n[o + 1], nz = n[o + 2];
+    // A house faces its street: its long side runs parallel to the street at its front.
+    const dir = b.front !== undefined ? along.get(b.front) : undefined;
     // Uphill direction: neighbour offsets weighted by the height difference,
     // flattened into the tangent plane. The long side runs across it.
     let gx = 0, gy = 0, gz = 0;
     for (let k = topo.nbrOffsets[v]; k < topo.nbrOffsets[v + 1]; k++) {
       const u = topo.nbrList[k] * 3, dh = heights[u / 3] - heights[v];
       gx += (p[u] - p[o]) * dh; gy += (p[u + 1] - p[o + 1]) * dh; gz += (p[u + 2] - p[o + 2]) * dh;
+    }
+    if (dir) {
+      // Stand in for "uphill" with the direction across the street, so the
+      // long side (normal × this) runs along it.
+      const [a, c] = dir, sx = p[c * 3] - p[a * 3], sy = p[c * 3 + 1] - p[a * 3 + 1], sz = p[c * 3 + 2] - p[a * 3 + 2];
+      gx = ny * sz - nz * sy; gy = nz * sx - nx * sz; gz = nx * sy - ny * sx;
+      gx = -gx; gy = -gy; gz = -gz;
     }
     let dot = gx * nx + gy * ny + gz * nz;
     gx -= dot * nx; gy -= dot * ny; gz -= dot * nz;
@@ -58,6 +68,20 @@ export function buildingMarks(topo: Topology, heights: Float32Array, buildings: 
   });
 }
 
+/** For each street vertex, two vertices either side of it along its street. */
+function streetDirections(streets: Street[]): Map<number, [number, number]> {
+  const out = new Map<number, [number, number]>();
+  for (const st of streets) {
+    const path = streetVertices(st);
+    for (let i = 0; i < path.length; i++) {
+      if (out.has(path[i])) continue;
+      const a = path[Math.max(0, i - 1)], c = path[Math.min(path.length - 1, i + 1)];
+      if (a !== c) out.set(path[i], [a, c]);
+    }
+  }
+  return out;
+}
+
 /** Half the diagonal of a building's footprint: nothing else may be drawn inside it. */
 export function footprintRadius(b: Building): number {
   const s = b.order === 0 ? MARK.hall : 1;
@@ -82,15 +106,13 @@ export function streetMarks(topo: Topology, streets: Street[], buildings: Buildi
       return [p[o] + n[o] * MARK.lift, p[o + 1] + n[o + 1] * MARK.lift, p[o + 2] + n[o + 2] * MARK.lift];
     });
     for (let r = 0; r < 2; r++) pts = chaikin(pts);
-    const home = st.kind === 'street' ? byVertex.get(st.path[0]) : undefined;
+    const home = st.fromHouse ? byVertex.get(st.path[0]) : undefined;
     if (home) pts = trimStart(pts, pts[0], footprintRadius(home) * 1.05);
     // A street that arrives at a hall stops at its door too.
     const end = byVertex.get(st.path[st.path.length - 1]);
     if (end && pts.length >= 2) pts = trimStart(pts.reverse(), pts[0], footprintRadius(end) * 1.05).reverse();
-    if (home === undefined && st.kind === 'road') {
-      const start = byVertex.get(st.path[0]);
-      if (start && pts.length >= 2) pts = trimStart(pts, pts[0], footprintRadius(start) * 1.05);
-    }
+    const start = home === undefined ? byVertex.get(st.path[0]) : undefined;
+    if (start && pts.length >= 2) pts = trimStart(pts, pts[0], footprintRadius(start) * 1.05);
     if (pts.length < 2) continue;
     const flat = new Float32Array(pts.flat());
     let length = 0;
