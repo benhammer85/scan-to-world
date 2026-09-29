@@ -1,6 +1,6 @@
 {
-  "name": "Scan-to-World",
-  "short_name": "Scan-to-World",
+  "name": "Atlas Minor",
+  "short_name": "Atlas Minor",
   "description": "A scanned object becomes a world drawn like an old map. Sow people, farms and woods with a tap, and turn it to watch them grow.",
   "start_url": "./",
   "scope": "./",

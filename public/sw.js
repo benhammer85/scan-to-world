@@ -1,7 +1,7 @@
-// Scan-to-World's service worker: the game works offline once it has been
+// Atlas Minor's service worker: the game works offline once it has been
 // opened, and on Android a scan shared from another app (Scaniverse, say)
 // arrives here and is handed to the game.
-const VERSION = 'stw-1';
+const VERSION = 'stw-2';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', (e) => {

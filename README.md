@@ -1,4 +1,4 @@
-# Scan-to-World (prototype)
+# Atlas Minor (prototype)
 
 Scan a real object, and a tiny world grows on its **actual** surface. Its bumps become
 mountains, contour lines plot themselves in like a pen plotter, and you can push the
@@ -28,6 +28,7 @@ The site is published to GitHub Pages from `main` by `.github/workflows/pages.ym
 * a last place for your own scan.
 
 **The atlas and the celestial railway** (`src/atlas/atlas.ts`). Pinch out past a world and the camera pulls back to a celestial chart: every world you have made, on a dotted graticule among the stars, and the specimens not yet made as uncharted, dotted places with their figures.
+* **The chart's paper:** as you rise into the atlas, the page ages to a darker, browner paper with a little foxing. Stars are inked as dots, and the brighter ones as small crosses. Faint constellation lines stop just short of each star, as on an engraved chart. The stars are placed by a fixed rule on a fixed grid, so the sky stays put as more worlds are added.
 * **In the atlas:** tap a world to fly down into it, tap an uncharted place to make it, and pinch in to go back.
 * **Laying a railway:** drag from one world to another. The line leaves a station at the town facing the other world (or founds one there), climbs off on trestles, and bows across the chart past a halfway station hung on chains from nothing. It comes down onto the other world, and is laid from both ends to meet in the middle.
 * **The train** runs on it, out and back, and each time it comes in, its settlers grow the town at that end.

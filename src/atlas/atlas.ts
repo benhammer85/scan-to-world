@@ -172,30 +172,118 @@ export function trainLines(curve: THREE.CubicBezierCurve3, t: number, eye: V, sc
 }
 
 /**
- * The chart itself: a faint graticule round the middle, as a celestial chart
- * is ruled, and stars here and there in the empty paper.
+ * The chart itself, on its own aged paper: a faint graticule round the
+ * middle, as a celestial chart is ruled; stars in ink, most of them dots and
+ * the brighter ones crosses; and here and there a constellation's figure,
+ * joined in faint lines that stop short of each star, as an engraver would.
+ *
+ * The stars are placed cell by cell on a fixed grid, by a rule of the cell
+ * alone, so the sky never moves when a new world is added and the chart grows.
  */
-export function chartLines(centre: V, radius: number): V[][] {
-  const out: V[][] = [];
+export const STARS = {
+  /** One chance of a star in each cell this big. */
+  cell: 1.15,
+  chance: 0.62,
+  /** No star this near a world. */
+  clear: 1.35,
+  /** A constellation joins stars at most this far apart, of three to this many. */
+  reach: 2.3,
+  most: 6,
+};
+
+export interface Star { at: V; magnitude: 0 | 1 | 2 }
+
+export interface ChartDrawing { rule: V[][]; stars: V[][]; figures: V[][] }
+
+export function starsOf(centre: V, radius: number, avoid: V[] = []): Star[] {
+  const out: Star[] = [];
   const z = -1.6; // behind the worlds
+  const c = STARS.cell, n = Math.ceil(radius / c) + 1;
+  const ix0 = Math.floor(centre.x / c), iy0 = Math.floor(centre.y / c);
+  for (let ix = ix0 - n; ix <= ix0 + n; ix++) for (let iy = iy0 - n; iy <= iy0 + n; iy++) {
+    if (cellHash(ix, iy, 1) > STARS.chance) continue;
+    const at = new THREE.Vector3((ix + cellHash(ix, iy, 2)) * c, (iy + cellHash(ix, iy, 3)) * c, z);
+    if (Math.hypot(at.x - centre.x, at.y - centre.y) > radius) continue;
+    if (avoid.some((w) => Math.hypot(at.x - w.x, at.y - w.y) < STARS.clear)) continue;
+    const m = cellHash(ix, iy, 4);
+    out.push({ at, magnitude: m < 0.62 ? 0 : m < 0.9 ? 1 : 2 });
+  }
+  return out;
+}
+
+export function chartLines(centre: V, radius: number, avoid: V[] = []): ChartDrawing {
+  const rule: V[][] = [], stars: V[][] = [], figures: V[][] = [];
+  const z = -1.6;
   for (let r = ATLAS.spacing; r <= radius; r += ATLAS.spacing) {
     const ring: V[] = [];
     for (let i = 0; i <= 96; i++) { const a = (i / 96) * 2 * Math.PI; ring.push(new THREE.Vector3(centre.x + Math.cos(a) * r, centre.y + Math.sin(a) * r, z)); }
-    out.push(...dashed(ring, 0.06, 0.12));
+    rule.push(...dashed(ring, 0.06, 0.12));
   }
   for (let k = 0; k < 12; k++) {
     const a = (k / 12) * 2 * Math.PI;
-    out.push(...dashed([new THREE.Vector3(centre.x + Math.cos(a) * 1.4, centre.y + Math.sin(a) * 1.4, z), new THREE.Vector3(centre.x + Math.cos(a) * radius, centre.y + Math.sin(a) * radius, z)], 0.06, 0.12));
+    rule.push(...dashed([new THREE.Vector3(centre.x + Math.cos(a) * 1.4, centre.y + Math.sin(a) * 1.4, z), new THREE.Vector3(centre.x + Math.cos(a) * radius, centre.y + Math.sin(a) * radius, z)], 0.06, 0.12));
   }
-  // Stars: four-pointed, of three magnitudes, placed by a fixed rule so they never move.
-  for (let i = 0; i < 90; i++) {
-    const a = frac(Math.sin(i * 12.9898) * 43758.5453) * 2 * Math.PI, r = Math.sqrt(frac(Math.sin(i * 78.233) * 12345.678)) * radius * 1.15;
-    const c = new THREE.Vector3(centre.x + Math.cos(a) * r, centre.y + Math.sin(a) * r, z);
-    const m = [0.03, 0.05, 0.08][i % 3];
-    out.push([c.clone().add(new THREE.Vector3(-m, 0, 0)), c.clone().add(new THREE.Vector3(m, 0, 0))], [c.clone().add(new THREE.Vector3(0, -m, 0)), c.clone().add(new THREE.Vector3(0, m, 0))]);
-    if (i % 3 === 2) out.push([c.clone().add(new THREE.Vector3(-m * 0.5, -m * 0.5, 0)), c.clone().add(new THREE.Vector3(m * 0.5, m * 0.5, 0))], [c.clone().add(new THREE.Vector3(-m * 0.5, m * 0.5, 0)), c.clone().add(new THREE.Vector3(m * 0.5, -m * 0.5, 0))]);
+
+  const all = starsOf(centre, radius * 1.15, avoid);
+  const X = new THREE.Vector3(1, 0, 0), Y = new THREE.Vector3(0, 1, 0);
+  for (const { at, magnitude } of all) {
+    // A dot: a ring too small to see as one.
+    circle(at, X, Y, magnitude === 0 ? 0.011 : 0.016, stars);
+    if (magnitude === 0) continue;
+    const m = magnitude === 1 ? 0.04 : 0.075;
+    stars.push([at.clone().addScaledVector(X, -m), at.clone().addScaledVector(X, m)], [at.clone().addScaledVector(Y, -m), at.clone().addScaledVector(Y, m)]);
+    if (magnitude === 2) {
+      const d = m * 0.38;
+      stars.push([at.clone().add(new THREE.Vector3(-d, -d, 0)), at.clone().add(new THREE.Vector3(d, d, 0))], [at.clone().add(new THREE.Vector3(-d, d, 0)), at.clone().add(new THREE.Vector3(d, -d, 0))]);
+    }
+  }
+  figures.push(...constellations(all));
+  return { rule, stars, figures };
+}
+
+/**
+ * Constellations: from a bright star, walk to the nearest bright star not yet
+ * in a figure, and on, three to six stars; sometimes a branch off the second.
+ */
+export function constellations(all: Star[]): V[][] {
+  const out: V[][] = [];
+  const bright = all.filter((s) => s.magnitude > 0).sort((a, b) => a.at.x - b.at.x || a.at.y - b.at.y);
+  const used = new Set<Star>();
+  const nearestTo = (s: Star) => {
+    let best: Star | null = null, bd = STARS.reach;
+    for (const o of bright) {
+      if (used.has(o)) continue;
+      const d = s.at.distanceTo(o.at);
+      if (d < bd) { bd = d; best = o; }
+    }
+    return best;
+  };
+  for (const seed of bright) {
+    if (used.has(seed) || seed.magnitude < 2) continue;
+    const h = frac(Math.sin(seed.at.x * 91.7 + seed.at.y * 47.3) * 43758.5453);
+    const want = 3 + Math.floor(h * (STARS.most - 2));
+    const chain = [seed];
+    used.add(seed);
+    while (chain.length < want) {
+      const next = nearestTo(chain[chain.length - 1]);
+      if (!next) break;
+      chain.push(next); used.add(next);
+    }
+    if (chain.length < 3) { for (const s of chain.slice(1)) used.delete(s); continue; }
+    const joins: [Star, Star][] = [];
+    for (let i = 1; i < chain.length; i++) joins.push([chain[i - 1], chain[i]]);
+    if (h > 0.55) { const off = nearestTo(chain[1]); if (off) { used.add(off); joins.push([chain[1], off]); } }
+    for (const [a, b] of joins) {
+      const d = a.at.distanceTo(b.at), gap = 0.07;
+      if (d < gap * 3) continue;
+      out.push([a.at.clone().lerp(b.at, gap / d), b.at.clone().lerp(a.at, gap / d)]);
+    }
   }
   return out;
+}
+
+function cellHash(ix: number, iy: number, k: number): number {
+  return frac(Math.sin(ix * 127.1 + iy * 311.7 + k * 74.7) * 43758.5453);
 }
 
 /** An uncharted place: a dotted circle where a world will be. */
