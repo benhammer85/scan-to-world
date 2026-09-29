@@ -108,6 +108,63 @@ export const MARKET = {
   ring: 0.55,
 };
 
+/**
+ * A town grows the way towns do (whatwesaved, marginalia/city.py `_wear` and
+ * `_build_on`): people live there first, the ways between them are walked
+ * before they are worn in, worn in before they are made up, and only a few
+ * become the main street. Every stage is absolute, in days since the thing
+ * was laid, and capped by how big its town is: a way is never more made up
+ * than its place, so a hamlet of three has no main street running out of it.
+ * whatwesaved first ranked its streets instead, and a town of forty presses
+ * came out with the same mix as a town of five.
+ */
+export const STAGE = {
+  /** Days a way is walked before it is a worn track, a made street, and (if it is one of the few) the main street. */
+  track: 1.5,
+  street: 4,
+  main: 9,
+  /** Houses a town must have laid before its ways may be tracks, streets, a main street. */
+  trackAt: 3,
+  streetAt: 8,
+  mainAt: 16,
+  /**
+   * Only a street this long (world units) becomes a main street: old *and*
+   * going somewhere. Ranked among the town's streets instead (as whatwesaved
+   * does), a main street was demoted again when a longer one came of age.
+   */
+  mainLength: 0.34,
+  /** Days a house stands as a hut, then as a house before it gets its wing. */
+  house: 1,
+  wing: 3,
+  /** A house this near the hall, this many days old, in a town this big, is joined to its neighbours in a terrace... */
+  core: 0.2,
+  coreMost: 0.4,
+  terrace: 6,
+  terraceAt: 14,
+  /** ...a row this deep, running on this far past the houses at its ends. */
+  rowDepth: 0.014,
+  rowEnd: 0.012,
+  /** The first building is a farmstead until the town has this many houses; then it is the hall, and the square opens. */
+  hallAt: 8,
+  /** Ground enclosed by streets is garden after this many days... */
+  garden: 1.5,
+  /** ...and, this near the hall in a town this big, built round with a courtyard after this many. */
+  court: 6,
+  courtAt: 22,
+  /** An enclosed piece of ground bigger than this many vertices isn't a block, it's country. */
+  blockMost: 260,
+  blockLeast: 3,
+};
+
+/** Ground enclosed by streets: a block, which is garden first and built round later. */
+export interface Block {
+  town: number;
+  vertices: number[];
+  /** The street vertices round it. */
+  ring: number[];
+  born: number;
+}
+
 export const BRIDGE = {
   /** A bridge may cross water up to this wide (world units)... */
   span: 0.14,
@@ -164,6 +221,8 @@ export interface Street {
   joins?: [number, number];
   /** A road wears in with use: 0 a track, 1 a lane, 2 a made road. Only ever goes up. */
   grade?: number;
+  /** When it was laid (days), or last washed out: how made up it is follows from this. */
+  born?: number;
 }
 
 export const TRADE = {
@@ -229,6 +288,8 @@ export interface Building {
    * record only grows (whatwesaved PRINCIPLES.md, 3).
    */
   state?: 'drowned' | 'ruin';
+  /** When it was built (days): a house starts as a hut. */
+  born?: number;
 }
 
 export interface Town {
@@ -261,6 +322,13 @@ export class Settlements {
   readonly cables: Cable[] = [];
   /** Days since the world began: carts give way to cars as it ages. */
   day = 0;
+  /** When the thing being laid now is laid: within an advance, the event's own time. */
+  private now = 0;
+  /** Ground enclosed by streets, found again whenever the network changes. */
+  blocks: Block[] = [];
+  private blockBorn = new Map<string, number>();
+  private networkVersion = 0;
+  private blocksAt = -1;
   /** Street vertices carried over water. */
   readonly bridgeAt = new Set<number>();
   /** Street vertices under water now (not bridges): out of the network until the water goes. */
@@ -328,12 +396,19 @@ export class Settlements {
         b.state = 'ruin';
       }
     }
+    let changed = false;
     for (const [u, town] of this.network) {
-      if ((wet[u] || this.stream?.[u]) && !this.bridgeAt.has(u)) { this.network.delete(u); this.submerged.set(u, town); }
+      if ((wet[u] || this.stream?.[u]) && !this.bridgeAt.has(u)) { this.network.delete(u); this.submerged.set(u, town); changed = true; }
     }
+    const back = new Set<number>();
     for (const [u, town] of this.submerged) {
-      if (!wet[u] && !this.stream?.[u]) { this.submerged.delete(u); this.network.set(u, town); }
+      if (!wet[u] && !this.stream?.[u]) { this.submerged.delete(u); this.network.set(u, town); back.add(u); }
     }
+    // A way the water went over comes back washed out: walked again, and made up again in time.
+    if (back.size) for (const st of this.streets) if (st.path.some((u) => back.has(u))) st.born = this.day;
+    if (changed || back.size) this.networkVersion++;
+    this.now = this.day;
+    this.refreshBlocks();
     for (const h of this.harbours) if (wet[h.pier[0]]) h.drowned = true;
   }
 
@@ -350,9 +425,12 @@ export class Settlements {
     const near = this.nearestVertex(point);
     const town = this.townNear(near) ?? this.townWithin(near, TOWN.apart);
     if (town) {
+      this.now = this.day;
       const grown = this.growNear(town, near, 3);
+      this.refreshBlocks();
       return grown === null ? { kind: 'refused' } : { kind: 'grew', town: town.id, vertex: grown };
     }
+    this.now = this.day;
     const site = this.findSite(near);
     if (site === null) return { kind: 'refused' };
     const t: Town = { id: this.towns.length, centre: site, buildings: [], owed: 0, frontier: [], settled: new Map(), rebuild: 0 };
@@ -360,6 +438,7 @@ export class Settlements {
     this.lay(t, site);
     this.openSquare(t);
     this.expand(t, site, 0);
+    this.refreshBlocks();
     return { kind: 'founded', town: t.id, vertex: site };
   }
 
@@ -387,14 +466,127 @@ export class Settlements {
       for (const t of live) if (t !== next) t.owed += rate(t) * soonest;
       next.owed = 0;
       left -= soonest;
+      this.now = this.day + (days - left);
       if (this.growOne(next) === null) { live.delete(next); continue; }
       laid++;
       laid += this.joinTowns();
       this.wearRoads();
       laid += this.joinRails() + this.liftToSnow();
+      this.refreshBlocks();
     }
     this.day += days;
     return laid;
+  }
+
+  // ------------------------------------------------------------ how a town grows up
+
+  /** Has this town's first building become its hall (and its square opened)? */
+  hallStands(town: number): boolean {
+    return this.towns[town].buildings.length >= STAGE.hallAt;
+  }
+
+  /** How made up each way is now: 0 walked, 1 a worn track, 2 a made street, 3 the main street (or a made road). */
+  streetStages(): Map<Street, number> {
+    const out = new Map<Street, number>();
+    const byAge = (st: Street) => {
+      const a = this.day - (st.born ?? 0);
+      return a < STAGE.track ? 0 : a < STAGE.street ? 1 : a < STAGE.main ? 2 : 3;
+    };
+    const cap = (t: number) => {
+      const n = this.towns[t].buildings.length;
+      return n < STAGE.trackAt ? 0 : n < STAGE.streetAt ? 1 : n < STAGE.mainAt ? 2 : 3;
+    };
+    for (const st of this.streets) {
+      if (st.kind === 'road') {
+        // A road between towns is only as made up as the trade it carries,
+        // and it is a track from the day it's laid: it joins two places.
+        out.set(st, Math.max(1, Math.min(1 + (st.grade ?? 0), byAge(st))));
+        continue;
+      }
+      let s = Math.min(byAge(st), cap(st.town));
+      if (s === 3 && (st.kind !== 'street' || this.pathLength(st.path) < STAGE.mainLength)) s = 2;
+      out.set(st, s);
+    }
+    return out;
+  }
+
+  /** How far a house has come: 0 a hut, 1 a house, 2 a house with its wing (if it has one), 3 part of a terrace. */
+  houseStage(b: Building): number {
+    const age = this.day - (b.born ?? 0);
+    if (age < STAGE.house) return 0;
+    if (age < STAGE.wing) return 1;
+    const t = this.towns[b.town];
+    if (b.order > 0 && age >= STAGE.terrace && t.buildings.length >= STAGE.terraceAt && this.dist(b.vertex, t.centre) < this.coreOf(t)) return 3;
+    return 2;
+  }
+
+  /** How far a town's built-up middle reaches: it widens as the town grows. */
+  private coreOf(t: Town): number {
+    return Math.min(STAGE.coreMost, STAGE.core * Math.sqrt(Math.max(1, t.buildings.length / STAGE.terraceAt)));
+  }
+
+  /** How far a block has come: 0 open ground, 1 gardens, 2 built round with a courtyard. */
+  blockStage(k: Block): number {
+    const age = this.day - k.born;
+    if (age < STAGE.garden) return 0;
+    const t = this.towns[k.town];
+    const near = k.vertices.some((v) => this.dist(v, t.centre) < this.coreOf(t));
+    return age >= STAGE.court && t.buildings.length >= STAGE.courtAt && near ? 2 : 1;
+  }
+
+  /**
+   * Everything a town's look depends on besides what was laid, as one
+   * number: when it changes, the town is drawn again, and the pen goes over
+   * whatever has grown up.
+   */
+  lookSignature(): number {
+    let sig = 0;
+    for (const s of this.streetStages().values()) sig += s;
+    for (const b of this.buildings) sig += this.houseStage(b) * 7;
+    for (const t of this.towns) sig += this.hallStands(t.id) ? 1000 : 0;
+    for (const k of this.blocks) sig += this.blockStage(k) * 13 + k.vertices.length * 1e-3;
+    return sig;
+  }
+
+  /**
+   * Blocks: ground enclosed by streets. Streets run through vertices, so
+   * the network's vertices are a wall to a flood over the rest, and whatever
+   * the flood can't get out of is enclosed. Each is stamped the first time
+   * it is found; one cut in two by a new street is two new blocks.
+   */
+  private refreshBlocks(): void {
+    if (this.blocksAt === this.networkVersion) return;
+    this.blocksAt = this.networkVersion;
+    const seen = new Uint8Array(this.topo.vertexCount);
+    const out: Block[] = [];
+    const seeds = [...this.network.keys()].sort((a, b) => a - b);
+    for (const s of seeds) {
+      this.eachNeighbour(s, (w0) => {
+        if (seen[w0] || this.network.has(w0)) return;
+        const region: number[] = [], ring = new Set<number>(), queue = [w0];
+        seen[w0] = 1;
+        for (let i = 0; i < queue.length; i++) {
+          const x = queue[i];
+          region.push(x);
+          this.eachNeighbour(x, (y) => {
+            if (this.network.has(y)) { ring.add(y); return; }
+            if (!seen[y]) { seen[y] = 1; queue.push(y); }
+          });
+        }
+        if (region.length > STAGE.blockMost || region.length < STAGE.blockLeast) return;
+        // Not the square (that's kept open), not a pond, not the snow, not
+        // a cliff: ground a town could use, or it's country, however enclosed.
+        if (region.some((v) => this.reserved.has(v) || !this.buildable(v))) return;
+        const towns = new Map<number, number>();
+        for (const u of ring) { const t = this.network.get(u)!; towns.set(t, (towns.get(t) ?? 0) + 1); }
+        const town = [...towns].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0][0];
+        region.sort((a, b) => a - b);
+        const key = `${region[0]}:${region.length}`;
+        if (!this.blockBorn.has(key)) this.blockBorn.set(key, this.now);
+        out.push({ town, vertices: region, ring: [...ring].sort((a, b) => a - b), born: this.blockBorn.get(key)! });
+      });
+    }
+    this.blocks = out;
   }
 
   // ------------------------------------------------------------ transport
@@ -857,7 +1049,7 @@ export class Settlements {
   }
 
   private lay(t: Town, v: number, front?: number): void {
-    this.buildings.push({ vertex: v, town: t.id, order: t.buildings.length, front });
+    this.buildings.push({ vertex: v, town: t.id, order: t.buildings.length, front, born: this.now });
     t.buildings.push(v);
     this.occupied.push(v);
     this.buildingAt.add(v);
@@ -1033,6 +1225,8 @@ export class Settlements {
   }
 
   private addStreet(st: Street): void {
+    st.born ??= this.now;
+    this.networkVersion++;
     this.streets.push(st);
     // What it carries over water is bridge; the rest is street on the ground.
     if (this.wet) for (const u of st.path) if (this.wet[u] || this.stream?.[u]) this.bridgeAt.add(u);

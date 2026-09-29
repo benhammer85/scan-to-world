@@ -10,7 +10,7 @@ import { PlotterLines, defaultPlotterStyle, lineKey, type RevealMode } from './r
 import type { Polyline } from './terrain/contours';
 import { TerrainEdits, applyDisplacement, type BrushOptions } from './interact/sculpt';
 import { Settlements, type TapResult } from './life/settlements';
-import { buildingMarks, harbourMarks, ruinMarks, squareFrames, stallMarks, streetMarks, sunkenMarks, wingMarks } from './life/buildingMarks';
+import { blockMarks, buildingMarks, harbourMarks, lookOf, ruinMarks, squareFrames, stallMarks, streetMarks, sunkenMarks, terraceMarks, wingMarks, yardPaths } from './life/buildingMarks';
 import { findWater, seaFor, snowLines, streamLines, waterLines, type Sea, type Water } from './nature/water';
 import { cableMarks, crossingFrames, crossingMarks, ferryRoute, movers, railMarks } from './life/buildingMarks';
 
@@ -32,7 +32,6 @@ const WATER_INK = '#2a5680';
 const WATER_SHALLOW = '#9cc3e0';
 const SNOW_TINT = '#f6f7f9';
 const TOWN_FILL = '#2a2522';
-const SQUARE_FILL = '#e8c79c';
 
 /** A flat fill lying just above the ground, in front of it and behind the ink. */
 function fillMesh(color: string, opacity: number, order: number): THREE.Mesh {
@@ -155,7 +154,7 @@ export class TerrainWorld {
     this.snowEdge = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: SNOW_INK, transparent: true, opacity: 0.9, depthWrite: false }));
     this.sailing = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: '#15151c', depthWrite: false, transparent: true }));
     this.sailing.renderOrder = 2;
-    this.group.add(this.mesh, this.squareFill, this.waterLines, this.snowEdge, this.lines.object, this.houseFill, this.townLines.object, this.sailing);
+    this.group.add(this.mesh, this.waterLines, this.snowEdge, this.lines.object, this.houseFill, this.townLines.object, this.sailing);
 
     this.baseHeights = extractHeights(this.topo, settings.height);
     this.heights = new Float32Array(this.topo.vertexCount);
@@ -190,7 +189,12 @@ export class TerrainWorld {
   /** Time passes as the world turns. */
   advance(days: number): void {
     if (this.settlements.advance(days) > 0) this.townDirty = true;
+    // Turning also ages what is there: paths wear in, huts become houses,
+    // gardens are built round. When anything has, the pen goes over it.
+    const look = this.settlements.lookSignature();
+    if (look !== this.lastLook) { this.lastLook = look; this.townDirty = true; }
   }
+  private lastLook = 0;
 
   get triangleCount(): number {
     return this.topo.triangles.length / 3;
@@ -358,14 +362,27 @@ export class TerrainWorld {
     this.lastTownBuild = performance.now();
     const st = this.settlements;
     const { buildings, streets, towns } = st;
-    const frames = squareFrames(this.topo, streets, towns);
+    const look = lookOf(st);
+    const frames = squareFrames(this.topo, streets, towns, look);
     // A market is under water if its hall is.
     const drownedHall = new Set(towns.filter((t) => st.buildings.find((b) => b.vertex === t.centre)?.state === 'drowned').map((t) => t.id));
     this.crossings = crossingFrames(this.topo, st);
-    const houses = [...buildingMarks(this.topo, this.heights, buildings), ...wingMarks(this.topo, this.heights, buildings)];
+    // Blocks first: one built round takes in the houses that stood on it.
+    const blocks = blockMarks(this.topo, st.blocks, (k) => st.blockStage(k), buildings, streets, look);
+    const shown = buildings.filter((b) => !blocks.absorbed.has(b.vertex));
+    // Then terraces: the old core's houses along one side of a street, built into one row.
+    const rows = terraceMarks(this.topo, streets, shown, frames, look, st.spacing);
+    const single = shown.filter((b) => !rows.joined.has(b));
+    const houses = [
+      ...buildingMarks(this.topo, this.heights, single, 'standing', look),
+      ...wingMarks(this.topo, this.heights, single, 'standing', look),
+      ...rows.marks,
+    ];
     const stalls = stallMarks(st.stalls.filter((x) => !drownedHall.has(x.town)), frames, this.topo);
     const marks = [
-      ...streetMarks(this.topo, streets, buildings, frames, st),
+      ...streetMarks(this.topo, streets, shown, frames, st, look),
+      ...yardPaths(this.topo, shown, frames, look),
+      ...blocks.lines,
       ...houses,
       ...ruinMarks(this.topo, this.heights, buildings),
       ...stalls,
@@ -376,42 +393,25 @@ export class TerrainWorld {
     ];
     const from = this.townFrom ?? this.lastTownCentre();
     // Keys before setLines: the pen may turn a line round to start at its nearer end.
-    this.solid = [...houses, ...stalls].map((m) => ({ mark: m, key: lineKey(m) }));
-    // Paved only once the town has a market: a hamlet's square is a green,
-    // and eleven pale discs round eleven hamlets read as a rendering bug.
-    const marketed = new Set(st.stalls.map((x) => x.town));
-    this.squares = [...frames.entries()].filter(([town, f]) => marketed.has(town) && ![...f.ring].some((u) => st.submerged.has(u))).map(([, f]) => {
-      const pts: number[][] = [];
-      for (let i = 0; i < 48; i++) pts.push(f.edgeAt((i / 48) * 2 * Math.PI));
-      return { centre: f.at(0, 0), pts };
-    });
+    this.solid = [...houses, ...stalls, ...blocks.lines.filter((m) => m.fill)].map((m) => ({ key: lineKey(m), tris: m.fill ?? rectangleTris(m) }));
     this.townLines.setLines(marks, mode, from ?? undefined);
     if (mode === 'ink') this.townFrom = null;
     this.refreshFills();
   }
 
   // ---- fills: what a map fills in, once the pen has drawn its outline
-  private solid: { mark: Polyline; key: string }[] = [];
-  private squares: { centre: number[]; pts: number[][] }[] = [];
+  private solid: { key: string; tris: number[] }[] = [];
   private townWasDrawing = false;
 
   /**
-   * Houses and stalls are filled solid, the way a map fills buildings, and
-   * squares are paved pale. Only once their outline is inked: the pen draws
-   * the outline, then the inside, as whatwesaved's reveal does.
+   * Houses, stalls and built-round blocks are filled solid, the way a map
+   * fills buildings. Only once their outline is inked: the pen draws the
+   * outline, then the inside, as whatwesaved's reveal does. Squares aren't
+   * paved: a square is the open ground left between the fronts.
    */
   private refreshFills(): void {
     const dark: number[] = [];
-    for (const { mark, key } of this.solid) {
-      if (!this.townLines.isInked(key)) continue;
-      const p = mark.points, n = p.length / 3, q = n / 4; // four corners of a rectangle drawn with its sides split
-      const corner = (i: number) => [p[i * q * 3], p[i * q * 3 + 1], p[i * q * 3 + 2]];
-      dark.push(...corner(0), ...corner(1), ...corner(2), ...corner(0), ...corner(2), ...corner(3));
-    }
-    const pale: number[] = [];
-    for (const sq of this.squares) {
-      for (let i = 0; i < sq.pts.length; i++) pale.push(...sq.centre, ...sq.pts[i], ...sq.pts[(i + 1) % sq.pts.length]);
-    }
+    for (const { key, tris } of this.solid) if (this.townLines.isInked(key)) dark.push(...tris);
     const set = (mesh: THREE.Mesh, arr: number[]) => {
       const g = new THREE.BufferGeometry();
       g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(arr), 3));
@@ -419,11 +419,9 @@ export class TerrainWorld {
       mesh.geometry = g;
     };
     set(this.houseFill, dark);
-    set(this.squareFill, pale);
   }
 
   private houseFill = fillMesh(TOWN_FILL, 0.92, 2);
-  private squareFill = fillMesh(SQUARE_FILL, 0.55, 1);
 
   private lastTownCentre(): THREE.Vector3 | null {
     const b = this.settlements.buildings.at(-1);
@@ -561,4 +559,11 @@ function hypsometric(h: number, out: THREE.Color): THREE.Color {
   if (t < 0.4) return out.copy(LOW).lerp(MID, t / 0.4);
   if (t < 0.8) return out.copy(MID).lerp(HIGH, (t - 0.4) / 0.4);
   return out.copy(HIGH).lerp(SNOW, Math.min(1, (t - 0.8) / 0.3));
+}
+
+/** The two triangles of a rectangle mark (drawn with each side split in four). */
+function rectangleTris(mark: Polyline): number[] {
+  const p = mark.points, n = p.length / 3, q = n / 4;
+  const corner = (i: number) => [p[i * q * 3], p[i * q * 3 + 1], p[i * q * 3 + 2]];
+  return [...corner(0), ...corner(1), ...corner(2), ...corner(0), ...corner(2), ...corner(3)];
 }

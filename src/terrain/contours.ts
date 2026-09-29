@@ -21,6 +21,8 @@ export interface Polyline {
   length: number;
   /** What a moving mark is (a train, a car...), for anything that needs to tell them apart. */
   kind?: string;
+  /** For a solid mark, the triangles that fill it (xyz, three points each), when it isn't a plain rectangle. */
+  fill?: number[];
 }
 
 export interface ContourOptions {

@@ -406,24 +406,18 @@ describe('clean drawing', () => {
     return { topo, h, s, frames, streets: streetMarks(topo, s.streets, s.buildings, frames) };
   }
 
-  it('a square is drawn smooth: its edge never jumps from one point to the next', () => {
+  it("a square's edge is smooth: it never jumps from one point to the next", () => {
     const { topo, s, frames } = drawn();
     const f = frames.get(0)!, P = topo.positions, hall = s.towns[0].centre * 3;
-    const ring = streetMarks(topo, s.streets.filter((x) => x.kind === 'square'), s.buildings, frames)[0];
     const r: number[] = [];
-    for (let k = 0; k < ring.points.length; k += 3) r.push(Math.hypot(ring.points[k] - P[hall], ring.points[k + 1] - P[hall + 1], ring.points[k + 2] - P[hall + 2]));
+    for (let i = 0; i < 64; i++) { const q = f.edgeAt((i / 64) * 2 * Math.PI); r.push(Math.hypot(q[0] - P[hall], q[1] - P[hall + 1], q[2] - P[hall + 2])); }
     for (let i = 0; i < r.length; i++) expect(Math.abs(r[i] - r[(i + 1) % r.length]) / f.radius).toBeLessThan(0.03);
+    for (const d of r) expect(Math.abs(d - f.radius) / f.radius).toBeLessThan(0.25);
   });
 
-  it('a square is roughly round: within a quarter of its mean radius all the way round', () => {
+  it("a square is not drawn round: it is the open ground the streets and houses leave (a ring read as a bug)", () => {
     const { topo, s, frames } = drawn();
-    const f = frames.get(0)!, P = topo.positions, hall = s.towns[0].centre * 3;
-    const ring = streetMarks(topo, s.streets.filter((x) => x.kind === 'square'), s.buildings, frames)[0];
-    expect(ring.closed).toBe(true);
-    for (let k = 0; k < ring.points.length; k += 3) {
-      const d = Math.hypot(ring.points[k] - P[hall], ring.points[k + 1] - P[hall + 1], ring.points[k + 2] - P[hall + 2]);
-      expect(Math.abs(d - f.radius) / f.radius).toBeLessThan(0.25);
-    }
+    expect(streetMarks(topo, s.streets.filter((x) => x.kind === 'square'), s.buildings, frames)).toHaveLength(0);
   });
 
   it('streets that meet a square end on its drawn edge', () => {
@@ -545,7 +539,7 @@ describe('organic drawing', () => {
 
   it('houses vary: in size, in proportion, and some have a wing', () => {
     const { s } = town();
-    const shapes = s.buildings.filter((b) => b.order > 0).map(houseShape);
+    const shapes = s.buildings.filter((b) => b.order > 0).map((b) => houseShape(b));
     const longs = shapes.map((x) => x.long), aspects = shapes.map((x) => x.long / x.short);
     expect(Math.max(...longs) / Math.min(...longs)).toBeGreaterThan(1.3);
     expect(Math.max(...aspects) / Math.min(...aspects)).toBeGreaterThan(1.3);

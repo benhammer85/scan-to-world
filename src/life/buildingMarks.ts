@@ -9,7 +9,7 @@
  */
 import type { Topology } from '../mesh/topology';
 import type { Polyline } from '../terrain/contours';
-import { MARKET, type Building, type Cable, type Harbour, type Rail, type Settlements, type Stall, type Street, type Town } from './settlements';
+import { MARKET, STAGE, type Block, type Building, type Cable, type Harbour, type Rail, type Settlements, type Stall, type Street, type Town } from './settlements';
 
 export const MARK = {
   long: 0.024,
@@ -44,6 +44,26 @@ const DRY: WaterState = { bridgeAt: new Set(), submerged: new Map() };
 type V3 = [number, number, number];
 
 /**
+ * How far each thing has grown up, as the drawing needs it: a house's stage
+ * (0 hut, 1 house, 2 with its wing, 3 in a terrace), whether a town's first
+ * building is its hall yet, and a way's stage (0 walked, 1 a worn track,
+ * 2 a made street, 3 the main street or a made road). `GROWN` is a town
+ * fully grown up, for drawing without a world to ask.
+ */
+export interface Look {
+  house(b: Building): number;
+  hall(town: number): boolean;
+  street(st: Street): number;
+}
+export const GROWN: Look = { house: () => 2, hall: () => true, street: (st) => (st.kind === 'road' ? 1 + (st.grade ?? 2) : 2) };
+
+/** What the world says about how far everything has grown. */
+export function lookOf(st: Settlements): Look {
+  const stages = st.streetStages();
+  return { house: (b) => st.houseStage(b), hall: (t) => st.hallStands(t), street: (x) => stages.get(x) ?? 2 };
+}
+
+/**
  * A number in [0, 1) that depends only on `v` and `salt`. Every variation in
  * the drawing comes from one of these, so a house or a street is always drawn
  * the same way: seeded by itself, it can't shift when anything else changes
@@ -65,19 +85,27 @@ export function hash(v: number, salt: number): number {
  */
 export interface HouseShape { long: number; short: number; turn: number; setback: number; wing: null | { side: number; long: number; short: number } }
 
-export function houseShape(b: Building): HouseShape {
-  if (b.order === 0) return { long: MARK.long * MARK.hall, short: MARK.short * MARK.hall, turn: 0, setback: 0, wing: null };
-  const v = b.vertex, out = Math.min(1, b.order / 60);
+export function houseShape(b: Building, stage = 2, hall = true): HouseShape {
+  if (b.order === 0 && hall) return { long: MARK.long * MARK.hall, short: MARK.short * MARK.hall, turn: 0, setback: 0, wing: null };
+  // A town's first building, before it is the hall, is its farmstead: the biggest house.
+  const v = b.vertex, out = b.order === 0 ? 1 : Math.min(1, b.order / 60);
   const size = (0.78 + 0.45 * hash(v, 1)) * (0.9 + 0.35 * out);
   const aspect = 1.25 + 0.7 * hash(v, 2) + 0.35 * (1 - out);
   const long = MARK.long * size, short = long / aspect;
-  const wing = hash(v, 3) < 0.33 ? { side: hash(v, 4) < 0.5 ? -1 : 1, long: long * (0.38 + 0.2 * hash(v, 5)), short: short * (0.6 + 0.3 * hash(v, 6)) } : null;
-  return { long, short, turn: (hash(v, 7) - 0.5) * 0.35, setback: (hash(v, 8) - 0.5) * 0.004, wing };
+  const turn = (hash(v, 7) - 0.5) * 0.35, setback = (hash(v, 8) - 0.5) * 0.004;
+  // A hut first: small and squarish. Then the house, and in time its wing.
+  if (stage === 0) { const l = long * 0.6; return { long: l, short: Math.min(short * 0.85, l / 1.1), turn, setback, wing: null }; }
+  const wing = stage >= 2 && hash(v, 3) < 0.33 ? { side: hash(v, 4) < 0.5 ? -1 : 1, long: long * (0.38 + 0.2 * hash(v, 5)), short: short * (0.6 + 0.3 * hash(v, 6)) } : null;
+  return { long, short, turn, setback, wing };
+}
+
+function shapeOf(b: Building, look: Look): HouseShape {
+  return houseShape(b, look.house(b), look.hall(b.town));
 }
 
 /** The furthest any part of a building reaches from its vertex: nothing else may be drawn inside it. */
-export function footprintRadius(b: Building): number {
-  const h = houseShape(b);
+export function footprintRadius(b: Building, look: Look = GROWN): number {
+  const h = shapeOf(b, look);
   let r = Math.hypot(h.long, h.short) / 2 + Math.abs(h.setback);
   if (h.wing) r = Math.max(r, Math.hypot(h.long / 2, h.short / 2 + h.wing.short) + Math.abs(h.setback));
   return r;
@@ -102,9 +130,11 @@ export interface SquareFrame {
   onGround(q: V3): V3;
   /** How far the ground at `q` stands above it, along the hall's normal (negative if below). */
   clearance(q: V3): number;
+  /** Is it a square yet? Until the farmstead is a hall, the ways run in to the farm. */
+  open: boolean;
 }
 
-export function squareFrames(topo: Topology, streets: Street[], towns: Town[]): Map<number, SquareFrame> {
+export function squareFrames(topo: Topology, streets: Street[], towns: Town[], look: Look = GROWN): Map<number, SquareFrame> {
   const { positions: p, normals: n } = topo;
   const out = new Map<number, SquareFrame>();
   for (const st of streets) {
@@ -180,7 +210,7 @@ export function squareFrames(topo: Topology, streets: Street[], towns: Town[]): 
       const up = hsum / wsum + MARK.lift + extra;
       return [p[h] + tx + nx * up, p[h + 1] + ty + ny * up, p[h + 2] + tz + nz * up];
     }
-    out.set(st.town, { hall, radius, ring, angleOf, at, radiusAt, edgeAt, onGround, clearance });
+    out.set(st.town, { hall, radius, ring, angleOf, at, radiusAt, edgeAt, onGround, clearance, open: look.hall(st.town) });
   }
   return out;
 }
@@ -217,7 +247,7 @@ function groundWithin(topo: Topology, from: number, r: number, rings = 2): numbe
  * street point it fronts, so a row along one street stands in line. A hall
  * (no front) runs along the contour.
  */
-export function buildingMarks(topo: Topology, heights: Float32Array, buildings: Building[], which: 'standing' | 'drowned' = 'standing'): Polyline[] {
+export function buildingMarks(topo: Topology, heights: Float32Array, buildings: Building[], which: 'standing' | 'drowned' = 'standing', look: Look = GROWN): Polyline[] {
   const { positions: p, normals: n } = topo;
   const shown = buildings.filter((b) => (which === 'standing' ? b.state === undefined : b.state === 'drowned'));
   return shown.map((b) => {
@@ -235,7 +265,7 @@ export function buildingMarks(topo: Topology, heights: Float32Array, buildings: 
         g[0] += (p[u] - p[o]) * dh; g[1] += (p[u + 1] - p[o + 1]) * dh; g[2] += (p[u + 2] - p[o + 2]) * dh;
       }
     }
-    const shape = houseShape(b);
+    const shape = shapeOf(b, look);
     const across = turned(tangent(g, nr) ?? anyDirection(v, nr), nr, shape.turn);
     const c: V3 = [0, 1, 2].map((k) => p[o + k] - across[k] * shape.setback) as V3;
     return rectangle(c, nr, across, shape.long, shape.short, 1, clearanceNear(topo, v, nr, shape.long * 1.4));
@@ -243,12 +273,12 @@ export function buildingMarks(topo: Topology, heights: Float32Array, buildings: 
 }
 
 /** The wings of the houses that have one: behind the house, at one end, like an added room. */
-export function wingMarks(topo: Topology, heights: Float32Array, buildings: Building[], which: 'standing' | 'drowned' = 'standing'): Polyline[] {
+export function wingMarks(topo: Topology, heights: Float32Array, buildings: Building[], which: 'standing' | 'drowned' = 'standing', look: Look = GROWN): Polyline[] {
   const { positions: p, normals: n } = topo;
   const out: Polyline[] = [];
   for (const b of buildings) {
     if (which === 'standing' ? b.state !== undefined : b.state !== 'drowned') continue;
-    const shape = houseShape(b);
+    const shape = shapeOf(b, look);
     if (!shape.wing || b.front === undefined) continue;
     const v = b.vertex, o = v * 3, f = b.front * 3;
     const nr: V3 = [n[o], n[o + 1], n[o + 2]];
@@ -265,12 +295,320 @@ export function wingMarks(topo: Topology, heights: Float32Array, buildings: Buil
   return out;
 }
 
+export const TERRACE = {
+  /** A terrace is a row of narrow houses this wide, each its own depth, so the back of the row steps... */
+  unit: 0.012,
+  depth: [0.88, 1.18],
+  /** ...its front this far back from the street's side; and it fills a gap between houses up to this many spacings. */
+  front: 0.0028,
+  infill: 2.5,
+};
+
+/**
+ * Terraces. In the old core, the houses along one side of a street are
+ * built into one row: a strip that follows the street as it is drawn, set
+ * just back from it, from the first of them to the last, cut into narrow
+ * houses of their own depths so the back of the row steps. A row stops
+ * short of any street that joins, and a house with no neighbour in the row
+ * stays as it was. Laid along the street rather than along each house:
+ * on a coarse mesh the houses of one row stand staggered, as the street's
+ * vertices do, and houses stretched along their own sides never met.
+ */
+export function terraceMarks(topo: Topology, streets: Street[], buildings: Building[], frames: Map<number, SquareFrame>, look: Look = GROWN, spacing = 0.065): { marks: Polyline[]; joined: Set<Building> } {
+  const out: Polyline[] = [], joined = new Set<Building>();
+  const n = topo.normals, p = topo.positions;
+  const row = buildings.filter((b) => b.state === undefined && b.front !== undefined && look.house(b) === 3);
+  if (!row.length) return { marks: out, joined };
+  const through = new Map<number, Street[]>(); // the ways that end at, or pass through, each vertex
+  for (const st of streets) for (const v of st.path) (through.get(v) ?? through.set(v, []).get(v)!).push(st);
+  for (const st of streets) {
+    if (st.kind === 'square' || st.kind === 'road' || look.street(st) < 2) continue;
+    // A house at a corner fronts two streets, but is in one row.
+    const onIt = row.filter((b) => !joined.has(b) && st.path.includes(b.front!));
+    if (onIt.length < 2) continue;
+    const line = groundLine(topo, st.path, buildings, frames, true, true, wander(st, look.street(st)), look);
+    if (!line) continue;
+    const c: number[][] = [];
+    for (let k = 0; k < line.points.length; k += 3) c.push([line.points[k], line.points[k + 1], line.points[k + 2]]);
+    const cum = [0];
+    for (let i = 1; i < c.length; i++) cum.push(cum[i - 1] + d3(c[i], c[i - 1]));
+    const normalAt = (i: number): V3 => { const v = st.path[Math.min(st.path.length - 1, Math.round((i / Math.max(1, c.length - 1)) * (st.path.length - 1)))] * 3; return [n[v], n[v + 1], n[v + 2]]; };
+    const sideAt = (i: number): V3 => {
+      const a = c[Math.max(0, i - 1)], b = c[Math.min(c.length - 1, i + 1)], nr = normalAt(i);
+      return normalised([nr[1] * (b[2] - a[2]) - nr[2] * (b[1] - a[1]), nr[2] * (b[0] - a[0]) - nr[0] * (b[2] - a[2]), nr[0] * (b[1] - a[1]) - nr[1] * (b[0] - a[0])]);
+    };
+    // Where each house stands along the line, and on which side.
+    const place = (q: number[]) => {
+      let best = { s: 0, i: 0, d: Infinity };
+      for (let i = 1; i < c.length; i++) {
+        const a = c[i - 1], b = c[i], ab = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], L2 = ab[0] ** 2 + ab[1] ** 2 + ab[2] ** 2 || 1e-12;
+        const t = Math.max(0, Math.min(1, ((q[0] - a[0]) * ab[0] + (q[1] - a[1]) * ab[1] + (q[2] - a[2]) * ab[2]) / L2));
+        const d = d3(q, [a[0] + ab[0] * t, a[1] + ab[1] * t, a[2] + ab[2] * t]);
+        if (d < best.d) best = { s: cum[i - 1] + t * Math.sqrt(L2), i, d };
+      }
+      const sd = sideAt(best.i), o = c[best.i];
+      return { s: best.s, side: Math.sign((q[0] - o[0]) * sd[0] + (q[1] - o[1]) * sd[1] + (q[2] - o[2]) * sd[2]) || 1 };
+    };
+    // Junctions along it: a row doesn't run across a way that joins, on the side it leaves by.
+    const own = new Set(st.path), cuts: { s: number; side: number }[] = [];
+    st.path.forEach((v, i) => {
+      if (i === 0 || i === st.path.length - 1) return;
+      for (const other of through.get(v) ?? []) {
+        if (other === st) continue;
+        const j = other.path.indexOf(v);
+        for (const w of [other.path[j - 1], other.path[j + 1]]) {
+          if (w === undefined || own.has(w)) continue;
+          const at = place([p[v * 3], p[v * 3 + 1], p[v * 3 + 2]]).s;
+          cuts.push({ s: at, side: place([p[w * 3], p[w * 3 + 1], p[w * 3 + 2]]).side });
+        }
+      }
+    });
+    const half = (STREET_WIDTH[st.kind] ?? 0.003) * (look.street(st) === 3 ? WAY.main : 1);
+    for (const side of [1, -1]) {
+      const here = onIt.map((b) => ({ b, ...place([p[b.vertex * 3], p[b.vertex * 3 + 1], p[b.vertex * 3 + 2]]) })).filter((x) => x.side === side).sort((x, y) => x.s - y.s);
+      const cut = cuts.filter((x) => x.side === side).map((x) => x.s);
+      let group: typeof here = [];
+      const flush = () => {
+        if (group.length >= 2) {
+          // A street's ends are junctions too, and it bends there to meet what it meets.
+          const clear = half + TERRACE.front * 2 + STAGE.rowDepth * TERRACE.depth[1];
+          const s0 = Math.max(clear, group[0].s - STAGE.rowEnd), s1 = Math.min(cum[cum.length - 1] - clear, group[group.length - 1].s + STAGE.rowEnd);
+          const m = strip(c, cum, sideAt, side, s0, s1, half + TERRACE.front, group[0].b.vertex, cut, half);
+          if (m) { out.push(m); for (const g of group) joined.add(g.b); }
+        }
+        group = [];
+      };
+      for (const x of here) {
+        const prev = group[group.length - 1];
+        // An empty plot or two between old houses is built in; a longer gap, or a way that joins, ends the row.
+        if (prev && (x.s - prev.s > spacing * TERRACE.infill || cut.some((s) => s > prev.s && s < x.s))) flush();
+        group.push(x);
+      }
+      flush();
+    }
+  }
+  return { marks: out, joined };
+}
+
+/** A terrace's strip along a line, from `s0` to `s1`, `off` out to one side, its houses each their own depth. */
+function strip(c: number[][], cum: number[], sideAt: (i: number) => V3, side: number, s0: number, s1: number, off: number, seed: number, cuts: number[], half: number): Polyline | null {
+  // Pulled back from any junction inside it (the way that joins is drawn there).
+  for (const s of cuts) {
+    if (s > s0 - 0.01 && s < s0 + 0.01) s0 = s + half + TERRACE.front * 2;
+    if (s > s1 - 0.01 && s < s1 + 0.01) s1 = s - half - TERRACE.front * 2;
+  }
+  if (s1 - s0 < TERRACE.unit * 1.5) return null;
+  const at = (s: number, out: number): number[] => {
+    let i = 1;
+    while (i < cum.length - 1 && cum[i] < s) i++;
+    const t = (s - cum[i - 1]) / Math.max(1e-9, cum[i] - cum[i - 1]), a = c[i - 1], b = c[i], sd = sideAt(i);
+    return [0, 1, 2].map((k) => a[k] + (b[k] - a[k]) * t + sd[k] * side * out);
+  };
+  const units = Math.max(2, Math.round((s1 - s0) / TERRACE.unit));
+  const ss = Array.from({ length: units + 1 }, (_, i) => s0 + ((s1 - s0) * i) / units);
+  const depth = (i: number) => STAGE.rowDepth * (TERRACE.depth[0] + (TERRACE.depth[1] - TERRACE.depth[0]) * hash(seed * 17 + i, 41));
+  // The front follows the street closely, a point every few thousandths.
+  const front: number[][] = [];
+  for (let s = s0; s < s1; s += 0.003) front.push(at(s, off));
+  front.push(at(s1, off));
+  const back: number[][] = [];
+  for (let i = units - 1; i >= 0; i--) back.push(at(ss[i + 1], off + depth(i)), at(ss[i], off + depth(i)));
+  const fill: number[] = [];
+  for (let i = 0; i < units; i++) {
+    const a = at(ss[i], off), b = at(ss[i + 1], off), cc = at(ss[i + 1], off + depth(i)), d = at(ss[i], off + depth(i));
+    fill.push(...a, ...b, ...cc, ...a, ...cc, ...d);
+  }
+  return { ...polyline([...front, ...back], 1), closed: true, fill };
+}
+
+function d3(a: ArrayLike<number>, b: ArrayLike<number>): number {
+  return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+}
+
+/**
+ * A flat closed outline and the quads that fill it, lifted as a whole by
+ * the most any point needs to clear the ground (as `rectangle` is).
+ */
+function flatSolid(outline: V3[], quads: V3[][], nr: V3, clearance: (q: V3) => number, level = 1, lift = liftFor(outline, clearance)): Polyline {
+  const up = (q: V3): V3 => [q[0] + nr[0] * lift, q[1] + nr[1] * lift, q[2] + nr[2] * lift];
+  const fill: number[] = [];
+  for (const [a, b, c, d] of quads.map((q) => q.map(up))) fill.push(...a, ...b, ...c, ...a, ...c, ...d);
+  return { ...polyline(outline.map(up), level), closed: true, fill };
+}
+
+/** How high a flat outline must be lifted for every point along it to clear the ground. */
+function liftFor(outline: V3[], clearance: (q: V3) => number): number {
+  const samples: V3[] = [];
+  for (let i = 0; i < outline.length; i++) {
+    const a = outline[i], b = outline[(i + 1) % outline.length];
+    for (let t = 0; t < 3; t++) samples.push([0, 1, 2].map((k) => a[k] + (b[k] - a[k]) * (t / 3)) as V3);
+  }
+  return Math.max(0, ...samples.map(clearance)) + MARK.lift;
+}
+
 /** `d` turned by `angle` about the normal `nr`. */
 function turned(d: V3, nr: V3, angle: number): V3 {
   if (!angle) return d;
   const b: V3 = [nr[1] * d[2] - nr[2] * d[1], nr[2] * d[0] - nr[0] * d[2], nr[0] * d[1] - nr[1] * d[0]];
   const c = Math.cos(angle), s = Math.sin(angle);
   return [d[0] * c + b[0] * s, d[1] * c + b[1] * s, d[2] * c + b[2] * s];
+}
+
+// ------------------------------------------------------------ terraces and blocks
+
+/** Gardens and courtyard blocks, drawn, and which houses a built-round block has taken in. */
+export interface BlockDrawing {
+  lines: Polyline[];
+  absorbed: Set<number>;
+}
+
+export const BLOCK = {
+  /**
+   * A block's building stands this far in from the drawn streets round it:
+   * a made street's half-width, and a walked path's meander, and a little.
+   */
+  gap: 0.013,
+  /** Each house round the court is about this wide and this deep... */
+  unit: 0.016,
+  depth: 0.013,
+  /** ...and a block that would leave a court narrower than this is built over whole. */
+  court: 0.01,
+  /** Garden rows: this far apart, and in from the edge. (Dotted like furrows they came to thousands of marks for the pen.) */
+  row: 0.009,
+  margin: 0.012,
+};
+
+/**
+ * Blocks as they have grown up: gardens first, rows between the houses;
+ * the oldest near the core built round all sides with a courtyard inside
+ * (whatwesaved's `_perimeter`: the shape a city, rather than a town, is
+ * made of), as a ring of narrow houses, each its own depth.
+ */
+export function blockMarks(topo: Topology, blocks: Block[], stageOf: (k: Block) => number, buildings: Building[], streets: Street[], look: Look = GROWN): BlockDrawing {
+  const out: BlockDrawing = { lines: [], absorbed: new Set() };
+  const standing = buildings.filter((b) => b.state === undefined);
+  const p = topo.positions;
+  for (const k of blocks) {
+    const stage = stageOf(k);
+    if (!stage) continue;
+    const ring = new Set(k.ring), segs: [V3, V3][] = [];
+    for (const st of streets) for (let i = 1; i < st.path.length; i++) {
+      const a = st.path[i - 1], b = st.path[i];
+      // Either end: a corner of the block's streets needn't touch its ground, and without it the rays leak out.
+      if (ring.has(a) || ring.has(b)) segs.push([[p[a * 3], p[a * 3 + 1], p[a * 3 + 2]], [p[b * 3], p[b * 3 + 1], p[b * 3 + 2]]]);
+    }
+    const f = blockFrame(topo, k, segs);
+    if (!f) continue;
+    if (stage === 2) {
+      const n = Math.max(8, Math.round(f.perimeter / BLOCK.unit));
+      const angles = Array.from({ length: n + 1 }, (_, i) => (i / n) * 2 * Math.PI);
+      const R = angles.map((a) => f.radiusAt(a) - BLOCK.gap);
+      if (Math.min(...R) < BLOCK.depth * 0.6) continue; // too small to build round: its houses stay as they are
+      for (const b of standing) if (k.vertices.includes(b.vertex)) out.absorbed.add(b.vertex);
+      if (Math.max(...R) < BLOCK.depth + BLOCK.court) {
+        // A small block is built over whole: no court.
+        const c = f.flat(0, 0), outer = angles.slice(0, n).map((a, i) => f.flat(a, R[i]));
+        out.lines.push(flatSolid(outer, outer.map((q, i) => [c, q, outer[(i + 1) % n], c]), f.nr, f.clearance));
+        continue;
+      }
+      // Round the court, a house to each stretch of frontage, each its own
+      // depth, and never so deep it fills the court: where the block
+      // pinches in, a house is shallower, or there is a gap (a way through).
+      const units: V3[][] = [];
+      for (let i = 0; i < n; i++) {
+        const want = BLOCK.depth * (0.75 + 0.55 * hash(k.vertices[0] * 29 + i, 43));
+        const d = Math.min(want, Math.min(R[i], R[i + 1]) - BLOCK.court);
+        if (d < BLOCK.depth * 0.5) continue;
+        const a0 = angles[i], a1 = angles[i + 1];
+        units.push([f.flat(a0, R[i]), f.flat(a1, R[i + 1]), f.flat(a1, R[i + 1] - d), f.flat(a0, R[i] - d)]);
+      }
+      const lift = Math.max(...units.map((u) => liftFor(u, f.clearance)));
+      for (const u of units) out.lines.push(flatSolid(u, [u], f.nr, f.clearance, 1, lift));
+      continue;
+    }
+    // Gardens: rows across the block, clear of its houses.
+    const houses = standing.filter((b) => k.vertices.includes(b.vertex)).map((b) => ({ q: f.planar(b.vertex), r: footprintRadius(b, look) * 1.2 }));
+    const dir = hash(k.vertices[0], 31) * Math.PI, u = [Math.cos(dir), Math.sin(dir)], w = [-u[1], u[0]];
+    const reach = f.reach, lift = f.lift + MARK.lift;
+    for (let o = -reach + BLOCK.row / 2; o < reach; o += BLOCK.row) {
+      let run: number[][] = [];
+      const flush = () => {
+        if (run.length >= 2) {
+          const m = polyline(run, 0);
+          if (m.length > 0.008) out.lines.push(m);
+        }
+        run = [];
+      };
+      for (let t = -reach; t <= reach; t += 0.002) {
+        const x = w[0] * o + u[0] * t, y = w[1] * o + u[1] * t;
+        const inside = Math.hypot(x, y) < f.radiusAt(Math.atan2(y, x)) - BLOCK.margin && houses.every((h) => Math.hypot(x - h.q[0], y - h.q[1]) > h.r);
+        if (!inside) { flush(); continue; }
+        const q = f.xy(x, y);
+        run.push([q[0] + f.nr[0] * lift, q[1] + f.nr[1] * lift, q[2] + f.nr[2] * lift]);
+      }
+      flush();
+    }
+  }
+  return out;
+}
+
+/**
+ * A block laid flat in the tangent plane at its middle, with its edge at
+ * each angle where a ray from the middle first reaches a street round it.
+ * An edge averaged from the ring's vertices overshot the street wherever
+ * the block was concave, and its buildings were drawn across the street.
+ */
+function blockFrame(topo: Topology, k: Block, segs: [V3, V3][]) {
+  const { positions: p, normals: n } = topo;
+  if (!segs.length) return null;
+  const c: V3 = [0, 0, 0], ns: V3 = [0, 0, 0];
+  for (const v of k.vertices) for (let j = 0; j < 3; j++) { c[j] += p[v * 3 + j] / k.vertices.length; ns[j] += n[v * 3 + j]; }
+  const nr = normalised(ns);
+  const ax = tangent(Math.abs(nr[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0], nr)!;
+  const bx: V3 = [nr[1] * ax[2] - nr[2] * ax[1], nr[2] * ax[0] - nr[0] * ax[2], nr[0] * ax[1] - nr[1] * ax[0]];
+  const proj = (q: V3): [number, number] => {
+    const d = [q[0] - c[0], q[1] - c[1], q[2] - c[2]];
+    return [d[0] * ax[0] + d[1] * ax[1] + d[2] * ax[2], d[0] * bx[0] + d[1] * bx[1] + d[2] * bx[2]];
+  };
+  const planar = (u: number) => proj([p[u * 3], p[u * 3 + 1], p[u * 3 + 2]]);
+  const flatSegs = segs.map(([a, b]) => [proj(a), proj(b)]);
+  // The middle must be on the block's own ground (a crescent's isn't), or the rays mean nothing.
+  const nearest = (vs: number[]) => Math.min(...vs.map((u) => Math.hypot(...planar(u))));
+  if (nearest(k.ring) < nearest(k.vertices)) return null;
+  const ray = (angle: number): number => {
+    const dx = Math.cos(angle), dy = Math.sin(angle);
+    let best = Infinity;
+    for (const [[x0, y0], [x1, y1]] of flatSegs) {
+      const ex = x1 - x0, ey = y1 - y0, den = dx * ey - dy * ex;
+      if (Math.abs(den) < 1e-12) continue;
+      const t = (x0 * ey - y0 * ex) / den, s = (x0 * dy - y0 * dx) / den;
+      if (t > 0 && s >= -0.05 && s <= 1.05) best = Math.min(best, t);
+    }
+    return best;
+  };
+  const N = 72, raw = Array.from({ length: N }, (_, i) => ray((i / N) * 2 * Math.PI));
+  if (raw.some((r) => !Number.isFinite(r) || r > 0.25)) return null;
+  // Smoothed, but never out past the street: each angle takes the least of itself and its neighbours' mean.
+  const R = raw.map((r, i) => Math.min(r, (raw[(i + N - 1) % N] + r + raw[(i + 1) % N]) / 3));
+  const radiusAt = (angle: number) => {
+    const x = ((((angle / (2 * Math.PI)) % 1) + 1) % 1) * N, i = Math.floor(x) % N, t = x - Math.floor(x);
+    return R[i] * (1 - t) + R[(i + 1) % N] * t;
+  };
+  const xy = (x: number, y: number): V3 => [c[0] + ax[0] * x + bx[0] * y, c[1] + ax[1] * x + bx[1] * y, c[2] + ax[2] * x + bx[2] * y];
+  const flat = (a: number, r: number): V3 => xy(Math.cos(a) * r, Math.sin(a) * r);
+  const reach = Math.max(...R);
+  let perimeter = 0;
+  for (let i = 0; i < N; i++) perimeter += Math.hypot(R[i] - R[(i + 1) % N], R[i] * (2 * Math.PI) / N);
+  const middle = k.vertices.reduce((best, v) => (Math.hypot(...planar(v)) < Math.hypot(...planar(best)) ? v : best), k.vertices[0]);
+  const clearance = clearanceNear(topo, middle, nr, reach);
+  let lift = clearance(flat(0, 0));
+  for (let i = 0; i < 24; i++) lift = Math.max(lift, clearance(flat((i / 24) * 2 * Math.PI, radiusAt((i / 24) * 2 * Math.PI) * 0.8)));
+  return { nr, planar, radiusAt, xy, flat, reach, perimeter, clearance, lift };
+}
+
+function normalised(v: V3): V3 {
+  const l = Math.hypot(v[0], v[1], v[2]) || 1;
+  return [v[0] / l, v[1] / l, v[2] / l];
 }
 
 /**
@@ -307,8 +645,10 @@ export function stallMarks(stalls: Stall[], frames: Map<number, SquareFrame>, to
     const f = frames.get(st.town);
     if (!f) continue;
     const seed = st.town * 31 + st.slot;
-    const a = stallAngle(st.slot) + (hash(seed, 11) - 0.5) * (Math.PI / MARKET.most) * 0.8;
-    const c = f.at(a, f.radiusAt(a) * MARKET.ring * (0.82 + 0.3 * hash(seed, 12)));
+    const a = stallAngle(st.slot) + (hash(seed, 11) - 0.5) * (Math.PI / MARKET.most) * 0.5;
+    // Never in on the hall: at least its reach and a stall's from its middle.
+    const r = Math.max(f.radiusAt(a) * MARKET.ring * (0.85 + 0.25 * hash(seed, 12)), footprintRadius({ vertex: f.hall, town: st.town, order: 0 }) + STALL_CLEAR);
+    const c = f.at(a, r);
     const h = f.hall * 3;
     const nr: V3 = [n[h], n[h + 1], n[h + 2]];
     const toHall = tangent([p[h] - c[0], p[h + 1] - c[1], p[h + 2] - c[2]], nr) ?? anyDirection(f.hall, nr);
@@ -318,6 +658,9 @@ export function stallMarks(stalls: Stall[], frames: Map<number, SquareFrame>, to
   }
   return out;
 }
+
+/** A stall stands this far beyond the hall's reach: its own half-diagonal, and room to pass. */
+const STALL_CLEAR = 0.0145;
 
 export function stallAngle(slot: number): number {
   return ((slot + 0.5) / MARKET.most) * 2 * Math.PI;
@@ -332,24 +675,23 @@ export function stallAngle(slot: number): number {
  * a house or hall is trimmed back to the footprint; an end on a square is
  * moved onto the square's drawn circle.
  */
-export function streetMarks(topo: Topology, streets: Street[], buildings: Building[], frames: Map<number, SquareFrame>, water: WaterState = DRY): Polyline[] {
+export function streetMarks(topo: Topology, streets: Street[], buildings: Building[], frames: Map<number, SquareFrame>, water: WaterState = DRY, look: Look = GROWN): Polyline[] {
   const out: Polyline[] = [];
   for (const st of streets) {
-    if (st.path.length < 2) continue;
-    if (st.kind === 'square') {
-      const f = frames.get(st.town);
-      if (f) out.push(...squareEdge(f, water, 'dry'));
-      continue;
-    }
+    // A square's edge isn't drawn: a square is the open ground the houses
+    // and streets leave round the hall. Drawn as a ring (and paved), it read
+    // as a selection, or a rendering bug.
+    if (st.path.length < 2 || st.kind === 'square') continue;
+    const stage = look.street(st);
     for (const run of runsOf(st.path, water)) {
       if (run.kind === 'dry') {
-        const m = groundLine(topo, run.path, buildings, frames, run.first, run.last, wander(st));
+        const m = groundLine(topo, run.path, buildings, frames, run.first, run.last, wander(st, stage), look);
         if (!m) continue;
-        // A road is drawn by what it has worn into: a dashed track, a lane, a made road.
-        const grade = st.kind === 'road' ? st.grade ?? 2 : 2;
-        if (grade === 0) out.push(...dashes(m, 0.012));
-        else if (grade === 1) out.push(m);
-        else out.push(...twoSides(topo, m, run.path, STREET_WIDTH[st.kind] ?? 0.003));
+        // Drawn by what it has worn into, as a survey draws them: a dotted
+        // footpath, a dashed track, a made street, and the main street wider.
+        if (stage === 0) out.push(...dashes(m, WAY.path[0], WAY.path[1]));
+        else if (stage === 1) out.push(...dashes(m, WAY.track[0], WAY.track[1]));
+        else out.push(...twoSides(topo, m, run.path, (STREET_WIDTH[st.kind] ?? 0.003) * (stage === 3 ? WAY.main : 1)));
       } else if (run.kind === 'bridge') {
         out.push(...deck(topo, run.path, BRIDGE_MARK.halfWidth, 'ticks'));
       }
@@ -358,15 +700,39 @@ export function streetMarks(topo: Topology, streets: Street[], buildings: Buildi
   return out;
 }
 
+/**
+ * Before there is a square, the houses round the farmstead's yard are
+ * reached by walking across it: a dotted path from each door to the farm.
+ * The yard's edge is a street in the plan, but nobody has made it up yet.
+ */
+export function yardPaths(topo: Topology, buildings: Building[], frames: Map<number, SquareFrame>, look: Look = GROWN): Polyline[] {
+  const out: Polyline[] = [];
+  const byVertex = new Map(buildings.filter((b) => b.state === undefined).map((b) => [b.vertex, b]));
+  for (const f of frames.values()) {
+    if (f.open) continue;
+    const farm = byVertex.get(f.hall);
+    if (!farm) continue;
+    for (const b of byVertex.values()) {
+      if (b.front === undefined || !f.ring.has(b.front)) continue;
+      const a = f.angleOf(b.front), inward = footprintRadius(farm, look) * 1.15;
+      let pts: number[][] = [lifted(topo, b.vertex), f.edgeAt(a), f.at(a, (f.radiusAt(a) + inward) / 2), f.at(a, inward)];
+      for (let r = 0; r < 3; r++) pts = chaikin(pts);
+      pts = trimStart(pts, pts[0], footprintRadius(b, look) * 1.05);
+      if (pts.length >= 2) out.push(...dashes(polyline(pts, 0), WAY.path[0], WAY.path[1]));
+    }
+  }
+  return out;
+}
+
+/** Dash and gap of a walked path and a worn track, and how much wider a main street is. */
+export const WAY = { path: [0.0028, 0.0055], track: [0.011, 0.0045], main: 1.45 };
+
 /** The parts of streets now under water, for drawing with the water. */
 export function sunkenMarks(topo: Topology, streets: Street[], water: WaterState, frames?: Map<number, SquareFrame>): Polyline[] {
   const out: Polyline[] = [];
+  void frames;
   for (const st of streets) {
-    if (st.kind === 'square') {
-      const f = frames?.get(st.town);
-      if (f) out.push(...squareEdge(f, water, 'sunk'));
-      continue;
-    }
+    if (st.kind === 'square') continue;
     for (const run of runsOf(st.path, water)) {
       if (run.kind !== 'sunk') continue;
       const pts = chaikin(chaikin(run.path.map((v) => lifted(topo, v))));
@@ -405,11 +771,11 @@ function runsOf(path: number[], water: WaterState): Run[] {
  * How much a way meanders, and its own seed. Every road the same clean curve
  * read as procedural: a track wanders most, a made road least.
  */
-function wander(st: Street): { amount: number; seed: number } {
-  const byKind: Record<string, number> = { street: 0.003, link: 0.002, lane: 0.0028, road: 0.0035 };
-  const grade = st.kind === 'road' ? st.grade ?? 2 : 2;
-  const amount = st.kind === 'road' ? [0.006, 0.0045, 0.0035][grade] : byKind[st.kind] ?? 0.0028;
-  return { amount, seed: st.path[0] * 31 + st.path[st.path.length - 1] };
+function wander(st: Street, stage: number): { amount: number; seed: number } {
+  // A walked path wanders most; a way is straightened a little each time it is made up.
+  const byStage = [0.0065, 0.005, 0.003, 0.0025][stage] ?? 0.003;
+  const byKind: Record<string, number> = { street: 1, link: 0.75, lane: 0.95, road: 1.15 };
+  return { amount: byStage * (byKind[st.kind] ?? 1), seed: st.path[0] * 31 + st.path[st.path.length - 1] };
 }
 
 /** Lay a gentle meander across a line: two waves, settling to nothing at each end so junctions still meet. */
@@ -433,13 +799,20 @@ function meander(topo: Topology, pts: number[][], path: number[], amount: number
   });
 }
 
-function groundLine(topo: Topology, path: number[], buildings: Building[], frames: Map<number, SquareFrame>, first: boolean, last: boolean, wobble = { amount: 0, seed: 0 }): Polyline | null {
+function groundLine(topo: Topology, path: number[], buildings: Building[], frames: Map<number, SquareFrame>, first: boolean, last: boolean, wobble = { amount: 0, seed: 0 }, look: Look = GROWN): Polyline | null {
   const byVertex = new Map(buildings.filter((b) => b.state === undefined).map((b) => [b.vertex, b]));
   const onSquare = (v: number) => { for (const f of frames.values()) if (f.ring.has(v)) return f; return undefined; };
   let pts: number[][] = path.map((v) => lifted(topo, v));
   for (const [i, isEnd] of [[0, first], [pts.length - 1, last]] as [number, boolean][]) {
     const f = isEnd ? onSquare(path[i]) : undefined;
-    if (f) pts[i] = f.edgeAt(f.angleOf(path[i]));
+    if (!f) continue;
+    if (f.open) { pts[i] = f.edgeAt(f.angleOf(path[i])); continue; }
+    // No square yet: the ways run on in to the farmstead's door.
+    const farm = byVertex.get(f.hall);
+    const reach = farm ? footprintRadius(farm, look) * 1.15 : f.radius * 0.3;
+    const a = f.angleOf(path[i]), inward = [f.edgeAt(a), f.at(a, (f.radiusAt(a) + reach) / 2), f.at(a, reach)];
+    if (i === 0) pts.splice(0, 1, ...inward.reverse());
+    else pts.splice(pts.length - 1, 1, ...inward);
   }
   // Four rounds, not two: the mesh only turns in steps of about 60°, and with
   // two rounds a town's streets still read as a honeycomb of those angles.
@@ -449,7 +822,7 @@ function groundLine(topo: Topology, path: number[], buildings: Building[], frame
     const b = byVertex.get(end === 0 ? path[0] : path[path.length - 1]);
     if (!b || pts.length < 2) continue;
     if (end === 1) pts.reverse();
-    pts = trimStart(pts, pts[0], footprintRadius(b) * 1.05);
+    pts = trimStart(pts, pts[0], footprintRadius(b, look) * 1.05);
     if (end === 1) pts.reverse();
   }
   if (pts.length < 2) return null;
@@ -543,17 +916,26 @@ export function harbourMarks(topo: Topology, harbours: Harbour[], boats: (h: Har
   return out;
 }
 
-/** A line cut into dashes of `every` length, gaps as long. */
-function dashes(m: Polyline, every: number): Polyline[] {
+/** A line cut into dashes `on` long with gaps `off` long. */
+function dashes(m: Polyline, on0: number, off = on0): Polyline[] {
   const pts: number[][] = [];
   for (let k = 0; k < m.points.length; k += 3) pts.push([m.points[k], m.points[k + 1], m.points[k + 2]]);
   const out: Polyline[] = [];
-  let run: number[][] = [], along = 0, on = true;
+  // Cut exactly, at any spacing: a footpath's dots are shorter than the line's own steps.
+  let on = true, left = on0;
+  let run: number[][] = [pts[0]];
   for (let i = 1; i < pts.length; i++) {
-    const d = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1], pts[i][2] - pts[i - 1][2]);
-    if (on) { if (!run.length) run.push(pts[i - 1]); run.push(pts[i]); }
-    along += d;
-    if (along > every) { along = 0; if (on && run.length >= 2) out.push(polyline(run, m.level)); run = []; on = !on; }
+    let a = pts[i - 1];
+    const b = pts[i];
+    let d = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+    while (d > left) {
+      const t = left / d, c = a.map((x, k) => x + (b[k] - x) * t);
+      if (on) { run.push(c); if (run.length >= 2) out.push(polyline(run, m.level)); run = []; }
+      else run = [c];
+      on = !on; d -= left; a = c; left = on ? on0 : off;
+    }
+    left -= d;
+    if (on) run.push(b);
   }
   if (on && run.length >= 2) out.push(polyline(run, m.level));
   return out;
@@ -839,45 +1221,6 @@ function polyline(pts: number[][], level: number): Polyline {
   return { level, iso: 0, points: new Float32Array(pts.flat()), closed: false, length };
 }
 
-/**
- * A square's edge, dry arcs or sunken ones. Whole and round while the square
- * is dry; where water has come over part of its ring, that part goes to the
- * water and the rest stays in ink, as for any other street.
- */
-function squareEdge(f: SquareFrame, water: WaterState, want: 'dry' | 'sunk', samples = 64): Polyline[] {
-  const ring = [...f.ring].map((u) => ({ a: f.angleOf(u), sunk: water.submerged.has(u) }));
-  if (!ring.some((r) => r.sunk)) return want === 'dry' ? [circle(f, samples)] : [];
-  if (ring.every((r) => r.sunk)) return want === 'sunk' ? [circle(f, samples)] : [];
-  const sunkAt = (a: number) => {
-    let best = ring[0], bd = Infinity;
-    for (const r of ring) { const d = Math.abs(Math.atan2(Math.sin(a - r.a), Math.cos(a - r.a))); if (d < bd) { bd = d; best = r; } }
-    return best.sunk;
-  };
-  // Start the walk where the kind changes, so no arc is split across the seam.
-  const angles = Array.from({ length: samples }, (_, i) => (i / samples) * 2 * Math.PI);
-  let start = angles.findIndex((a, i) => sunkAt(a) !== sunkAt(angles[(i + samples - 1) % samples]));
-  if (start < 0) start = 0;
-  const out: Polyline[] = [];
-  let arc: number[][] = [];
-  for (let k = 0; k <= samples; k++) {
-    const a = angles[(start + k) % samples], s = sunkAt(a);
-    const mine = (want === 'sunk') === s;
-    if (mine) arc.push(f.edgeAt(a));
-    if ((!mine || k === samples) && arc.length) {
-      if (mine === false) arc.push(f.edgeAt(a)); // meet the next arc
-      if (arc.length >= 2) out.push(polyline(arc, 0));
-      arc = [];
-    }
-  }
-  return out;
-}
-
-function circle(f: SquareFrame, samples = 64): Polyline {
-  const pts = new Float32Array(samples * 3);
-  for (let i = 0; i < samples; i++) pts.set(f.edgeAt((i / samples) * 2 * Math.PI), i * 3);
-  return { level: 0, iso: 0, points: pts, closed: true, length: 2 * Math.PI * f.radius };
-}
-
 // ------------------------------------------------------------ geometry
 
 function tangent(g: V3, nr: V3): V3 | null {
@@ -930,11 +1273,19 @@ function rectangle(c: V3, nr: V3, across: V3, long: number, short: number, level
 function clearanceNear(topo: Topology, v: number, nr: V3, size: number): (q: V3) => number {
   const p = topo.positions;
   const near = groundWithin(topo, v, size * 1.6);
+  const xs = new Float64Array(near.length * 3);
+  near.forEach((u, i) => xs.set([p[u * 3], p[u * 3 + 1], p[u * 3 + 2]], i * 3));
   return (q) => {
-    const best = near
-      .map((u) => { const d: V3 = [p[u * 3] - q[0], p[u * 3 + 1] - q[1], p[u * 3 + 2] - q[2]]; return [Math.hypot(d[0], d[1], d[2]), d[0] * nr[0] + d[1] * nr[1] + d[2] * nr[2]]; })
-      .sort((x, y) => x[0] - y[0]);
-    return Math.max(...best.slice(0, 3).map((x) => x[1]));
+    // The three nearest, in one pass: this is asked for every sample of every outline.
+    let d0 = Infinity, d1 = Infinity, d2 = Infinity, h0 = 0, h1 = 0, h2 = 0;
+    for (let i = 0; i < xs.length; i += 3) {
+      const dx = xs[i] - q[0], dy = xs[i + 1] - q[1], dz = xs[i + 2] - q[2];
+      const d = dx * dx + dy * dy + dz * dz, h = dx * nr[0] + dy * nr[1] + dz * nr[2];
+      if (d < d0) { d2 = d1; h2 = h1; d1 = d0; h1 = h0; d0 = d; h0 = h; }
+      else if (d < d1) { d2 = d1; h2 = h1; d1 = d; h1 = h; }
+      else if (d < d2) { d2 = d; h2 = h; }
+    }
+    return Math.max(h0, d1 < Infinity ? h1 : -Infinity, d2 < Infinity ? h2 : -Infinity);
   };
 }
 

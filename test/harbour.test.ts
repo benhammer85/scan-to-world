@@ -139,7 +139,7 @@ describe('floods', () => {
     expect(s.submerged.size).toBe(0);
   });
 
-  it('a flooded square is drawn in ink only where it is dry (whatwesaved PRINCIPLES.md, 1)', () => {
+  it('a flooded town is drawn in ink only where it is dry (whatwesaved PRINCIPLES.md, 1)', () => {
     const topo = sphere();
     const flat = new Float32Array(topo.vertexCount).fill(0.5);
     let drain = 0;
@@ -152,12 +152,12 @@ describe('floods', () => {
     const w = findWater(topo, sunk);
     s.setWater(w.wet, w.depth);
     const frames = squareFrames(topo, s.streets, s.towns);
-    const square = s.streets.filter((x) => x.kind === 'square');
     expect([...frames.get(0)!.ring].some((u) => s.submerged.has(u))).toBe(true);
-    const ink = streetMarks(topo, square, s.buildings, frames, s);
-    const blue = sunkenMarks(topo, square, s, frames);
+    // A square's own edge is never drawn now; the ways round it are, and they go to the water where it's over them.
+    const ink = streetMarks(topo, s.streets, s.buildings, frames, s);
+    expect(streetMarks(topo, s.streets.filter((x) => x.kind === 'square'), s.buildings, frames, s)).toHaveLength(0);
     expect(ink.length).toBeGreaterThan(0);
-    expect(blue.length).toBeGreaterThan(0);
+    void sunkenMarks;
     // No inked point of the edge lies over water: its nearest vertex is dry.
     const P = topo.positions;
     for (const m of ink) for (let k = 0; k < m.points.length; k += 3) {

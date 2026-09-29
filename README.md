@@ -29,7 +29,7 @@ There are no buttons, modes or menus. The screen is the object and nothing else.
 | Gesture | What it does |
 |---|---|
 | Tap | "People here." Founds a hamlet, or grows the town you touched. The ground decides whether and where |
-| Drag | Turns the world, and turning is time: a full turn is a day, and towns grow as the days pass |
+| Drag | Turns the world, and turning is time: a full turn is a day, and towns grow and grow up as the days pass: paths wear into streets, huts become houses, the old core is built into terraces and courts |
 | Hold still on the object | Presses into the ground, deeper the longer you hold |
 | Hold, then pull | Pulls the ground up. How far you pull is how high it goes, and moving back lets it down again |
 | Arrow keys | On a desktop, a push on the spin like a small fling: they turn the world and pass the days the same way a drag does |
@@ -119,14 +119,13 @@ scan file ─► load.ts         merge meshes, centre, scale to radius 1, option
 * **Squares that read as places.** Tapping about had founded a crowd of hamlets square against square, each with a large pale disc, and they read as rendering bugs. Three fixes:
   * No town is founded within 0.32 of another; a tap there grows the nearest town.
   * Squares are smaller (0.07, or 1.8 mesh edges).
-  * A square's edge follows the ground it keeps, smoothed: neither a compass circle nor the lumpy raw ring. It's paved only once the town has a market.
+  * A square's edge follows the ground it keeps, smoothed: neither a compass circle nor the lumpy raw ring. (Later neither drawn nor paved: see *Growing up*.)
 * **Legibility.** A screenshot of three towns near snow and water read as one tangle, because contours, streets, roads and square edges were all the same thin black line. The drawing now uses a map's hierarchy:
   * **Relief** is faint and brown, behind everything.
   * **Streets** are double lines, as a town plan draws them, and roads between towns are wider.
   * **Houses and stalls** are filled solid. The pen still draws each outline first, and the fill comes once it's inked.
-  * **Squares** are paved in a pale fill.
 * **Clean drawing.** The plan's shape is kept, and only the drawing is tidied:
-  * **Squares have a smoothed edge.** Streets that meet the square end exactly on it.
+  * **Squares have a smoothed edge.** Streets that meet the square end exactly on it, though the edge itself isn't drawn.
   * **Stalls keep their slots.** Stalls fill slots round the hall in order and never move (see *Organic* for how each sits in its slot).
   * **Houses face their front.** Each house is turned towards the street point it fronts, give or take its own small turn. Reading the street's own direction instead gave odd angles on links and loops.
   * **No stray ticks.** Street runs under two mesh edges are refused before they're laid, and fragments under 0.015 after trimming aren't drawn.
@@ -136,6 +135,21 @@ scan file ─► load.ts         merge meshes, centre, scale to radius 1, option
   * **Streets** are cut round four times, not two, then meander with three stacked waves of their own length and phase. The waves fade to nothing at both ends so junctions still meet exactly. Lanes wander more than streets, and the steep track more than the graded road. A street's two sides swell and narrow slightly along its length.
   * **Stalls** are nudged along and across their slot, turned a little and sized a little differently, so a market reads as a crowd, not a clock face.
   * Tests check that a house still faces its street to within its own turn, that streets are no longer straight between junctions, and that they still end exactly on them.
+* **Growing up** (from whatwesaved's `_wear`, `_build_on` and `_perimeter` in `marginalia/city.py`). A town used to be laid out finished: made streets, whole houses and a paved square round a hall from the first tap. Now people live there first and the town builds itself up over time. Every stage is absolute, in days since the thing was laid (`STAGE` in `settlements.ts`), and capped by the town's size. whatwesaved ranked its streets instead, and a town forty presses old came out with the same mix as a town five presses old. Nothing needs extra touch: the days pass as the world turns, and the pen goes back over whatever has grown up.
+  * **Farmstead first.** A town is founded with one farmstead, and its huts are reached by dotted paths across the yard. The first building becomes the hall at 8 houses, and only then does the yard open as a square. The square is never drawn as a ring or paved. It's the open ground left between the fronts, where the streets end and the stalls stand. The ringed, paved disc read as a bug in a screenshot. Stalls now always stand clear of the hall; nudging them had pushed one onto it.
+  * **Goat paths to main streets.** Every way is laid as a dotted footpath. At 1.5 days it's a dashed track, at 4 days a made street (two lines), and at 9 days, if it's a street at least 0.34 long, a main street, wider. A way is straightened a little at each stage. The town's size caps all of this: tracks from 3 houses, streets from 8, a main street from 16, so a hamlet has no main street running out of it. Ranking which streets became main streets demoted one when a longer street came of age, so the rule is now about the street alone. Roads between towns are tracks from the day they're laid and are made up by the trade they carry, as before. A way the water went over comes back washed out and is walked again.
+  * **Huts to houses.** A house starts as a small hut. At a day old it's a house, and at 3 days it gets its wing if it has one.
+  * **Terraces.** In the old core, which widens as the town grows, a house 6 days old in a town of 14 or more joins the houses along the same side of its street into one row. The row follows the street as drawn and is cut into narrow houses, each its own depth, so the back steps. It fills a gap of up to two and a half spacings, and stops where a way joins from its side. Stretching each house along its own sides never joined anything on a coarse mesh, because a row's houses stand staggered like the street's vertices.
+  * **Blocks, gardens and courts.** Ground enclosed by streets is found as a flood that can't get out past the street vertices. Snow, cliffs and water don't count. Each block is stamped when it's first found, and cutting it with a new street makes two new blocks. At 1.5 days a block is gardens, rows between its houses. At 6 days, near the core of a town of 22 or more, it's built round: a ring of narrow houses round a courtyard, set back from the streets round it, taking in the houses that stood there. Its edge is where rays from its middle first meet those streets. Averaging the edge from its vertices overshot concave blocks and put buildings across streets. A courtyard block wider than its court tapers or leaves a gap rather than filling in solid.
+  * Measured on the orange at 45 days: 185 houses, 17 blocks, 9 terrace rows. A redraw takes 43 ms at 186 houses. Finding the three nearest vertices in one pass, instead of sorting them for every sample, took the blocks from 51 ms to 11.
+  * Tests (`test/growth.test.ts`) check:
+    * each way goes up through its stages and never back, and a hamlet never outranks its size;
+    * the main streets are old, long streets;
+    * the farmstead comes before the hall, and paths lead in to it;
+    * huts come before wings;
+    * the look doesn't depend on how time was sliced;
+    * rows never touch a street's drawn line;
+    * courts stand clear of the streets round them.
 
 ## The reveal (ported from whatwesaved)
 
