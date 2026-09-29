@@ -60,25 +60,27 @@ scan file ─► load.ts         merge meshes, centre, scale to radius 1, option
 * **Live reshaping.** Brushing updates the edit field every frame. Contour extraction is throttled to about every 70 ms. Rebuilt lines appear fully drawn instead of replaying the plot.
 * **Placement.** The cheap version: no remeshing or quad grid. Props store `(triangle, barycentric)`, so they ride along when the surface is sculpted.
 
-## Porting the old map-app plotter code
+## The reveal (ported from whatwesaved)
 
-The old contour / dash-draw code wasn't available in this session, so `contours.ts` and
-`plotterLines.ts` are fresh implementations. The seam between them is deliberately small:
+The pen is the map app's reveal (`marginalia/studio.py`: `plot()`, `ink()`, `draw()`),
+moved from a canvas mask onto lines lying on a 3D surface.
 
-```ts
-interface Polyline { level: number; iso: number; points: Float32Array /* xyz */; closed: boolean; length: number }
-```
+What carried over:
+* **One pen at constant speed.** A reveal takes as long as there is line to draw, clamped to 1.5–20 s, and it's eased at both ends of the whole run.
+* **Nearest-neighbour order** from where you touched, one window at a time. A window is one contour level here, so the terrain still goes on bottom-up. Open lines start at whichever end is nearer.
+* **A minimum cost per mark**, so short lines are drawn rather than appearing.
+* **A visible nib.**
+* **Pen pace**, remembered per viewer.
+* **Only new marks are plotted.** A new reveal finishes the running one rather than dropping it.
 
-* The old **marching-squares** code maps onto `extractContours()`. Grid cells become triangles, and `(x, y)` becomes a point interpolated along a mesh edge, lifted along the normal.
-* The old **dash-offset / reveal animation** and its timing, easing, pen ordering and line styling map onto `PlotterLines.schedule()` and the shader. Anything that turns `Polyline[]` into timed strokes can replace them.
+What's new, to meet this brief's "reshape live":
+* While you drag, changed lines show as **pencil**.
+* On release, and once any diffusing edits have settled, the pen **inks** them, starting where the stroke began. The pencil stays underneath until the pen reaches it, because a line that disappears and then comes back reads as deletion (whatwesaved PRINCIPLES 21).
+* Settings changes redraw with no animation, like the map app's `restate`.
 
-To do the port, clone the old repo as a sibling folder and start a session with something like:
+What makes this work: contour extraction is deterministic, so a line the edit didn't touch comes back bit-identical and keeps its key (`lineKey`). There's a test for that, and a stroke measured in the browser changed 24 of 96 lines.
 
-> In `../<old-map-app>`, find the contour extraction and the plotter/dash-draw animation.
-> Port the animation style (timing, easing, pen order, line weights) into
-> `scan-to-world/src/render/plotterLines.ts`, keeping the `Polyline[]` input from
-> `terrain/contours.ts`. Keep the marching-triangles extractor. Only borrow smoothing or
-> simplification ideas from the old marching-squares code.
+**An open question, left to you.** The map app skips the country in its reveal: "nobody made the hillside ... drawing it stroke by stroke says a hand put it there". This project's brief asks for exactly that plot of the terrain on first load. So it's kept, and only the player's edits get the "response" treatment. If the principle should win, change `'plot'` to `'settle'` in `TerrainWorld`'s constructor.
 
 ## Known limits / next steps
 

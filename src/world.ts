@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { buildTopology, type Topology } from './mesh/topology';
 import { extractHeights, type HeightOptions } from './terrain/heightfield';
 import { extractContours } from './terrain/contours';
-import { PlotterLines } from './render/plotterLines';
+import { PlotterLines, type RevealMode } from './render/plotterLines';
 import { TerrainEdits, applyDisplacement, type BrushOptions } from './interact/sculpt';
 import { Placement } from './interact/placement';
 
@@ -45,8 +45,19 @@ export class TerrainWorld {
   private geometryDirty = false;
   private lastContourBuild = 0;
   private lastLineCount = 0;
+  /** Where the current stroke began (local space); the pen starts there. */
+  private strokeFrom: THREE.Vector3 | null = null;
+  /** A stroke has ended; ink its response once the edits stop moving. */
+  private inkWanted = false;
+  /** The next rebuild is a settings change: everything is simply there. */
+  private settleNext = false;
 
-  constructor(geometry: THREE.BufferGeometry, private map: THREE.Texture | null, public settings: WorldSettings) {
+  constructor(
+    geometry: THREE.BufferGeometry,
+    private map: THREE.Texture | null,
+    public settings: WorldSettings,
+    penFrom?: THREE.Vector3,
+  ) {
     const pos = geometry.attributes.position;
     this.topo = buildTopology(pos.array as ArrayLike<number>, geometry.index?.array ?? null);
     this.edits = new TerrainEdits(this.topo);
@@ -73,7 +84,7 @@ export class TerrainWorld {
     this.heights = new Float32Array(this.topo.vertexCount);
     this.recomputeHeights();
     this.applySurface();
-    this.rebuildContours(true);
+    this.rebuildContours('plot', penFrom);
   }
 
   get triangleCount(): number {
@@ -90,12 +101,12 @@ export class TerrainWorld {
     this.baseHeights = extractHeights(this.topo, opts);
     this.recomputeHeights();
     this.applySurface();
-    this.rebuildContours(true);
+    this.rebuildContours('settle');
   }
 
   setBands(bands: number): void {
     this.settings.bands = bands;
-    this.rebuildContours(true);
+    this.rebuildContours('settle');
   }
 
   setSurface(surface: SurfaceStyle): void {
@@ -105,21 +116,30 @@ export class TerrainWorld {
 
   setDisplace(on: boolean): void {
     this.settings.displace = on;
-    this.geometryDirty = true;
-    this.dirty = true;
+    this.settleNext = true;
+    this.markEdited();
   }
 
-  replay(): void {
-    this.rebuildContours(true);
+  /** Plot the whole thing again, the pen starting at `from` (world space). */
+  replay(from?: THREE.Vector3): void {
+    this.rebuildContours('plot', from && this.mesh.worldToLocal(from.clone()));
   }
 
   brush(worldPoint: THREE.Vector3, opts: BrushOptions, dt: number): void {
     const local = this.mesh.worldToLocal(worldPoint.clone());
+    if (!this.strokeFrom) this.strokeFrom = local.clone();
+    this.inkWanted = false;
     if (this.edits.brush([local.x, local.y, local.z], opts, dt)) this.markEdited();
+  }
+
+  /** The finger lifted: once the ground stops moving, the pen inks what changed. */
+  endStroke(): void {
+    if (this.strokeFrom) this.inkWanted = true;
   }
 
   resetEdits(): void {
     this.edits.clear();
+    this.settleNext = true;
     this.markEdited();
   }
 
@@ -129,9 +149,10 @@ export class TerrainWorld {
   }
 
   /** Per-frame update. `diffusion` controls how diffuse-brush edits spread and fade. */
-  update(dt: number, now: number, diffusion: { rate: number; fade: number }): void {
-    this.lines.update(dt);
-    if (this.edits.relax(dt, diffusion.rate, diffusion.fade)) this.markEdited();
+  update(dt: number, now: number, diffusion: { rate: number; fade: number }, camera?: THREE.Camera): void {
+    this.lines.update(dt, camera);
+    const moving = this.edits.relax(dt, diffusion.rate, diffusion.fade);
+    if (moving) this.markEdited();
 
     if (this.geometryDirty) {
       this.geometryDirty = false;
@@ -150,7 +171,17 @@ export class TerrainWorld {
     // Contour extraction is the expensive bit: throttle it while the player drags.
     if (this.dirty && now - this.lastContourBuild > 70) {
       this.dirty = false;
-      this.rebuildContours(false);
+      this.rebuildContours(this.settleNext ? 'settle' : 'live');
+      this.settleNext = false;
+    }
+
+    // Arrives on release, the way the map app's presses do, and only once
+    // diffusing edits have settled: inking a line that is still moving would
+    // leave it pencil again on the next rebuild.
+    if (this.inkWanted && !this.dirty && !moving) {
+      this.inkWanted = false;
+      this.rebuildContours('ink', this.strokeFrom ?? undefined);
+      this.strokeFrom = null;
     }
   }
 
@@ -159,14 +190,14 @@ export class TerrainWorld {
     for (let v = 0; v < this.heights.length; v++) this.heights[v] = this.baseHeights[v] + e[v];
   }
 
-  private rebuildContours(animate: boolean): void {
+  private rebuildContours(mode: RevealMode, from?: THREE.Vector3): void {
     this.lastContourBuild = performance.now();
     const lines = extractContours(this.topo, this.heights, {
       interval: 1 / this.settings.bands,
       lift: 0.002,
     });
     this.lastLineCount = lines.length;
-    this.lines.setLines(lines, animate);
+    this.lines.setLines(lines, mode, from);
   }
 
   /** Copy welded positions/normals back to every (possibly seam-split) render vertex. */

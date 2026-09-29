@@ -5,6 +5,7 @@ import { buildTopology } from '../src/mesh/topology';
 import { contourLevels, extractContours } from '../src/terrain/contours';
 import { extractHeights } from '../src/terrain/heightfield';
 import { TerrainEdits } from '../src/interact/sculpt';
+import { lineKey, pointAlong } from '../src/render/plotterLines';
 
 function sphereTopology(detail = 8) {
   const g = new THREE.IcosahedronGeometry(1, detail); // non-indexed, seams everywhere
@@ -107,5 +108,42 @@ describe('heightfield + edits', () => {
     edits.relax(1, 20, 0.5);
     expect(Math.max(...edits.field)).toBeLessThan(peak);
     expect(edits.field.reduce((a, b) => a + b, 0)).toBeLessThan(before);
+  });
+});
+
+describe('reveal identity', () => {
+  // The pen only re-plots lines whose key changed, so a local edit must leave
+  // every line away from it bit-identical: "does this mark depend on anything
+  // that is not about this mark?" (whatwesaved PRINCIPLES.md, 20).
+  it('a local edit changes only the lines near it', () => {
+    const topo = sphereTopology(12);
+    const base = extractHeights(topo, { mode: 'curvature', smoothing: 0, clip: 0 });
+    for (let v = 0; v < topo.vertexCount; v++) base[v] = (topo.positions[v * 3 + 1] + 1) / 2 + 0.02 * Math.sin(9 * topo.positions[v * 3]);
+    const before = extractContours(topo, base, { interval: 0.05, lift: 0 });
+
+    const edits = new TerrainEdits(topo);
+    edits.brush([1, 0, 0], { radius: 0.2, strength: 0.3, falloff: 'gaussian' }, 1);
+    const after = extractContours(topo, base.map((h, v) => h + edits.field[v]), { interval: 0.05, lift: 0 });
+
+    const old = new Set(before.map(lineKey));
+    const changed = after.filter((l) => !old.has(lineKey(l)));
+    expect(changed.length).toBeGreaterThan(0);
+    // Every changed line passes within reach of the brush (3 sigma = 0.3)...
+    for (const l of changed) {
+      let near = Infinity;
+      for (let i = 0; i < l.points.length; i += 3) near = Math.min(near, Math.hypot(l.points[i] - 1, l.points[i + 1], l.points[i + 2]));
+      expect(near).toBeLessThan(0.35);
+    }
+    // ...and most lines are untouched.
+    expect(changed.length).toBeLessThan(after.length / 2);
+  });
+
+  it('the nib walks a ring all the way round', () => {
+    const ring = new Float32Array([1, 0, 0, 0, 1, 0, -1, 0, 0, 0, -1, 0]);
+    const out = new THREE.Vector3();
+    pointAlong(ring, true, 4 * Math.SQRT2 - 1e-9, out);
+    expect(out.distanceTo(new THREE.Vector3(1, 0, 0))).toBeLessThan(1e-6);
+    pointAlong(ring, false, 99, out);
+    expect(out.distanceTo(new THREE.Vector3(0, -1, 0))).toBeLessThan(1e-6);
   });
 });

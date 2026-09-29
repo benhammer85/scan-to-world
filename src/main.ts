@@ -73,10 +73,13 @@ function setWorld(geometry: THREE.BufferGeometry, map: THREE.Texture | null, nam
   if (tris > 60000) {
     toast(`${name}: ${tris.toLocaleString()} triangles – decimate for smoother interaction.`);
   }
-  world = new TerrainWorld(geometry.clone(), map, { ...settings, height: { ...settings.height } });
+  world = new TerrainWorld(geometry.clone(), map, { ...settings, height: { ...settings.height } }, facingPoint());
+  world.lines.pace = pace;
   world.placement.setKind(currentProp);
   scene.add(world.group);
   updateStats(name);
+  // For poking at in dev tools and in the browser checks; not in builds.
+  if (import.meta.env.DEV) (window as unknown as { world: TerrainWorld }).world = world;
 }
 
 function updateStats(name?: string): void {
@@ -138,6 +141,7 @@ window.addEventListener('pointerup', (e) => {
   if (sculpting) {
     sculpting = false;
     controls.enabled = true;
+    world?.endStroke();
   }
   // A click (not a drag) in place mode drops an object.
   if (ui.mode === 'place' && downAt && world && e.target === renderer.domElement) {
@@ -161,6 +165,10 @@ window.addEventListener('resize', () => {
 
 // ---------------------------------------------------------------- UI wiring
 let currentProp: PropKind = 'tree';
+// Pen pace, remembered per viewer like the map app's `marginalia.pace`.
+let pace = 1;
+try { pace = Number(localStorage.getItem('scan-to-world.pace')) || 1; } catch { /* private window */ }
+($('pace') as HTMLInputElement).value = String(pace);
 
 function segmented(id: string, attr: string, onPick: (value: string) => void): void {
   const root = $(id);
@@ -253,7 +261,17 @@ $<HTMLInputElement>('displace').addEventListener('change', (e) => {
 });
 $('reset-edits').addEventListener('click', () => world?.resetEdits());
 $('clear-props').addEventListener('click', () => world?.placement.clear());
-$('replay').addEventListener('click', () => world?.replay());
+$('replay').addEventListener('click', () => world?.replay(facingPoint()));
+$<HTMLInputElement>('pace').addEventListener('input', (e) => {
+  pace = Number((e.target as HTMLInputElement).value);
+  if (world) world.lines.pace = pace;
+  try { localStorage.setItem('scan-to-world.pace', String(pace)); } catch { /* private window */ }
+});
+
+/** The point of the object nearest the viewer: where a first plot begins. */
+function facingPoint(): THREE.Vector3 {
+  return camera.position.clone().setLength(1);
+}
 $('panel-toggle').addEventListener('click', () => $('panel').classList.toggle('collapsed'));
 
 let toastTimer = 0;
@@ -293,7 +311,7 @@ renderer.setAnimationLoop(() => {
       world.placement.hover(hit);
     }
 
-    world.update(dt, now, { rate: 30, fade: 0.15 });
+    world.update(dt, now, { rate: 30, fade: 0.15 }, camera);
     updateStatsThrottled(now);
   }
 
