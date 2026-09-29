@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <title>Scan-to-World</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="stage"></div>
+
+    <aside id="panel">
+      <header>
+        <h1>Scan-to-World</h1>
+        <button id="panel-toggle" aria-label="Toggle controls">☰</button>
+      </header>
+
+      <div class="panel-body">
+        <section>
+          <h2>Object</h2>
+          <label class="file">
+            <input id="file" type="file" accept=".glb,.gltf,.obj,.ply" />
+            <span>Load scan (GLB / OBJ / PLY)</span>
+          </label>
+          <button id="demo">Use demo orange</button>
+          <div class="row">
+            <label for="target-tris">Decimate to</label>
+            <input id="target-tris" type="number" value="15000" min="1000" step="1000" />
+            <button id="decimate">Go</button>
+          </div>
+          <p id="stats" class="muted"></p>
+        </section>
+
+        <section>
+          <h2>Terrain</h2>
+          <div class="row">
+            <label for="height-mode">Height from</label>
+            <select id="height-mode">
+              <option value="radial">Radial (round objects)</option>
+              <option value="curvature">Curvature (general)</option>
+            </select>
+          </div>
+          <div class="row">
+            <label for="smoothing">Smoothing</label>
+            <input id="smoothing" type="range" min="0" max="20" value="2" />
+          </div>
+          <div class="row">
+            <label for="bands">Contours</label>
+            <input id="bands" type="range" min="4" max="60" value="22" />
+          </div>
+          <div class="row">
+            <label for="surface">Surface</label>
+            <select id="surface">
+              <option value="scan">Scan colours</option>
+              <option value="paper">Paper</option>
+              <option value="elevation">Elevation tint</option>
+            </select>
+          </div>
+          <button id="replay">Replay plot</button>
+        </section>
+
+        <section>
+          <h2>Touch</h2>
+          <div class="segmented" id="mode">
+            <button data-mode="orbit">Orbit</button>
+            <button data-mode="sculpt" class="active">Sculpt</button>
+            <button data-mode="place">Place</button>
+          </div>
+          <div class="sculpt-only">
+            <div class="segmented" id="direction">
+              <button data-dir="1" class="active">Raise</button>
+              <button data-dir="-1">Dig</button>
+            </div>
+            <div class="row">
+              <label for="falloff">Falloff</label>
+              <select id="falloff">
+                <option value="gaussian">Gaussian (permanent)</option>
+                <option value="diffuse">Diffuse (spread &amp; fade)</option>
+              </select>
+            </div>
+            <div class="row">
+              <label for="radius">Brush size</label>
+              <input id="radius" type="range" min="0.03" max="0.6" step="0.01" value="0.18" />
+            </div>
+            <div class="row">
+              <label for="strength">Strength</label>
+              <input id="strength" type="range" min="0.05" max="1.5" step="0.05" value="0.4" />
+            </div>
+            <div class="row">
+              <label for="displace">Move surface</label>
+              <input id="displace" type="checkbox" checked />
+            </div>
+            <button id="reset-edits">Reset edits</button>
+          </div>
+          <div class="place-only">
+            <div class="segmented" id="prop">
+              <button data-prop="tree" class="active">Tree</button>
+              <button data-prop="house">House</button>
+              <button data-prop="flag">Flag</button>
+            </div>
+            <button id="clear-props">Clear placed</button>
+          </div>
+          <p class="muted hint">Sculpt: drag on the object (Shift = dig). Drag off it to orbit. Pinch/scroll to zoom.</p>
+        </section>
+      </div>
+    </aside>
+
+    <div id="toast" hidden></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
