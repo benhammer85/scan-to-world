@@ -71,7 +71,7 @@ There are no buttons, modes or menus. The screen is the object and nothing else.
 | Gesture | What it does |
 |---|---|
 | Tap | Only what can be seen from high up can be touched. In empty country it sows a new place; on or near a light, that place grows towards your finger; on a wood it is cleared, on farmland it goes back to the wild, on a steep slope a wood is planted. Fine ink rings open where you tapped (one pencil ring closes if the ground refused) |
-| Drag | Turns the world, and turning is time: a full turn is a day. A place grows two or three houses a turn at first, faster as it grows, and its light spreads and brightens |
+| Drag | Turns the world like a globe on its stand: round its axis, north up, tipping only a little. Turning is time: a full turn is a day. A place grows two or three houses a turn at first, faster as it grows, and its light spreads and brightens |
 | Hold still on the object | Presses into the ground, deeper the longer you hold |
 | Hold, then pull | Pulls the ground up. How far you pull is how high it goes, and moving back lets it down again |
 | Arrow keys | On a desktop, a push on the spin like a small fling: they turn the world and pass the days the same way a drag does |

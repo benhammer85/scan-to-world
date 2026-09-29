@@ -20,6 +20,16 @@ The atlas is a **star atlas of the same years**, in the manner of **Bode's *Uran
 
 If a convention is not in those, it does not go in.
 
+## The calm globe
+
+3D isn't chaotic in itself; uncontrolled 3D is. The world is a globe, in the tradition of the printed globes of the 1700s and 1800s, not a 3D game object:
+
+- **It turns on its stand.** It turns round its own axis, north stays up, and it tips towards or away from you only so far (`TILT` in `main.ts`). It coasts slowly to a stop.
+- **Paper light.** The light is even and matte, with a breath of shade from the upper left for roundness. The sea is a pale wash; its lining says how deep, not its colour.
+- **Ink thins towards the rim**, as a globe's print does towards its horizon (`src/render/rim.ts`). Lines seen edge-on crowd into tangles that are only projection, so the edge stays clean.
+- **One fine ink line round the silhouette**, as if the world were drawn on the sheet. It follows any shape.
+- **One motion at a time.** While a pen is drawing, the boats fall quiet.
+
 ## Palette
 
 | | Colour | Used for |

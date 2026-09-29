@@ -8,6 +8,7 @@
  * grows keeps its old dots and gains new ones: nothing shimmers.
  */
 import * as THREE from 'three';
+import { rimGlsl } from './rim';
 
 export const STIPPLE = {
   /** Dots per unit of area. */
@@ -43,21 +44,27 @@ export class Stipple {
   readonly object: THREE.Points;
   constructor(ink: string) {
     const material = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
       uniforms: { uInk: { value: new THREE.Color(ink) }, uSize: { value: STIPPLE.size * Math.min(2, window.devicePixelRatio || 1) } },
       vertexShader: /* glsl */ `
         uniform float uSize;
+        varying float vRim;
+        ${rimGlsl}
         void main() {
           vec4 v = modelViewMatrix * vec4(position, 1.0);
           gl_Position = projectionMatrix * v;
           // Finer from further off, so a town far away is a grey of dots, not a black blot.
           gl_PointSize = uSize * clamp(2.6 / -v.z, 0.5, 1.3);
+          vRim = rimFade(position, v);
         }`,
       fragmentShader: /* glsl */ `
         uniform vec3 uInk;
+        varying float vRim;
         void main() {
           vec2 d = gl_PointCoord - 0.5;
-          if (dot(d, d) > 0.25) discard;
-          gl_FragColor = vec4(uInk, 1.0);
+          if (dot(d, d) > 0.25 || vRim <= 0.0) discard;
+          gl_FragColor = vec4(uInk, vRim);
           #include <colorspace_fragment>
         }`,
     });

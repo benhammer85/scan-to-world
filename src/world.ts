@@ -14,6 +14,7 @@ import { Countryside, type CountryTap } from './life/country';
 import { Landmarks, landmarkMarks } from './life/landmarks';
 import { restoreInto, stateOf, type WorldState } from './save';
 import { Stipple } from './render/stipple';
+import { rimFaded } from './render/rim';
 import { glowDots, glowField } from './life/development';
 import { countryMarks, isoLines, maturity, seasonColour, springFlood, turningMarks, winter, type Turning, type Wash } from './life/countryMarks';
 import { harbourMarks } from './life/buildingMarks';
@@ -37,7 +38,7 @@ const PAPER = new THREE.Color('#ecdfc2');
 /** How much of the scan's own colour shows through the paper. */
 const PAPER_TINT = 0.22;
 const WATER_INK = '#2a5680';
-const WATER_SHALLOW = '#9cc3e0';
+const WATER_SHALLOW = '#b9d1e2';
 const SNOW_TINT = '#f6f7f9';
 const TOWN_INK = '#2e2118';
 const LAND_TRAFFIC = new Set(['train', 'car', 'cart', 'barrier', 'cabin']);
@@ -64,7 +65,7 @@ function segments(lines: { points: Float32Array; closed: boolean }[]): THREE.Buf
   g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   return g;
 }
-const WATER_DEEP = '#4d82b3';
+const WATER_DEEP = '#8dafc9'; // a pale wash even at its deepest: the lining says how deep, not the colour
 
 function sameWet(a: Uint8Array, b: Uint8Array): boolean {
   if (a.length !== b.length) return false;
@@ -79,6 +80,8 @@ const SNOW = new THREE.Color('#f7f3ea');
 export class TerrainWorld {
   readonly group = new THREE.Group();
   readonly mesh: THREE.Mesh;
+  /** One fine ink line round the world's silhouette, as if drawn on the sheet. */
+  private outline: THREE.Mesh;
   readonly topo: Topology;
   readonly edits: TerrainEdits;
   /**
@@ -99,7 +102,7 @@ export class TerrainWorld {
   private baseHeights: Float32Array;
   readonly heights: Float32Array;
   private scanColors: Float32Array | null;
-  private material: THREE.MeshStandardMaterial;
+  private material: THREE.MeshLambertMaterial;
   private dirty = false;
   private geometryDirty = false;
   private lastContourBuild = 0;
@@ -146,17 +149,19 @@ export class TerrainWorld {
       geometry.setAttribute('color', new THREE.BufferAttribute(rgb.slice(), 3));
     }
 
-    this.material = new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0, vertexColors: true });
+    // Matte, like paper: no shine.
+    this.material = new THREE.MeshLambertMaterial({ vertexColors: true });
     this.mesh = new THREE.Mesh(geometry, this.material);
+    this.outline = outlineOf(geometry);
     this.waterLines = new THREE.LineSegments(
       new THREE.BufferGeometry(),
-      new THREE.LineBasicMaterial({ color: WATER_INK, transparent: true, opacity: 0.85, depthWrite: false }),
+      rimFaded(new THREE.LineBasicMaterial({ color: WATER_INK, transparent: true, opacity: 0.85, depthWrite: false })),
     );
     this.waterLines.renderOrder = 1;
-    this.snowEdge = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: SNOW_INK, transparent: true, opacity: 0.9, depthWrite: false }));
-    this.sailing = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: TOWN_INK, depthWrite: false, transparent: true }));
+    this.snowEdge = new THREE.LineSegments(new THREE.BufferGeometry(), rimFaded(new THREE.LineBasicMaterial({ color: SNOW_INK, transparent: true, opacity: 0.9, depthWrite: false })));
+    this.sailing = new THREE.LineSegments(new THREE.BufferGeometry(), rimFaded(new THREE.LineBasicMaterial({ color: TOWN_INK, depthWrite: false, transparent: true })));
     this.sailing.renderOrder = 2;
-    this.group.add(this.mesh, this.wash, this.seasonal, this.meadow, this.waterLines, this.snowEdge, this.lines.object, this.townLines.object, this.sailing, this.stipple.object);
+    this.group.add(this.mesh, this.outline, this.wash, this.seasonal, this.meadow, this.waterLines, this.snowEdge, this.lines.object, this.townLines.object, this.sailing, this.stipple.object);
 
     this.baseHeights = extractHeights(this.topo, settings.height);
     this.heights = new Float32Array(this.topo.vertexCount);
@@ -397,8 +402,11 @@ export class TerrainWorld {
   update(dt: number, now: number, diffusion: { rate: number; fade: number }, camera?: THREE.Camera, calm = true): void {
     this.lines.update(dt, camera);
     this.townLines.update(dt, camera);
-    // Boats sail in real time: they are life on the water, not building.
+    // Boats sail in real time: they are life on the water, not building. While a pen is drawing,
+    // they fall quiet, so one thing moves at a time.
     this.seconds += dt;
+    const sm = this.sailing.material as THREE.LineBasicMaterial, quiet = this.townLines.animating || this.lines.animating ? 0.25 : 1;
+    sm.opacity += (quiet - sm.opacity) * (1 - Math.exp(-dt * 2));
     const st = this.settlements;
     if (st && (this.turning.length || st.ferries.length || st.harbours.length || st.rails.length || st.cables.length || st.streets.some((x) => x.kind === 'road'))) {
       this.sailing.geometry.dispose();
@@ -731,6 +739,7 @@ export class TerrainWorld {
     this.lines.dispose();
     this.townLines.dispose();
     this.stipple.dispose();
+    (this.outline.material as THREE.Material).dispose();
   }
 }
 
@@ -803,3 +812,39 @@ function distanceToShore(topo: Topology, wet: Uint8Array): Float32Array {
   }
   return out;
 }
+
+/**
+ * The world's outline: its own surface drawn again from behind, pushed out a
+ * pixel or so round the edge in screen space, in ink. Only the rim shows past
+ * the world itself, so it follows any shape, a brick's corners as well as an
+ * orange's curve, and moves with the ground as it is worked (it shares the geometry).
+ */
+function outlineOf(geometry: THREE.BufferGeometry): THREE.Mesh {
+  const m = new THREE.ShaderMaterial({
+    side: THREE.BackSide,
+    uniforms: { uInk: { value: new THREE.Color(TOWN_INK) }, uWidth: { value: 1.2 * Math.min(2, (typeof window !== 'undefined' && window.devicePixelRatio) || 1) }, uView: { value: new THREE.Vector2(1, 1) } },
+    vertexShader: /* glsl */ `
+      uniform float uWidth;
+      uniform vec2 uView;
+      void main() {
+        vec4 clip = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        vec3 n = normalize(normalMatrix * normal);
+        vec2 dir = normalize((projectionMatrix * vec4(n, 0.0)).xy + 1e-6);
+        clip.xy += dir * uWidth * 2.0 / uView * clip.w;
+        gl_Position = clip;
+      }`,
+    fragmentShader: /* glsl */ `
+      uniform vec3 uInk;
+      void main() {
+        gl_FragColor = vec4(uInk, 0.8);
+        #include <colorspace_fragment>
+      }`,
+    transparent: true,
+  });
+  const o = new THREE.Mesh(geometry, m);
+  o.renderOrder = 0;
+  o.onBeforeRender = (renderer) => { const s = renderer.getDrawingBufferSize(OUTLINE_VIEW); m.uniforms.uView.value.set(s.x, s.y); };
+  return o;
+}
+const OUTLINE_VIEW = new THREE.Vector2();
+

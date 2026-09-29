@@ -25,6 +25,7 @@
  */
 import * as THREE from 'three';
 import type { Polyline } from '../terrain/contours';
+import { rimGlsl } from './rim';
 
 export interface PlotterStyle {
   ink: THREE.ColorRepresentation;
@@ -84,6 +85,8 @@ export type RevealMode = 'plot' | 'settle' | 'live' | 'ink';
 const NOT_YET = 1e9;
 
 const vertexShader = /* glsl */ `
+  ${rimGlsl}
+  varying float vRim;
   attribute float aAlong;
   attribute vec2 aTiming;   // (pen distance at which this line starts, its charged length)
   attribute float aLevel;
@@ -104,7 +107,9 @@ const vertexShader = /* glsl */ `
     vPencil = aPencil;
     vProgress = aTiming.y <= 0.0 ? 1.0 : clamp((uDrawn - aTiming.x) / aTiming.y, 0.0, 1.0);
     vFaded = uFade <= 0.0 ? 0.0 : smoothstep(0.0, 1.0, (uNow - aSeen - uHold) / uFade);
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    vec4 mv = modelViewMatrix * vec4(position, 1.0);
+    vRim = rimFade(position, mv);
+    gl_Position = projectionMatrix * mv;
   }
 `;
 
@@ -121,17 +126,19 @@ const fragmentShader = /* glsl */ `
   varying float vLevel;
   varying float vPencil;
   varying float vFaded;
+  varying float vRim;
   void main() {
+    if (vRim <= 0.0) discard;
     bool inked = vProgress > 0.0 && vAlong <= vProgress;
     if (!inked) {
       if (vPencil < 0.5) discard;
-      gl_FragColor = vec4(uPencil, 0.55);
+      gl_FragColor = vec4(uPencil, 0.55 * vRim);
       return;
     }
     vec3 ink = mix(uInk, uInkHigh, clamp(vLevel / max(uLevelCount - 1.0, 1.0), 0.0, 1.0));
     bool isIndex = mod(vLevel + 0.5, uIndexEvery) < 1.0;
     // Out of sight long enough, ink fades back to pencil, and no further.
-    gl_FragColor = vec4(mix(ink, uPencil, vFaded), mix(isIndex ? uIndexAlpha : uAlpha, 0.55, vFaded));
+    gl_FragColor = vec4(mix(ink, uPencil, vFaded), mix(isIndex ? uIndexAlpha : uAlpha, 0.55, vFaded) * vRim);
   }
 `;
 
