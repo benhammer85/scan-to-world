@@ -27,7 +27,7 @@ If a convention is not in those, it does not go in.
 - **It turns freely,** so it can be seen from any angle. (Turning it like a globe on a stand, north up and barely tipping, was tried and dropped: too confining.)
 - **Paper light.** The light is even and matte, with a breath of shade from the upper left for roundness. The sea is a pale wash; its lining says how deep, not its colour.
 - **Ink thins towards the rim**, as a globe's print does towards its horizon (`src/render/rim.ts`). Lines seen edge-on crowd into tangles that are only projection, so the edge stays clean.
-- **One ink line round the silhouette**, as if the world were drawn on the sheet: solid, even, all the way round, following any shape.
+- **No outline.** The world's edge is simply where the paper ends and the paper of the world begins. (An ink line round the silhouette was tried and dropped.)
 - **One motion at a time.** While the pen is drawing, the boats fall quiet.
 - **Only the terrain has a pen.** The contours are plotted in, as a surveyor draws the ground. Everything that lives on it (development, fields, woods, the water's works, the rails) is never drawn: it comes into being, fading in over a few seconds as it grows or where it was touched. A pen busy over all of it was frantic.
 

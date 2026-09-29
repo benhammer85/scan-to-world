@@ -80,8 +80,6 @@ const SNOW = new THREE.Color('#f7f3ea');
 export class TerrainWorld {
   readonly group = new THREE.Group();
   readonly mesh: THREE.Mesh;
-  /** One fine ink line round the world's silhouette, as if drawn on the sheet. */
-  private outline: THREE.Mesh;
   readonly topo: Topology;
   readonly edits: TerrainEdits;
   /**
@@ -157,7 +155,6 @@ export class TerrainWorld {
     // Matte, like paper: no shine.
     this.material = new THREE.MeshLambertMaterial({ vertexColors: true });
     this.mesh = new THREE.Mesh(geometry, this.material);
-    this.outline = outlineOf(geometry);
     this.waterLines = new THREE.LineSegments(
       new THREE.BufferGeometry(),
       rimFaded(new THREE.LineBasicMaterial({ color: WATER_INK, transparent: true, opacity: 0.85, depthWrite: false })),
@@ -166,7 +163,7 @@ export class TerrainWorld {
     this.snowEdge = new THREE.LineSegments(new THREE.BufferGeometry(), rimFaded(new THREE.LineBasicMaterial({ color: SNOW_INK, transparent: true, opacity: 0.9, depthWrite: false })));
     this.sailing = new THREE.LineSegments(new THREE.BufferGeometry(), rimFaded(new THREE.LineBasicMaterial({ color: TOWN_INK, depthWrite: false, transparent: true })));
     this.sailing.renderOrder = 2;
-    this.group.add(this.mesh, this.outline, this.wash, this.seasonal, this.meadow, this.waterLines, this.snowEdge, this.lines.object, this.townLines.object, this.sailing, this.stipple.object);
+    this.group.add(this.mesh, this.wash, this.seasonal, this.meadow, this.waterLines, this.snowEdge, this.lines.object, this.townLines.object, this.sailing, this.stipple.object);
 
     this.baseHeights = extractHeights(this.topo, settings.height);
     this.heights = new Float32Array(this.topo.vertexCount);
@@ -744,7 +741,6 @@ export class TerrainWorld {
     this.lines.dispose();
     this.townLines.dispose();
     this.stipple.dispose();
-    (this.outline.material as THREE.Material).dispose();
   }
 }
 
@@ -817,38 +813,3 @@ function distanceToShore(topo: Topology, wet: Uint8Array): Float32Array {
   }
   return out;
 }
-
-/**
- * The world's outline: its own surface drawn again from behind, pushed out a
- * pixel or so round the edge in screen space, in ink. Only the rim shows past
- * the world itself, so it follows any shape, a brick's corners as well as an
- * orange's curve, and moves with the ground as it is worked (it shares the geometry).
- */
-function outlineOf(geometry: THREE.BufferGeometry): THREE.Mesh {
-  const m = new THREE.ShaderMaterial({
-    side: THREE.BackSide,
-    uniforms: { uInk: { value: new THREE.Color(TOWN_INK) }, uWidth: { value: 1.7 * Math.min(2, (typeof window !== 'undefined' && window.devicePixelRatio) || 1) }, uView: { value: new THREE.Vector2(1, 1) } },
-    vertexShader: /* glsl */ `
-      uniform float uWidth;
-      uniform vec2 uView;
-      void main() {
-        vec4 clip = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        vec3 n = normalize(normalMatrix * normal);
-        vec2 dir = normalize((projectionMatrix * vec4(n, 0.0)).xy + 1e-6);
-        clip.xy += dir * uWidth * 2.0 / uView * clip.w;
-        gl_Position = clip;
-      }`,
-    fragmentShader: /* glsl */ `
-      uniform vec3 uInk;
-      void main() {
-        gl_FragColor = vec4(uInk, 1.0);
-        #include <colorspace_fragment>
-      }`,
-  });
-  const o = new THREE.Mesh(geometry, m);
-  o.renderOrder = 0;
-  o.onBeforeRender = (renderer) => { const s = renderer.getDrawingBufferSize(OUTLINE_VIEW); m.uniforms.uView.value.set(s.x, s.y); };
-  return o;
-}
-const OUTLINE_VIEW = new THREE.Vector2();
-
