@@ -6,7 +6,7 @@
  */
 import type { Topology } from '../mesh/topology';
 import type { Polyline } from '../terrain/contours';
-import { streetVertices, type Building, type Street } from './settlements';
+import { streetVertices, type Building, type Stall, type Street, type Town } from './settlements';
 
 export const MARK = {
   long: 0.024,
@@ -105,6 +105,17 @@ export function streetMarks(topo: Topology, streets: Street[], buildings: Buildi
       const o = v * 3;
       return [p[o] + n[o] * MARK.lift, p[o + 1] + n[o + 1] * MARK.lift, p[o + 2] + n[o + 2] * MARK.lift];
     });
+    // A square's edge is a ring: round it off all the way, with no fixed start.
+    const ring = st.kind === 'square' && st.path[0] === st.path[st.path.length - 1];
+    if (ring) {
+      pts.pop();
+      for (let r = 0; r < 2; r++) pts = chaikinRing(pts);
+      const flat = new Float32Array(pts.flat());
+      let length = 0;
+      for (let i = 0; i < pts.length; i++) { const a = pts[i], b = pts[(i + 1) % pts.length]; length += Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]); }
+      out.push({ level: 0, iso: 0, points: flat, closed: true, length });
+      continue;
+    }
     for (let r = 0; r < 2; r++) pts = chaikin(pts);
     const home = st.fromHouse ? byVertex.get(st.path[0]) : undefined;
     if (home) pts = trimStart(pts, pts[0], footprintRadius(home) * 1.05);
@@ -120,6 +131,45 @@ export function streetMarks(topo: Topology, streets: Street[], buildings: Buildi
     out.push({ level: 0, iso: 0, points: flat, closed: false, length });
   }
   return out;
+}
+
+function chaikinRing(pts: number[][]): number[][] {
+  const out: number[][] = [];
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i], b = pts[(i + 1) % pts.length];
+    out.push(a.map((x, k) => 0.75 * x + 0.25 * b[k]), a.map((x, k) => 0.25 * x + 0.75 * b[k]));
+  }
+  return out;
+}
+
+export const STALL = { long: 0.013, short: 0.008 };
+
+/**
+ * Market stalls: small marks in the square, each turned to face the hall,
+ * drawn after the houses the way a market goes up after a town has formed.
+ */
+export function stallMarks(topo: Topology, stalls: Stall[], towns: Town[]): Polyline[] {
+  const { positions: p, normals: n } = topo;
+  return stalls.map((st) => {
+    const o = st.vertex * 3, h = towns[st.town].centre * 3;
+    const nx = n[o], ny = n[o + 1], nz = n[o + 2];
+    // Towards the hall, flattened onto the ground here; the long side runs across it.
+    let rx = p[h] - p[o], ry = p[h + 1] - p[o + 1], rz = p[h + 2] - p[o + 2];
+    const dot = rx * nx + ry * ny + rz * nz;
+    rx -= dot * nx; ry -= dot * ny; rz -= dot * nz;
+    const rl = Math.hypot(rx, ry, rz) || 1;
+    rx /= rl; ry /= rl; rz /= rl;
+    const ax = ny * rz - nz * ry, ay = nz * rx - nx * rz, az = nx * ry - ny * rx;
+    const cx = p[o] + nx * MARK.lift, cy = p[o + 1] + ny * MARK.lift, cz = p[o + 2] + nz * MARK.lift;
+    const hl = STALL.long / 2, hs = STALL.short / 2;
+    const pts = new Float32Array(12);
+    [[1, 1], [-1, 1], [-1, -1], [1, -1]].forEach(([i, j], k) => {
+      pts[k * 3] = cx + ax * hl * i + rx * hs * j;
+      pts[k * 3 + 1] = cy + ay * hl * i + ry * hs * j;
+      pts[k * 3 + 2] = cz + az * hl * i + rz * hs * j;
+    });
+    return { level: 2, iso: 0, points: pts, closed: true, length: 2 * (STALL.long + STALL.short) };
+  });
 }
 
 function chaikin(pts: number[][]): number[][] {

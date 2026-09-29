@@ -80,12 +80,39 @@ export const STREET = {
   roadReach: 3.5,
 };
 
+export const SQUARE = {
+  /** Open ground kept round a town's hall, in world units... */
+  radius: 0.1,
+  /** ...and never narrower than this many mesh edges, so there is ground inside to stand in. */
+  radiusEdges: 2.6,
+  /** A site needs this share of its square buildable to found a town there. */
+  buildableShare: 0.7,
+};
+
+export const MARKET = {
+  /** A town gets its market when it reaches this many houses... */
+  at: 10,
+  /** ...and one more stall for every this many houses after that... */
+  per: 4,
+  /** ...up to this many. */
+  most: 8,
+  /** Stalls stand in this band of the square, as a share of its radius. */
+  inner: 0.3,
+  outer: 0.8,
+  spacing: 0.028,
+};
+
+export interface Stall {
+  vertex: number;
+  town: number;
+}
+
 export interface Street {
   /** Welded vertices, from its start to where it met the network. */
   path: number[];
   town: number;
   /** street: along the contour, houses front it. link: climbs from the network to a street. */
-  kind: 'street' | 'link' | 'road' | 'lane';
+  kind: 'street' | 'link' | 'road' | 'lane' | 'square';
   /** Its first vertex is a house (the old per-house spur). The house isn't street. */
   fromHouse?: boolean;
 }
@@ -124,6 +151,11 @@ export class Settlements {
   readonly towns: Town[] = [];
   readonly buildings: Building[] = [];
   readonly streets: Street[] = [];
+  readonly stalls: Stall[] = [];
+  /** Vertex -> town, for the open ground of each town's square (its edge is street). */
+  private reserved = new Map<number, number>();
+  /** Radius of a square on this mesh. */
+  readonly squareRadius: number;
   /** Vertex -> town, for every vertex a street runs through (and each hall). */
   private network = new Map<number, number>();
   private joined = new Set<string>();
@@ -143,6 +175,7 @@ export class Settlements {
     this.buildableSlope = Math.max(TOWN.gentle, sorted[Math.floor(TOWN.buildableRank * (sorted.length - 1))]);
     this.edge = meanEdge(topo);
     this.spacing = Math.max(TOWN.spacing, TOWN.edgesBetween * this.edge);
+    this.squareRadius = Math.max(SQUARE.radius, SQUARE.radiusEdges * this.edge);
   }
 
   /** Can a building stand on this vertex, given the ground as it is now? */
@@ -163,7 +196,7 @@ export class Settlements {
     const t: Town = { id: this.towns.length, centre: site, buildings: [], owed: 0, frontier: [], settled: new Map() };
     this.towns.push(t);
     this.lay(t, site);
-    this.network.set(site, t.id); // the hall is where the first streets lead
+    this.openSquare(t);
     this.expand(t, site, 0);
     return { kind: 'founded', town: t.id, vertex: site };
   }
@@ -224,13 +257,16 @@ export class Settlements {
   /** A tap on a town: up to `count` houses on the frontage nearest where it landed. */
   private growNear(t: Town, v: number, count: number): number | null {
     let first: number | null = null;
+    // Reach past the square: a tap on the square is a tap on the town, and a
+    // square's size depends on the mesh, so a fixed reach fell short of it.
+    const reach = TOWN.searchRadius + this.squareRadius;
     for (let i = 0; i < count; i++) {
-      let plot = this.bestFrontage(t, v);
+      let plot = this.bestFrontage(t, v, reach);
       if (!plot) {
         // No frontage near the finger: lay a street out towards it first.
-        const start = this.nearestWhere(v, TOWN.searchRadius, (u) => this.runMayStart(u));
+        const start = this.nearestWhere(v, reach, (u) => this.runMayStart(u));
         if (start === null || !this.layRun(t, start)) break;
-        plot = this.bestFrontage(t, v);
+        plot = this.bestFrontage(t, v, reach);
         if (!plot) break;
       }
       const laid = this.layHouse(t, plot);
@@ -243,7 +279,7 @@ export class Settlements {
    * The best free plot beside one of this town's streets: nearest to `near`
    * if given, else cheapest by the town's growth cost, so it grows compactly.
    */
-  private bestFrontage(t: Town, near?: number): { v: number; front: number } | null {
+  private bestFrontage(t: Town, near?: number, reach = TOWN.searchRadius): { v: number; front: number } | null {
     let best: { v: number; front: number } | null = null, bestScore = Infinity;
     const halls = new Set(this.towns.map((x) => x.centre));
     for (const [s, town] of this.network) {
@@ -251,7 +287,7 @@ export class Settlements {
       this.eachNeighbour(s, (w, d) => {
         if (this.network.has(w) || this.buildingAt.has(w)) return;
         const score = near !== undefined ? this.dist(w, near) : (t.settled.get(w) ?? 2 * this.dist(w, t.centre)) + d * 1e-3;
-        if (near !== undefined && score > TOWN.searchRadius) return;
+        if (near !== undefined && score > reach) return;
         if (score > bestScore || (score === bestScore && best && w > best.v)) return;
         if (!this.buildable(w) || !this.roomFor(w)) return;
         best = { v: w, front: s };
@@ -263,8 +299,99 @@ export class Settlements {
 
   private layHouse(t: Town, plot: { v: number; front: number }): number {
     this.lay(t, plot.v, plot.front);
+    this.growMarket(t);
     return plot.v;
   }
+
+  // ------------------------------------------------------------ square and market
+
+  /** The ground within a square's radius of a hall. */
+  private squareOf(hall: number): number[] {
+    const out: number[] = [];
+    const f = new Settlements.Frontier();
+    f.push(0, hall);
+    const seen = new Set<number>();
+    while (f.size) {
+      const [, u] = f.pop();
+      if (seen.has(u)) continue;
+      seen.add(u);
+      if (this.dist(u, hall) > this.squareRadius) continue;
+      out.push(u);
+      this.eachNeighbour(u, (w) => { if (!seen.has(w)) f.push(this.dist(w, hall), w); });
+    }
+    return out.sort((a, b) => a - b);
+  }
+
+  /** Can a town be founded here: a hall, and a whole square of free, mostly buildable ground round it? */
+  private squareFits(hall: number): boolean {
+    if (!this.buildable(hall) || !this.roomFor(hall)) return false;
+    const ground = this.squareOf(hall);
+    let ok = 0;
+    for (const u of ground) {
+      if (this.network.has(u) || this.buildingAt.has(u) || this.reserved.has(u)) return false;
+      for (const o of this.occupied) if (this.dist(u, o) < this.spacing) return false;
+      if (this.buildable(u)) ok++;
+    }
+    return ok >= SQUARE.buildableShare * ground.length;
+  }
+
+  /**
+   * Keep the ground round the hall open, and make its edge a street: houses
+   * front the square, and the first streets lead out from it.
+   */
+  private openSquare(t: Town): void {
+    const ground = this.squareOf(t.centre);
+    const inside = new Set(ground);
+    for (const u of ground) this.reserved.set(u, t.id);
+    // The edge: ground with a neighbour outside, in order round the hall.
+    const edge = ground.filter((u) => {
+      let out = false;
+      this.eachNeighbour(u, (w) => { if (!inside.has(w)) out = true; });
+      return out;
+    });
+    const angle = this.angleRound(t.centre);
+    edge.sort((a, b) => angle(a) - angle(b) || a - b);
+    if (edge.length < 3) return;
+    this.addStreet({ path: [...edge, edge[0]], town: t.id, kind: 'square' });
+  }
+
+  /** Angle of a vertex round `centre`, in the surface's tangent plane there. */
+  private angleRound(centre: number): (u: number) => number {
+    const p = this.topo.positions, n = this.topo.normals, c = centre * 3;
+    const nx = n[c], ny = n[c + 1], nz = n[c + 2];
+    const ref = Math.abs(ny) < 0.9 ? [0, 1, 0] : [1, 0, 0];
+    const dot = ref[0] * nx + ref[1] * ny + ref[2] * nz;
+    const ax = ref[0] - dot * nx, ay = ref[1] - dot * ny, az = ref[2] - dot * nz;
+    const bx = ny * az - nz * ay, by = nz * ax - nx * az, bz = nx * ay - ny * ax;
+    return (u) => {
+      const dx = p[u * 3] - p[c], dy = p[u * 3 + 1] - p[c + 1], dz = p[u * 3 + 2] - p[c + 2];
+      return Math.atan2(dx * bx + dy * by + dz * bz, dx * ax + dy * ay + dz * az);
+    };
+  }
+
+  /** Stalls go up in the square as the town grows: append-only, never moved. */
+  private growMarket(t: Town): void {
+    const houses = t.buildings.length - 1;
+    if (houses < MARKET.at) return;
+    const want = Math.min(MARKET.most, 1 + Math.floor((houses - MARKET.at) / MARKET.per));
+    const have = this.stalls.filter((x) => x.town === t.id);
+    if (have.length >= want) return;
+    const r = this.squareRadius, angle = this.angleRound(t.centre);
+    const edge = new Set(this.streets.filter((x) => x.kind === 'square' && x.town === t.id).flatMap((x) => x.path));
+    const candidates = [...this.reserved]
+      .filter(([u, town]) => town === t.id && u !== t.centre && !edge.has(u))
+      .map(([u]) => u)
+      .filter((u) => { const d = this.dist(u, t.centre); return d >= MARKET.inner * r && d <= MARKET.outer * r; })
+      .sort((a, b) => angle(a) - angle(b) || a - b);
+    for (const u of candidates) {
+      if (have.length >= want) break;
+      if (have.some((x) => this.dist(x.vertex, u) < MARKET.spacing) || this.stalls.some((x) => x.vertex === u)) continue;
+      const stall = { vertex: u, town: t.id };
+      this.stalls.push(stall);
+      have.push(stall);
+    }
+  }
+
 
   private runMayStart(v: number): boolean {
     return !this.network.has(v) && !this.buildingAt.has(v) && this.streetMayRun(v, -1);
@@ -514,6 +641,7 @@ export class Settlements {
   }
 
   private streetMayRun(u: number, own: number): boolean {
+    if (this.reserved.has(u)) return false; // not across a square; its edge is already street
     if (this.localSlope(u) > this.buildableSlope * STREET.steepness) return false;
     for (const o of this.occupied) if (o !== own && this.dist(u, o) < STREET.clearance) return false;
     return true;
@@ -522,12 +650,12 @@ export class Settlements {
   // ------------------------------------------------------------ the ground
 
   private findSite(v: number): number | null {
-    // Nearest buildable ground with room, within reach of the tap, by distance over the surface.
-    return this.nearestWhere(v, TOWN.searchRadius, (u) => this.buildable(u) && this.roomFor(u));
+    // Nearest ground within reach of the tap where a hall and its whole square fit.
+    return this.nearestWhere(v, TOWN.searchRadius, (u) => this.squareFits(u));
   }
 
   private townNear(v: number): Town | null {
-    let best: Town | null = null, bd = TOWN.joinRadius;
+    let best: Town | null = null, bd = Math.max(TOWN.joinRadius, this.squareRadius);
     for (const b of this.buildings) {
       const d = this.dist(v, b.vertex);
       if (d < bd) { bd = d; best = this.towns[b.town]; }
@@ -536,6 +664,7 @@ export class Settlements {
   }
 
   private roomFor(v: number): boolean {
+    if (this.reserved.has(v)) return false; // a square stays open (its hall was laid before it was reserved)
     for (const o of this.occupied) if (this.dist(v, o) < this.spacing) return false;
     for (const u of this.network.keys()) if (this.dist(v, u) < STREET.clearance) return false;
     return !this.wouldEnclose(v);

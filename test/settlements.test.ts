@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { buildTopology } from '../src/mesh/topology';
-import { Settlements, STREET, streetVertices } from '../src/life/settlements';
-import { buildingMarks, footprintRadius, streetMarks } from '../src/life/buildingMarks';
+import { MARKET, Settlements, STREET, streetVertices } from '../src/life/settlements';
+import { STALL, buildingMarks, footprintRadius, streetMarks } from '../src/life/buildingMarks';
 
 /** A sphere whose height is a gentle swell, plus a steep ridge round x = 0.3. */
 function world() {
@@ -129,7 +129,9 @@ describe('streets', () => {
     const { s } = grown();
     const d = (s as unknown as { networkDistances(v: number, l: number): Map<number, number> }).networkDistances.bind(s);
     for (const t of s.towns) {
-      const reach = d(t.centre, Infinity);
+      // From the square's edge: the hall stands in the square, and the square's edge is where streets start.
+      const edge = s.streets.find((x) => x.kind === 'square' && x.town === t.id)!;
+      const reach = d(edge.path[0], Infinity);
       for (const st of s.streets.filter((x) => x.town === t.id)) for (const v of streetVertices(st)) expect(reach.has(v)).toBe(true);
     }
   });
@@ -326,5 +328,74 @@ describe('loops', () => {
       }
     }
     expect([...count.values()].every((c) => c === 1)).toBe(true);
+  });
+});
+
+describe('square and market', () => {
+  function town(days: number) {
+    const { topo, h } = world();
+    const s = new Settlements(topo, h);
+    s.tap(FRONT);
+    s.advance(days);
+    return { topo, s };
+  }
+
+  it('the hall stands in an open square: no house or street inside it', () => {
+    const { topo, s } = town(14);
+    const hall = s.towns[0].centre;
+    const inner = s.squareRadius * 0.9;
+    for (const b of s.buildings) if (b.vertex !== hall) expect(dist(topo, b.vertex, hall)).toBeGreaterThan(inner);
+    const edge = new Set(s.streets.find((x) => x.kind === 'square')!.path);
+    for (const st of s.streets) {
+      if (st.kind === 'square') continue;
+      // A street may end on the square's edge (that's where it joins); it may not enter.
+      for (const v of streetVertices(st)) if (!edge.has(v)) expect(dist(topo, v, hall)).toBeGreaterThan(inner);
+    }
+  });
+
+  it('houses front the square', () => {
+    const { s } = town(14);
+    const edge = new Set(s.streets.find((x) => x.kind === 'square')!.path);
+    expect(s.buildings.filter((b) => b.front !== undefined && edge.has(b.front)).length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('the market comes when the town has grown, and only grows after that', () => {
+    const { topo, h } = world();
+    const s = new Settlements(topo, h);
+    s.tap(FRONT);
+    let seen: number[] = [];
+    for (let day = 0; day < 20; day++) {
+      s.advance(1);
+      const houses = s.buildings.length - 1;
+      if (houses < MARKET.at) expect(s.stalls).toHaveLength(0);
+      const now = s.stalls.map((x) => x.vertex);
+      expect(now.slice(0, seen.length)).toEqual(seen); // append-only: nothing moves or goes
+      seen = now;
+    }
+    expect(s.stalls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('stalls stand inside the square, clear of the hall and of each other', () => {
+    const { topo, s } = town(20);
+    const hall = s.towns[0].centre;
+    for (const st of s.stalls) {
+      const d = dist(topo, st.vertex, hall);
+      expect(d).toBeGreaterThan(footprintRadius(s.buildings[0]) + STALL.long / 2);
+      expect(d).toBeLessThan(s.squareRadius);
+    }
+    for (let i = 0; i < s.stalls.length; i++)
+      for (let j = i + 1; j < s.stalls.length; j++) expect(dist(topo, s.stalls[i].vertex, s.stalls[j].vertex)).toBeGreaterThanOrEqual(MARKET.spacing);
+  });
+
+  it('a town is not founded where its square would not fit', () => {
+    const { topo, h } = world();
+    const s = new Settlements(topo, h);
+    s.tap(FRONT);
+    s.advance(6);
+    // Right beside the first town's houses: nearest room for a whole square is too far for the tap.
+    const b = s.buildings[s.buildings.length - 1].vertex * 3;
+    const r = s.tap([topo.positions[b], topo.positions[b + 1], topo.positions[b + 2]]);
+    expect(s.towns).toHaveLength(1); // it grew the town instead, or was refused
+    expect(r.kind).not.toBe('founded');
   });
 });

@@ -9,7 +9,7 @@ import { extractContours } from './terrain/contours';
 import { PlotterLines, defaultPlotterStyle, type RevealMode } from './render/plotterLines';
 import { TerrainEdits, applyDisplacement, type BrushOptions } from './interact/sculpt';
 import { Settlements, type TapResult } from './life/settlements';
-import { buildingMarks, streetMarks } from './life/buildingMarks';
+import { buildingMarks, stallMarks, streetMarks } from './life/buildingMarks';
 
 export type SurfaceStyle = 'scan' | 'paper' | 'elevation';
 
@@ -263,8 +263,12 @@ export class TerrainWorld {
 
   private rebuildTown(mode: RevealMode): void {
     this.lastTownBuild = performance.now();
-    const { buildings, streets } = this.settlements;
-    const marks = [...streetMarks(this.topo, streets, buildings), ...buildingMarks(this.topo, this.heights, buildings, streets)];
+    const { buildings, streets, stalls, towns } = this.settlements;
+    const marks = [
+      ...streetMarks(this.topo, streets, buildings),
+      ...buildingMarks(this.topo, this.heights, buildings, streets),
+      ...stallMarks(this.topo, stalls, towns),
+    ];
     const from = this.townFrom ?? this.lastTownCentre();
     this.townLines.setLines(marks, mode, from ?? undefined);
     if (mode === 'ink') this.townFrom = null;
