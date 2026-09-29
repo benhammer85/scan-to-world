@@ -134,6 +134,7 @@ export class PlotterLines {
   readonly object = new THREE.Group();
   private lines: THREE.LineSegments;
   private nib: THREE.Group;
+  private nibRing: THREE.Mesh;
   private material: THREE.ShaderMaterial;
   private inked = new Set<string>();
   private runs: Run[] = [];
@@ -166,13 +167,18 @@ export class PlotterLines {
     this.lines.renderOrder = 1;
 
     // The nib: a dot and a faint ring round it, as in the map app's overlay.
+    // The ring lies flat on the ground under the pen. Turned to face the
+    // camera, it stood upright in the surface, and the half of it below
+    // the ground was hidden: it read as a half moon.
     this.nib = new THREE.Group();
     const dot = new THREE.Mesh(new THREE.SphereGeometry(0.012, 12, 8), new THREE.MeshBasicMaterial({ color: '#14141e' }));
     const ring = new THREE.Mesh(
       new THREE.RingGeometry(0.026, 0.034, 32),
-      new THREE.MeshBasicMaterial({ color: '#14141e', transparent: true, opacity: 0.35, side: THREE.DoubleSide }),
+      new THREE.MeshBasicMaterial({ color: '#14141e', transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthTest: false }),
     );
-    ring.userData.billboard = true;
+    // Never cut by a bump of the ground near the pen; hidden instead when the pen is round the back.
+    ring.renderOrder = 3;
+    this.nibRing = ring;
     this.nib.add(dot, ring);
     this.nib.visible = false;
     this.object.add(this.lines, this.nib);
@@ -345,7 +351,14 @@ export class PlotterLines {
     const along = Math.min(1, Math.max(0, (drawn - run.start) / run.cost)) * run.length;
     pointAlong(run.points, run.closed, along, this.nib.position);
     this.nib.visible = true;
-    if (camera) for (const c of this.nib.children) if (c.userData.billboard) c.quaternion.copy(camera.quaternion);
+    // Flat on the ground: the object is centred on its origin, so outward is up, near enough.
+    const up = NIB_UP.copy(this.nib.position).normalize();
+    this.nibRing.quaternion.setFromUnitVectors(NIB_FACE, up);
+    this.nibRing.position.copy(up).multiplyScalar(0.003);
+    if (camera) {
+      const eye = this.object.worldToLocal(NIB_EYE.setFromMatrixPosition(camera.matrixWorld));
+      this.nibRing.visible = eye.sub(this.nib.position).dot(up) > 0;
+    }
   }
 
   dispose(): void {
@@ -382,3 +395,7 @@ export function pointAlong(p: Float32Array, closed: boolean, upto: number, out: 
   const e = closed ? 0 : (n - 1) * 3;
   out.set(p[e], p[e + 1], p[e + 2]);
 }
+
+const NIB_FACE = new THREE.Vector3(0, 0, 1);
+const NIB_UP = new THREE.Vector3();
+const NIB_EYE = new THREE.Vector3();
