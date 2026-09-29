@@ -76,6 +76,8 @@ export const STREET = {
   runGapEdges: 2.6,
   /** How straight a run must keep: the least cosine between one step and the next. */
   runStraightness: 0.45,
+  /** A new street shorter than this many mesh edges is refused. */
+  shortestRun: 2,
 
   roadReach: 3.5,
 };
@@ -96,15 +98,14 @@ export const MARKET = {
   per: 4,
   /** ...up to this many. */
   most: 8,
-  /** Stalls stand in this band of the square, as a share of its radius. */
-  inner: 0.3,
-  outer: 0.8,
-  spacing: 0.028,
+  /** Stalls stand in a ring round the hall, at this share of the square's radius, in `most` even slots. */
+  ring: 0.55,
 };
 
 export interface Stall {
-  vertex: number;
   town: number;
+  /** Which of the market's even slots round the hall; slots fill in order and never move. */
+  slot: number;
 }
 
 export interface Street {
@@ -374,23 +375,10 @@ export class Settlements {
     const houses = t.buildings.length - 1;
     if (houses < MARKET.at) return;
     const want = Math.min(MARKET.most, 1 + Math.floor((houses - MARKET.at) / MARKET.per));
-    const have = this.stalls.filter((x) => x.town === t.id);
-    if (have.length >= want) return;
-    const r = this.squareRadius, angle = this.angleRound(t.centre);
-    const edge = new Set(this.streets.filter((x) => x.kind === 'square' && x.town === t.id).flatMap((x) => x.path));
-    const candidates = [...this.reserved]
-      .filter(([u, town]) => town === t.id && u !== t.centre && !edge.has(u))
-      .map(([u]) => u)
-      .filter((u) => { const d = this.dist(u, t.centre); return d >= MARKET.inner * r && d <= MARKET.outer * r; })
-      .sort((a, b) => angle(a) - angle(b) || a - b);
-    for (const u of candidates) {
-      if (have.length >= want) break;
-      if (have.some((x) => this.dist(x.vertex, u) < MARKET.spacing) || this.stalls.some((x) => x.vertex === u)) continue;
-      const stall = { vertex: u, town: t.id };
-      this.stalls.push(stall);
-      have.push(stall);
-    }
+    let have = this.stalls.filter((x) => x.town === t.id).length;
+    while (have < want) this.stalls.push({ town: t.id, slot: have++ });
   }
+
 
 
   private runMayStart(v: number): boolean {
@@ -439,6 +427,8 @@ export class Settlements {
     });
     if (!arms.length) return false;
     const street = [...arms[0].reverse(), v, ...(arms[1] ?? [])];
+    // Too short to be a street: a vertex or two of line reads as a stray tick.
+    if (this.pathLength(street) < STREET.shortestRun * this.edge) return false;
     // No street is laid that no house could front: refused here, before it
     // exists (whatwesaved PRINCIPLES.md, 3), rather than a town of empty roads.
     if (!this.couldFront(street)) return false;
