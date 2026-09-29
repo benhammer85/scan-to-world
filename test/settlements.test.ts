@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { buildTopology } from '../src/mesh/topology';
-import { Settlements, TOWN, STREET } from '../src/life/settlements';
+import { Settlements, STREET } from '../src/life/settlements';
 import { buildingMarks, footprintRadius, streetMarks } from '../src/life/buildingMarks';
 
 /** A sphere whose height is a gentle swell, plus a steep ridge round x = 0.3. */
@@ -52,7 +52,7 @@ describe('settlements', () => {
     }
     for (let i = 0; i < s.buildings.length; i++)
       for (let j = i + 1; j < s.buildings.length; j++)
-        expect(dist(topo, s.buildings[i].vertex, s.buildings[j].vertex)).toBeGreaterThanOrEqual(TOWN.spacing - 1e-6);
+        expect(dist(topo, s.buildings[i].vertex, s.buildings[j].vertex)).toBeGreaterThanOrEqual(s.spacing - 1e-6);
   });
 
   it('growth does not depend on how time was sliced', () => {
@@ -186,5 +186,104 @@ describe('streets', () => {
       return { b: s.buildings.map((x) => x.vertex), st: s.streets.map((x) => x.path.join(',')) };
     };
     expect(build(300)).toEqual(build(1));
+  });
+});
+
+describe('loops', () => {
+  /** Independent cycles in the street graph: E - V + C (whatwesaved PRINCIPLES.md, 5d). */
+  function cycles(s: Settlements) {
+    const edges = new Set<string>(), verts = new Set<number>();
+    const adj = new Map<number, number[]>();
+    for (const st of s.streets) {
+      const p = st.kind === 'street' ? st.path.slice(1) : st.path;
+      p.forEach((v) => verts.add(v));
+      for (let i = 1; i < p.length; i++) {
+        const [a, b] = [p[i - 1], p[i]].sort((x, y) => x - y);
+        if (edges.has(`${a}-${b}`)) continue;
+        edges.add(`${a}-${b}`);
+        (adj.get(a) ?? adj.set(a, []).get(a)!).push(b);
+        (adj.get(b) ?? adj.set(b, []).get(b)!).push(a);
+      }
+    }
+    for (const t of s.towns) verts.add(t.centre);
+    let comps = 0;
+    const seen = new Set<number>();
+    for (const v of verts) {
+      if (seen.has(v)) continue;
+      comps++;
+      const stack = [v];
+      while (stack.length) { const u = stack.pop()!; if (seen.has(u)) continue; seen.add(u); stack.push(...(adj.get(u) ?? [])); }
+    }
+    return edges.size - verts.size + comps;
+  }
+
+  /** Mean of (distance by street / distance over the ground) between house doors. */
+  function detour(s: Settlements, topo: ReturnType<typeof world>['topo']) {
+    const doors = s.streets.filter((st) => st.kind === 'street').map((st) => st.path[1]);
+    const d = (s as unknown as { networkDistances(v: number, l: number): Map<number, number> }).networkDistances.bind(s);
+    let sum = 0, n = 0;
+    for (let i = 0; i < doors.length; i++) {
+      const byStreet = d(doors[i], Infinity);
+      for (let j = i + 1; j < doors.length; j++) {
+        const crow = dist(topo, doors[i], doors[j]);
+        if (crow < 0.05 || crow > 0.3) continue;
+        sum += (byStreet.get(doors[j]) ?? 10) / crow; n++;
+      }
+    }
+    return sum / n;
+  }
+
+  function grow(loopDetour: number, site: number[] = FRONT) {
+    const saved = STREET.loopDetour;
+    STREET.loopDetour = loopDetour;
+    try {
+      const { topo, h } = world();
+      const s = new Settlements(topo, h);
+      s.tap(site);
+      s.advance(14);
+      return { s, topo };
+    } finally {
+      STREET.loopDetour = saved;
+    }
+  }
+
+  it('without lanes the streets are a tree; with them the town has loops', () => {
+    const tree = grow(Infinity), town = grow(STREET.loopDetour);
+    expect(cycles(tree.s)).toBe(0);
+    expect(cycles(town.s)).toBeGreaterThanOrEqual(3);
+  });
+
+  // Three towns, not one: one seed measures the seed (whatwesaved PRINCIPLES.md, 4a).
+  // Measured on three sites: 1.80, 1.81, 1.98 without lanes; 1.47, 1.40, 1.42 with.
+  it('loops make towns easier to cross: less detour between houses, over three towns', () => {
+    const sites = [FRONT, [-0.5, 0.3, 0.81], [-0.3, -0.6, 0.74]];
+    const mean = (ld: number) => sites.reduce((sum, site) => { const g = grow(ld, site); return sum + detour(g.s, g.topo); }, 0) / sites.length;
+    expect(mean(STREET.loopDetour)).toBeLessThan(mean(Infinity) * 0.85);
+  });
+
+  it('no two streets cross without a junction: a way only ever meets another at its end', () => {
+    const { s } = grow(STREET.loopDetour);
+    const interior = new Map<number, number>(); // vertex -> the way it's inside of
+    s.streets.forEach((st, i) => {
+      const p = st.kind === 'street' ? st.path.slice(1) : st.path;
+      for (const v of p.slice(1, -1)) interior.set(v, i);
+    });
+    s.streets.forEach((st, i) => {
+      const p = st.kind === 'street' ? st.path.slice(1) : st.path;
+      for (const v of p.slice(1, -1)) expect(interior.get(v)).toBe(i); // no other way passes through
+    });
+  });
+
+  it('lanes never run along an existing street', () => {
+    const { s } = grow(STREET.loopDetour);
+    const count = new Map<string, number>();
+    for (const st of s.streets) {
+      const p = st.kind === 'street' ? st.path.slice(1) : st.path;
+      for (let i = 1; i < p.length; i++) {
+        const k = [p[i - 1], p[i]].sort((x, y) => x - y).join('-');
+        count.set(k, (count.get(k) ?? 0) + 1);
+      }
+    }
+    expect([...count.values()].every((c) => c === 1)).toBe(true);
   });
 });

@@ -26,8 +26,14 @@
 import type { Topology } from '../mesh/topology';
 
 export const TOWN = {
-  /** Closest two buildings may stand, in world units (object radius = 1). */
-  spacing: 0.042,
+  /** Closest two buildings may stand, in world units (object radius = 1)... */
+  spacing: 0.065,
+  /** ...and never closer than this many mesh edges. Streets run on the mesh,
+   *  so houses closer than the mesh's own resolution take every vertex and
+   *  leave no ground for a street between them. Measured: with houses 0.042
+   *  apart on edges of 0.040 and 0.051, no loop ever closed; at 1.7 edges
+   *  apart, 10 and 4 did. */
+  edgesBetween: 1.7,
   /** Buildable if the slope is below this rank of the object's own slopes... */
   buildableRank: 0.6,
   /** ...or gentler than this in absolute terms (height range per object radius).
@@ -60,6 +66,10 @@ export const STREET = {
   roadAt: 6,
   /** A hall always keeps this many open sides for streets to arrive by. */
   hallOpen: 2,
+  /** A lane closes a loop when the way round by street is this many times
+   *  the lane's own length, and the lane is no longer than `loopReach`. */
+  loopDetour: 3,
+  loopReach: 0.16,
   roadReach: 3.5,
 };
 
@@ -67,7 +77,7 @@ export interface Street {
   /** Welded vertices, from the building (or town) it serves to where it met the network. */
   path: number[];
   town: number;
-  kind: 'street' | 'road';
+  kind: 'street' | 'road' | 'lane';
 }
 
 export interface Building {
@@ -103,6 +113,8 @@ export class Settlements {
   /** Slope per welded vertex, in height units per world unit, from the ground as it was scanned. */
   readonly slope: Float32Array;
   readonly buildableSlope: number;
+  /** House spacing for this mesh: `TOWN.spacing`, or wider on a coarse mesh. */
+  readonly spacing: number;
   private occupied: number[] = []; // vertex per building, for spacing checks
   private buildingAt = new Set<number>();
 
@@ -110,6 +122,7 @@ export class Settlements {
     this.slope = slopes(topo, heights);
     const sorted = Float32Array.from(this.slope).sort();
     this.buildableSlope = Math.max(TOWN.gentle, sorted[Math.floor(TOWN.buildableRank * (sorted.length - 1))]);
+    this.spacing = Math.max(TOWN.spacing, TOWN.edgesBetween * meanEdge(topo));
   }
 
   /** Can a building stand on this vertex, given the ground as it is now? */
@@ -221,7 +234,70 @@ export class Settlements {
     t.buildings.push(v);
     this.occupied.push(v);
     this.buildingAt.add(v);
-    if (path) this.addStreet({ path, town: t.id, kind: 'street' });
+    if (path) {
+      this.addStreet({ path, town: t.id, kind: 'street' });
+      this.closeLoop(path, t.id);
+    }
+  }
+
+  /**
+   * A street that grew one at a time and stopped at the first street it met
+   * makes a tree: every house on its own spur, and nothing loops. So after a
+   * street is laid, look near its door for a point on the network that is
+   * close over the ground but a long way round by street, and if one is,
+   * lay the lane between them. Asked the real question, as whatwesaved's
+   * PRINCIPLES.md 4 puts it: road distance against the crow flight.
+   */
+  private closeLoop(street: number[], town: number): void {
+    if (STREET.loopDetour === Infinity || street.length < 2) return;
+    // From every point of the new street, not only its door: the branch a
+    // loop could close to is usually the one growing next to it later, and
+    // measured, looking from the door alone found no loop in forty streets.
+    const own = new Set(street);
+    let best: number[] | null = null, bestLen = Infinity;
+    for (const from of street.slice(1)) {
+      const byStreet = this.networkDistances(from, STREET.loopReach * STREET.loopDetour * 2);
+      const lane = this.route(
+        [from],
+        (u, len) => this.network.has(u) && !own.has(u) && (byStreet.get(u) ?? Infinity) > STREET.loopDetour * len,
+        STREET.loopReach,
+        -1,
+      );
+      const len = lane ? this.pathLength(lane) : Infinity;
+      if (len < bestLen) { best = lane; bestLen = len; }
+    }
+    if (best) this.addStreet({ path: best, town, kind: 'lane' });
+  }
+
+  private pathLength(path: number[]): number {
+    let l = 0;
+    for (let i = 1; i < path.length; i++) l += this.dist(path[i - 1], path[i]);
+    return l;
+  }
+
+  /** Distance along streets from `from` to every network vertex within `limit`. */
+  private networkDistances(from: number, limit: number): Map<number, number> {
+    const adj = new Map<number, number[]>();
+    const link = (a: number, b: number) => {
+      (adj.get(a) ?? adj.set(a, []).get(a)!).push(b);
+      (adj.get(b) ?? adj.set(b, []).get(b)!).push(a);
+    };
+    for (const st of this.streets) {
+      const path = st.kind === 'street' ? st.path.slice(1) : st.path; // the house itself isn't street
+      for (let i = 1; i < path.length; i++) link(path[i - 1], path[i]);
+    }
+    const out = new Map<number, number>([[from, 0]]);
+    const f = new Settlements.Frontier();
+    f.push(0, from);
+    while (f.size) {
+      const [d, u] = f.pop();
+      if (d > (out.get(u) ?? Infinity) || d > limit) continue;
+      for (const w of adj.get(u) ?? []) {
+        const nd = d + this.dist(u, w);
+        if (nd < (out.get(w) ?? Infinity)) { out.set(w, nd); f.push(nd, w); }
+      }
+    }
+    return out;
   }
 
   private addStreet(st: Street): void {
@@ -260,7 +336,7 @@ export class Settlements {
    * satisfies `isTarget`: distance, plus climbing. Passes only where a street
    * may run. `own` is the building the route serves, which it may start from.
    */
-  private route(sources: number[], isTarget: (u: number) => boolean, reach: number, own: number): number[] | null {
+  private route(sources: number[], isTarget: (u: number, len: number) => boolean, reach: number, own: number): number[] | null {
     const f = new Settlements.Frontier();
     const cost = new Map<number, number>(), prev = new Map<number, number>(), length = new Map<number, number>();
     for (const s of sources) { f.push(0, s); cost.set(s, 0); length.set(s, 0); }
@@ -270,7 +346,7 @@ export class Settlements {
       const [c, u] = f.pop();
       if (done.has(u)) continue;
       done.add(u);
-      if (!srcSet.has(u) && isTarget(u)) {
+      if (!srcSet.has(u) && isTarget(u, length.get(u)!)) {
         const path = [u];
         for (let w = u; prev.has(w); ) { w = prev.get(w)!; path.push(w); }
         return path.reverse();
@@ -279,7 +355,9 @@ export class Settlements {
         if (done.has(w)) return;
         const len = length.get(u)! + d;
         if (len > reach) return;
-        if (!isTarget(w) && !this.streetMayRun(w, own)) return;
+        // Only the end may be on the network: a new way never runs along an
+        // existing street, or the pen would draw the same street twice.
+        if (!isTarget(w, len) && (this.network.has(w) || !this.streetMayRun(w, own))) return;
         const step = d * (1 + STREET.climb * Math.abs(this.heights[w] - this.heights[u]) / d / (this.buildableSlope || 1));
         const nc = c + step;
         if (nc < (cost.get(w) ?? Infinity)) {
@@ -324,7 +402,7 @@ export class Settlements {
   }
 
   private roomFor(v: number): boolean {
-    for (const o of this.occupied) if (this.dist(v, o) < TOWN.spacing) return false;
+    for (const o of this.occupied) if (this.dist(v, o) < this.spacing) return false;
     for (const u of this.network.keys()) if (this.dist(v, u) < STREET.clearance) return false;
     return !this.wouldEnclose(v);
   }
@@ -446,4 +524,18 @@ function slopes(topo: Topology, heights: Float32Array): Float32Array {
     out[v] = s;
   }
   return out;
+}
+
+function meanEdge(topo: Topology): number {
+  const { nbrOffsets, nbrList, basePositions: p } = topo;
+  let sum = 0, n = 0;
+  for (let v = 0; v < topo.vertexCount; v++) {
+    for (let k = nbrOffsets[v]; k < nbrOffsets[v + 1]; k++) {
+      const u = nbrList[k];
+      if (u < v) continue;
+      sum += Math.hypot(p[u * 3] - p[v * 3], p[u * 3 + 1] - p[v * 3 + 1], p[u * 3 + 2] - p[v * 3 + 2]);
+      n++;
+    }
+  }
+  return n ? sum / n : 0;
 }
