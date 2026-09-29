@@ -12,7 +12,7 @@ import { TerrainEdits, applyDisplacement, type BrushOptions } from './interact/s
 import { Settlements, type TapResult } from './life/settlements';
 import { buildingMarks, harbourMarks, ruinMarks, squareFrames, stallMarks, streetMarks, sunkenMarks } from './life/buildingMarks';
 import { findWater, seaFor, snowLines, streamLines, waterLines, type Sea, type Water } from './nature/water';
-import { cableMarks, ferryRoute, movers, railMarks } from './life/buildingMarks';
+import { cableMarks, crossingFrames, crossingMarks, ferryRoute, movers, railMarks } from './life/buildingMarks';
 
 export type SurfaceStyle = 'scan' | 'paper' | 'elevation';
 
@@ -109,6 +109,9 @@ export class TerrainWorld {
   private snowEdge: THREE.LineSegments;
   /** Boats out on the ferries: not plotted, they move. */
   private sailing: THREE.LineSegments;
+  /** Level crossings, worked out with the town; and how long each vehicle has waited at their gates. */
+  private crossings: ReturnType<typeof crossingFrames> = [];
+  private delays = new Map<string, number>();
   private seconds = 0;
   /** 0..1: water fades in when it arrives or changes, since no pen draws it. */
   private waterFade = 1;
@@ -300,7 +303,7 @@ export class TerrainWorld {
     const st = this.settlements;
     if (st && (st.ferries.length || st.harbours.length || st.rails.length || st.cables.length || st.streets.some((x) => x.kind === 'road'))) {
       this.sailing.geometry.dispose();
-      this.sailing.geometry = segments(movers(this.topo, st, this.seconds));
+      this.sailing.geometry = segments(movers(this.topo, st, this.seconds, dt, this.delays, this.crossings));
     }
     if (this.waterFade < 1) {
       this.waterFade = Math.min(1, this.waterFade + dt / 0.9);
@@ -358,6 +361,7 @@ export class TerrainWorld {
     const frames = squareFrames(this.topo, streets, towns);
     // A market is under water if its hall is.
     const drownedHall = new Set(towns.filter((t) => st.buildings.find((b) => b.vertex === t.centre)?.state === 'drowned').map((t) => t.id));
+    this.crossings = crossingFrames(this.topo, st);
     const houses = buildingMarks(this.topo, this.heights, buildings);
     const stalls = stallMarks(st.stalls.filter((x) => !drownedHall.has(x.town)), frames, this.topo);
     const marks = [
@@ -366,7 +370,8 @@ export class TerrainWorld {
       ...ruinMarks(this.topo, this.heights, buildings),
       ...stalls,
       ...harbourMarks(this.topo, st.harbours, (h) => st.mooredAt(h)),
-      ...railMarks(this.topo, st.rails),
+      ...railMarks(this.topo, st.rails, this.crossings.map((c) => c.at)),
+      ...crossingMarks(this.crossings),
       ...cableMarks(this.topo, st.cables),
     ];
     const from = this.townFrom ?? this.lastTownCentre();

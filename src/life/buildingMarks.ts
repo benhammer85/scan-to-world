@@ -446,11 +446,75 @@ function dashes(m: Polyline, every: number): Polyline[] {
 }
 
 export const RAIL_MARK = { tie: 0.0045, every: 0.011 };
+
+export const CROSSING = {
+  /** Gates stand this far along the road either side of the line... */
+  gate: 0.011,
+  /** ...and close when a train is this close to the crossing. */
+  warn: 0.07,
+  /** A vehicle this close to a closed gate, heading for it, waits. */
+  stop: 0.022,
+};
+
+/** A level crossing as drawn and worked: where it is, and which ways the road and the rail run. */
+export interface CrossingFrame {
+  vertex: number;
+  at: V3;
+  normal: V3;
+  road: V3;
+  rail: V3;
+  /** Half the road's drawn width, for where the gateposts stand. */
+  half: number;
+}
+
+export function crossingFrames(topo: Topology, st: Settlements): CrossingFrame[] {
+  const p = topo.positions, n = topo.normals;
+  const pos = (v: number): V3 => [p[v * 3], p[v * 3 + 1], p[v * 3 + 2]];
+  const dirOf = (path: number[], v: number, nr: V3): V3 | null => {
+    const i = path.indexOf(v);
+    if (i < 0) return null;
+    const a = pos(path[Math.max(0, i - 1)]), b = pos(path[Math.min(path.length - 1, i + 1)]);
+    return tangent([b[0] - a[0], b[1] - a[1], b[2] - a[2]], nr);
+  };
+  const out: CrossingFrame[] = [];
+  for (const c of st.crossings()) {
+    const v = c.vertex, nr: V3 = [n[v * 3], n[v * 3 + 1], n[v * 3 + 2]];
+    const street = st.streets.find((x) => x.kind !== 'square' && x.path.includes(v));
+    const rail = dirOf(st.rails[c.rail].path, v, nr);
+    const road = street ? dirOf(street.path, v, nr) : null;
+    if (!rail || !road) continue;
+    out.push({ vertex: v, at: lifted(topo, v, 0.004) as V3, normal: nr, road, rail, half: STREET_WIDTH[street!.kind] ?? 0.003 });
+  }
+  return out;
+}
+
+/** Gateposts either side of the line, on both sides of the road: a level crossing as maps mark one. */
+export function crossingMarks(frames: CrossingFrame[]): Polyline[] {
+  const out: Polyline[] = [];
+  for (const f of frames) {
+    const side: V3 = [f.normal[1] * f.road[2] - f.normal[2] * f.road[1], f.normal[2] * f.road[0] - f.normal[0] * f.road[2], f.normal[0] * f.road[1] - f.normal[1] * f.road[0]];
+    for (const along of [1, -1]) for (const across of [1, -1]) {
+      const c = [0, 1, 2].map((k) => f.at[k] + f.road[k] * along * CROSSING.gate + side[k] * across * f.half * 2.2) as V3;
+      out.push(rectangle(c, f.normal, f.road, 0.0028, 0.0028, 1, () => 0));
+    }
+  }
+  return out;
+}
+
+/** The barriers, down across the road, at a crossing that is closed. */
+function barriers(f: CrossingFrame): Polyline[] {
+  const side: V3 = [f.normal[1] * f.road[2] - f.normal[2] * f.road[1], f.normal[2] * f.road[0] - f.normal[0] * f.road[2], f.normal[0] * f.road[1] - f.normal[1] * f.road[0]];
+  return [1, -1].map((along) => {
+    const c = [0, 1, 2].map((k) => f.at[k] + f.road[k] * along * CROSSING.gate);
+    return polyline([c.map((x, k) => x + side[k] * f.half * 2.2), c.map((x, k) => x - side[k] * f.half * 2.2)], 2);
+  });
+}
 export const CABLE_MARK = { height: 0.014, pylonEvery: 0.06 };
 
 /** A railway as maps draw one: a line with cross-ties. */
-export function railMarks(topo: Topology, rails: Rail[]): Polyline[] {
+export function railMarks(topo: Topology, rails: Rail[], crossingAt: V3[] = []): Polyline[] {
   const out: Polyline[] = [];
+  const nearCrossing = (c: number[]) => crossingAt.some((q) => Math.hypot(q[0] - c[0], q[1] - c[1], q[2] - c[2]) < CROSSING.gate * 0.8);
   for (const r of rails) {
     const pts = chaikin(chaikin(r.path.map((v) => lifted(topo, v, 0.0035))));
     out.push(polyline(pts, 0));
@@ -463,7 +527,8 @@ export function railMarks(topo: Topology, rails: Rail[]): Polyline[] {
         const v = r.path[Math.min(r.path.length - 1, Math.round((i / (pts.length - 1)) * (r.path.length - 1)))] * 3;
         const nr: V3 = [topo.normals[v], topo.normals[v + 1], topo.normals[v + 2]];
         const across = tangent([nr[1] * (b[2] - a[2]) - nr[2] * (b[1] - a[1]), nr[2] * (b[0] - a[0]) - nr[0] * (b[2] - a[2]), nr[0] * (b[1] - a[1]) - nr[1] * (b[0] - a[0])], nr);
-        if (across) out.push(polyline([c.map((x, k) => x + across[k] * RAIL_MARK.tie), c.map((x, k) => x - across[k] * RAIL_MARK.tie)], 0));
+        // No ties across the road itself: the road runs over the line there.
+        if (across && !nearCrossing(c)) out.push(polyline([c.map((x, k) => x + across[k] * RAIL_MARK.tie), c.map((x, k) => x - across[k] * RAIL_MARK.tie)], 0));
         along += RAIL_MARK.every;
       }
       along -= d;
@@ -581,13 +646,25 @@ function hullAt(at: V3, heading: V3, normal: V3, fallback: number): Polyline {
  * traffic on the roads (carts, then cars as the world ages), trains on the
  * railways, cabins on the cable lines. Not plotted: it's life, not building.
  */
-export function movers(topo: Topology, st: Settlements, seconds: number): Polyline[] {
+export function movers(topo: Topology, st: Settlements, seconds: number, dt = 0, delays?: Map<string, number>, crossings?: CrossingFrame[]): Polyline[] {
   const out: Polyline[] = [...sailingBoats(topo, st.ferries, seconds)];
+  // Trains first: where they are decides which crossings are closed.
+  const engines: V3[] = [];
+  st.rails.forEach((r, ri) => {
+    for (let w = 0; w < 3; w++) {
+      const { at, heading, normal } = travel(topo, r.path, seconds - w * 0.16, MOVE.train.speed, MOVE.train.dwell, ri * 0.41, 0.006);
+      out.push({ ...vehicle(at, heading, normal, r.path[0], 0.01, 0.0045), kind: 'train' });
+      engines.push(at);
+    }
+  });
+  const frames = crossings ?? crossingFrames(topo, st);
+  const closed = frames.filter((f) => engines.some((e) => Math.hypot(e[0] - f.at[0], e[1] - f.at[1], e[2] - f.at[2]) < CROSSING.warn));
+  for (const f of closed) out.push(...barriers(f).map((b) => ({ ...b, kind: 'barrier' })));
   st.harbours.forEach((h, hi) => {
     st.fishingRoutes(h).forEach((route, i) => {
       if (route.length < 2) return;
       const { at, heading, normal } = travel(topo, route, seconds, MOVE.fishing.speed, MOVE.fishing.dwell, hi * 0.29 + i * 0.5);
-      out.push(hullAt(at, heading, normal, route[0]));
+      out.push({ ...hullAt(at, heading, normal, route[0]), kind: 'fishing' });
     });
   });
   const cars = st.day >= MOVE.carsFrom;
@@ -597,20 +674,25 @@ export function movers(topo: Topology, st: Settlements, seconds: number): Polyli
     const count = (r.grade ?? 0) + 1;
     for (let i = 0; i < count; i++) {
       const m = cars ? MOVE.car : MOVE.cart;
-      const { at, heading, normal } = travel(topo, r.path, seconds, m.speed, m.dwell, ri * 0.23 + i / count, 0.005);
-      out.push(vehicle(at, heading, normal, r.path[0], cars ? 0.008 : 0.005, cars ? 0.004 : 0.004));
-    }
-  });
-  st.rails.forEach((r, ri) => {
-    // A short train: engine and two wagons, one behind the other.
-    for (let w = 0; w < 3; w++) {
-      const { at, heading, normal } = travel(topo, r.path, seconds - w * 0.16, MOVE.train.speed, MOVE.train.dwell, ri * 0.41, 0.006);
-      out.push(vehicle(at, heading, normal, r.path[0], 0.01, 0.0045));
+      // Each vehicle keeps the time it has spent waiting at gates, and runs that much behind.
+      const key = `${ri}:${i}`, held = delays?.get(key) ?? 0;
+      const { at, heading, normal } = travel(topo, r.path, seconds - held, m.speed, m.dwell, ri * 0.23 + i / count, 0.005);
+      out.push({ ...vehicle(at, heading, normal, r.path[0], cars ? 0.008 : 0.005, cars ? 0.004 : 0.004), kind: cars ? 'car' : 'cart' });
+      // At a closed gate, heading for the line: wait there. Not once past the
+      // gate, though: then it keeps going and clears the line, since held
+      // wherever it was when the barriers dropped, a car already on the
+      // crossing would stay on it. (The crossing test's first clashes were
+      // not this: they were cars waiting at the gate, counted as on the line.)
+      const waiting = closed.some((f) => {
+        const d = [f.at[0] - at[0], f.at[1] - at[1], f.at[2] - at[2]], dist = Math.hypot(d[0], d[1], d[2]);
+        return dist < CROSSING.stop && dist > CROSSING.gate * 0.85 && d[0] * heading[0] + d[1] * heading[1] + d[2] * heading[2] > 0;
+      });
+      if (waiting && delays) delays.set(key, held + dt);
     }
   });
   st.cables.forEach((c, ci) => {
     const { at, heading, normal } = travel(topo, c.path, seconds, MOVE.cabin.speed, MOVE.cabin.dwell, ci * 0.33, CABLE_MARK.height - 0.004);
-    out.push(vehicle(at, heading, normal, c.path[0], 0.005, 0.004));
+    out.push({ ...vehicle(at, heading, normal, c.path[0], 0.005, 0.004), kind: 'cabin' });
   });
   return out;
 }

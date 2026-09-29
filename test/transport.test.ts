@@ -47,12 +47,17 @@ describe('traffic', () => {
     const { topo, s } = twoTowns();
     s.advance(12);
     const road = s.streets.find((x) => x.kind === 'road')!;
-    const before = movers(topo, s, 10);
-    expect(before.length).toBe((road.grade ?? 0) + 1 + s.rails.length * 3 + s.cables.length + s.ferries.length);
+    const traffic = (t: number) => movers(topo, s, t).filter((m) => m.kind === 'cart' || m.kind === 'car');
+    const roads = s.streets.filter((x) => x.kind === 'road');
+    const before = traffic(10);
+    expect(before.length).toBe(roads.reduce((n, r) => n + (r.grade ?? 0) + 1, 0));
+    expect(before.every((m) => m.kind === 'cart')).toBe(true);
+    void road;
     const size = (m: { points: Float32Array }) => Math.hypot(m.points[0] - m.points[24], m.points[1] - m.points[25], m.points[2] - m.points[26]);
     const cart = size(before[0]);
     s.advance(Math.max(0, MOVE.carsFrom - s.day + 1));
-    const later = movers(topo, s, 10);
+    const later = traffic(10);
+    expect(later.every((m) => m.kind === 'car')).toBe(true);
     expect(size(later[0])).toBeGreaterThan(cart * 1.3); // a car is longer than a cart
   });
 
@@ -63,7 +68,8 @@ describe('traffic', () => {
     const P = topo.positions;
     const centre = (m: { points: Float32Array }) => [0, 1, 2].map((k) => { let t = 0; for (let i = k; i < m.points.length; i += 3) t += m.points[i]; return t / (m.points.length / 3); });
     const onRoad = (q: number[]) => Math.min(...road.path.map((v) => Math.hypot(P[v * 3] - q[0], P[v * 3 + 1] - q[1], P[v * 3 + 2] - q[2])));
-    const a = centre(movers(topo, s, 3)[0]), b = centre(movers(topo, s, 6)[0]);
+    const first = (t: number) => movers(topo, s, t).filter((m) => m.kind === 'cart' || m.kind === 'car')[0];
+    const a = centre(first(3)), b = centre(first(6));
     expect(onRoad(a)).toBeLessThan(0.06);
     expect(onRoad(b)).toBeLessThan(0.06);
     expect(Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2])).toBeGreaterThan(0.01);

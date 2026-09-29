@@ -491,6 +491,19 @@ export class Settlements {
     return null;
   }
 
+  /**
+   * Level crossings: where a railway meets a street. Rails and streets both
+   * run along mesh edges, so they can only meet at a shared vertex, and
+   * every such vertex is a crossing (its two ends are stations, not crossings).
+   */
+  crossings(): { vertex: number; rail: number }[] {
+    const out: { vertex: number; rail: number }[] = [];
+    this.rails.forEach((r, ri) => {
+      for (const v of r.path.slice(1, -1)) if (this.network.has(v)) out.push({ vertex: v, rail: ri });
+    });
+    return out;
+  }
+
   /** A cable line from a grown town up to the snow above it, if there is snow within reach. */
   private liftToSnow(): number {
     if (!this.snow) return 0;

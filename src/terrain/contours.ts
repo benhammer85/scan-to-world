@@ -19,6 +19,8 @@ export interface Polyline {
   closed: boolean;
   /** Total arc length. */
   length: number;
+  /** What a moving mark is (a train, a car...), for anything that needs to tell them apart. */
+  kind?: string;
 }
 
 export interface ContourOptions {
