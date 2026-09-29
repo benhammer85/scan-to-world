@@ -752,6 +752,11 @@ export function yardPaths(topo: Topology, buildings: Building[], frames: Map<num
   return out;
 }
 
+/** A way's centre line, as it is drawn (for what stands along it). */
+export function wayLine(topo: Topology, st: Street, buildings: Building[], frames: Map<number, SquareFrame>, look: Look = GROWN): Polyline | null {
+  return groundLine(topo, st.path, buildings, frames, true, true, wander(st, look.street(st)), look);
+}
+
 /** Dash and gap of a walked path and a worn track, and how much wider a main street is. */
 export const WAY = { path: [0.0028, 0.0055], track: [0.011, 0.0045], main: 1.45 };
 

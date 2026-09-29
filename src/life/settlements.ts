@@ -305,6 +305,8 @@ export interface Building {
   born?: number;
   /** An outlying farmstead: out in the country, on its own track, and not one of its town's houses. */
   farm?: boolean;
+  /** A farm made a country house (the day it was): its fields become park, with gardens and an avenue. */
+  estate?: number;
 }
 
 export interface Town {
@@ -507,8 +509,21 @@ export class Settlements {
   }
 
   /** The water on the ground now, as the settlements see it. */
-  get ground(): { wet: Uint8Array | null; stream: Uint8Array | null; snow: Uint8Array | null } {
-    return { wet: this.wet, stream: this.stream, snow: this.snow };
+  get ground(): { wet: Uint8Array | null; stream: Uint8Array | null; snow: Uint8Array | null; depth: Float32Array | null } {
+    return { wet: this.wet, stream: this.stream, snow: this.snow, depth: this.depth };
+  }
+
+  /** The farm whose farmstead is within `reach` of a point, if any. */
+  farmAt(point: ArrayLike<number>, reach: number): Building | null {
+    const v = this.nearestVertex(point);
+    let best: Building | null = null, bd = reach;
+    for (const f of this.farms) { const d = this.dist(v, f.vertex); if (d < bd) { bd = d; best = f; } }
+    return best;
+  }
+
+  /** Houses a town has laid (not its farms). */
+  size(town: number): number {
+    return this.towns[town].buildings.length;
   }
 
   /** Is this vertex part of a town's square (kept open)? */

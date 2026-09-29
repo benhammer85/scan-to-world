@@ -44,6 +44,8 @@ export const FIELD = {
   built: 0.3,
   /** Share of a town's flat fields that are pasture rather than arable. */
   pasture: 0.35,
+  /** Ground this sloped (share of the buildable slope), but not terraced, is where orchards go. */
+  orchard: 0.22,
 };
 
 export const FARMLAND = {
@@ -70,7 +72,7 @@ export const WOOD = {
 /** A year, in days (turns of the world): the fields' colour goes round with it. */
 export const SEASON = { days: 8 };
 
-export type Crop = 'arable' | 'pasture' | 'meadow' | 'terrace' | 'garden' | 'grazing';
+export type Crop = 'arable' | 'pasture' | 'meadow' | 'terrace' | 'garden' | 'grazing' | 'orchard' | 'park';
 
 export interface Cell {
   id: number;
@@ -163,6 +165,8 @@ export class Countryside {
   readonly planted = new Map<number, number>();
   /** Woods somebody felled: open ground from then on. */
   readonly felled = new Set<number>();
+  /** Fields the town has built over (cell -> day): the map remembers where their hedges ran. */
+  readonly remembered = new Map<number, number>();
   /** Ground that is the town's (streets, houses, squares, and a little round them), as of the last update. */
   townGround: Uint8Array;
   private slopeOf: Float32Array;
@@ -215,8 +219,12 @@ export class Countryside {
     let nearSnow = false;
     if (snow) for (const n of c.neighbours) if (this.land.cells[n].vertices.some((v) => snow[v])) { nearSnow = true; break; }
     if (nearSnow) return 'grazing';
+    // A country house's fields are its park.
+    if (claim?.owner.startsWith('f') && this.st.buildings.some((b) => b.estate !== undefined && `f${b.vertex}` === claim.owner)) return 'park';
     if (this.slopeOf[cell] > FIELD.steep) return 'terrace';
     if (claim && claim.owner.startsWith('t') && claim.rank < FIELD.gardens) return 'garden';
+    // Orchards on the gentle slopes, where the frost runs off.
+    if (this.slopeOf[cell] > FIELD.orchard && hash(cell, 77) < 0.35) return 'orchard';
     return hash(cell, 71) < FIELD.pasture ? 'pasture' : 'arable';
   }
 
@@ -309,7 +317,11 @@ export class Countryside {
     let changed = false;
     // Built over: the town has taken it.
     for (const [cell] of [...this.claims]) {
-      if (this.builtShare(cell) > FIELD.built || this.wetShare(cell) > FIELD.wet) { this.claims.delete(cell); changed = true; }
+      if (this.builtShare(cell) > FIELD.built || this.wetShare(cell) > FIELD.wet) {
+        if (this.builtShare(cell) > FIELD.built) this.remembered.set(cell, st.day);
+        this.claims.delete(cell);
+        changed = true;
+      }
     }
     const owners: { id: string; origin: number; want: number; at: number }[] = [];
     for (const t of st.towns) {
@@ -393,6 +405,7 @@ export class Countryside {
       sig += (age >= FIELD.plough ? 1 : 0) + (age >= FIELD.terrace ? 1 : 0);
     }
     for (const cell of this.planted.keys()) sig += Math.round(this.woodGrowth(cell) * 5) * 3;
+    sig += this.remembered.size * 7;
     return sig;
   }
 }

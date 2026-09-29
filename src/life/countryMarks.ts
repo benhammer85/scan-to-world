@@ -23,12 +23,17 @@ export const COUNTRY = {
   step: 0.026,
   /** A hedge tree every so often along a hedgerow. */
   hedgeTree: 0.028,
+  /** Orchard trees this far apart. */
+  orchard: 0.011,
   /** Wood: tree crowns, and the share of a wood's vertices that have one. */
   crown: 0.0042,
   trees: 0.6,
   /** A windmill for a town this big. */
   windmillAt: 16,
 };
+
+/** A remembered line: fine dots, far apart, as an old map marks the site of something gone. */
+export const MEMORY = { dot: 0.0011, gap: 0.0065 };
 
 /** Hand colours. Muted: a wash, not paint. */
 export const WASH: Record<Crop | 'wood', [number, number, number]> = {
@@ -38,6 +43,8 @@ export const WASH: Record<Crop | 'wood', [number, number, number]> = {
   meadow: [0.6, 0.7, 0.64],
   grazing: [0.72, 0.69, 0.55],
   garden: [0.56, 0.66, 0.42],
+  orchard: [0.6, 0.68, 0.46],
+  park: [0.62, 0.72, 0.52],
   wood: [0.44, 0.55, 0.38],
 };
 export const WASH_ALPHA = 0.5;
@@ -60,7 +67,7 @@ export interface Wash {
 
 /** Something that turns: a windmill's sails, a mill's wheel. */
 export interface Turning {
-  kind: 'sails' | 'wheel';
+  kind: 'sails' | 'wheel' | 'beam';
   at: V3;
   nr: V3;
   ax: V3;
@@ -130,10 +137,33 @@ export function countryMarks(topo: Topology, st: Settlements, c: Countryside): C
     }
   }
 
+  // ---- what the map remembers: where the hedges ran round fields the town has built over
+  const ghost = new Int32Array(n).fill(-1);
+  for (const [cell] of c.remembered) for (const v of cells[cell].vertices) if (!water(v)) ghost[v] = cell;
+  const ghostFlat: number[] = [];
+  for (let i = 0; i < t.length; i += 3) {
+    const a = t[i], b = t[i + 1], cc = t[i + 2];
+    const ga = ghost[a], gb = ghost[b], gc = ghost[cc];
+    if ((ga === gb && gb === gc) || (ga < 0 && gb < 0 && gc < 0)) continue;
+    if (label[a] >= 0 || label[b] >= 0 || label[cc] >= 0) continue; // a hedge still standing is drawn as one
+    const e: number[] = [];
+    if (ga !== gb) e.push(nKey(a, b));
+    if (gb !== gc) e.push(nKey(b, cc));
+    if (gc !== ga) e.push(nKey(cc, a));
+    ghostFlat.push(e[0], e[1]);
+  }
+  for (const chain of chainSegments(ghostFlat)) {
+    if (chain.keys.length < 2) continue;
+    let pts = chain.keys.map((k) => { const a = Math.floor(k / n), b = k - a * n; return mid(p, nm, a, b, COUNTRY.lift); });
+    for (let r = 0; r < 2; r++) pts = chaikin(pts);
+    out.lines.push(...dashes(polyline(pts, 0), MEMORY.dot, MEMORY.gap));
+  }
+
   // ---- inside the fields, and their washes
   const season = seasonColour(st.day);
   void season;
   const turning: Turning[] = [];
+  const seenTrees = new Set<number>();
   for (const [cell, claim] of c.claims) {
     const crop = crops.get(cell)!, age = st.day - claim.born;
     const inside = cells[cell].tris.filter((i) => label[t[i]] === cell && label[t[i + 1]] === cell && label[t[i + 2]] === cell);
@@ -163,6 +193,28 @@ export function countryMarks(topo: Topology, st: Settlements, c: Countryside): C
       // Level steps: the ground's own contours, close together.
       const h = st.slope, grade = Math.max(1e-4, cells[cell].vertices.reduce((s, v) => s + h[v], 0) / cells[cell].vertices.length);
       out.lines.push(...isoLines(topo, inside, (v) => c.heightAt(v), grade * COUNTRY.step, COUNTRY.lift));
+    } else if (crop === 'orchard' && age >= FIELD.plough) {
+      // Trees in rows, each row set half a gap along: an orchard as a survey draws it.
+      const a = hash(cell, 93) * Math.PI;
+      const u: V3 = [0, 1, 2].map((k) => fr.ax[k] * Math.cos(a) + fr.bx[k] * Math.sin(a)) as V3;
+      const w: V3 = [0, 1, 2].map((k) => -fr.ax[k] * Math.sin(a) + fr.bx[k] * Math.cos(a)) as V3;
+      const g = COUNTRY.orchard, grown = Math.min(1, 0.4 + age / 3);
+      for (const v of cells[cell].vertices) {
+        if (label[v] !== cell || edge(v)) continue;
+        // The lattice points nearest this vertex, if they are nearer it than to any other.
+        const x = p[v * 3] * u[0] + p[v * 3 + 1] * u[1] + p[v * 3 + 2] * u[2], y = p[v * 3] * w[0] + p[v * 3 + 1] * w[1] + p[v * 3 + 2] * w[2];
+        const j = Math.round(y / g), i = Math.round(x / g - (j % 2 ? 0.5 : 0));
+        const gx = (i + (j % 2 ? 0.5 : 0)) * g, gy = j * g;
+        if (Math.abs(gx - x) > g * 0.5 || Math.abs(gy - y) > g * 0.5) continue;
+        const key = i * 100003 + j;
+        if (seenTrees.has(key)) continue;
+        seenTrees.add(key);
+        const at = [0, 1, 2].map((k) => p[v * 3 + k] + u[k] * (gx - x) + w[k] * (gy - y) + nm[v * 3 + k] * COUNTRY.lift) as V3;
+        out.lines.push(...tree(at, frameAt(nm, v), COUNTRY.crown * 0.5 * grown, key, false));
+      }
+    } else if (crop === 'park') {
+      // Parkland: trees stood singly, far apart, in the grass.
+      for (const v of cells[cell].vertices) if (label[v] === cell && !edge(v) && hash(v, 94) < 0.18) out.lines.push(...tree(lifted(p, nm, v, COUNTRY.lift) as V3, frameAt(nm, v), COUNTRY.crown * 1.1, v));
     } else if (crop === 'meadow' && age >= FIELD.plough) {
       for (const v of cells[cell].vertices) if (label[v] === cell && !edge(v) && hash(v, 91) < 0.35) out.lines.push(...tuft(lifted(p, nm, v, COUNTRY.lift) as V3, frameAt(nm, v), v));
     }
@@ -221,7 +273,16 @@ export function countryMarks(topo: Topology, st: Settlements, c: Countryside): C
 export function turningMarks(turning: Turning[], seconds: number): Polyline[] {
   const out: Polyline[] = [];
   for (const w of turning) {
-    const spin = seconds * (w.kind === 'sails' ? 0.5 : 0.9) + hash(Math.round(w.at[0] * 1e4), 95) * 6.283;
+    const spin = seconds * (w.kind === 'sails' ? 0.5 : w.kind === 'beam' ? 0.7 : 0.9) + hash(Math.round(w.at[0] * 1e4), 95) * 6.283;
+    if (w.kind === 'beam') {
+      // A lighthouse's light, going round: a dotted ray out over the water.
+      const ca = Math.cos(spin), sa = Math.sin(spin);
+      for (let d = 0.008; d < w.size; d += 0.007) {
+        const q = [0, 1, 2].map((k) => w.at[k] + (w.ax[k] * ca + w.bx[k] * sa) * d), r = [0, 1, 2].map((k) => w.at[k] + (w.ax[k] * ca + w.bx[k] * sa) * (d + 0.003));
+        out.push(polyline([q, r], 2));
+      }
+      continue;
+    }
     const arms = w.kind === 'sails' ? 4 : 6;
     for (let i = 0; i < arms; i++) {
       const a = spin + (i / arms) * 2 * Math.PI, ca = Math.cos(a), sa = Math.sin(a);
@@ -243,7 +304,7 @@ export function turningMarks(turning: Turning[], seconds: number): Polyline[] {
  * A tree, as an old map draws one: a round crown, shaded down one side
  * with a second stroke, on a short stem.
  */
-function tree(at: V3, fr: Frame, r: number, seed: number): Polyline[] {
+export function tree(at: V3, fr: Frame, r: number, seed: number, shaded = true): Polyline[] {
   if (r < 0.0012) return [];
   const pts: number[][] = [];
   const bumps = 5 + Math.floor(hash(seed, 97) * 3), phase = hash(seed, 98) * 6.283;
@@ -258,6 +319,7 @@ function tree(at: V3, fr: Frame, r: number, seed: number): Polyline[] {
     shade.push([0, 1, 2].map((k) => at[k] + (fr.ax[k] * Math.cos(a) + fr.bx[k] * Math.sin(a)) * r * 0.72 + fr.bx[k] * r));
   }
   const stem = [at, [0, 1, 2].map((k) => at[k] - fr.bx[k] * r * 0.55)];
+  if (!shaded) return [{ ...polyline(pts, 0), closed: true }];
   return [{ ...polyline(pts, 0), closed: true }, polyline(shade, 0), polyline(stem, 0)];
 }
 
@@ -318,13 +380,13 @@ function isoLines(topo: Topology, tris: number[], f: (v: number) => number, ever
 
 // ------------------------------------------------------------ geometry
 
-interface Frame { nr: V3; ax: V3; bx: V3 }
+export interface Frame { nr: V3; ax: V3; bx: V3 }
 
 /**
  * A tangent frame at a vertex, with `bx` towards the map's north (the
  * object's +y), so every tree stands upright on the sheet, as an old map's do.
  */
-function frameAt(nm: Float32Array, v: number): Frame {
+export function frameAt(nm: Float32Array, v: number): Frame {
   const nr: V3 = [nm[v * 3], nm[v * 3 + 1], nm[v * 3 + 2]];
   const up: V3 = Math.abs(nr[1]) < 0.95 ? [0, 1, 0] : [0, 0, 1];
   const d = up[0] * nr[0] + up[1] * nr[1] + up[2] * nr[2];
@@ -350,13 +412,13 @@ function dist(a: number[], b: number[]): number {
   return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 }
 
-function polyline(pts: number[][], level: number): Polyline {
+export function polyline(pts: number[][], level: number): Polyline {
   let length = 0;
   for (let i = 1; i < pts.length; i++) length += dist(pts[i], pts[i - 1]);
   return { level, iso: 0, points: new Float32Array(pts.flat()), closed: false, length };
 }
 
-function chaikin(pts: number[][]): number[][] {
+export function chaikin(pts: number[][]): number[][] {
   if (pts.length < 3) return pts;
   const out = [pts[0]];
   for (let i = 0; i < pts.length - 1; i++) {
@@ -367,7 +429,7 @@ function chaikin(pts: number[][]): number[][] {
   return out;
 }
 
-function dashes(m: Polyline, on: number, off: number): Polyline[] {
+export function dashes(m: Polyline, on: number, off: number): Polyline[] {
   const pts: number[][] = [];
   for (let k = 0; k < m.points.length; k += 3) pts.push([m.points[k], m.points[k + 1], m.points[k + 2]]);
   const out: Polyline[] = [];

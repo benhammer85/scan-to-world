@@ -186,6 +186,38 @@ scan file ─► load.ts         merge meshes, centre, scale to radius 1, option
   * a planted farm has its track and grows its fields;
   * the year comes round.
 
+* **Landmarks** (`src/life/landmarks.ts`), as an old map marks them:
+  * **Walls.** At 30 houses a town is walled round its old town (its first 30 houses), with a margin. Its course is pegged out dotted while it is built, then drawn as a double line with square battlements, bastions in a town of 55, and gatehouses where made roads and main streets go out. Where it stands is recorded and never moves. When the town has 160 houses and three outside for every one within, the wall comes down, and its course becomes a boulevard lined with trees.
+    * Gapped for every lane that crossed it, a grown town's wall was nothing but gaps.
+    * Laid at the nearest vertex's height, it sank under the peel's bumps and couldn't be seen. It now takes the highest of the three nearest vertices.
+    * Walled round every house near the middle, it took in the snowfield.
+  * **The church** stands on the square once there's a market, at 14 houses, facing the map's east, with graves to the north. At 60 houses it's a cathedral with a cloister.
+  * **Country houses.** Tap a farm of a town of 20 and it becomes an estate:
+    * its house, with a front range and wings round a court;
+    * its fields become park, with single trees in the grass;
+    * after a day, a parterre and an avenue down its drive;
+    * after two days, a washed lake.
+  * **The coast.**
+    * Fish traps in the shallows from 6 houses.
+    * Salt pans on the flat shore from 10.
+    * A quay at the harbour.
+    * From 12, a lighthouse on the headland with the most water round it, its light going round as a dotted ray.
+  * **The high ground.**
+    * Beacons, the survey's triangle, on every surveyed summit.
+    * A quarry, an arc hatched down into the pit, in the nearest cliff of a town of 12.
+    * Sheepfolds and shepherds' huts on the high grazing.
+    * From 22 houses, a pilgrims' way winding up by the easiest going to a shrine on the highest summit near.
+  * **Orchards** on gentle slopes, trees in staggered rows. **Avenues** of trees along made roads out in the country.
+* **Memory.** When the town builds over a field, the map remembers it: its hedges stay as fine, far-apart dots, as old maps mark the site of something gone. Together with the ruins the floods leave and the boulevards where walls stood, the map becomes a record of what grew there.
+* **Keeping it smooth.** A grown world's redraw takes 110–180 ms. While the world turns, the town is redrawn at most every four times the last redraw took, so the turning stays smooth.
+* Tests (`test/landmarks.test.ts`) check:
+  * a wall encloses the old town and never moves;
+  * it comes down only once the town has outgrown it;
+  * the church stands on the square;
+  * an estate's fields are park;
+  * built-over fields are remembered;
+  * orchards are only on gentle slopes.
+
 ## The reveal (ported from whatwesaved)
 
 The pen is the map app's reveal (`marginalia/studio.py`: `plot()`, `ink()`, `draw()`),

@@ -11,8 +11,9 @@ import type { Polyline } from './terrain/contours';
 import { TerrainEdits, applyDisplacement, type BrushOptions } from './interact/sculpt';
 import { Settlements, type TapResult } from './life/settlements';
 import { Countryside, type CountryTap } from './life/country';
+import { ESTATE, Landmarks, landmarkMarks } from './life/landmarks';
 import { countryMarks, seasonColour, turningMarks, type Turning, type Wash } from './life/countryMarks';
-import { blockMarks, buildingMarks, harbourMarks, lookOf, ruinMarks, squareFrames, stallMarks, streetMarks, sunkenMarks, terraceMarks, wingMarks, yardPaths, backGardens } from './life/buildingMarks';
+import { blockMarks, buildingMarks, harbourMarks, lookOf, ruinMarks, squareFrames, stallMarks, streetMarks, sunkenMarks, terraceMarks, wingMarks, yardPaths, backGardens, wayLine } from './life/buildingMarks';
 import { findWater, seaFor, snowLines, streamLines, waterLines, type Sea, type Water } from './nature/water';
 import { cableMarks, crossingFrames, crossingMarks, ferryRoute, movers, railMarks } from './life/buildingMarks';
 
@@ -95,6 +96,7 @@ export class TerrainWorld {
   readonly lines = new PlotterLines({ ...defaultPlotterStyle, ink: '#b48d64', inkHigh: '#8d5f3b', pencil: '#c9b79d', alpha: 0.45, indexAlpha: 0.8 });
   readonly settlements: Settlements;
   readonly country: Countryside;
+  readonly landmarks: Landmarks;
   /** The town has its own pen, so building never waits on the terrain's plot. */
   readonly townLines = new PlotterLines({ ...defaultPlotterStyle, ink: TOWN_INK, inkHigh: TOWN_INK, indexEvery: 1 });
   private townDirty = false;
@@ -175,6 +177,7 @@ export class TerrainWorld {
     this.settlements = new Settlements(this.topo, this.heights);
     this.settlements.setWater(this.water.wet, this.water.depth, this.water.stream, this.water.snow);
     this.country = new Countryside(this.topo, this.settlements, this.heights);
+    this.landmarks = new Landmarks(this.topo, this.settlements);
     this.drawWater(false);
   }
 
@@ -189,11 +192,17 @@ export class TerrainWorld {
    * too steep to build: a wood planted. Near a town: a farm. Anywhere else
    * open: people, a new town.
    */
-  tap(worldPoint: THREE.Vector3): TapResult | { kind: CountryTap; vertex: number } {
+  tap(worldPoint: THREE.Vector3): TapResult | { kind: CountryTap | 'estate'; vertex: number } {
     const local = this.mesh.worldToLocal(worldPoint.clone());
     const at = [local.x, local.y, local.z];
-    let r: TapResult | { kind: CountryTap; vertex: number } | null = null;
-    if (!this.settlements.onTown(at)) {
+    let r: TapResult | { kind: CountryTap | 'estate'; vertex: number } | null = null;
+    // On a farm of a grown town: it becomes a country house.
+    const farm = this.settlements.farmAt(at, 0.035);
+    if (farm && farm.estate === undefined && this.settlements.size(farm.town) >= ESTATE.at) {
+      farm.estate = this.settlements.day;
+      r = { kind: 'estate', vertex: farm.vertex };
+    }
+    if (!r && !this.settlements.onTown(at)) {
       const v = this.settlements.nearest(at), kind = this.country.tap(v);
       if (kind) r = { kind, vertex: v };
     }
@@ -210,10 +219,11 @@ export class TerrainWorld {
   advance(days: number): void {
     if (this.settlements.advance(days) > 0) this.townDirty = true;
     if (this.country.update()) this.townDirty = true;
+    if (this.landmarks.update()) this.townDirty = true;
     // Turning also ages what is there: paths wear in, huts become houses,
     // gardens are built round, fields are ploughed, woods grow. When
     // anything has, the pen goes over it.
-    const look = this.settlements.lookSignature() + this.country.signature() * 1e-3;
+    const look = this.settlements.lookSignature() + this.country.signature() * 1e-3 + this.landmarks.signature() * 1e-7;
     if (look !== this.lastLook) { this.lastLook = look; this.townDirty = true; }
   }
   private lastLook = 0;
@@ -379,14 +389,22 @@ export class TerrainWorld {
       if (calm) {
         this.townDirty = false;
         this.rebuildTown('ink');
-      } else if (now - this.lastTownBuild > 150) {
+      } else if (now - this.lastTownBuild > Math.max(150, this.townBuildMs * 4)) {
+        // Redrawn while the world turns, but never more than a fifth of the time: a big town takes a while.
         this.rebuildTown('live');
       }
     }
   }
 
+  private townBuildMs = 0;
   private rebuildTown(mode: RevealMode): void {
-    this.lastTownBuild = performance.now();
+    const started = performance.now();
+    this.lastTownBuild = started;
+    this.buildTown(mode);
+    this.townBuildMs = performance.now() - started;
+  }
+
+  private buildTown(mode: RevealMode): void {
     const st = this.settlements;
     const { buildings, streets, towns } = st;
     const look = lookOf(st);
@@ -407,12 +425,14 @@ export class TerrainWorld {
     ];
     const stalls = stallMarks(st.stalls.filter((x) => !drownedHall.has(x.town)), frames, this.topo);
     const country = countryMarks(this.topo, st, this.country);
-    this.turning = country.turning;
-    setWash(this.wash, country.wash);
+    const land = landmarkMarks(this.topo, this.heights, st, this.country, this.landmarks, frames, look, (x) => wayLine(this.topo, x, shown, frames, look));
+    this.turning = [...country.turning, ...land.turning];
+    setWash(this.wash, { positions: [...country.wash.positions, ...land.wash.positions], colours: [...country.wash.colours, ...land.wash.colours] });
     setWash(this.seasonal, country.seasonal, seasonColour(st.day));
     this.seasonDay = st.day;
     const marks = [
       ...country.lines,
+      ...land.lines,
       ...backGardens(this.topo, single, look, (b) => st.hasGarden(b)),
       ...streetMarks(this.topo, streets, shown, frames, st, look),
       ...yardPaths(this.topo, shown, frames, look),
@@ -427,7 +447,7 @@ export class TerrainWorld {
     ];
     const from = this.townFrom ?? this.lastTownCentre();
     // Keys before setLines: the pen may turn a line round to start at its nearer end.
-    this.solid = [...houses, ...stalls, ...blocks.lines.filter((m) => m.fill)].map((m) => ({ key: lineKey(m), tris: m.fill ?? rectangleTris(m) }));
+    this.solid = [...houses, ...stalls, ...blocks.lines.filter((m) => m.fill), ...land.lines.filter((m) => m.fill)].map((m) => ({ key: lineKey(m), tris: m.fill ?? rectangleTris(m) }));
     this.townLines.setLines(marks, mode, from ?? undefined);
     if (mode === 'ink') this.townFrom = null;
     this.refreshFills();
