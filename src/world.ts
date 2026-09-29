@@ -84,6 +84,8 @@ export class TerrainWorld {
     this.heights = new Float32Array(this.topo.vertexCount);
     this.recomputeHeights();
     this.applySurface();
+    // Unlike the map app, whose reveal skips the country, the terrain here is
+    // the player's own object and the thing they came to see, so it is plotted.
     this.rebuildContours('plot', penFrom);
   }
 

@@ -80,7 +80,11 @@ What's new, to meet this brief's "reshape live":
 
 What makes this work: contour extraction is deterministic, so a line the edit didn't touch comes back bit-identical and keeps its key (`lineKey`). There's a test for that, and a stroke measured in the browser changed 24 of 96 lines.
 
-**An open question, left to you.** The map app skips the country in its reveal: "nobody made the hillside ... drawing it stroke by stroke says a hand put it there". This project's brief asks for exactly that plot of the terrain on first load. So it's kept, and only the player's edits get the "response" treatment. If the principle should win, change `'plot'` to `'settle'` in `TerrainWorld`'s constructor.
+**Where this differs from the map app, on purpose.** The map app doesn't animate the
+country: "nobody made the hillside", so drawing it stroke by stroke would say a hand put it
+there. Here the terrain is the whole point. It's the player's own object turned into a
+world, so the first load plots it in. Only the "only animate the response" rule carries
+over, and it applies to the player's edits.
 
 ## Known limits / next steps
 
