@@ -270,6 +270,28 @@ function cellHash(ix: number, iy: number, k: number): number {
   return frac(Math.sin(ix * 127.1 + iy * 311.7 + k * 74.7) * 43758.5453);
 }
 
+/**
+ * A world's magnitude, as a star atlas engraves a star's: rays round it, more
+ * and longer the brighter it is. Here brightness is how much its people have
+ * built, so from the chart you can see which worlds are thriving before you
+ * go down to one. None for a world nobody lives on; on a log scale, so the
+ * first few houses show and a great city does not swamp the chart.
+ */
+export const MAGNITUDE = { rim: 1.22, least: 0.1, per: 0.07, most: 12 };
+
+export function magnitudeLines(centre: V, houses: number): V[][] {
+  if (houses <= 0) return [];
+  const m = Math.log2(1 + houses), out: V[][] = [];
+  const rays = Math.min(MAGNITUDE.most, 4 + 2 * Math.floor(m / 2));
+  const long = MAGNITUDE.least + MAGNITUDE.per * m;
+  for (let i = 0; i < rays; i++) {
+    const a = (i / rays) * 2 * Math.PI + Math.PI / 2, l = i % 2 ? long * 0.55 : long;
+    const u = new THREE.Vector3(Math.cos(a), Math.sin(a), 0);
+    out.push([centre.clone().addScaledVector(u, MAGNITUDE.rim), centre.clone().addScaledVector(u, MAGNITUDE.rim + l)]);
+  }
+  return out;
+}
+
 /** An uncharted place: a dotted circle where a world will be. */
 export function unchartedLines(at: V): V[][] {
   const ring: V[] = [];

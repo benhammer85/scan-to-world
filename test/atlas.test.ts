@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { ATLAS, chartLines, constellations, layout, railwayCurve, railwayLines, starsOf, STARS, trainAt } from '../src/atlas/atlas';
+import { ATLAS, chartLines, constellations, layout, magnitudeLines, railwayCurve, railwayLines, starsOf, STARS, trainAt } from '../src/atlas/atlas';
 
 describe('the atlas', () => {
   it('lays the worlds out so none crowds another: the first in the middle, the rest spiralling out', () => {
@@ -73,5 +73,19 @@ describe('the chart of the heavens', () => {
       expect(b.distanceTo(s.at)).toBeGreaterThan(0.05);
     }
     expect(chartLines(O, 14).figures.length).toBe(constellations(starsOf(O, 14 * 1.15)).length); // the chart runs its stars a little past its rim
+  });
+});
+
+describe('magnitudes', () => {
+  const O = new THREE.Vector3(0, 0, 0);
+  const extent = (lines: THREE.Vector3[][]) => lines.reduce((s, [a, b]) => s + a.distanceTo(b), 0);
+  it('a world nobody lives on has no rays; the more its people build, the more and longer its rays', () => {
+    expect(magnitudeLines(O, 0)).toHaveLength(0);
+    const hamlet = magnitudeLines(O, 5), town = magnitudeLines(O, 60), city = magnitudeLines(O, 600);
+    expect(hamlet.length).toBeGreaterThan(0);
+    expect(extent(town)).toBeGreaterThan(extent(hamlet));
+    expect(extent(city)).toBeGreaterThan(extent(town));
+    // Rays stand clear of the world itself (about 1 across its middle).
+    for (const [a] of city) expect(a.length()).toBeGreaterThan(1.1);
   });
 });

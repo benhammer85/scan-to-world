@@ -5,7 +5,7 @@ import { normaliseGeometry, triangleCount } from './mesh/geometry';
 const loaders = () => import('./mesh/load');
 import { makeDemoOrange } from './demo/orange';
 import { SPECIMENS } from './demo/specimens';
-import { ATLAS, chartLines, layout, railwayCurve, railwayLines, segments as skySegments, sketchLines, trainAt, trainLines, unchartedLines, type Railway } from './atlas/atlas';
+import { ATLAS, chartLines, layout, magnitudeLines, railwayCurve, railwayLines, segments as skySegments, sketchLines, trainAt, trainLines, unchartedLines, type Railway } from './atlas/atlas';
 import { GestureRecognizer } from './interact/gestures';
 import { buildTopology } from './mesh/topology';
 import { chooseHeightMode, type HeightMode } from './terrain/heightfield';
@@ -608,12 +608,16 @@ const chart = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineB
 const stars = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: INK, transparent: true, opacity: 0.0, depthWrite: false }));
 const figuresOfStars = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: INK, transparent: true, opacity: 0.0, depthWrite: false }));
 sky.frustumCulled = chart.frustumCulled = stars.frustumCulled = figuresOfStars.frustumCulled = false;
-scene.add(sky, chart, stars, figuresOfStars);
+/** Each world's magnitude on the chart: rays round it for how much its people have built. */
+const magnitudes = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: INK, transparent: true, opacity: 0.0, depthWrite: false }));
+magnitudes.frustumCulled = false;
+let magnitudeKey = '';
+scene.add(sky, chart, stars, figuresOfStars, magnitudes);
 /** How far the page has aged into the atlas's paper: 0 on a world, 1 on the chart. */
 let aged = 0;
 let leaving = false;
 /** How strong each part of the chart is inked, once the page has fully aged. */
-const CHART_INK = { rule: 0.5, stars: 0.85, figures: 0.2 };
+const CHART_INK = { rule: 0.5, stars: 0.85, figures: 0.2, magnitudes: 0.8 };
 
 const ghosts = new THREE.Group();
 scene.add(ghosts);
@@ -733,7 +737,8 @@ function ageing(dt: number): void {
   (chart.material as THREE.LineBasicMaterial).opacity = CHART_INK.rule * aged;
   (stars.material as THREE.LineBasicMaterial).opacity = CHART_INK.stars * aged;
   (figuresOfStars.material as THREE.LineBasicMaterial).opacity = CHART_INK.figures * aged;
-  chart.visible = stars.visible = figuresOfStars.visible = aged > 0;
+  (magnitudes.material as THREE.LineBasicMaterial).opacity = CHART_INK.magnitudes * aged;
+  chart.visible = stars.visible = figuresOfStars.visible = magnitudes.visible = aged > 0;
 }
 
 /** Turn each world with a railway so its station faces along the line, a little towards you. */
@@ -878,6 +883,16 @@ function atlasFrame(dt: number, now: number): void {
   seconds += dt;
   void now;
   if (mode === 'atlas') for (const [w, q] of facingTo) w.group.quaternion.slerp(q, 1 - Math.exp(-3 * dt));
+  if (mode === 'atlas') {
+    // Redrawn only when a world's people have built more (a train's settlers, say).
+    const houses = (w: TerrainWorld) => w.settlements.buildings.filter((b) => !b.farm && b.state === undefined).length;
+    const key = [...kept].map(([n, w]) => `${n}:${houses(w)}`).join('|');
+    if (key !== magnitudeKey) {
+      magnitudeKey = key;
+      magnitudes.geometry.dispose();
+      magnitudes.geometry = skySegments([...kept].flatMap(([n, w]) => magnitudeLines(slots.get(n) ?? w.group.position, houses(w))));
+    }
+  }
   const lines: THREE.Vector3[][] = [];
   for (const rw of railways) {
     const A = kept.get(rw.a), B = kept.get(rw.b);
