@@ -19,6 +19,10 @@ npm run build
 
 The site is published to GitHub Pages from `main` by `.github/workflows/pages.yml` (see below for turning Pages on).
 
+**On a phone:** open https://benhammer85.github.io/scan-to-world/ and add it to your home screen. It then plays offline, full screen.
+* **Loading a scan:** tap the empty paper round the world to pick one from Files. Scaniverse is free, and its GLB or OBJ export works.
+* **On Android:** once it's installed, it also appears in the share menu, so a scan shared from another app opens straight in the game.
+
 It boots with a procedural **demo orange**. To use a real scan, export GLB, OBJ or PLY from
 Scaniverse, KIRI Engine or RealityScan and load it with **Load scan**. If the scan is heavy,
 use **Decimate to** (meshoptimizer, respects UV seams) and aim for 5–15k triangles. For

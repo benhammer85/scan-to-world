@@ -4,7 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
     <title>Scan-to-World</title>
-    <link rel="icon" href="data:," />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="theme-color" content="#f4efe4" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Scan-to-World" />
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
@@ -19,6 +26,8 @@
       <div class="panel-body">
         <section>
           <h2>Object</h2>
+          <!-- Tapping the empty paper opens this: any file, since a phone greys out files whose type it doesn't know. -->
+          <input id="pick" type="file" hidden />
           <label class="file">
             <input id="file" type="file" accept=".glb,.gltf,.obj,.ply" />
             <span>Load scan (GLB / OBJ / PLY)</span>
@@ -76,7 +85,7 @@
       </div>
     </aside>
 
-    <p id="hint">tap to sow (the ground decides: people, a farm, a wood) · tap a field to let it go wild, a wood to fell it, a farm to make it a country house, a common to keep it, a wet meadow to drain it · drag or arrow keys to turn the days · hold to press in · hold and pull to raise · pinch to come closer</p>
+    <p id="hint">tap to sow (the ground decides: people, a farm, a wood) · tap the paper around it to bring your own scan · tap a field to let it go wild, a wood to fell it, a farm to make it a country house, a common to keep it, a wet meadow to drain it · drag or arrow keys to turn the days · hold to press in · hold and pull to raise · pinch to come closer</p>
     <div id="toast" hidden></div>
     <script type="module" src="/src/main.ts"></script>
   </body>

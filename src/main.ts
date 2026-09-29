@@ -175,7 +175,9 @@ const gestures = new GestureRecognizer(
       firstTouch();
       spin.set(0, 0);
       const hit = pickAt(x, y);
-      if (!hit?.face || !world) return;
+      // A tap on the paper round the world, not on it: bring your own scan.
+      if (!hit?.face) { $<HTMLInputElement>('pick').click(); return; }
+      if (!world) return;
       const r = world.tap(hit.point);
       // The ring answers every tap, refused or not, so a tap is never ignored.
       const normal = hit.face.normal.clone().transformDirection(world.mesh.matrixWorld);
@@ -287,10 +289,31 @@ async function openScan(file: File): Promise<void> {
   }
 }
 
-$<HTMLInputElement>('file').addEventListener('change', (e) => {
-  const file = (e.target as HTMLInputElement).files?.[0];
-  if (file) openScan(file);
-});
+for (const id of ['file', 'pick']) {
+  $<HTMLInputElement>(id).addEventListener('change', (e) => {
+    const input = e.target as HTMLInputElement, file = input.files?.[0];
+    input.value = ''; // so choosing the same file again still counts
+    if (!file) return;
+    if (!/\.(glb|gltf|obj|ply)$/i.test(file.name)) { toast(`${file.name} isn't a scan this can read: GLB, glTF, OBJ or PLY. (From Scaniverse, export GLB or OBJ.)`); return; }
+    openScan(file);
+  });
+}
+
+// Installable, and playable offline once opened. On Android a scan shared from
+// another app arrives through the service worker and is opened here.
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js').catch(() => { /* not where one can be installed (a preview, say): play on regardless */ });
+}
+if (new URLSearchParams(location.search).has('shared') && 'caches' in window) {
+  caches.open('stw-shared').then(async (c) => {
+    const r = await c.match('./shared-scan');
+    if (!r) return;
+    const name = decodeURIComponent(r.headers.get('x-name') ?? 'shared.glb');
+    await c.delete('./shared-scan');
+    history.replaceState(null, '', location.pathname);
+    openScan(new File([await r.blob()], name));
+  }).catch(() => {});
+}
 $('demo').addEventListener('click', () => setWorld(normaliseGeometry(makeDemoOrange()), null, 'demo orange'));
 $('decimate').addEventListener('click', () => {
   if (!sourceGeometry) return;
