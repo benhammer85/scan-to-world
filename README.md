@@ -29,7 +29,16 @@ Every world you make, what grew on it, the railways between worlds, which way ea
 
 ## Volcano (a prototype beside it)
 
-`volcano.html` (`src/volcano/`) is a separate prototype, and Atlas Minor is untouched by it. You are the heat beneath a young ocean planet, a mantle plume, and the planet begins with nothing on it: one sea over one even floor.
+`volcano.html` (`src/volcano/`) is a separate prototype, and Atlas Minor is untouched by it. You are the heat beneath a world, and there are worlds in sequence (`worlds.ts`). Each has the same single control and its own physics, aim and colours, as each has its own kind of volcanism:
+
+| | World | What's different | The aim |
+| --- | --- | --- | --- |
+| I | **An ocean world** | Sea, life and reefs. The crust drifts over the heat and carries it round the world, so a chain of islands is left behind, as over a real hotspot. On screen the vent stays put and the world slides past beneath it. | **Ring the world:** carry a chain of living islands all the way round before the fire goes out (`chain.ts`). The way is 16 stretches; a stretch is held while something lives on or by it, land or reef. Old islands sink and wear, and unless reef holds them they drop out. |
+| II | **The Moon** | No air, no water, no drift, no life, and stones falling all the while. Lava as thin as water, which floods low ground instead of building mountains. The heat rises to whatever you turn uppermost. | **Flood the seas:** fill each of the five great basins (70% of its floor) before the heat is gone. Flooded ground stays dark, as the Moon's seas are. |
+
+The aim is drawn on the map as a surveyor would draw a route or a boundary: pencilled and dashed where it's still to do, inked where it's done. Met, the world says so ("The world is ringed with living islands") and the chart is drawn, titled *A ringed world* or *The seas of the Moon*. Turning the world right round then goes on to the next world. Not met when the fire goes out, a long age passes, the chart says how far you got ("12 of 16 stretches held"), and turning the world tries again. The world being played is remembered, and `?world=moon` goes straight to one.
+
+Headless balance: on the ocean world (about 18 minutes of fire), idle play held 11 of 16 stretches and steady play 14, so ringing it takes more: steering lava along the way, catching stones and keeping wishes, which add heat. On the Moon, a bot that knew where every basin was flooded all five in about six minutes.
 
 **The goal:** when the heat runs out, after about ten minutes, what your world keeps is **how many of six kinds of life** still live on it. Each kind needs its own ground, so no single way of playing makes them all:
 

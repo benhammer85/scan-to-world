@@ -66,6 +66,8 @@ export interface PlotterStyle {
   widthPx: number;
   /** Whether the pen's nib (a dot and a faint ring) is shown where it's drawing. */
   nib: boolean;
+  /** Drawn over the ground rather than hidden where it rises in front: for marks laid on the map, not the land's own lines. */
+  overGround: boolean;
 }
 
 export const defaultPlotterStyle: PlotterStyle = {
@@ -85,6 +87,7 @@ export const defaultPlotterStyle: PlotterStyle = {
   appearSeconds: 4,
   widthPx: 0,
   nib: true,
+  overGround: false,
 };
 
 /** A line faces the eye, for fading, if the ground under it looks at least this much towards it. */
@@ -265,6 +268,7 @@ export class PlotterLines {
       defines: style.widthPx > 0 ? { RIBBON: 1 } : {},
       // A ribbon winds one way or the other with the direction of the line: show both faces.
       side: THREE.DoubleSide,
+      depthTest: !style.overGround,
     });
     this.perEnd = style.widthPx > 0 ? 2 : 1;
     this.lines = style.widthPx > 0 ? new THREE.Mesh(new THREE.BufferGeometry(), this.material) : new THREE.LineSegments(new THREE.BufferGeometry(), this.material);

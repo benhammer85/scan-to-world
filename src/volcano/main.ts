@@ -28,6 +28,7 @@
 import * as THREE from 'three';
 import { buildTopology } from '../mesh/topology';
 import { unpack, type Packed } from './drafting';
+import type { Polyline } from '../terrain/contours';
 import { PlotterLines, defaultPlotterStyle, type RevealMode } from '../render/plotterLines';
 import { GestureRecognizer } from '../interact/gestures';
 import { Stipple } from '../render/stipple';
@@ -43,6 +44,8 @@ import { handleDrafts } from './drafts';
 import { handleSurface } from './surface';
 import { offThread } from './offthread';
 import { snapshotOf, restoreInto, keep, recall, forget } from './save';
+import { worldOf, nextWorld } from './worlds';
+import { Chain, CHAIN } from './chain';
 
 const $ = (id: string) => document.getElementById(id)!;
 const stage = $('stage');
@@ -100,8 +103,21 @@ const nearest = (x: number, y: number, z: number) => {
 // or the world that was being played, if there is one kept (see `resume`).
 const wanted = Number(new URLSearchParams(location.search).get('seed'));
 let seed = wanted || 1 + Math.floor(Math.random() * 1e6);
-const planet = new Planet(topo, nearest(0.1, 0.15, 0.98), seed);
-planet.stonesFall = false; // until the lesson that shows them
+/**
+ * Which world: the one asked for (?world=), or the one being played, or the first. Each has its
+ * own rules, aim and colours (worlds.ts).
+ */
+const WORLD = worldOf(new URLSearchParams(location.search).get('world') ?? remembered('volcano.world'));
+remember('volcano.world', WORLD.id);
+const P = WORLD.palette, LIFE = WORLD.rules.life !== false;
+function remembered(key: string): string | null {
+  try { return localStorage.getItem(key); } catch { return null; }
+}
+function remember(key: string, value: string): void {
+  try { localStorage.setItem(key, value); } catch { /* not remembered, and that's all */ }
+}
+const planet = new Planet(topo, nearest(0.1, 0.15, 0.98), seed, WORLD.rules);
+planet.stonesFall = !LIFE; // on a living world, not until life's ideas have come in (see `lessons`)
 const ecology = new Ecology(planet, topo);
 const islands = new Islands(topo);
 
@@ -144,10 +160,10 @@ material.onBeforeCompile = (shader) => {
 const mesh = new THREE.Mesh(geometry, material);
 group.add(mesh);
 
-const landPen = new PlotterLines({ ...defaultPlotterStyle, ink: '#6b4a2e', inkHigh: '#4a2f1c', pencil: '#b9a68c', alpha: 0.62, indexAlpha: 0.95, indexEvery: 5, fadeSeconds: 0, widthPx: 1.15, nib: false }); // no nib: nothing on the world should look like something to press
-const seaPen = new PlotterLines({ ...defaultPlotterStyle, ink: '#5b82a3', inkHigh: '#5b82a3', pencil: '#a9bfd0', alpha: 0.45, indexAlpha: 0.6, fadeSeconds: 0, pen: false, appearSeconds: 2, widthPx: 0.95 });
+const landPen = new PlotterLines({ ...defaultPlotterStyle, ink: P.landInk, inkHigh: P.landInkHigh, pencil: P.pencil, alpha: 0.62, indexAlpha: 0.95, indexEvery: 5, fadeSeconds: 0, widthPx: 1.15, nib: false }); // no nib: nothing on the world should look like something to press
+const seaPen = new PlotterLines({ ...defaultPlotterStyle, ink: P.seaInk, inkHigh: P.seaInk, pencil: '#a9bfd0', alpha: 0.45, indexAlpha: 0.6, fadeSeconds: 0, pen: false, appearSeconds: 2, widthPx: 0.95 });
 /** Water-lining: close lines following the coast out to sea, as the old engraved maps drew it. */
-const waterPen = new PlotterLines({ ...defaultPlotterStyle, ink: '#6b8fac', inkHigh: '#6b8fac', pencil: '#a9bfd0', alpha: 0.4, indexAlpha: 0.4, fadeSeconds: 0, pen: false, appearSeconds: 2, widthPx: 0.8 });
+const waterPen = new PlotterLines({ ...defaultPlotterStyle, ink: P.waterInk, inkHigh: P.waterInk, pencil: '#a9bfd0', alpha: 0.4, indexAlpha: 0.4, fadeSeconds: 0, pen: false, appearSeconds: 2, widthPx: 0.8 });
 landPen.width = seaPen.width = waterPen.width = 2;
 pens.push(landPen, seaPen, waterPen);
 group.add(seaPen.object, waterPen.object, landPen.object);
@@ -219,10 +235,12 @@ const stoneMark = mark((g) => {
 const wishMarks = KINDS.map((k) => mark((g) => sign(g, k.sign, 32, 32, 16, '#ffffff')));
 
 /** Paper, fresh basalt, ash; and lava in the vermilion the geological surveys gave it, deeper where thick. */
-const PAPER = new THREE.Color('#ecdfc2'), BASALT = new THREE.Color('#9a8a76'), ASH = new THREE.Color('#b3ada2'), VERMILION = new THREE.Color('#b8563c'), DEEP_RED = new THREE.Color('#8f3b28');
-const SHALLOW = new THREE.Color('#d4e3ec'), DEEP = new THREE.Color('#b1c8d8');
+const PAPER = new THREE.Color(P.paper), BASALT = new THREE.Color(P.basalt), ASH = new THREE.Color(P.ash), VERMILION = new THREE.Color(P.lava), DEEP_RED = new THREE.Color(P.deepLava);
+const FLOODED = P.flooded ? new THREE.Color(P.flooded) : null;
+const SHALLOW = new THREE.Color(P.shallow), DEEP = new THREE.Color(P.deep);
 const rgb = (c: THREE.Color) => [c.r, c.g, c.b];
 const [PA, BA, AS, VE, DR] = [PAPER, BASALT, ASH, VERMILION, DEEP_RED].map(rgb);
+const FL = FLOODED ? rgb(FLOODED) : null;
 
 function surface(v: number): number {
   return planet.rock[v] + planet.lava[v];
@@ -245,6 +263,8 @@ function coarse(): void {
     const hot = lava > 0.002 ? Math.min(1, lava * 40) : 0, deep = lava > 0.002 ? Math.min(0.6, lava * 8) : 0;
     for (let i = 0; i < 3; i++) {
       let x = PA[i] + (BA[i] - PA[i]) * fresh;
+      // Where a world keeps the mark of it (the Moon's seas), ground lava has lain on stays dark.
+      if (FL && planet.age[v] < 1e5) x += (FL[i] - x) * 0.85;
       x += (AS[i] - x) * ash;
       x += (VE[i] - x) * hot;
       x += (DR[i] - x) * deep;
@@ -437,6 +457,73 @@ function setMark(m: THREE.Sprite, v: number, size: number): void {
   m.scale.setScalar(size * (dist / 3.2));
 }
 
+// ---------------------------------------------------------------- the aim
+/**
+ * Each world's aim, reckoned now and then and drawn on the map as a surveyor would draw a route or
+ * a boundary: pencilled where it's still to do, inked where it's done.
+ *   An ocean world: the way the crust carries the heat, round the world, in stretches; a stretch
+ *     is inked while something lives on or by it. Ringed when every stretch is inked at once.
+ *   The Moon: each great basin's edge, inked once its floor is flooded.
+ */
+let chain = WORLD.goal === 'ring' ? new Chain(planet.plume, planet.driftDirection) : null;
+const FLOODED_ENOUGH = 0.7;
+const aimInk = new PlotterLines({ ...defaultPlotterStyle, ink: P.landInkHigh, inkHigh: P.landInkHigh, pencil: P.pencil, alpha: 0.6, indexAlpha: 0.6, fadeSeconds: 0, pen: false, appearSeconds: 1.5, widthPx: 1.3, nib: false, overGround: true });
+const aimPencil = new PlotterLines({ ...defaultPlotterStyle, ink: P.landInk, inkHigh: P.landInk, pencil: P.pencil, alpha: 0.4, indexAlpha: 0.4, fadeSeconds: 0, pen: false, appearSeconds: 1.5, widthPx: 1, nib: false, overGround: true });
+pens.push(aimInk, aimPencil);
+group.add(aimPencil.object, aimInk.object);
+let aimDone = 0, aimOf = WORLD.goal === 'ring' ? CHAIN.stretches : planet.basins.length, lastAim = -10;
+/** How much of the aim is done now, reckoned afresh. */
+function reckonAim(): void {
+  if (chain) aimDone = chain.update(planet, topo);
+  else aimDone = planet.basins.filter((b) => planet.flooded(b) >= FLOODED_ENOUGH).length;
+  aimOf = chain ? CHAIN.stretches : planet.basins.length;
+}
+const won = () => aimOf > 0 && aimDone >= aimOf;
+/** A line on the ground through these points (on the unit sphere), lifted to the land's height; dashed if `dashed`. */
+function onGround(pts: { x: number; y: number; z: number }[], dashed: boolean): Polyline[] {
+  const lifted = pts.map((q) => {
+    const v = nearestAbove(new THREE.Vector3(q.x, q.y, q.z));
+    const r = Math.max(1, Math.hypot(topo.positions[v * 3], topo.positions[v * 3 + 1], topo.positions[v * 3 + 2])) + 0.004;
+    return [q.x * r, q.y * r, q.z * r];
+  });
+  const line = (from: number, to: number): Polyline => {
+    const points = Float32Array.from(lifted.slice(from, to + 1).flat());
+    let length = 0;
+    for (let i = 3; i < points.length; i += 3) length += Math.hypot(points[i] - points[i - 3], points[i + 1] - points[i - 2], points[i + 2] - points[i - 1]);
+    return { level: 0, iso: 0, points, closed: false, length };
+  };
+  if (!dashed) return [line(0, lifted.length - 1)];
+  const out: Polyline[] = [];
+  for (let i = 0; i + 1 < lifted.length; i += 2) out.push(line(i, i + 1));
+  return out;
+}
+function drawAim(now: number): void {
+  if (now - lastAim < 2) return;
+  lastAim = now;
+  reckonAim();
+  const inked: Polyline[] = [], pencilled: Polyline[] = [];
+  if (chain) {
+    const per = 12, pts = chain.points(per);
+    chain.held.forEach((h, i) => (h ? inked : pencilled).push(...onGround(pts.slice(i * per, (i + 1) * per + 1), !h)));
+  } else {
+    for (const b of planet.basins) {
+      // The basin's edge, as a circle on the ground round its middle.
+      const c = new THREE.Vector3(b.x, b.y, b.z).normalize();
+      const u = new THREE.Vector3().crossVectors(c, Math.abs(c.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0)).normalize();
+      const w = new THREE.Vector3().crossVectors(c, u);
+      const r = b.r * 0.8, pts = [];
+      for (let i = 0; i <= 64; i++) {
+        const a = (i / 64) * Math.PI * 2;
+        pts.push(c.clone().multiplyScalar(Math.cos(r)).addScaledVector(u, Math.sin(r) * Math.cos(a)).addScaledVector(w, Math.sin(r) * Math.sin(a)));
+      }
+      const done = planet.flooded(b) >= FLOODED_ENOUGH;
+      (done ? inked : pencilled).push(...onGround(pts, !done));
+    }
+  }
+  aimInk.setLines(inked, 'settle');
+  aimPencil.setLines(pencilled, 'settle');
+}
+
 // ---------------------------------------------------------------- labels on the map
 const labelLayer = $('labels');
 const labels = new Map<string, HTMLSpanElement>();
@@ -558,7 +645,7 @@ const CUES: { ready: () => boolean; done: (since: number) => boolean; begin?: ()
     words: () => (planet.impact ? { text: 'turn it to the top to catch it', at: planet.impact.vertex, dy: 40 } : null),
   },
 ];
-let lesson = 0, lessonSince = 0, lessonShown = false, embersSaid = false;
+let lesson = LIFE ? 0 : CUES.length, lessonSince = 0, lessonShown = false, embersSaid = false;
 function lessons(): void {
   if (ending) return;
   if (lesson < CUES.length) {
@@ -676,15 +763,25 @@ const PLUME = new THREE.Vector3(), SWING = new THREE.Quaternion();
  * and looked at; turning it right round begins another.
  */
 const LONG_AGE = 360, AGE_SPEED = 14, DRAWING = 7, TURN_AGAIN = 2.6;
-let ending: { from: number; shown: boolean; at: number; info: ChartInfo | null; turned: number } | null = null;
+let ending: { from: number; shown: boolean; at: number; info: ChartInfo | null; turned: number; won: boolean } | null = null;
+let wonSeen = -1;
+const wonAt = () => (wonSeen < 0 ? (wonSeen = seconds) : wonSeen);
 function theEnd(): void {
+  // Done: the aim met, while the fire still burns; or not, and the fire out.
+  if (!ending && begun && won()) {
+    ending = { from: planet.seconds, shown: false, at: 0, info: null, turned: 0, won: true };
+    queue.length = 0;
+    announce(WORLD.goal === 'ring' ? 'The world is ringed with living islands' : 'The seas of the Moon are flooded');
+    feel([30, 50, 30]);
+  }
   if (!ending && planet.over) {
-    ending = { from: planet.seconds, shown: false, at: 0, info: null, turned: 0 };
+    ending = { from: planet.seconds, shown: false, at: 0, info: null, turned: 0, won: false };
     $('stage-name').textContent = ERAS.out;
     queue.length = 0;
     announce('The fire is out. A long age passes');
   }
-  if (ending && !ending.shown && planet.seconds - ending.from >= LONG_AGE) {
+  // Met, the chart comes a few moments later; not, after a long age has worn at what was made.
+  if (ending && !ending.shown && planet.seconds - ending.from >= (ending.won ? 0 : LONG_AGE) && (!ending.won || seconds - wonAt() > 4)) {
     ending.shown = true;
     ending.at = seconds;
     ecology.update(0);
@@ -714,12 +811,15 @@ function chartInfo(): ChartInfo {
   }
   const length = ending!.from, mm = `${Math.floor(length / 60)}:${String(Math.floor(length % 60)).padStart(2, '0')}`;
   const eras = eraFrom.filter((e) => e.from < length).map((e, i, all) => ({ name: e.name.replace(/^The /, ''), from: e.from, to: i + 1 < all.length ? all[i + 1].from : length }));
-  const count = islands.list.length;
+  reckonAim();
+  const met = !!ending?.won, ring = WORLD.goal === 'ring';
   return {
-    title: count ? 'What lasted' : 'A world of water',
-    subtitle: `world ${seed} · ${mm} of fire · ${count === 0 ? 'no land' : count === 1 ? 'one island' : `${count} islands`}`,
-    kinds: KINDS.map((k) => ({ name: k.name, ink: k.ink, sign: k.sign, living: living.has(k.kind) })),
-    summary: `${living.size} of ${KINDS.length} kinds of life lasted · ${ecology.kept} ${ecology.kept === 1 ? 'wish' : 'wishes'} kept`,
+    title: ring ? (met ? 'A ringed world' : 'Not yet ringed') : met ? 'The seas of the Moon' : 'The seas not yet filled',
+    subtitle: `${WORLD.numeral} · ${WORLD.title} · world ${seed} · ${mm} of fire`,
+    kinds: LIFE ? KINDS.map((k) => ({ name: k.name, ink: k.ink, sign: k.sign, living: living.has(k.kind) })) : [],
+    summary: ring
+      ? `${aimDone} of ${aimOf} stretches held · ${living.size} of ${KINDS.length} kinds of life`
+      : `${aimDone} of ${aimOf} basins flooded`,
     length,
     eras,
     events,
@@ -744,6 +844,8 @@ function drawEnding(): void {
     drawFrame(frameInk, frameCanvas.width, frameCanvas.height, renderer.getPixelRatio(), ending.info, progress, 64);
   }
   if (progress >= 1) {
+    const next = ending.won ? nextWorld(WORLD) : null;
+    $('again').textContent = next ? `turn the world right round to go on to ${next.title.replace(/^An? /, 'an ').replace(/^The /, 'the ')}` : ending.won ? 'turn the world right round to begin again' : 'turn the world right round to try again';
     $('again').classList.add('shown');
     $('keep').classList.add('shown');
   }
@@ -763,6 +865,10 @@ function anew(): void {
   $('begin').classList.remove('gone');
   const q = new URLSearchParams(location.search);
   q.delete('seed');
+  // Met, on to the next world, if there is one; otherwise this world again.
+  const next = ending?.won ? nextWorld(WORLD) : null;
+  q.delete('world');
+  remember('volcano.world', (next ?? WORLD).id);
   setTimeout(() => { location.search = q.toString(); }, 900);
 }
 $('keep').addEventListener('click', () => {
@@ -822,6 +928,8 @@ function drawLevel(): void {
 // ---------------------------------------------------------------- keeping the world
 /** Everything the world is, as it's kept: the planet, its life, its islands, and where the page had got to. */
 interface Kept {
+  world: string;
+  way: { a: { x: number; y: number; z: number }; b: { x: number; y: number; z: number } } | null;
   seed: number;
   planet: Record<string, unknown>;
   ecology: Record<string, unknown>;
@@ -830,6 +938,8 @@ interface Kept {
 }
 function world(): Kept {
   return {
+    world: WORLD.id,
+    way: chain ? { a: chain.a, b: chain.b } : null,
     seed,
     planet: snapshotOf(planet, ['topo', 'next', 'firmness', 'scale', 'news']),
     ecology: snapshotOf(ecology, ['pl', 'topo', 'scale']),
@@ -850,7 +960,8 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 async function resume(): Promise<boolean> {
   if (wanted) return false;
   const w = await recall<Kept>();
-  if (!w || !w.planet) return false;
+  if (!w || !w.planet || (w.world ?? 'ocean') !== WORLD.id) return false;
+  if (w.way && chain) chain = new Chain(w.way.a, w.way.b);
   seed = w.seed;
   restoreInto(planet, w.planet, ['plume', 'tally', 'drift', 'wear']);
   restoreInto(ecology, w.ecology);
@@ -871,6 +982,12 @@ async function resume(): Promise<boolean> {
  * for once, on a quiet card. A world that was kept is taken up where it was left.
  */
 let begun = false;
+// The card says which world this is, and what there is to know of it.
+($('begin').querySelector('.world') as HTMLElement).textContent = `${WORLD.numeral} · ${WORLD.title}`;
+($('begin').querySelector('.first') as HTMLElement).textContent = WORLD.first;
+($('begin').querySelector('.then') as HTMLElement).textContent = WORLD.then;
+// A world without life has no key of its kinds.
+if (!LIFE) $('legend').style.display = 'none';
 $('begin').addEventListener('pointerdown', () => {
   if (begun) return;
   begun = true;
@@ -919,7 +1036,7 @@ function pace(raw: number): void {
 }
 
 // ---------------------------------------------------------------- the loop
-const INVERSE = new THREE.Quaternion(), GRAV = new THREE.Vector3();
+const INVERSE = new THREE.Quaternion(), GRAV = new THREE.Vector3(), SLIDE = new THREE.Quaternion();
 fit();
 drawNow();
 redrawLines(0);
@@ -941,15 +1058,25 @@ renderer.setAnimationLoop(() => {
   planet.gravity = { x: GRAV.x, y: GRAV.y, z: GRAV.z };
   drawLevel();
   // Once the fire is out, the long age runs quickly, in small steps so the sea's work stays as it would be.
-  const speed = ending && !ending.shown ? AGE_SPEED : 1;
+  const speed = ending && !ending.shown && !ending.won ? AGE_SPEED : 1;
   // Nothing happens until the world is begun.
-  if (begun && !ending?.shown) for (let k = 0; k < speed; k++) planet.step(dt);
+  if (begun && !ending?.shown) {
+    const before = new THREE.Vector3(planet.plume.x, planet.plume.y, planet.plume.z);
+    for (let k = 0; k < speed; k++) planet.step(dt);
+    // Where the crust drifts over the heat, the heat stays where it is and the world slides past
+    // beneath it, as over a real hotspot: the world is turned back by however far the vent was
+    // carried, so it keeps its place in view (and how the world is tipped there doesn't change).
+    if (planet.k.rises <= 0 && planet.k.drift > 0) {
+      const after = new THREE.Vector3(planet.plume.x, planet.plume.y, planet.plume.z);
+      group.quaternion.multiply(SLIDE.setFromUnitVectors(before, after).invert());
+    }
+  }
   // The surface is redrawn often while lava runs, and now and then while only the slow forces work.
   const flowing = planet.erupting || planet.molten > 0.01;
   let heavy = false;
   if (seconds - lastDraw >= (flowing || speed > 1 ? 1 / 20 : 0.5)) { lastDraw = seconds; draw(); heavy = true; }
-  if (begun && seconds - lastEcology >= 1) { ecology.update((seconds - lastEcology) * speed); lastEcology = seconds; }
-  if (begun && seconds - lastIslands >= 2) {
+  if (LIFE && begun && seconds - lastEcology >= 1) { ecology.update((seconds - lastEcology) * speed); lastEcology = seconds; }
+  if (LIFE && begun && seconds - lastIslands >= 2) {
     lastIslands = seconds;
     for (const _ of islands.update(planet.rock, planet.seconds)) {
       const first = !planet.log.some((l) => l.text.startsWith('Land breaks'));
@@ -963,6 +1090,9 @@ renderer.setAnimationLoop(() => {
   landPen.update(dt, camera);
   seaPen.update(dt, camera);
   waterPen.update(dt, camera);
+  if (begun) drawAim(seconds);
+  aimInk.update(dt, camera);
+  aimPencil.update(dt, camera);
   for (const s of [...kindDots, foam]) s.update(dt);
   puffs.update(dt * speed);
   if (begun) breathe(dt);
@@ -977,4 +1107,4 @@ renderer.setAnimationLoop(() => {
   turnedSince();
 });
 
-if (import.meta.env.DEV) (window as unknown as { volcano: unknown }).volcano = { planet, ecology, islands, rotate, draw, save, world, frameCost, kindDots, lines: () => { lastLines = -1; redrawLines(1e6); }, life: () => { lastLife = -10; redrawLife(1e6); } };
+if (import.meta.env.DEV) (window as unknown as { volcano: unknown }).volcano = { planet, ecology, islands, rotate, draw, save, world, frameCost, kindDots, chain: () => chain, lines: () => { lastLines = -1; redrawLines(1e6); }, life: () => { lastLife = -10; redrawLife(1e6); } };

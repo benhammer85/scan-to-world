@@ -144,7 +144,21 @@ export const VOLCANO = {
   craterDepth: 0.06,
   impactHeat: 5,
   caught: 4,
+
+  /**
+   * What the world is like at the start: 'ocean', one sea over an even floor; or 'moon', airless
+   * highland scarred by `basins` great old impact basins, and a scatter of smaller craters.
+   */
+  terrain: 'ocean' as 'ocean' | 'moon',
+  basins: 0,
+  /** Whether there is life at all; and, if there is, how often (seconds) it begins afresh at a vent that has none near it. */
+  life: true,
+  reseed: 30,
+  seedReach: 0.3,
 };
+
+/** A world's settings: the same fields as VOLCANO, which are the ocean world's. */
+export type Rules = typeof VOLCANO;
 
 export type Era = 'young' | 'burning' | 'cooling' | 'embers' | 'out';
 
@@ -183,7 +197,7 @@ export class Planet {
   target: { x: number; y: number; z: number } | null = null;
 
   /** Heat still in store, and gathered as pressure ready to come out. */
-  reserve = VOLCANO.heat;
+  reserve: number;
   pressure = 0;
   /** A stone on its way, if one is. */
   impact: Impact | null = null;
@@ -208,12 +222,18 @@ export class Planet {
   private slowIn = 0;
   private impactIn: number;
   private began = false;
+  private seedIn = 0;
   private livingDue = false;
   private slowHalf = false;
   private slowDelta: Float32Array;
   private alive = false;
 
-  constructor(private topo: Topology, start: number, seed = 1) {
+  /** This world's own settings: VOLCANO, with whatever the world changes (see worlds.ts). */
+  readonly k: Rules;
+
+  constructor(private topo: Topology, start: number, seed = 1, rules: Partial<Rules> = {}) {
+    this.k = { ...VOLCANO, ...rules };
+    this.reserve = this.k.heat;
     const n = topo.vertexCount, p = topo.basePositions;
     this.scale = n / REFERENCE;
     this.seed = seed;
@@ -232,7 +252,7 @@ export class Planet {
       const x = p[v * 3], y = p[v * 3 + 1], z = p[v * 3 + 2];
       const fine = (Math.sin(x * 13.1 + z * 7.3) + Math.sin(y * 11.7 - x * 9.1 + 2.1) + Math.sin(z * 12.3 + y * 8.9 - 1.3)) / 3;
       this.firmness[v] = 0.55 + 0.9 * (0.5 + 0.5 * Math.sin(x * 17.3 + y * 5.1 - z * 11.9) * Math.sin(y * 13.7 + z * 6.3 + 0.7));
-      this.rock[v] = VOLCANO.floor + VOLCANO.rough * fine;
+      this.rock[v] = this.k.floor + this.k.rough * fine;
     }
     this.plume.x = p[start * 3]; this.plume.y = p[start * 3 + 1]; this.plume.z = p[start * 3 + 2];
     this.plumeVertex = start;
@@ -241,12 +261,60 @@ export class Planet {
     const t1 = unit(cross(this.plume, Math.abs(this.plume.y) < 0.9 ? { x: 0, y: 1, z: 0 } : { x: 1, y: 0, z: 0 }));
     const t2 = cross(this.plume, t1);
     this.drift = { x: t1.x * Math.cos(a) + t2.x * Math.sin(a), y: t1.y * Math.cos(a) + t2.y * Math.sin(a), z: t1.z * Math.cos(a) + t2.z * Math.sin(a) };
-    this.impactIn = this.between(VOLCANO.impactEvery);
+    this.impactIn = this.between(this.k.impactEvery);
+    if (this.k.terrain === 'moon') this.scar();
+  }
+
+  /**
+   * An old, airless world: the great basins its first stones dug (each a broad bowl with a raised
+   * rim), and a scatter of smaller craters over the highland between them. The basins are kept,
+   * by where they are and how wide, for a world whose aim is to flood them.
+   */
+  readonly basins: { x: number; y: number; z: number; r: number }[] = [];
+  private scar(): void {
+    const p = this.topo.basePositions, n = this.rock.length;
+    const bowl = (c: { x: number; y: number; z: number }, r: number, depth: number) => {
+      for (let v = 0; v < n; v++) {
+        const d = Math.hypot(p[v * 3] - c.x, p[v * 3 + 1] - c.y, p[v * 3 + 2] - c.z) / r;
+        if (d > 1.6) continue;
+        this.rock[v] += depth * (d < 1 ? -(1 - d * d) : 0.3 * Math.exp(-((d - 1.1) ** 2) / 0.05));
+      }
+    };
+    const point = () => {
+      const z = this.rand() * 2 - 1, a = this.rand() * Math.PI * 2, s = Math.sqrt(1 - z * z);
+      return { x: s * Math.cos(a), y: s * Math.sin(a), z };
+    };
+    // The basins, well apart, one near where the heat begins so the first is in reach.
+    for (let tries = 0; this.basins.length < this.k.basins && tries < 400; tries++) {
+      const c = this.basins.length === 0 ? unit({ x: this.plume.x + 0.25, y: this.plume.y - 0.2, z: this.plume.z }) : point();
+      const r = 0.22 + this.rand() * 0.14;
+      if (this.basins.some((b) => Math.hypot(b.x - c.x, b.y - c.y, b.z - c.z) < b.r + r + 0.15)) continue;
+      this.basins.push({ ...c, r });
+      bowl(c, r, 0.12);
+    }
+    for (let i = 0; i < 40; i++) bowl(point(), 0.03 + this.rand() * 0.06, 0.05);
+  }
+
+  /** Which way the crust carries the heat, along the ground at the vent (a unit vector). */
+  get driftDirection(): { x: number; y: number; z: number } {
+    return { ...this.drift };
+  }
+
+  /** The share of a basin's floor that lava has flooded, 0 to 1. */
+  flooded(b: { x: number; y: number; z: number; r: number }): number {
+    const p = this.topo.basePositions;
+    let inside = 0, filled = 0;
+    for (let v = 0; v < this.rock.length; v++) {
+      if (Math.hypot(p[v * 3] - b.x, p[v * 3 + 1] - b.y, p[v * 3 + 2] - b.z) > b.r * 0.8) continue;
+      inside++;
+      if (this.age[v] < 1e5) filled++; // lava has lain here
+    }
+    return inside ? filled / inside : 0;
   }
 
   /** The share of the heat you began with that is still to come, gathered or not. */
   get heatLeft(): number {
-    return (this.reserve + this.pressure) / VOLCANO.heat;
+    return (this.reserve + this.pressure) / this.k.heat;
   }
 
   get era(): Era {
@@ -257,7 +325,7 @@ export class Planet {
 
   /** The fire is out: no heat left to speak of, and nothing still flowing. */
   get over(): boolean {
-    return this.reserve + this.pressure < VOLCANO.least && !this.erupting && this.molten < 0.01;
+    return this.reserve + this.pressure < this.k.least && !this.erupting && this.molten < 0.01;
   }
 
   get erupting(): boolean {
@@ -273,7 +341,7 @@ export class Planet {
 
   /** Whether the pressure is enough that letting it out now would be a burst. */
   get bursting(): boolean {
-    return this.pressure >= VOLCANO.explosive;
+    return this.pressure >= this.k.explosive;
   }
 
   /**
@@ -282,20 +350,20 @@ export class Planet {
    */
   erupt(blast = false): 'flow' | 'burst' | null {
     const volume = this.pressure;
-    if (volume < VOLCANO.least) return null;
+    if (volume < this.k.least) return null;
     this.pressure = 0;
     const v = this.plumeVertex, s = this.scale;
-    if (volume < VOLCANO.explosive) {
+    if (volume < this.k.explosive) {
       this.tally.flows++;
-      this.eruptions.push({ vertex: v, flank: this.flankOf(v), left: volume * s, rate: (volume * s) / VOLCANO.pour });
+      this.eruptions.push({ vertex: v, flank: this.flankOf(v), left: volume * s, rate: (volume * s) / this.k.pour });
       return 'flow';
     }
     // A burst: most of it thrown up as ash that falls round the vent, the rest welling out.
     // Torn open, it throws its ash far and wide rather than piling it on the summit.
-    this.fallOfAsh(v, volume * VOLCANO.ashShare * s, blast ? 3 : 1);
+    this.fallOfAsh(v, volume * this.k.ashShare * s, blast ? 3 : 1);
     if (!blast) this.tally.bursts++;
-    const lava = volume * (1 - VOLCANO.ashShare) * s;
-    this.eruptions.push({ vertex: v, flank: v, left: lava, rate: lava / VOLCANO.pour });
+    const lava = volume * (1 - this.k.ashShare) * s;
+    this.eruptions.push({ vertex: v, flank: v, left: lava, rate: lava / this.k.pour });
     return 'burst';
   }
 
@@ -311,13 +379,13 @@ export class Planet {
   /** Held like a globe: level, the pressure builds; tipped, it pours, and tipped when full, it bursts. */
   private tipped(dt: number): void {
     const tip = this.tip;
-    if (!this.pouring && tip >= VOLCANO.tipPour) {
+    if (!this.pouring && tip >= this.k.tipPour) {
       this.pouring = true;
-      if (this.pressure >= VOLCANO.explosive) { this.erupt(); return; }
-      if (this.pressure >= VOLCANO.least) this.tally.flows++;
-    } else if (this.pouring && tip < VOLCANO.tipPour * 0.7) this.pouring = false;
+      if (this.pressure >= this.k.explosive) { this.erupt(); return; }
+      if (this.pressure >= this.k.least) this.tally.flows++;
+    } else if (this.pouring && tip < this.k.tipPour * 0.7) this.pouring = false;
     if (!this.pouring) return;
-    const rate = VOLCANO.pourLeast + (VOLCANO.pourMost - VOLCANO.pourLeast) * Math.min(1, (tip - VOLCANO.tipPour) / (1 - VOLCANO.tipPour));
+    const rate = this.k.pourLeast + (this.k.pourMost - this.k.pourLeast) * Math.min(1, (tip - this.k.tipPour) / (1 - this.k.tipPour));
     const amount = Math.min(this.pressure, Math.max(0, rate) * dt);
     if (amount <= 0) return;
     this.pressure -= amount;
@@ -333,19 +401,19 @@ export class Planet {
   step(dt: number): void {
     this.seconds += dt;
     // The heat rises out of its store: fast at first, slower as the planet cools, and then it is gone.
-    const rise = Math.min(this.reserve, VOLCANO.rising * Math.sqrt(Math.max(0, this.reserve) / VOLCANO.heat) * dt + 1e-4 * dt);
+    const rise = Math.min(this.reserve, this.k.rising * Math.sqrt(Math.max(0, this.reserve) / this.k.heat) * dt + 1e-4 * dt);
     this.reserve -= rise;
     this.pressure += rise;
-    if (this.pressure >= VOLCANO.cap) { this.collapse(); this.erupt(true); this.tally.calderas++; this.tell('Held too long, the mountain tears open'); }
+    if (this.pressure >= this.k.cap) { this.collapse(); this.erupt(true); this.tally.calderas++; this.tell('Held too long, the mountain tears open'); }
     // The store is spent: whatever pressure is left comes out by itself, the last of the fire.
-    if (this.reserve < 0.01 && this.pressure >= VOLCANO.least && !this.erupting) { this.erupt(); this.tell('The last of the heat comes out'); }
-    if (this.reserve < 0.01 && this.pressure < VOLCANO.least) this.pressure = 0;
+    if (this.reserve < 0.01 && this.pressure >= this.k.least && !this.erupting) { this.erupt(); this.tell('The last of the heat comes out'); }
+    if (this.reserve < 0.01 && this.pressure < this.k.least) this.pressure = 0;
     if (this.gravity) this.tipped(dt);
     this.movePlume(dt);
     this.pour(dt);
     this.flow(dt);
     this.cool(dt);
-    for (let v = 0; v < this.age.length; v++) if (this.lava[v] < VOLCANO.thin) this.age[v] += dt;
+    for (let v = 0; v < this.age.length; v++) if (this.lava[v] < this.k.thin) this.age[v] += dt;
     // The slow forces every quarter second, and life the step after, so no one step carries both.
     this.slowIn -= dt;
     const half = this.rock.length >> 1;
@@ -365,34 +433,34 @@ export class Planet {
   warmthAt(v: number): number {
     const p = this.topo.basePositions, q = this.plume;
     const d = Math.hypot(p[v * 3] - q.x, p[v * 3 + 1] - q.y, p[v * 3 + 2] - q.z);
-    return Math.exp(-((d / VOLCANO.warmth) ** 2));
+    return Math.exp(-((d / this.k.warmth) ** 2));
   }
 
   /** The summit falls into the emptied chamber, and the blast kills all round. */
   private collapse(): void {
-    const p = this.topo.basePositions, at = this.plumeVertex, r = VOLCANO.caldera;
+    const p = this.topo.basePositions, at = this.plumeVertex, r = this.k.caldera;
     for (let v = 0; v < this.rock.length; v++) {
       const d = Math.hypot(p[v * 3] - p[at * 3], p[v * 3 + 1] - p[at * 3 + 1], p[v * 3 + 2] - p[at * 3 + 2]);
-      if (d < r) this.rock[v] -= VOLCANO.calderaDepth * (1 - (d / r) ** 2) * Math.min(1, Math.max(0, this.rock[v] - VOLCANO.floor) * 4);
-      if (d < VOLCANO.calderaKills) this.life[v] *= (d / VOLCANO.calderaKills) ** 3;
+      if (d < r) this.rock[v] -= this.k.calderaDepth * (1 - (d / r) ** 2) * Math.min(1, Math.max(0, this.rock[v] - this.k.floor) * 4);
+      if (d < this.k.calderaKills) this.life[v] *= (d / this.k.calderaKills) ** 3;
     }
   }
 
   /** A stone from the sky, at a vertex: a crater with a raised rim, and death round it. Its heat joins yours. */
   strike(at: number): void {
-    const p = this.topo.basePositions, r = VOLCANO.crater;
+    const p = this.topo.basePositions, r = this.k.crater;
     for (let v = 0; v < this.rock.length; v++) {
       const d = Math.hypot(p[v * 3] - p[at * 3], p[v * 3 + 1] - p[at * 3 + 1], p[v * 3 + 2] - p[at * 3 + 2]);
       if (d > r * 2.5) continue;
       const k = d / r;
       // Dug out within the crater, thrown up as a rim just beyond it.
-      this.rock[v] += VOLCANO.craterDepth * (k < 1 ? -(1 - k * k) : 0.35 * Math.exp(-((k - 1.15) ** 2) / 0.08));
+      this.rock[v] += this.k.craterDepth * (k < 1 ? -(1 - k * k) : 0.35 * Math.exp(-((k - 1.15) ** 2) / 0.08));
       this.life[v] *= Math.min(1, k / 2.5);
       if (k < 1.5) this.age[v] = 0;
     }
     // Its heat joins yours, and far more of it if the plume is there to take it in.
     const caught = this.warmthAt(at);
-    this.reserve += VOLCANO.impactHeat * (1 + (VOLCANO.caught - 1) * caught);
+    this.reserve += this.k.impactHeat * (1 + (this.k.caught - 1) * caught);
     this.tally.stones++;
     if (caught > 0.5) { this.tally.caught++; this.tell("The plume takes in the stone's heat"); }
   }
@@ -424,15 +492,15 @@ export class Planet {
     const q = this.plume;
     // Held like a globe, the heat rises towards whatever is uppermost, slowly.
     const g = this.gravity;
-    if (g) this.target = unit({ x: -g.x, y: -g.y, z: -g.z });
+    if (g && this.k.rises > 0) this.target = unit({ x: -g.x, y: -g.y, z: -g.z });
     // On its own, slowly one way; towards where it's called, faster, until it gets there.
-    let mx = this.drift.x * VOLCANO.drift, my = this.drift.y * VOLCANO.drift, mz = this.drift.z * VOLCANO.drift;
+    let mx = this.drift.x * this.k.drift, my = this.drift.y * this.k.drift, mz = this.drift.z * this.k.drift;
     if (this.target) {
       const t = this.target, along = t.x * q.x + t.y * q.y + t.z * q.z;
       const tx = t.x - along * q.x, ty = t.y - along * q.y, tz = t.z - along * q.z, tl = Math.hypot(tx, ty, tz);
       const angle = Math.acos(Math.min(1, along));
       if (angle < 0.01 || tl < 1e-6) this.target = null;
-      else { const sp = Math.min(g ? VOLCANO.rises : VOLCANO.creep, angle / dt); mx += (tx / tl) * sp; my += (ty / tl) * sp; mz += (tz / tl) * sp; }
+      else { const sp = Math.min(g ? this.k.rises : this.k.creep, angle / dt); mx += (tx / tl) * sp; my += (ty / tl) * sp; mz += (tz / tl) * sp; }
     }
     const moved = unit({ x: q.x + mx * dt, y: q.y + my * dt, z: q.z + mz * dt });
     // The drift stays across the plume as it goes round the world.
@@ -464,7 +532,7 @@ export class Planet {
     const a = unit(cross(n, Math.abs(n.y) < 0.9 ? { x: 0, y: 1, z: 0 } : { x: 1, y: 0, z: 0 })), b = cross(n, a);
     const dx = a.x * Math.cos(ang) + b.x * Math.sin(ang), dy = a.y * Math.cos(ang) + b.y * Math.sin(ang), dz = a.z * Math.cos(ang) + b.z * Math.sin(ang);
     let v = vent;
-    for (let k = 0; k < VOLCANO.flank; k++) {
+    for (let k = 0; k < this.k.flank; k++) {
       let best = v, score = -Infinity;
       for (let q = t.nbrOffsets[v]; q < t.nbrOffsets[v + 1]; q++) {
         const w = t.nbrList[q];
@@ -479,13 +547,13 @@ export class Planet {
 
   /** Ash falls round a vent, thickest nearest: a cone of soft ground, and death further out. */
   private fallOfAsh(at: number, volume: number, wide: number): void {
-    const p = this.topo.basePositions, r = VOLCANO.ashReach * wide, n = this.rock.length;
+    const p = this.topo.basePositions, r = this.k.ashReach * wide, n = this.rock.length;
     const w = this.next;
     let sum = 0;
     for (let v = 0; v < n; v++) {
       const d = Math.hypot(p[v * 3] - p[at * 3], p[v * 3 + 1] - p[at * 3 + 1], p[v * 3 + 2] - p[at * 3 + 2]);
-      if (d < VOLCANO.ashKills * wide) this.life[v] *= (d / (VOLCANO.ashKills * wide)) ** 2;
-      if (d < VOLCANO.ashDusts * wide) this.rich[v] = Math.max(this.rich[v], 1 - (d / (VOLCANO.ashDusts * wide)) ** 2);
+      if (d < this.k.ashKills * wide) this.life[v] *= (d / (this.k.ashKills * wide)) ** 2;
+      if (d < this.k.ashDusts * wide) this.rich[v] = Math.max(this.rich[v], 1 - (d / (this.k.ashDusts * wide)) ** 2);
       w[v] = d < r * 3 ? Math.exp(-((d / r) ** 2)) : 0;
       sum += w[v];
     }
@@ -509,7 +577,7 @@ export class Planet {
     for (const e of this.eruptions) {
       const amount = Math.min(e.left, e.rate * dt);
       e.left -= amount;
-      const flank = e.flank === e.vertex ? 0 : VOLCANO.flankShare;
+      const flank = e.flank === e.vertex ? 0 : this.k.flankShare;
       put(e.vertex, amount * (1 - flank));
       if (flank) put(e.flank, amount * flank);
     }
@@ -519,11 +587,11 @@ export class Planet {
   /** Lava runs downhill, mostly by the steepest way, and downhill is as the world is held. */
   private flow(dt: number): void {
     const t = this.topo, n = this.rock.length, next = this.next, p = t.basePositions;
-    const G = this.gravity, R = VOLCANO.relief;
+    const G = this.gravity, R = this.k.relief;
     next.set(this.lava);
     for (let v = 0; v < n; v++) {
       const l = this.lava[v];
-      if (l < VOLCANO.thin) continue;
+      if (l < this.k.thin) continue;
       const s = this.rock[v] + l, a = t.nbrOffsets[v], b = t.nbrOffsets[v + 1];
       const drop = G
         // Held like a globe: how far down the neighbour is along gravity, the ground raised as it
@@ -535,13 +603,13 @@ export class Planet {
         }
         : (w: number) => s - (this.rock[w] + this.lava[w]);
       let sum = 0, weights = 0;
-      for (let q = a; q < b; q++) { const d = drop(t.nbrList[q]); if (d > 0) { sum += d; weights += Math.pow(d, VOLCANO.channel); } }
+      for (let q = a; q < b; q++) { const d = drop(t.nbrList[q]); if (d > 0) { sum += d; weights += Math.pow(d, this.k.channel); } }
       if (sum <= 0) continue;
-      const out = Math.min(l * 0.5, VOLCANO.flow * dt * sum * l / (l + 0.02));
+      const out = Math.min(l * 0.5, this.k.flow * dt * sum * l / (l + 0.02));
       next[v] -= out;
       for (let q = a; q < b; q++) {
         const w = t.nbrList[q], d = drop(w);
-        if (d > 0) next[w] += (out * Math.pow(d, VOLCANO.channel)) / weights;
+        if (d > 0) next[w] += (out * Math.pow(d, this.k.channel)) / weights;
       }
     }
     this.lava.set(next);
@@ -553,10 +621,10 @@ export class Planet {
       const l = this.lava[v];
       if (l <= 0) continue;
       const sea = this.rock[v] + l < 0;
-      const solid = l < VOLCANO.thin ? l : l * (1 - Math.exp(-(sea ? VOLCANO.coolSea : VOLCANO.coolLand) * dt));
+      const solid = l < this.k.thin ? l : l * (1 - Math.exp(-(sea ? this.k.coolSea : this.k.coolLand) * dt));
       this.lava[v] -= solid;
       this.rock[v] += solid;
-      if (l > VOLCANO.cover) { this.age[v] = 0; this.life[v] = 0; this.ash[v] = 0; this.rich[v] = 0; }
+      if (l > this.k.cover) { this.age[v] = 0; this.life[v] = 0; this.ash[v] = 0; this.rich[v] = 0; }
     }
   }
 
@@ -576,36 +644,36 @@ export class Planet {
     for (let v = from; v < to; v++) {
       const a = t.nbrOffsets[v], b = t.nbrOffsets[v + 1];
       const d = Math.hypot(p[v * 3] - q.x, p[v * 3 + 1] - q.y, p[v * 3 + 2] - q.z);
-      const warm = Math.exp(-((d / VOLCANO.warmth) ** 2)) * burning;
+      const warm = Math.exp(-((d / this.k.warmth) ** 2)) * burning;
       // Warm ground swells over the plume; ground the plume has left cools and sinks.
-      next[v] += VOLCANO.swell * dt * warm;
-      this.sunk[v] = Math.max(0, this.sunk[v] - VOLCANO.swell * dt * warm);
-      if (this.sunk[v] < VOLCANO.sinks) { const s = VOLCANO.sink * dt * (1 - warm); next[v] -= s; this.sunk[v] += s; }
-      if (this.lava[v] > VOLCANO.thin) continue;
-      const wear = (1 + (VOLCANO.softer - 1) * this.ash[v]) * (1 - VOLCANO.holds * this.life[v]);
-      if (r[v] > VOLCANO.shallows) {
+      next[v] += this.k.swell * dt * warm;
+      this.sunk[v] = Math.max(0, this.sunk[v] - this.k.swell * dt * warm);
+      if (this.sunk[v] < this.k.sinks) { const s = this.k.sink * dt * (1 - warm); next[v] -= s; this.sunk[v] += s; }
+      if (this.lava[v] > this.k.thin) continue;
+      const wear = (1 + (this.k.softer - 1) * this.ash[v]) * (1 - this.k.holds * this.life[v]);
+      if (r[v] > this.k.shallows) {
         // Open to deep water, the waves strike hard; behind shallows, or a reef, they have broken already.
         let sea = 0;
-        for (let k = a; k < b; k++) { const w = t.nbrList[k]; if (r[w] < 0) sea += Math.min(1, -r[w] / VOLCANO.breaks) * (1 - VOLCANO.holds * this.life[w]); }
-        const worn = sea ? Math.min(r[v] - VOLCANO.shallows, VOLCANO.waves * dt * (sea / (b - a)) * 2 * wear) : 0;
+        for (let k = a; k < b; k++) { const w = t.nbrList[k]; if (r[w] < 0) sea += Math.min(1, -r[w] / this.k.breaks) * (1 - this.k.holds * this.life[w]); }
+        const worn = sea ? Math.min(r[v] - this.k.shallows, this.k.waves * dt * (sea / (b - a)) * 2 * wear) : 0;
         next[v] -= worn;
         this.wear[v] = worn / dt;
       } else this.wear[v] = 0;
-      if (r[v] > 0) next[v] -= VOLCANO.rain * dt * r[v] * wear;
+      if (r[v] > 0) next[v] -= this.k.rain * dt * r[v] * wear;
       // Too steep, and the ground slides towards its lower neighbours; ash stands less steeply than lava rock.
-      const talus = VOLCANO.talus * this.firmness[v] * (1 - 0.4 * this.ash[v]);
+      const talus = this.k.talus * this.firmness[v] * (1 - 0.4 * this.ash[v]);
       for (let k = a; k < b; k++) {
         const w = t.nbrList[k];
         const dd = Math.hypot(p[v * 3] - p[w * 3], p[v * 3 + 1] - p[w * 3 + 1], p[v * 3 + 2] - p[w * 3 + 2]) || 1e-6;
         const drop = r[v] - r[w];
         if (drop / dd > talus) {
-          const move = (drop - talus * dd) * 0.5 * Math.min(1, VOLCANO.slump * dt);
+          const move = (drop - talus * dd) * 0.5 * Math.min(1, this.k.slump * dt);
           next[v] -= move;
           next[w] += move;
         }
       }
       // Reefs build up towards the light, but no further than the surface.
-      if (this.life[v] > 0.2 && r[v] < -0.004 && r[v] > VOLCANO.reefDeep) next[v] += Math.min(-0.004 - r[v], VOLCANO.reef * dt * this.life[v]);
+      if (this.life[v] > 0.2 && r[v] < -0.004 && r[v] > this.k.reefDeep) next[v] += Math.min(-0.004 - r[v], this.k.reef * dt * this.life[v]);
     }
     if (to === n) for (let v = 0; v < n; v++) r[v] += next[v];
   }
@@ -613,9 +681,9 @@ export class Planet {
   /** How much life the ground at a vertex could hold, 0 to 1. */
   private room(v: number): number {
     const h = this.rock[v];
-    if (this.lava[v] > VOLCANO.thin) return 0;
-    if (h < 0) return h > VOLCANO.reefDeep ? 0.7 : 0; // the shallows, as reef; the deep holds none
-    const soil = VOLCANO.soil + (VOLCANO.ashSoil - VOLCANO.soil) * this.rich[v];
+    if (this.lava[v] > this.k.thin) return 0;
+    if (h < 0) return h > this.k.reefDeep ? 0.7 : 0; // the shallows, as reef; the deep holds none
+    const soil = this.k.soil + (this.k.ashSoil - this.k.soil) * this.rich[v];
     return Math.min(1, this.age[v] / soil) * (0.7 + 0.3 * this.rich[v]);
   }
 
@@ -623,25 +691,30 @@ export class Planet {
     const t = this.topo, n = this.life.length, L = this.life, next = this.next;
     // The first life: in the warm water at the vent, once the world has settled a little.
     // If it all dies, it can begin again there, as it did before.
-    if (!this.alive && this.seconds > VOLCANO.origin && !this.over) {
+    // And wherever the heat has gone on to, out of reach of the life there is, it begins again there
+    // before long: life comes up at the vents, and so an island chain is alive all along.
+    this.seedIn -= dt;
+    const lonely = this.alive && this.seedIn <= 0 && !this.lifeNear(this.plumeVertex, this.k.seedReach);
+    if (this.seedIn <= 0) this.seedIn = this.k.reseed;
+    if (this.k.life && (!this.alive || lonely) && this.seconds > this.k.origin && !this.over) {
       const v = this.warmWater();
       if (v >= 0) {
         L[v] = 0.5;
         for (let k = t.nbrOffsets[v]; k < t.nbrOffsets[v + 1]; k++) L[t.nbrList[k]] = 0.3;
-        this.tell(this.began ? 'Life begins again at the vents' : 'Life begins in the warm water at the vents');
+        if (!this.began) this.tell('Life begins in the warm water at the vents');
         this.began = true;
       }
     }
     let alive = false;
     for (let v = 0; v < n; v++) {
       // Rich ground stays rich where life holds it; bare, it washes out.
-      if (L[v] < 0.3) this.rich[v] = Math.max(0, this.rich[v] - dt / VOLCANO.richLasts);
+      if (L[v] < 0.3) this.rich[v] = Math.max(0, this.rich[v] - dt / this.k.richLasts);
       const room = this.room(v);
       let near = 0;
       for (let k = t.nbrOffsets[v]; k < t.nbrOffsets[v + 1]; k++) near = Math.max(near, L[t.nbrList[k]]);
       let l = L[v];
       if (room <= 0) l = Math.max(0, l - dt * 0.5); // the deep, or fresh lava: it dies back
-      else if (l < room) l = Math.min(room, l + dt * (VOLCANO.grow * l + VOLCANO.spread * near * near) * room * (1 + 2 * this.rich[v]));
+      else if (l < room) l = Math.min(room, l + dt * (this.k.grow * l + this.k.spread * near * near) * room * (1 + 2 * this.rich[v]));
       else l = Math.max(room, l - dt * 0.05);
       if (l < 0.002) l = 0;
       if (l > 0) alive = true;
@@ -651,13 +724,23 @@ export class Planet {
     this.alive = alive;
   }
 
+  /** Whether anything lives within `reach` of a vertex. */
+  private lifeNear(at: number, reach: number): boolean {
+    const p = this.topo.basePositions;
+    for (let v = 0; v < this.life.length; v++) {
+      if (this.life[v] < 0.2) continue;
+      if (Math.hypot(p[v * 3] - p[at * 3], p[v * 3 + 1] - p[at * 3 + 1], p[v * 3 + 2] - p[at * 3 + 2]) < reach) return true;
+    }
+    return false;
+  }
+
   /** The nearest water to the plume that is warm and not too deep, or -1: a few rings out, at most. */
   private warmWater(): number {
     const t = this.topo;
     let ring = [this.plumeVertex];
     const seen = new Set(ring);
     for (let step = 0; step < 40; step++) {
-      for (const v of ring) if (this.rock[v] < -0.005 && this.rock[v] > VOLCANO.vents && this.lava[v] < VOLCANO.thin) return v;
+      for (const v of ring) if (this.rock[v] < -0.005 && this.rock[v] > this.k.vents && this.lava[v] < this.k.thin) return v;
       const out: number[] = [];
       for (const v of ring) for (let k = t.nbrOffsets[v]; k < t.nbrOffsets[v + 1]; k++) { const w = t.nbrList[k]; if (!seen.has(w)) { seen.add(w); out.push(w); } }
       ring = out;
@@ -675,14 +758,14 @@ export class Planet {
     if (this.over || !this.stonesFall) return;
     this.impactIn -= dt * this.heatLeft;
     if (this.impactIn > 0) return;
-    this.impactIn = this.between(VOLCANO.impactEvery);
+    this.impactIn = this.between(this.k.impactEvery);
     // Half of them fall near the plume, where they matter; the rest anywhere.
     const p = this.topo.basePositions;
     for (let tries = 0; tries < 200; tries++) {
       const v = Math.floor(this.rand() * this.rock.length);
       const d = Math.hypot(p[v * 3] - this.plume.x, p[v * 3 + 1] - this.plume.y, p[v * 3 + 2] - this.plume.z);
       if (d < 0.08) continue; // not on the vent itself
-      if (this.rand() < 0.5 || d < 0.5) { this.impact = { vertex: v, in: VOLCANO.impactWarning }; this.tell('A stone is coming'); return; }
+      if (this.rand() < 0.5 || d < 0.5) { this.impact = { vertex: v, in: this.k.impactWarning }; this.tell('A stone is coming'); return; }
     }
   }
 
