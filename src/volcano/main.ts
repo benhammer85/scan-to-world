@@ -28,7 +28,8 @@
 import * as THREE from 'three';
 import { buildTopology } from '../mesh/topology';
 import { unpack, type Packed } from './drafting';
-import { PlotterLines, defaultPlotterStyle, type RevealMode } from '../render/plotterLines';
+import { PlotterLines, defaultPlotterStyle } from '../render/plotterLines';
+import type { Polyline } from '../terrain/contours';
 import { GestureRecognizer } from '../interact/gestures';
 import { Stipple } from '../render/stipple';
 import { signSvg } from '../render/signs';
@@ -154,7 +155,16 @@ const landColour = new Float32Array(FN * 3), fineHeight = new Float32Array(FN);
 geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
 geometry.setAttribute('color', new THREE.BufferAttribute(landColour, 3));
 geometry.setAttribute('aH', new THREE.BufferAttribute(fineHeight, 1));
+/**
+ * The surface as it was drawn last time: each new one is eased in from it over about as long as
+ * it took to come, so the land grows smoothly rather than stepping each time it's redrawn.
+ */
+const prevPositions = new Float32Array(FN * 3), prevColour = new Float32Array(FN * 3), prevHeight = new Float32Array(FN);
+geometry.setAttribute('aPrevPos', new THREE.BufferAttribute(prevPositions, 3));
+geometry.setAttribute('aPrevColour', new THREE.BufferAttribute(prevColour, 3));
+geometry.setAttribute('aPrevH', new THREE.BufferAttribute(prevHeight, 1));
 geometry.setIndex(new THREE.BufferAttribute(ftopo.triangles, 1));
+const blend = { value: 1 }, blendFrom = { at: 0, span: 0.5 };
 
 /**
  * The ground's colour is chosen in each pixel rather than at each vertex: land and sea each have
@@ -164,8 +174,10 @@ geometry.setIndex(new THREE.BufferAttribute(ftopo.triangles, 1));
 const material = new THREE.MeshLambertMaterial({ vertexColors: true, dithering: true });
 material.onBeforeCompile = (shader) => {
   shader.vertexShader = shader.vertexShader
-    .replace('void main() {', 'attribute float aH;\nvarying float vH;\nvarying vec3 vDir;\nvoid main() {')
-    .replace('#include <color_vertex>', '#include <color_vertex>\n  vH = aH;\n  vDir = normalize(position);');
+    .replace('void main() {', 'attribute float aH;\nattribute float aPrevH;\nattribute vec3 aPrevPos;\nattribute vec3 aPrevColour;\nuniform float uBlend;\nvarying float vH;\nvarying vec3 vDir;\nvoid main() {')
+    .replace('#include <color_vertex>', '#include <color_vertex>\n  vColor.rgb = mix(aPrevColour, color.rgb, uBlend);\n  vH = mix(aPrevH, aH, uBlend);\n  vDir = normalize(position);')
+    .replace('#include <begin_vertex>', 'vec3 transformed = mix(aPrevPos, position, uBlend);');
+  shader.uniforms.uBlend = blend;
   // The sea's colour is only its depth, so it's worked out here rather than sent: paler over the shallows.
   shader.uniforms.uShallow = { value: SHALLOW };
   shader.uniforms.uDeep = { value: DEEP };
@@ -190,11 +202,39 @@ material.onBeforeCompile = (shader) => {
 const mesh = new THREE.Mesh(geometry, material);
 group.add(mesh);
 
-const landPen = new PlotterLines({ ...defaultPlotterStyle, ink: P.landInk, inkHigh: P.landInkHigh, pencil: P.pencil, alpha: 0.62, indexAlpha: 0.95, indexEvery: 5, fadeSeconds: 0, widthPx: 1.15, nib: false, steady: true }); // no nib: nothing on the world should look like something to press
-const seaPen = new PlotterLines({ ...defaultPlotterStyle, ink: P.seaInk, inkHigh: P.seaInk, pencil: '#a9bfd0', alpha: 0.45, indexAlpha: 0.6, fadeSeconds: 0, pen: false, appearSeconds: 2, widthPx: 0.95, steady: true });
-landPen.width = seaPen.width = 2;
-pens.push(landPen, seaPen);
-group.add(seaPen.object, landPen.object);
+/**
+ * The contours, in two sets of each: when the land has changed and its lines are drawn again, the
+ * new set fades in over the old as the old fades out, so a line never jumps; it drifts, as the
+ * land does, and you don't see it happen unless you're watching for it.
+ */
+const landStyle = { ...defaultPlotterStyle, ink: P.landInk, inkHigh: P.landInkHigh, pencil: P.pencil, alpha: 0.5, indexAlpha: 0.8, indexEvery: 5, fadeSeconds: 0, pen: false, appearSeconds: 0.001, widthPx: 1.15, nib: false };
+const seaStyle = { ...defaultPlotterStyle, ink: P.seaInk, inkHigh: P.seaInk, pencil: '#a9bfd0', alpha: 0.45, indexAlpha: 0.6, fadeSeconds: 0, pen: false, appearSeconds: 0.001, widthPx: 0.95, nib: false };
+const landPens = [new PlotterLines(landStyle), new PlotterLines(landStyle)], seaPens = [new PlotterLines(seaStyle), new PlotterLines(seaStyle)];
+for (const pen of [...landPens, ...seaPens]) { pen.width = 2; pens.push(pen); group.add(pen.object); }
+let frontPen = 0, fadeFrom = -1;
+const CROSS_FADE = 1.2;
+landPens[1].opacity = seaPens[1].opacity = 0;
+/** Put new lines in the set not showing, and begin fading it in. */
+function newLines(land: Polyline[], sea: Polyline[]): void {
+  if (fadeFrom >= 0) finishFade();
+  const back = 1 - frontPen;
+  landPens[back].setLines(land, 'settle');
+  seaPens[back].setLines(sea, 'settle');
+  fadeFrom = performance.now() / 1000;
+}
+function finishFade(): void {
+  frontPen = 1 - frontPen;
+  landPens[frontPen].opacity = seaPens[frontPen].opacity = 1;
+  landPens[1 - frontPen].opacity = seaPens[1 - frontPen].opacity = 0;
+  fadeFrom = -1;
+}
+function crossFade(): void {
+  if (fadeFrom < 0) return;
+  const t = Math.min(1, (performance.now() / 1000 - fadeFrom) / CROSS_FADE), e = t * t * (3 - 2 * t), back = 1 - frontPen;
+  if (t >= 1) { finishFade(); return; }
+  landPens[back].opacity = seaPens[back].opacity = e;
+  landPens[frontPen].opacity = seaPens[frontPen].opacity = 1 - e;
+}
 /** Life by the sign of its kind; and breakers, short blue strokes, where the sea is wearing at a coast. */
 const kindDots = KINDS.map((k) => new Stipple(k.ink, k.sign, k.sign === 'dot' ? 1.7 : k.sign === 'tree' ? 5.5 : 4.5, { ink2: k.ink2 }));
 const foam = new Stipple('#46708f', 'dash', 6);
@@ -315,8 +355,14 @@ shaper.post({ init: { parts: fine.parts, triangles: ftopo.triangles.slice(), bas
 let shapeOut = false;
 shaper.onmessage = (data) => {
   const d = data as { height: Float32Array; land: Float32Array; position: Float32Array; normal: Float32Array };
+  // What was being drawn becomes where the new one eases in from, over about as long as it took to come.
+  prevHeight.set(fineHeight); prevColour.set(landColour); prevPositions.set(positions);
   fineHeight.set(d.height); landColour.set(d.land); positions.set(d.position); normals.set(d.normal);
-  for (const name of ['position', 'normal', 'color', 'aH']) geometry.getAttribute(name).needsUpdate = true;
+  for (const name of ['position', 'normal', 'color', 'aH', 'aPrevPos', 'aPrevColour', 'aPrevH']) geometry.getAttribute(name).needsUpdate = true;
+  const now = performance.now() / 1000;
+  blendFrom.span = Math.min(0.8, Math.max(0.05, now - blendFrom.at));
+  blendFrom.at = now;
+  blend.value = 0;
   shapeOut = false;
 };
 function draw(): void {
@@ -341,7 +387,9 @@ function drawNow(): void {
     nm[v * 3] = x; nm[v * 3 + 1] = y; nm[v * 3 + 2] = z;
   }
   smoothNormals();
-  for (const name of ['position', 'normal', 'color', 'aH']) geometry.getAttribute(name).needsUpdate = true;
+  prevHeight.set(fineHeight); prevColour.set(landColour); prevPositions.set(positions);
+  blend.value = 1;
+  for (const name of ['position', 'normal', 'color', 'aH', 'aPrevPos', 'aPrevColour', 'aPrevH']) geometry.getAttribute(name).needsUpdate = true;
 }
 
 /** The ground's normals, each the sum of its triangles' (weighted by their area), in plain arrays: three's own way is several times slower. */
@@ -367,7 +415,7 @@ function smoothNormals(): void {
 }
 
 // ---------------------------------------------------------------- the pen, life and surf
-let lastLines = -1, lastQuiet = true, lastLife = -1;
+let lastLines = -1, lastLife = -1;
 /**
  * The lines and signs are drafted in a worker (drafting.ts), so the world turns smoothly while
  * the contours are worked out: the page sends heights, and takes up the lines when they come.
@@ -377,15 +425,14 @@ let lastLines = -1, lastQuiet = true, lastLife = -1;
 const drafts = offThread(() => { if (noWorkers) throw new Error('no workers'); return new DraftsWorker(); }, handleDrafts);
 const nearestOf = Uint32Array.from({ length: FN }, (_, f) => fine.nearestCoarse(f));
 drafts.post({ init: { triangles: ftopo.triangles.slice(), basePositions: fbase.slice(), relief: RELIEF, parts: fine.parts, nearest: nearestOf, interval: WORLD.contour ?? 0.035 } });
-let linesOut: { mode: RevealMode; from: THREE.Vector3 } | null = null, lifeOut = false;
+let linesOut = false, lifeOut = false;
 drafts.onmessage = (data) => {
   const d = data as { lines?: { land: Packed; sea: Packed }; life?: { kinds: Float32Array[]; foam: Float32Array } };
   if (d.lines && linesOut) {
     // Taken up on the next frame that has room, not now: see `chores`.
-    const { mode, from } = linesOut, got = d.lines;
-    // A pen to a frame.
-    chores.push(() => landPen.setLines(unpack(got.land), mode, from), () => seaPen.setLines(unpack(got.sea), 'settle'));
-    linesOut = null;
+    const got = d.lines;
+    chores.push(() => newLines(unpack(got.land), unpack(got.sea)));
+    linesOut = false;
   }
   if (d.life) {
     const got = d.life;
@@ -398,15 +445,11 @@ drafts.onmessage = (data) => {
 function redrawLines(now: number): void {
   if (linesOut) return;
   const busy = planet.molten > 0.01 || planet.erupting;
-  // While lava runs, new ground is pencilled; once it has cooled, the pen inks it. The sea's
-  // slow wearing is simply redrawn, now and then, as a map is corrected.
-  // Seldom, so the map changes calmly: a correction now and then, not a flicker.
+  // Now and then (each new set cross-fading in over the last): more often while the land grows.
   const every = busy ? 1.5 : 4;
-  if (now - lastLines < every && !(lastQuiet === false && !busy)) return;
-  const mode: RevealMode = busy ? 'live' : lastQuiet ? 'settle' : 'ink';
+  if (now - lastLines < every) return;
   lastLines = now;
-  lastQuiet = !busy;
-  linesOut = { mode, from: facingPoint() };
+  linesOut = true;
   const heights = fineHeight.slice();
   drafts.post({ lines: { id: now, heights } }, [heights.buffer]);
 }
@@ -416,7 +459,7 @@ function redrawLines(now: number): void {
  * thicker adds): moss a fine stipple; forest sparsely, a few small circles standing for a wood, as
  * a map draws one; the others between.
  */
-const signDensity = KINDS.map((k): [number, number] => (k.sign === 'dot' ? [1600, 3600] : k.kind === 'forest' ? [90, 170] : [180, 330]));
+const signDensity = KINDS.map((k): [number, number] => (k.kind === 'reef' ? [900, 2000] : k.sign === 'dot' ? [1600, 3600] : k.kind === 'forest' ? [90, 170] : [180, 330]));
 /** Life by its signs, and the breakers, drafted in the worker now and then. */
 function redrawLife(now: number): void {
   if (lifeOut || now - lastLife < 3) return;
@@ -578,9 +621,6 @@ function pickAt(x: number, y: number): THREE.Vector3 | null {
   // enough for knowing whether a finger is on the world, and quick.
   const hit = raycaster.ray.intersectSphere(new THREE.Sphere(new THREE.Vector3(), 1.01), new THREE.Vector3());
   return hit ? group.worldToLocal(hit).normalize() : null;
-}
-function facingPoint(): THREE.Vector3 {
-  return group.worldToLocal(camera.position.clone().normalize());
 }
 
 const spin = new THREE.Vector2();
@@ -756,7 +796,7 @@ function effects(dt: number): void {
     for (let i = 0; i < 3; i++) {
       const v = Math.floor(Math.random() * N);
       NORMAL.set(base[v * 3], base[v * 3 + 1], base[v * 3 + 2]).applyQuaternion(group.quaternion);
-      if (NORMAL.z > 0.2) puffs.add('smoke', p[v * 3], p[v * 3 + 1], p[v * 3 + 2], 0.8, Math.random, { x: up.y * 0 + INVERSE_RIGHT.x, y: INVERSE_RIGHT.y, z: INVERSE_RIGHT.z });
+      if (NORMAL.z > 0.2) puffs.add('smoke', p[v * 3], p[v * 3 + 1], p[v * 3 + 2], 0.3, Math.random, { x: INVERSE_RIGHT.x, y: INVERSE_RIGHT.y, z: INVERSE_RIGHT.z });
     }
   }
   // The vent smokes as the heat gathers: a wisp now and then while there's little, more and
@@ -1150,10 +1190,11 @@ renderer.setAnimationLoop(() => {
   }
   redrawLines(seconds);
   redrawLife(seconds);
+  blend.value = Math.min(1, (performance.now() / 1000 - blendFrom.at) / blendFrom.span);
+  crossFade();
   drawMarks();
   effects(dt);
-  landPen.update(dt, camera);
-  seaPen.update(dt, camera);
+  for (const pen of [...landPens, ...seaPens]) pen.update(dt, camera);
   if (begun) drawAim(seconds);
   aimInk.update(dt);
   aimPencil.update(dt);

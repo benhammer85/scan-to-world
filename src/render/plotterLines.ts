@@ -181,6 +181,7 @@ const fragmentShader = /* glsl */ `
   uniform vec3 uPencil;
   uniform float uIndexEvery;
   uniform float uLevelCount;
+  uniform float uShown;
   uniform float uAlpha;
   uniform float uIndexAlpha;
   varying float vAlong;
@@ -211,7 +212,7 @@ const fragmentShader = /* glsl */ `
     vec3 ink = mix(uInk, uInkHigh, clamp(vLevel / max(uLevelCount - 1.0, 1.0), 0.0, 1.0));
     bool isIndex = mod(vLevel + 0.5, uIndexEvery) < 1.0;
     // Out of sight long enough, ink fades back to pencil, and no further.
-    gl_FragColor = vec4(mix(ink, uPencil, vFaded), mix(isIndex ? uIndexAlpha : uAlpha, 0.55, vFaded) * vRim * vAppear * cover);
+    gl_FragColor = vec4(mix(ink, uPencil, vFaded), mix(isIndex ? uIndexAlpha : uAlpha, 0.55, vFaded) * vRim * vAppear * cover * uShown);
   }
 `;
 
@@ -263,6 +264,7 @@ export class PlotterLines {
         uPencil: { value: new THREE.Color(style.pencil) },
         uIndexEvery: { value: style.indexEvery },
         uAlpha: { value: style.alpha },
+        uShown: { value: 1 },
         uIndexAlpha: { value: style.indexAlpha },
         uLevelCount: { value: 1 },
         uNow: { value: 0 },
@@ -350,6 +352,12 @@ export class PlotterLines {
     });
     this.cells = next;
     return keys;
+  }
+
+  /** How much of the whole set is shown, 0 to 1: for cross-fading one set of lines into the next. */
+  set opacity(f: number) {
+    this.material.uniforms.uShown.value = f;
+    this.object.visible = f > 0.001;
   }
 
   setLines(lines: Polyline[], mode: RevealMode, from?: THREE.Vector3): void {

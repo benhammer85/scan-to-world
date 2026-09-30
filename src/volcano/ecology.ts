@@ -34,7 +34,7 @@ export type Kind = 'moss' | 'reef' | 'mangrove' | 'meadow' | 'forest' | 'heath';
  */
 export const KINDS: { kind: Kind; name: string; wants: string; ink: string; ink2: string; sign: Sign }[] = [
   { kind: 'moss', name: 'moss', wants: 'new rock', ink: '#6f8a4a', ink2: '#8f8f4c', sign: 'dot' },
-  { kind: 'reef', name: 'reef', wants: 'shallows', ink: '#c0604e', ink2: '#cf8a48', sign: 'reef' },
+  { kind: 'reef', name: 'reef', wants: 'shallows', ink: '#c0604e', ink2: '#cf8a48', sign: 'dot' },
   { kind: 'mangrove', name: 'mangroves', wants: 'a low, gentle shore', ink: '#4c6a3c', ink2: '#6b5a3a', sign: 'reeds' },
   { kind: 'meadow', name: 'meadows', wants: 'ground rich with ash', ink: '#86983c', ink2: '#a8923e', sign: 'grass' },
   { kind: 'forest', name: 'forest', wants: 'high ground', ink: '#2f5a36', ink2: '#44602c', sign: 'tree' },
