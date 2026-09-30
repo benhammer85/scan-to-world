@@ -1,7 +1,8 @@
 /**
- * Volcano, the prototype: an ocean planet, your vent on its floor, a rival
- * vent on the far side, and the sea. Drawn in Atlas Minor's paper and ink: the
- * one pen plots the coastlines and contours of the land as it is made.
+ * Volcano, the prototype: a young ocean planet with nothing on it, and you the
+ * heat beneath, with a finite store of it. Drawn in Atlas Minor's paper and
+ * ink: the one pen plots the coastlines and contours of the land as it is
+ * made, and life comes in as stipple, on land and as reef in the shallows.
  */
 import * as THREE from 'three';
 import { buildTopology } from '../mesh/topology';
@@ -9,7 +10,7 @@ import { extractContours } from '../terrain/contours';
 import { PlotterLines, defaultPlotterStyle, type RevealMode } from '../render/plotterLines';
 import { GestureRecognizer } from '../interact/gestures';
 import { Stipple, stippleDots } from '../render/stipple';
-import { Planet, VOLCANO, type Stage } from './sim';
+import { Planet, VOLCANO, type Era } from './sim';
 
 const $ = (id: string) => document.getElementById(id)!;
 const stage = $('stage');
@@ -48,7 +49,7 @@ const nearest = (x: number, y: number, z: number) => {
   for (let v = 0; v < N; v++) { const d = Math.hypot(base[v * 3] - x, base[v * 3 + 1] - y, base[v * 3 + 2] - z); if (d < bd) { bd = d; best = v; } }
   return best;
 };
-const planet = new Planet(topo, nearest(0.1, 0.15, 0.98), nearest(-0.1, -0.2, -0.97));
+const planet = new Planet(topo, nearest(0.1, 0.15, 0.98), 1 + Math.floor(Math.random() * 1e6));
 
 /** How far above the sea the land stands, drawn: heights are small, so the relief is raised. */
 const RELIEF = 0.32;
@@ -66,14 +67,21 @@ const landPen = new PlotterLines({ ...defaultPlotterStyle, ink: '#6b4a2e', inkHi
 const seaPen = new PlotterLines({ ...defaultPlotterStyle, ink: '#5b82a3', inkHigh: '#5b82a3', pencil: '#a9bfd0', alpha: 0.45, indexAlpha: 0.6, fadeSeconds: 0, pen: false, appearSeconds: 2 });
 landPen.width = seaPen.width = 2;
 group.add(seaPen.object, landPen.object);
-const life = new Stipple('#3f4a2a');
-group.add(life.object);
+const life = new Stipple('#3f4a2a'), reef = new Stipple('#3e6f6a');
+group.add(life.object, reef.object);
 
-/** The vents: yours a fine ink ring, the rival's a faint one. */
-const ventRings = new THREE.Group();
-group.add(ventRings);
+/** Marks on the surface, each a fine ink ring laid flat on the ground. */
+function ring(color: string, opacity: number, inner = 0.9): THREE.Mesh {
+  const m = new THREE.Mesh(new THREE.RingGeometry(inner, 1, 48), new THREE.MeshBasicMaterial({ color, transparent: true, opacity, side: THREE.DoubleSide, depthWrite: false }));
+  group.add(m);
+  return m;
+}
+/** The pressure, gathering at the plume; the faint outer ring is as far as it can go before it bursts on its own. */
+const pressureRing = ring('#2e2118', 0.85), capRing = ring('#2e2118', 0.25, 0.96);
+/** Where you have called the heat to, and a stone's shadow as it falls. */
+const targetRing = ring('#2e2118', 0.5, 0.8), stoneRing = ring('#4a2f1c', 0.7, 0.85);
 
-const PAPER = new THREE.Color('#ecdfc2'), BASALT = new THREE.Color('#8b7c6b'), LAVA = new THREE.Color('#4a2418'), GLOW = new THREE.Color('#9a4a2a');
+const PAPER = new THREE.Color('#ecdfc2'), BASALT = new THREE.Color('#8b7c6b'), ASH = new THREE.Color('#a7a196'), LAVA = new THREE.Color('#4a2418'), GLOW = new THREE.Color('#9a4a2a');
 const SHALLOW = new THREE.Color('#d4e3ec'), DEEP = new THREE.Color('#b1c8d8');
 const c = new THREE.Color();
 
@@ -93,7 +101,7 @@ function draw(): void {
     if (h < 0 && lava < 0.004) c.copy(SHALLOW).lerp(DEEP, Math.min(1, -h / 0.3));
     else {
       // Fresh basalt, dark, weathering to paper; hot lava darker still, with the least warmth at its thickest.
-      c.copy(PAPER).lerp(BASALT, Math.exp(-planet.age[v] / 30) * 0.9);
+      c.copy(PAPER).lerp(BASALT, Math.exp(-planet.age[v] / 30) * 0.9).lerp(ASH, planet.ash[v] * 0.6);
       if (lava > 0.002) c.lerp(LAVA, Math.min(1, lava * 25)).lerp(GLOW, Math.min(0.35, lava * 6));
     }
     colors[v * 3] = c.r; colors[v * 3 + 1] = c.g; colors[v * 3 + 2] = c.b;
@@ -121,59 +129,73 @@ function redrawLines(now: number): void {
   seaPen.setLines(extractContours(topo, h, { interval: 0.07, lift: 0.001, mask: land }), 'settle');
 }
 
+/** Life as stipple, denser where there is more of it: on land in dark ink, in the shallows as reef in a sea-green one. */
 function redrawLife(now: number): void {
   if (now - lastLife < 1.2) return;
   lastLife = now;
-  const levels: number[][] = [[], [], [], []], t = topo.triangles;
+  const onLand: number[][] = [[], [], [], []], inSea: number[][] = [[], [], [], []], t = topo.triangles;
   for (let i = 0; i < t.length; i += 3) {
-    const l = Math.min(planet.life(t[i]), planet.life(t[i + 1]), planet.life(t[i + 2]));
-    if (l <= 0) continue;
+    const a = t[i], b = t[i + 1], d = t[i + 2];
+    const l = Math.min(planet.life[a], planet.life[b], planet.life[d]);
+    if (l <= 0.02) continue;
     const k = Math.min(3, Math.floor(l * 4));
-    for (const v of [t[i], t[i + 1], t[i + 2]]) levels[k].push(topo.positions[v * 3] * 1.002, topo.positions[v * 3 + 1] * 1.002, topo.positions[v * 3 + 2] * 1.002);
+    const into = surface(a) + surface(b) + surface(d) > 0 ? onLand : inSea;
+    for (const v of [a, b, d]) into[k].push(topo.positions[v * 3] * 1.002, topo.positions[v * 3 + 1] * 1.002, topo.positions[v * 3 + 2] * 1.002);
   }
-  life.set(levels.flatMap((tris, k) => stippleDots(tris, 4000 + 9000 * k)));
+  life.set(onLand.flatMap((tris, k) => stippleDots(tris, 4000 + 9000 * k)));
+  reef.set(inSea.flatMap((tris, k) => stippleDots(tris, 2500 + 5000 * k)));
 }
 
-function drawVents(now: number): void {
-  while (ventRings.children.length < planet.vents.length) {
-    const own = planet.vents[ventRings.children.length].owner === 1;
-    ventRings.add(new THREE.Mesh(new THREE.RingGeometry(0.93, 1, 40), new THREE.MeshBasicMaterial({ color: own ? '#2e2118' : '#8a8578', transparent: true, opacity: own ? 0.8 : 0.5, side: THREE.DoubleSide, depthWrite: false })));
+/** Lay a ring flat on the ground above a point of the planet, at a given size. */
+function place(m: THREE.Mesh, x: number, y: number, z: number, size: number): void {
+  const up = new THREE.Vector3(x, y, z).normalize();
+  const v = nearestAbove(up);
+  const r = new THREE.Vector3(topo.positions[v * 3], topo.positions[v * 3 + 1], topo.positions[v * 3 + 2]).length();
+  m.position.copy(up).multiplyScalar(r + 0.006);
+  m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), up);
+  m.scale.setScalar(size);
+}
+function nearestAbove(u: THREE.Vector3): number {
+  // Near the plume, a walk from its vertex is quick; this is only for placing marks.
+  let v = planet.plumeVertex;
+  const d = (w: number) => (base[w * 3] - u.x) ** 2 + (base[w * 3 + 1] - u.y) ** 2 + (base[w * 3 + 2] - u.z) ** 2;
+  for (let moves = 0; moves < 400; moves++) {
+    let best = v;
+    for (let k = topo.nbrOffsets[v]; k < topo.nbrOffsets[v + 1]; k++) if (d(topo.nbrList[k]) < d(best)) best = topo.nbrList[k];
+    if (best === v) break;
+    v = best;
   }
-  planet.vents.forEach((vent, i) => {
-    const m = ventRings.children[i] as THREE.Mesh, v = vent.vertex;
-    const p = new THREE.Vector3(topo.positions[v * 3], topo.positions[v * 3 + 1], topo.positions[v * 3 + 2]);
-    const up = p.clone().normalize();
-    m.position.copy(p).addScaledVector(up, 0.006);
-    m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), up);
-    const charging = charge && charge.vent === vent ? charge.amount : 0;
-    m.scale.setScalar(0.025 + 0.05 * charging + 0.004 * Math.sin(now * 3 + i));
-  });
+  return v;
+}
+
+function drawMarks(now: number): void {
+  const q = planet.plume, share = planet.pressure / VOLCANO.cap;
+  const over = !planet.over;
+  pressureRing.visible = capRing.visible = over;
+  place(pressureRing, q.x, q.y, q.z, 0.018 + 0.07 * share + 0.002 * Math.sin(now * 3));
+  place(capRing, q.x, q.y, q.z, 0.09);
+  // Past the point where it would burst, the ring turns to the colour of hot rock.
+  (pressureRing.material as THREE.MeshBasicMaterial).color.set(planet.bursting ? '#8a3a1e' : '#2e2118');
+  const t = planet.target;
+  targetRing.visible = !!t;
+  if (t) place(targetRing, t.x, t.y, t.z, 0.02);
+  const s = planet.impact;
+  stoneRing.visible = !!s;
+  if (s) place(stoneRing, base[s.vertex * 3], base[s.vertex * 3 + 1], base[s.vertex * 3 + 2], 0.02 + 0.12 * (s.in / VOLCANO.impactWarning));
 }
 
 // ---------------------------------------------------------------- touch
 const raycaster = new THREE.Raycaster();
-function pickAt(x: number, y: number): number | null {
+function pickAt(x: number, y: number): THREE.Vector3 | null {
   const r = renderer.domElement.getBoundingClientRect();
   raycaster.setFromCamera(new THREE.Vector2(((x - r.left) / r.width) * 2 - 1, -((y - r.top) / r.height) * 2 + 1), camera);
   const hit = raycaster.intersectObject(mesh)[0];
-  if (!hit?.face) return null;
-  const f = hit.face, local = group.worldToLocal(hit.point.clone());
-  let best = f.a, bd = Infinity;
-  for (const v of [f.a, f.b, f.c]) { const d = Math.hypot(topo.positions[v * 3] - local.x, topo.positions[v * 3 + 1] - local.y, topo.positions[v * 3 + 2] - local.z); if (d < bd) { bd = d; best = v; } }
-  return best;
-}
-function yourVentNear(v: number | null) {
-  const mine = planet.vents.filter((x) => x.owner === 1);
-  if (v === null) return mine[0];
-  let best = mine[0], bd = Infinity;
-  for (const x of mine) { const d = Math.hypot(base[x.vertex * 3] - base[v * 3], base[x.vertex * 3 + 1] - base[v * 3 + 1], base[x.vertex * 3 + 2] - base[v * 3 + 2]); if (d < bd) { bd = d; best = x; } }
-  return best;
+  return hit ? group.worldToLocal(hit.point.clone()).normalize() : null;
 }
 function facingPoint(): THREE.Vector3 {
   return group.worldToLocal(camera.position.clone().normalize());
 }
 
-let charge: { vent: ReturnType<typeof yourVentNear>; amount: number } | null = null;
 const spin = new THREE.Vector2();
 const turn = new THREE.Quaternion(), axis = new THREE.Vector3();
 function rotate(ax: number, ay: number): void {
@@ -181,52 +203,76 @@ function rotate(ax: number, ay: number): void {
   turn.setFromAxisAngle(axis.set(1, 0, 0), ay); group.quaternion.premultiply(turn);
 }
 let touched = false;
-const firstTouch = () => { if (!touched) { touched = true; setTimeout(() => $('hint').classList.add('gone'), 6000); } };
+const firstTouch = () => { if (!touched) { touched = true; setTimeout(() => $('hint').classList.add('gone'), 9000); } };
+const finger = { x: 0, y: 0 };
+const call = (x: number, y: number) => { const p = pickAt(x, y); if (p) planet.callTo(p.x, p.y, p.z); };
 
 const gestures = new GestureRecognizer(
   {
-    tap(x, y) {
+    tap() {
       firstTouch();
-      const v = pickAt(x, y);
-      if (v === null) return;
-      // Where your land allows it, a tap on your own coast opens a new vent there; anywhere else, a small eruption.
-      if (planet.openVent(v)) { announce('A new vent opens'); return; }
-      planet.erupt(yourVentNear(v), 0);
+      if (ending) { if (ending.shown) location.reload(); return; }
+      // Let the pressure out, all of it: gently if there's little, as a burst if it has built.
+      if (planet.erupt() === null) announce('Not enough heat yet');
     },
     spin(dx, dy) { firstTouch(); spin.set(0, 0); rotate(dx * 0.006, dy * 0.006); },
     fling(vx, vy) { spin.set(vx * 0.006, vy * 0.006); },
     zoom(f) { dist = THREE.MathUtils.clamp(dist / f, 1.6, 9); fit(); },
-    grab(x, y) { firstTouch(); charge = { vent: yourVentNear(pickAt(x, y)), amount: 0 }; },
-    press(dt) { if (charge) charge.amount = Math.min(1, charge.amount + dt / VOLCANO.charge); },
-    pull() { /* holding still or not, the pressure builds */ },
-    release() { if (charge) { planet.erupt(charge.vent, charge.amount); charge = null; } },
+    // Hold the world, and the heat is called there; it creeps beneath the crust to follow your finger.
+    grab(x, y) { firstTouch(); call(x, y); },
+    press() { /* holding still: the call stands */ },
+    pull() { call(finger.x, finger.y); },
+    release() { /* the heat goes on to where it was called */ },
     drawer() { /* none */ },
   },
   (x, y) => pickAt(x, y) !== null,
 );
-stage.addEventListener('pointerdown', (e) => { stage.setPointerCapture(e.pointerId); gestures.down(e.pointerId, e.clientX, e.clientY, e.timeStamp); });
-stage.addEventListener('pointermove', (e) => gestures.move(e.pointerId, e.clientX, e.clientY, e.timeStamp));
+stage.addEventListener('pointerdown', (e) => { stage.setPointerCapture(e.pointerId); finger.x = e.clientX; finger.y = e.clientY; gestures.down(e.pointerId, e.clientX, e.clientY, e.timeStamp); });
+stage.addEventListener('pointermove', (e) => { finger.x = e.clientX; finger.y = e.clientY; gestures.move(e.pointerId, e.clientX, e.clientY, e.timeStamp); });
 for (const type of ['pointerup', 'pointercancel'] as const) stage.addEventListener(type, (e) => gestures.up(e.pointerId, e.clientX, e.clientY, e.timeStamp));
 stage.addEventListener('wheel', (e) => { e.preventDefault(); gestures.wheel(e.deltaY); }, { passive: false });
 
 // ---------------------------------------------------------------- words
-const STAGES: Record<Stage, string> = { seamount: 'A seamount', island: 'An island', volcano: 'A volcano', archipelago: 'An archipelago' };
-let shownStage: Stage = 'seamount';
+const ERAS: Record<Era, string> = { young: 'The young fire', burning: 'The long burning', cooling: 'The cooling', embers: 'The last embers', out: 'The fire is out' };
+let shownEra: Era = 'young';
 function announce(text: string): void {
   const e = $('event');
   e.textContent = text;
   e.classList.add('shown');
-  setTimeout(() => e.classList.remove('shown'), 2600);
+  clearTimeout(announce.timer);
+  announce.timer = window.setTimeout(() => e.classList.remove('shown'), 3200);
 }
+announce.timer = 0;
+const pct = (x: number) => `${(x * 100).toFixed(1)}%`;
+let firstLand = false;
 function words(): void {
-  const s = planet.stage();
-  if (s !== shownStage) {
-    shownStage = s;
-    $('stage-name').textContent = STAGES[s];
-    announce(s === 'island' ? 'An island breaks the surface' : s === 'volcano' ? 'A great volcano stands' : s === 'archipelago' ? 'Tap your coast to open a new vent' : '');
+  const era = planet.era;
+  if (era !== shownEra && !ending) { shownEra = era; $('stage-name').textContent = ERAS[era]; }
+  const news = planet.news.splice(0);
+  if (!firstLand && planet.landShare() > 0) { firstLand = true; news.push('Land breaks the surface'); }
+  if (news.length && !ending) announce(news[news.length - 1]);
+  if (!ending) $('shares').textContent = `heat ${Math.round(planet.heatLeft * 100)}% · land ${pct(planet.landShare())} · life ${pct(planet.lifeShare())}`;
+}
+
+/**
+ * The end: when the fire is out, a long age passes quickly, the sea and the rain at work on
+ * what you made, and then what lasted is told.
+ */
+const LONG_AGE = 360, AGE_SPEED = 14;
+let ending: { from: number; shown: boolean } | null = null;
+function theEnd(): void {
+  if (!ending && planet.over) {
+    ending = { from: planet.seconds, shown: false };
+    $('stage-name').textContent = ERAS.out;
+    announce('The fire is out. A long age passes');
   }
-  const pct = (x: number) => `${(x * 100).toFixed(1)}%`;
-  $('shares').textContent = `your land ${pct(planet.landShare(1))} · the rival's ${pct(planet.landShare(2))}`;
+  if (ending && !ending.shown && planet.seconds - ending.from >= LONG_AGE) {
+    ending.shown = true;
+    $('stage-name').textContent = 'What lasted';
+    $('shares').textContent = `land ${pct(planet.landShare())} · life ${pct(planet.lifeShare())}`;
+    $('hint').textContent = 'tap to begin again, with a new world';
+    $('hint').classList.remove('gone');
+  }
 }
 
 // ---------------------------------------------------------------- the loop
@@ -244,15 +290,18 @@ renderer.setAnimationLoop(() => {
   // The bottom of the screen is down for the lava: tip the world, and the flows follow.
   DOWN.set(0, -1, 0).applyQuaternion(INVERSE.copy(group.quaternion).invert());
   planet.downhill.x = DOWN.x; planet.downhill.y = DOWN.y; planet.downhill.z = DOWN.z;
-  planet.step(dt);
+  // Once the fire is out, the long age runs quickly, in small steps so the sea's work stays as it would be.
+  const speed = ending && !ending.shown ? AGE_SPEED : 1;
+  for (let k = 0; k < speed; k++) planet.step(dt);
   draw();
   redrawLines(seconds);
   redrawLife(seconds);
-  drawVents(seconds);
+  drawMarks(seconds);
   landPen.update(dt, camera);
   seaPen.update(dt, camera);
   life.update(dt);
-  if (seconds - lastWords > 0.5) { lastWords = seconds; words(); }
+  reef.update(dt);
+  if (seconds - lastWords > 0.5) { lastWords = seconds; words(); theEnd(); }
   renderer.render(scene, camera);
 });
 

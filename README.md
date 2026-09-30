@@ -29,13 +29,15 @@ Every world you make, what grew on it, the railways between worlds, which way ea
 
 ## Volcano (a prototype beside it)
 
-`volcano.html` (`src/volcano/`) is a separate prototype, and Atlas Minor is untouched by it. You are a vent on the floor of an ocean planet.
+`volcano.html` (`src/volcano/`) is a separate prototype, and Atlas Minor is untouched by it. You are the heat beneath a young ocean planet, a mantle plume, and the planet begins with nothing on it: one sea over one even floor.
 
-* **Hold** the world to build pressure, and **let go** to erupt. Lava pours from your vent and out at a flank, runs downhill in tongues, and cools into rock: fast in the sea, slower on land.
+* **The heat is finite.** It rises out of its store by itself, fast at first and slower as the planet cools, and it runs out after about ten minutes. It gathers as pressure at the plume, shown as an ink ring that grows towards a faint outer one.
+* **Tap to let it out.** Let it out often and it comes as gentle, fluid flows that spread into wide, low shields that last. Let it build (the ring turns rust) and it bursts. The ash falls into a tall, steep cone that is soft and quick to wear away, but it dusts the land round it and makes the ground rich for life. Hold it too long and it bursts on its own: the mountain tears open, the summit falls into a caldera, and life dies far around.
+* **Hold the world to call the heat there**, and the plume creeps beneath the crust to follow your finger. It also drifts slowly by itself. Land it leaves behind loses its warmth and sinks, so it leaves a trail of islands.
 * **Tip the world** and the lava runs towards the bottom of the screen, so turning is how you steer.
-* **The planet pushes back:** waves wear the coasts, steep ground slumps, and rain wears the heights. A rival vent on the far side raises land of its own, and either of you can bury the other's.
-* **Stages:** a seamount, then an island, a volcano and an archipelago. At the archipelago stage, tap your own coast to open a new vent.
-* **Life** takes land that stays quiet long enough, drawn as faint stipple.
+* **Life begins in the warm water at the vents** and spreads into the shallows as reef (sea-green stipple) and onto quiet land (dark stipple). It holds the ground against the rain and the sea, and reefs build up towards the surface. Lava clears it, ash near the vent kills it, and if it all dies it begins again at the vents.
+* **Nothing opposes you but the planet itself:** waves wear exposed coasts (less behind shallows and reefs), rain wears the heights, and steep ground slumps. Cooled ground sinks, and stones fall from the sky. You see a stone's shadow a few seconds before it lands; it digs a crater and kills what lives there, though its heat joins yours. The cooling is the clock.
+* **Eras** follow the heat: the young fire, the long burning, the cooling, and the last embers. When the fire is out, a long age passes quickly while the sea and rain work on what you made, and then you're told what lasted: land and life.
 * The pen plots the coasts and contours as they form: pencil while lava runs, inked once it sets.
 
 Locally, run `npm run dev` and open `/volcano.html`. The simulation (`src/volcano/sim.ts`) has no drawing in it and is tested in `test/volcano.test.ts`.
