@@ -132,6 +132,17 @@ export const VOLCANO = {
   /** Reefs: life in the shallows above `reefDeep` builds rock up towards the surface, at this rate. */
   reefDeep: -0.07,
   reef: 0.0012,
+  /**
+   * Atolls, on a world with a sea: once the fire is out, the long age lets the islands sink much
+   * further (`ageSink` a second, to `ageSinks` in all), and coral keeps growing up on their
+   * seaward shores, where it faces open water, to just above the surface. The island drowns
+   * inside its reef, and a ring of coral islets is left round a lagoon, as Darwin saw.
+   */
+  atolls: false,
+  ageSink: 0.0011,
+  ageSinks: 0.4,
+  /** How high coral builds its islets above the surface. */
+  islets: 0.006,
   /** Where life is at its fullest, the rain and the sea wear the ground this much less. */
   holds: 0.75,
 
@@ -562,7 +573,9 @@ export class Planet {
     const g = this.gravity;
     if (g && this.k.rises > 0) this.target = unit({ x: -g.x, y: -g.y, z: -g.z });
     // On its own, slowly one way; towards where it's called, faster, until it gets there.
-    let mx = this.drift.x * this.k.drift, my = this.drift.y * this.k.drift, mz = this.drift.z * this.k.drift;
+    // (Once the fire is out there is nothing to carry: the world is still, for its long age.)
+    const drift = this.over ? 0 : this.k.drift;
+    let mx = this.drift.x * drift, my = this.drift.y * drift, mz = this.drift.z * drift;
     if (this.target) {
       const t = this.target, along = t.x * q.x + t.y * q.y + t.z * q.z;
       const tx = t.x - along * q.x, ty = t.y - along * q.y, tz = t.z - along * q.z, tl = Math.hypot(tx, ty, tz);
@@ -708,7 +721,8 @@ export class Planet {
     const t = this.topo, n = this.rock.length, p = t.basePositions, r = this.rock, q = this.plume;
     const next = this.slowDelta;
     if (from === 0) next.fill(0);
-    const burning = Math.min(1, this.heatLeft * 2);
+    const burning = Math.min(1, this.heatLeft * 2), ageing = this.k.atolls && this.over;
+    const sink = ageing ? this.k.ageSink : this.k.sink, sinks = ageing ? this.k.ageSinks : this.k.sinks;
     for (let v = from; v < to; v++) {
       const a = t.nbrOffsets[v], b = t.nbrOffsets[v + 1];
       const d = Math.hypot(p[v * 3] - q.x, p[v * 3 + 1] - q.y, p[v * 3 + 2] - q.z);
@@ -716,10 +730,11 @@ export class Planet {
       // Warm ground swells over the plume; ground the plume has left cools and sinks.
       next[v] += this.k.swell * dt * warm;
       this.sunk[v] = Math.max(0, this.sunk[v] - this.k.swell * dt * warm);
-      if (this.sunk[v] < this.k.sinks) { const s = this.k.sink * dt * (1 - warm); next[v] -= s; this.sunk[v] += s; }
+      if (this.sunk[v] < sinks) { const s = sink * dt * (1 - warm); next[v] -= s; this.sunk[v] += s; }
       if (this.lava[v] > this.k.thin) continue;
       const wear = (1 + (this.k.softer - 1) * this.ash[v]) * (1 - this.k.holds * this.life[v]);
-      if (r[v] > this.k.shallows) {
+      // (Coral islets in the long age are held by their reef: the waves don't take them.)
+      if (r[v] > this.k.shallows && !(ageing && this.life[v] > 0.2 && r[v] < this.k.islets * 2)) {
         // Open to deep water, the waves strike hard; behind shallows, or a reef, they have broken already.
         let sea = 0;
         for (let k = a; k < b; k++) { const w = t.nbrList[k]; if (r[w] < 0) sea += Math.min(1, -r[w] / this.k.breaks) * (1 - this.k.holds * this.life[w]); }
@@ -732,7 +747,8 @@ export class Planet {
       if (this.storm && r[v] > this.k.floor) next[v] -= this.k.stormWear * dt * (r[v] - this.k.floor) * (1 + (this.k.softer - 1) * this.ash[v]);
       // Too steep, and the ground slides towards its lower neighbours; ash stands less steeply than lava rock.
       const talus = this.k.talus * this.firmness[v] * (1 - 0.4 * this.ash[v]);
-      for (let k = a; k < b; k++) {
+      // (Reef rock is cemented: in the long age an atoll's rim stands over its deepening lagoon.)
+      if (!(ageing && this.atollRim()[v])) for (let k = a; k < b; k++) {
         const w = t.nbrList[k];
         const dd = Math.hypot(p[v * 3] - p[w * 3], p[v * 3 + 1] - p[w * 3 + 1], p[v * 3 + 2] - p[w * 3 + 2]) || 1e-6;
         const drop = r[v] - r[w];
@@ -743,9 +759,70 @@ export class Planet {
         }
       }
       // Reefs build up towards the light, but no further than the surface.
-      if (this.life[v] > 0.2 && r[v] < -0.004 && r[v] > this.k.reefDeep) next[v] += Math.min(-0.004 - r[v], this.k.reef * dt * this.life[v]);
+      if (!ageing) {
+        if (this.life[v] > 0.2 && r[v] < -0.004 && r[v] > this.k.reefDeep) next[v] += Math.min(-0.004 - r[v], this.k.reef * dt * this.life[v]);
+      } else if (this.atollRim()[v]) {
+        // In the long age, only the reef's seaward edge keeps up with the sinking; the sheltered
+        // middle doesn't, and becomes the lagoon. Along the edge, here and there, coral sand builds
+        // islets a little above the surface; between them the reef lies just awash.
+        const top = this.isletAt(v) ? this.k.islets : -0.004;
+        if (r[v] < top) next[v] += Math.min(top - r[v], this.k.reef * 2.5 * dt + sink * dt);
+        // Bare coral sand, too new and salt for anything to live on it yet: drawn as islets, not a thicket.
+        if (r[v] > 0) this.life[v] = Math.min(this.life[v], 0.2);
+      }
     }
     if (to === n) for (let v = 0; v < n; v++) r[v] += next[v];
+  }
+
+  /**
+   * The reef's seaward edge, as it was when the long age began: living ground (land or shallows)
+   * bordering water that holds nothing, and the living ground just inside it, a ring three wide.
+   */
+  private rim: Uint8Array | null = null;
+  /** Whether coral sand builds an islet at this vertex of an atoll's rim: in clusters, by a smooth noise over the world. */
+  private isletAt(v: number): boolean {
+    const p = this.topo.basePositions, x = p[v * 3] * 11, y = p[v * 3 + 1] * 11, z = p[v * 3 + 2] * 11;
+    return Math.sin(x + 1.3) * Math.sin(y * 1.1 - 0.7) * Math.sin(z * 0.9 + 2.1) + 0.25 * Math.sin(x * 2.3 + y * 1.7 - z * 2.9) > -0.1;
+  }
+  private atollRim(): Uint8Array {
+    if (this.rim) return this.rim;
+    const t = this.topo, n = this.rock.length, r = this.rock, L = this.life, edge = new Uint8Array(n), rim = new Uint8Array(n);
+    const alive = (v: number) => L[v] > 0.2 && r[v] > this.k.reefDeep;
+    for (let v = 0; v < n; v++) {
+      if (!alive(v)) continue;
+      for (let k = t.nbrOffsets[v]; k < t.nbrOffsets[v + 1]; k++) if (!alive(t.nbrList[k]) && r[t.nbrList[k]] < 0) { edge[v] = 1; break; }
+    }
+    // Three wide: the edge, and the living ground within two steps of it.
+    rim.set(edge);
+    for (let pass = 0; pass < 2; pass++) {
+      const was = rim.slice();
+      for (let v = 0; v < n; v++) {
+        if (was[v] || !alive(v)) continue;
+        for (let k = t.nbrOffsets[v]; k < t.nbrOffsets[v + 1]; k++) if (was[t.nbrList[k]]) { rim[v] = 1; break; }
+      }
+    }
+    return (this.rim = rim);
+  }
+
+  /** How many atolls the long age has left: rings of coral islets, each at least a few vertices of reef edge standing at the surface. */
+  get atolls(): number {
+    const rim = this.rim;
+    if (!rim) return 0;
+    const t = this.topo, n = this.rock.length, seen = new Uint8Array(n), up = (v: number) => rim[v] && this.rock[v] > -0.006;
+    let count = 0;
+    for (let v = 0; v < n; v++) {
+      if (seen[v] || !up(v)) continue;
+      let size = 0;
+      const stack = [v];
+      seen[v] = 1;
+      while (stack.length) {
+        const w = stack.pop()!;
+        size++;
+        for (let k = t.nbrOffsets[w]; k < t.nbrOffsets[w + 1]; k++) { const u = t.nbrList[k]; if (!seen[u] && up(u)) { seen[u] = 1; stack.push(u); } }
+      }
+      if (size >= 6 * this.scale) count++;
+    }
+    return count;
   }
 
   /** How much life the ground at a vertex could hold, 0 to 1. */

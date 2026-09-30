@@ -59,7 +59,7 @@ export const WORLDS: World[] = [
     title: 'An ocean world',
     first: 'A young ocean world, with heat beneath it that won’t last.',
     then: 'The heat travels along the dotted line on its own. Keep building islands as it goes, and keep them alive: a gap breaks the chain. Hold the world level and pressure builds; tip it and lava pours out; tip it when the smoke is heavy and it erupts.',
-    rules: { drift: 0.0125, rises: 0, heat: 740, rising: 2.7, reseed: 15, floor: -0.22, impactEvery: [60, 100] },
+    rules: { drift: 0.0125, rises: 0, heat: 740, rising: 2.7, reseed: 15, floor: -0.22, impactEvery: [60, 100], atolls: true },
     palette: {
       paper: '#ecdfc2', basalt: '#9a8a76', ash: '#b3ada2', lava: '#b8563c', deepLava: '#8f3b28',
       shallow: '#d4e3ec', deep: '#b1c8d8',

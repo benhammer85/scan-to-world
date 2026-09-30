@@ -120,12 +120,12 @@ function remember(key: string, value: string): void {
 }
 /**
  * What earlier fires on this world left: the next rises through it, so past games become the
- * world's geology (not when a world is asked for by its number, to see it again as it was). The
- * ocean's old islands have sunk meanwhile, to seamounts; and the new fire starts somewhere new.
+ * world's geology (not when a world is asked for by its number, to see it again as it was): the
+ * ocean's old islands sunk to seamounts and ringed by atolls in the long age after their fire; and
+ * the new fire starts somewhere new.
  */
 const GROUND = wanted ? null : recallGround(WORLD.id, N);
 const FIRES = GROUND?.fires ?? 0;
-if (GROUND && WORLD.id === 'ocean') for (let v = 0; v < N; v++) GROUND.rock[v] = Math.max(WORLD.rules.floor ?? -0.22, GROUND.rock[v] - 0.1);
 const START = (() => {
   if (!GROUND) return nearest(0.1, 0.15, 0.98);
   const h = (k: number) => { const x = Math.sin(seed * 12.9898 + k * 78.233) * 43758.5453; return x - Math.floor(x); };
@@ -607,7 +607,7 @@ function onGround(pts: { x: number; y: number; z: number }[], into: number[]): v
 function drawAim(now: number): void {
   if (now - lastAim < 2) return;
   lastAim = now;
-  reckonAim();
+  if (!ending?.won) reckonAim(); // (met, what was met stands, whatever the long age does after)
   if (begun) tellAim(now);
   const inked: number[] = [], pencilled: number[] = [], next: number[] = [];
   if (WORLD.goal === 'height' || WORLD.goal === 'cover') {
@@ -844,6 +844,8 @@ const PLUME = new THREE.Vector3(), SWING = new THREE.Quaternion();
  * and looked at; turning it right round begins another.
  */
 const LONG_AGE = 360, AGE_SPEED = 14, DRAWING = 7, TURN_AGAIN = 2.6;
+/** Whether this world has a long age after a win too: one with a sea, where it leaves atolls. */
+const AGES = WORLD.rules.atolls === true;
 let ending: { from: number; shown: boolean; at: number; info: ChartInfo | null; turned: number; won: boolean } | null = null;
 let wonSeen = -1;
 const wonAt = () => (wonSeen < 0 ? (wonSeen = seconds) : wonSeen);
@@ -854,15 +856,17 @@ function theEnd(): void {
     queue.length = 0;
     announce(WORLD.goal === 'ring' ? 'Done: living islands all the way round' : WORLD.goal === 'height' ? `Done: the mountain reaches ${HEIGHT.target} km` : WORLD.goal === 'cover' ? `Done: ${COVER}% of the ice made new` : 'Done: every basin flooded');
     feel([30, 50, 30]);
+    // On a world with a sea, the fire goes out and the long age follows even so, for its atolls.
+    if (AGES) { planet.reserve = 0; planet.pressure = 0; announce('The islands sink, and coral rings them'); }
   }
   if (!ending && planet.over) {
     ending = { from: planet.seconds, shown: false, at: 0, info: null, turned: 0, won: false };
     $('stage-name').textContent = ERAS.out;
     queue.length = 0;
-    announce('The fire is out. Time passes');
+    announce(AGES ? 'The fire is out. The islands sink, and coral rings them' : 'The fire is out. Time passes');
   }
   // Met, the chart comes a few moments later; not, after a long age has worn at what was made.
-  if (ending && !ending.shown && planet.seconds - ending.from >= (ending.won ? 0 : LONG_AGE) && (!ending.won || seconds - wonAt() > 4)) {
+  if (ending && !ending.shown && planet.seconds - ending.from >= (ending.won && !AGES ? 0 : LONG_AGE) && (!ending.won || seconds - wonAt() > 4)) {
     ending.shown = true;
     ending.at = seconds;
     ecology.update(0);
@@ -896,14 +900,14 @@ function chartInfo(): ChartInfo {
   }
   const length = ending!.from, mm = `${Math.floor(length / 60)}:${String(Math.floor(length % 60)).padStart(2, '0')}`;
   const eras = eraFrom.filter((e) => e.from < length).map((e, i, all) => ({ name: e.name.replace(/^The /, ''), from: e.from, to: i + 1 < all.length ? all[i + 1].from : length }));
-  reckonAim();
+  if (!ending?.won) reckonAim();
   const met = !!ending?.won, ring = WORLD.goal === 'ring';
   return {
     title: ring ? (met ? 'Ringed with islands' : 'Not yet ringed') : WORLD.goal === 'height' ? (met ? 'The great mountain' : 'Not high enough yet') : WORLD.goal === 'cover' ? (met ? 'New ice' : 'Not enough new ice') : met ? 'Every basin flooded' : 'Not every basin flooded',
     subtitle: `${WORLD.numeral} · ${WORLD.title} · ${FIRES ? `fire ${FIRES + 1} · ` : ''}${mm} of fire`,
     kinds: LIFE ? KINDS.map((k) => ({ name: k.name, ink: k.ink, sign: k.sign, living: living.has(k.kind) })) : [],
     summary: ring
-      ? `${aimDone} of ${aimOf} stretches living · ${living.size} of ${KINDS.length} kinds of life`
+      ? `${aimDone} of ${aimOf} stretches living${planet.atolls ? ` · ${planet.atolls} atoll${planet.atolls === 1 ? '' : 's'}` : ''} · ${living.size} of ${KINDS.length} kinds of life`
       : WORLD.goal === 'height' ? `${Math.round(aimDone)} of ${aimOf} km high` : WORLD.goal === 'cover' ? `${Math.round(aimDone)}% of the ice made new, of ${aimOf}%` : `${aimDone} of ${aimOf} basins flooded`,
     length,
     eras,
@@ -1188,7 +1192,7 @@ renderer.setAnimationLoop(() => {
   planet.gravity = { x: GRAV.x, y: GRAV.y, z: GRAV.z };
   drawLevel();
   // Once the fire is out, the long age runs quickly, in small steps so the sea's work stays as it would be.
-  const speed = ending && !ending.shown && !ending.won ? AGE_SPEED : 1;
+  const speed = ending && !ending.shown && (!ending.won || (AGES && seconds - wonAt() > 4)) ? AGE_SPEED : 1;
   // Nothing happens until the world is begun.
   if (begun && !ending?.shown) {
     const before = new THREE.Vector3(planet.plume.x, planet.plume.y, planet.plume.z);

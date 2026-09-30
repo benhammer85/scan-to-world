@@ -134,3 +134,30 @@ describe('past fires', () => {
     expect(next.summit).toBeLessThan(first.summit * 0.5);
   });
 });
+
+describe('atolls', () => {
+  it('in the long age an island sinks inside its reef, and a ring of coral is left round a lagoon', () => {
+    const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('ocean').rules);
+    pl.reserve = 0; pl.pressure = 0; // the fire is out
+    // A living island: a dome 0.14 across, and reef in the shallows round it.
+    const c = { x: 0.6, y: 0, z: 0.8 };
+    const r = (v: number) => Math.hypot(p[v * 3] - c.x, p[v * 3 + 1] - c.y, p[v * 3 + 2] - c.z);
+    for (let v = 0; v < topo.vertexCount; v++) {
+      const d = r(v);
+      if (d < 0.2) { pl.rock[v] = 0.12 * (1 - (d / 0.16) ** 2); pl.life[v] = 1; }
+    }
+    expect(pl.over).toBe(true);
+    run(pl, 400);
+    const ring: number[] = [], middle: number[] = [];
+    for (let v = 0; v < topo.vertexCount; v++) {
+      const d = r(v);
+      if (d < 0.05) middle.push(pl.rock[v]);
+      if (d > 0.13 && d < 0.19) ring.push(pl.rock[v]);
+    }
+    const mean = (a: number[]) => a.reduce((s, x) => s + x, 0) / a.length;
+    // The middle has drowned; the rim stands at the surface, higher than the middle.
+    expect(mean(middle)).toBeLessThan(-0.01);
+    expect(Math.max(...ring)).toBeGreaterThan(-0.002);
+    expect(Math.max(...ring)).toBeGreaterThan(mean(middle) + 0.02);
+  });
+});
