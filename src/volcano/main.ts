@@ -789,7 +789,7 @@ function effects(dt: number): void {
     const torn = planet.tally.calderas > tallied.calderas;
     feel(torn ? [40, 60, 90] : 25);
     // The column of ash: many puffs from the vent, rising and spreading.
-    for (let i = 0; i < (torn ? 36 : 18); i++) puffs.add('ash', p[v0 * 3], p[v0 * 3 + 1], p[v0 * 3 + 2], torn ? 1.5 : 1, Math.random, up);
+    for (let i = 0; i < (torn ? 110 : 60); i++) puffs.add('ash', p[v0 * 3], p[v0 * 3 + 1], p[v0 * 3 + 2], torn ? 1.5 : 1, Math.random, up);
   }
   Object.assign(tallied, planet.tally);
   // Steam where lava runs into the sea, as much as there is lava there.
@@ -814,8 +814,9 @@ function effects(dt: number): void {
   smokeIn -= dt;
   const share = Math.min(1, planet.pressure / VOLCANO.cap);
   if (!planet.over && !planet.pouring && planet.pressure > 0.5 && smokeIn <= 0) {
-    smokeIn = planet.bursting ? 0.25 : 0.9 - 0.55 * Math.min(1, planet.pressure / VOLCANO.explosive);
-    puffs.add('smoke', p[v0 * 3], p[v0 * 3 + 1], p[v0 * 3 + 2], planet.bursting ? 1.4 + share : 0.5 + share, Math.random, up);
+    smokeIn = planet.bursting ? 0.15 : 0.5 - 0.3 * Math.min(1, planet.pressure / VOLCANO.explosive);
+    // A few dots at a time, so the plume is a soft stipple, fuller as the heat gathers.
+    for (let i = 0, k = planet.bursting ? 6 : 3; i < k; i++) puffs.add('smoke', p[v0 * 3], p[v0 * 3 + 1], p[v0 * 3 + 2], planet.bursting ? 1.4 + share : 0.5 + share, Math.random, up);
   }
 }
 
@@ -1300,4 +1301,4 @@ renderer.setAnimationLoop(() => {
   turnedSince();
 });
 
-if (import.meta.env.DEV) (window as unknown as { volcano: unknown }).volcano = { planet, ecology, islands, rotate, draw, save, world, frameCost, kindDots, chain: () => chain, lines: () => { lastLines = -1; redrawLines(1e6); }, life: () => { lastLife = -10; redrawLife(1e6); } };
+if (import.meta.env.DEV) (window as unknown as { volcano: unknown }).volcano = { planet, puffs, ecology, islands, rotate, draw, save, world, frameCost, kindDots, chain: () => chain, lines: () => { lastLines = -1; redrawLines(1e6); }, life: () => { lastLife = -10; redrawLife(1e6); } };

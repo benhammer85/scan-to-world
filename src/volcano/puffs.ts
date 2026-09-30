@@ -1,8 +1,8 @@
 /**
  * Puffs: steam where lava meets the sea, ash thrown up by a burst, and the
- * thin smoke of a vent under pressure. Each is a short wavy stroke of the pen,
- * as the old engraved maps drew smoke curling up from a volcano, drifting
- * slowly up, lengthening and fading; a few together read as a wisp. A fixed number of them, reused
+ * thin smoke of a vent under pressure. Each is one fine dot of stipple, as the
+ * map draws moss and coral, rising, drifting apart and fading: together a
+ * soft plume that thickens as the heat gathers and thins as it rises. A fixed number of them, reused
  * in turn, so there's never more than the page can bear.
  */
 import * as THREE from 'three';
@@ -11,7 +11,7 @@ import { rimGlsl } from '../render/rim';
 export type PuffKind = 'steam' | 'ash' | 'smoke';
 
 const TINT: Record<PuffKind, number> = { steam: 0, ash: 1, smoke: 2 };
-const MOST = 700;
+const MOST = 1200;
 
 interface Puff { alive: boolean; age: number; life: number; x: number; y: number; z: number; ux: number; uy: number; uz: number; rise: number; size: number; grow: number; kind: number }
 
@@ -66,15 +66,11 @@ export class Puffs {
         varying float vSeed;
         varying float vPx;
         void main() {
-          // A short wavy stroke across the point, one crest up and one down (which way, and how
-          // deep, its own), in a fine line fading at its edges over about a pixel.
+          // A round dot with a soft edge a pixel wide, a touch larger or smaller by its own seed.
           vec2 q = (gl_PointCoord - 0.5) * 2.0;
-          float x = clamp(q.x, -0.8, 0.8);
-          float amp = (0.12 + 0.1 * fract(vSeed * 3.7)) * (vSeed > 0.5 ? 1.0 : -1.0);
-          float y = amp * sin(x * 3.927);
-          float d = length(vec2(q.x - x, -q.y - y)) * vPx * 0.5;
-          float line = clamp((vTint > 1.5 ? 1.6 : 0.9) - d, 0.0, 1.0);
-          float a = vAlpha * line;
+          float r = vPx * 0.5 * (0.75 + 0.25 * vSeed);
+          float cover = clamp(r - length(q) * vPx * 0.5 + 0.5, 0.0, 1.0);
+          float a = vAlpha * cover;
           if (a <= 0.01) discard;
           // Steam in the sea's blue ink, ash and smoke in sepia.
           vec3 c = vTint < 0.5 ? vec3(0.36, 0.49, 0.6) : vTint < 1.5 ? vec3(0.23, 0.17, 0.12) : vec3(0.24, 0.18, 0.14);
@@ -104,9 +100,9 @@ export class Puffs {
     p.age = 0;
     p.kind = TINT[kind];
     this.seed[this.nextSlot === 0 ? MOST - 1 : this.nextSlot - 1] = rand();
-    if (kind === 'steam') { p.life = 2.2 + rand(); p.rise = 0.035; p.size = 0.012; p.grow = 0.02; }
-    else if (kind === 'ash') { p.life = 5 + rand() * 3; p.rise = 0.14 * strength * (0.6 + rand() * 0.8); p.size = 0.018; p.grow = 0.03; }
-    else { p.life = 5 + rand() * 2; p.rise = 0.11 * strength; p.size = 0.03 + 0.012 * strength; p.grow = 0.04 * strength; }
+    if (kind === 'steam') { p.life = 2.2 + rand(); p.rise = 0.035; p.size = 0.004; p.grow = 0.002; }
+    else if (kind === 'ash') { p.life = 5 + rand() * 3; p.rise = 0.14 * strength * (0.6 + rand() * 0.8); p.size = 0.0045; p.grow = 0.002; }
+    else { p.life = 4 + rand() * 3; p.rise = (0.06 + 0.05 * rand()) * strength; p.size = 0.0035 + 0.0015 * strength; p.grow = 0.002; }
   }
 
   update(dt: number): void {
@@ -122,7 +118,7 @@ export class Puffs {
       this.position[i * 3] = p.x; this.position[i * 3 + 1] = p.y; this.position[i * 3 + 2] = p.z;
       this.size[i] = p.size + p.grow * f;
       // Coming in quickly, then fading slowly as it thins; smoke the strongest, so a wisp is seen.
-      this.alpha[i] = (p.kind === 1 ? 0.7 : p.kind === 0 ? 0.5 : 1.0) * Math.min(1, f * 5) * (1 - f) ** (p.kind === 2 ? 0.9 : 1.5);
+      this.alpha[i] = (p.kind === 1 ? 0.75 : p.kind === 0 ? 0.55 : 0.7) * Math.min(1, f * 5) * (1 - f) ** 1.2;
       this.tint[i] = p.kind;
     }
     const g = this.object.geometry;
