@@ -82,7 +82,7 @@ function fit(): void {
 /** How far the world is lifted up the page (a share of its height): at the end, to leave the foot for the chart. */
 let lift = 0;
 function look(): void {
-  dist = THREE.MathUtils.clamp(dist, 1.6, farthest * 1.3);
+  dist = THREE.MathUtils.clamp(dist, 2.1, farthest * 1.3);
   camera.position.set(0, 0, dist);
   camera.lookAt(0, 0, 0);
   const w = Math.max(1, stage.clientWidth || innerWidth), h = Math.max(1, stage.clientHeight || innerHeight);
@@ -152,6 +152,8 @@ const ftopo = fine.fine, FN = ftopo.vertexCount, fbase = ftopo.basePositions;
 const geometry = new THREE.BufferGeometry();
 const positions = new Float32Array(FN * 3);
 const landColour = new Float32Array(FN * 3), fineHeight = new Float32Array(FN);
+/** Where lava lies (how thick) and where it has lain (this fire's, or an earlier one's): amounts, so their edges are drawn crisp in each pixel. */
+const fineMarks = new Float32Array(FN * 2), prevMarks = new Float32Array(FN * 2);
 geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
 geometry.setAttribute('color', new THREE.BufferAttribute(landColour, 3));
 geometry.setAttribute('aH', new THREE.BufferAttribute(fineHeight, 1));
@@ -163,6 +165,8 @@ const prevPositions = new Float32Array(FN * 3), prevColour = new Float32Array(FN
 geometry.setAttribute('aPrevPos', new THREE.BufferAttribute(prevPositions, 3));
 geometry.setAttribute('aPrevColour', new THREE.BufferAttribute(prevColour, 3));
 geometry.setAttribute('aPrevH', new THREE.BufferAttribute(prevHeight, 1));
+geometry.setAttribute('aMarks', new THREE.BufferAttribute(fineMarks, 2));
+geometry.setAttribute('aPrevMarks', new THREE.BufferAttribute(prevMarks, 2));
 geometry.setIndex(new THREE.BufferAttribute(ftopo.triangles, 1));
 const blend = { value: 1 }, blendFrom = { at: 0, span: 0.5 };
 
@@ -174,15 +178,18 @@ const blend = { value: 1 }, blendFrom = { at: 0, span: 0.5 };
 const material = new THREE.MeshLambertMaterial({ vertexColors: true, dithering: true });
 material.onBeforeCompile = (shader) => {
   shader.vertexShader = shader.vertexShader
-    .replace('void main() {', 'attribute float aH;\nattribute float aPrevH;\nattribute vec3 aPrevPos;\nattribute vec3 aPrevColour;\nuniform float uBlend;\nvarying float vH;\nvarying vec3 vDir;\nvoid main() {')
-    .replace('#include <color_vertex>', '#include <color_vertex>\n  vColor.rgb = mix(aPrevColour, color.rgb, uBlend);\n  vH = mix(aPrevH, aH, uBlend);\n  vDir = normalize(position);')
+    .replace('void main() {', 'attribute float aH;\nattribute float aPrevH;\nattribute vec3 aPrevPos;\nattribute vec3 aPrevColour;\nattribute vec2 aMarks;\nattribute vec2 aPrevMarks;\nuniform float uBlend;\nvarying float vH;\nvarying vec2 vMarks;\nvarying vec3 vDir;\nvoid main() {')
+    .replace('#include <color_vertex>', '#include <color_vertex>\n  vColor.rgb = mix(aPrevColour, color.rgb, uBlend);\n  vH = mix(aPrevH, aH, uBlend);\n  vMarks = mix(aPrevMarks, aMarks, uBlend);\n  vDir = normalize(position);')
     .replace('#include <begin_vertex>', 'vec3 transformed = mix(aPrevPos, position, uBlend);');
   shader.uniforms.uBlend = blend;
   // The sea's colour is only its depth, so it's worked out here rather than sent: paler over the shallows.
+  shader.uniforms.uFlooded = { value: FLOODED ?? PAPER };
+  shader.uniforms.uLava = { value: VERMILION };
+  shader.uniforms.uDeepLava = { value: DEEP_RED };
   shader.uniforms.uShallow = { value: SHALLOW };
   shader.uniforms.uDeep = { value: DEEP };
   shader.fragmentShader = shader.fragmentShader
-    .replace('void main() {', `uniform vec3 uShallow;\nuniform vec3 uDeep;\nvarying float vH;\nvarying vec3 vDir;
+    .replace('void main() {', `uniform vec3 uShallow;\nuniform vec3 uDeep;\nuniform vec3 uFlooded;\nuniform vec3 uLava;\nuniform vec3 uDeepLava;\nvarying float vH;\nvarying vec2 vMarks;\nvarying vec3 vDir;
       float hash3(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
       float noise3(vec3 p) {
         vec3 i = floor(p), f = fract(p), s = f * f * (3.0 - 2.0 * f);
@@ -197,6 +204,14 @@ material.onBeforeCompile = (shader) => {
       // pooled and lighter where it thinned, in soft blotches fixed to the ground.
       float pool = noise3(vDir * 30.0);
       vec3 land = vColor.rgb * (0.98 + 0.04 * pool);
+      // Where lava has lain (the Moon's seas, the ice moon's new ice), and where it lies now, each
+      // with an edge a pixel wide wherever its amount crosses a threshold: a clean edge, as a wash
+      // laid with a brush has, not the soft, stepped smear of colour carried vertex to vertex.
+      float fl = vMarks.x, fw = max(fwidth(fl), 1e-4) * 0.7;
+      land = mix(land, uFlooded, smoothstep(0.5 - fw, 0.5 + fw, fl) * 0.85);
+      float lv = vMarks.y, lw = max(fwidth(lv), 1e-4) * 0.7, on = smoothstep(0.03 - lw, 0.03 + lw, lv);
+      land = mix(land, uLava, on);
+      land = mix(land, uDeepLava, on * clamp((lv - 0.03) * 0.8, 0.0, 0.6));
       diffuseColor.rgb *= mix(sea, land, smoothstep(-edge, edge, vH));`);
 };
 const mesh = new THREE.Mesh(geometry, material);
@@ -292,7 +307,7 @@ const PAPER = new THREE.Color(P.paper), BASALT = new THREE.Color(P.basalt), ASH 
 const FLOODED = P.flooded ? new THREE.Color(P.flooded) : null;
 const SHALLOW = new THREE.Color(P.shallow), DEEP = new THREE.Color(P.deep);
 const rgb = (c: THREE.Color) => [c.r, c.g, c.b];
-const [PA, BA, AS, VE, DR] = [PAPER, BASALT, ASH, VERMILION, DEEP_RED].map(rgb);
+const [PA, BA, AS] = [PAPER, BASALT, ASH].map(rgb);
 const FL = FLOODED ? rgb(FLOODED) : null;
 /**
  * Life's own wash: where something lives, the ground takes its kind's colour, as the hand-coloured
@@ -310,7 +325,7 @@ function surface(v: number): number {
 }
 
 // The simulation's values, a vertex at a time, before they are carried onto the finer surface.
-const coarseHeight = new Float32Array(N), coarseLand = new Float32Array(N * 3);
+const coarseHeight = new Float32Array(N), coarseLand = new Float32Array(N * 3), coarseMarks = new Float32Array(N * 2), markEase = new Float32Array(N);
 /** The simulation's heights and colours, a vertex at a time, ready to be carried onto the finer surface. */
 function coarse(): void {
   // How far the wash eases this time: by the seconds since last, over a second or two.
@@ -325,22 +340,36 @@ function coarse(): void {
     // lava a flat vermilion wash, deeper where it lies thick. (Plain arithmetic, not Colors: this
     // is sixteen thousand vertices, many times a second.)
     const v3 = v * 3;
-    const fresh = planet.age[v] < 200 ? Math.exp(-planet.age[v] / 30) * 0.3 : 0, ash = Math.min(0.22, planet.ash[v] * 0.3);
-    const hot = lava > 0.002 ? Math.min(1, lava * 40) : 0, deep = lava > 0.002 ? Math.min(0.6, lava * 8) : 0;
+    // (Not on a world that marks where lava has lain: there that mark is the edge, and a soft tint beside it only smears it.)
+    const fresh = !FL && planet.age[v] < 200 ? Math.exp(-planet.age[v] / 30) * 0.3 : 0, ash = Math.min(0.22, planet.ash[v] * 0.3);
+    const hot = lava > 0.002 ? Math.min(1, lava * 40) : 0;
+    // Where a world keeps the mark of it (the Moon's seas), ground lava has lain on stays dark: this
+    // fire's fully, an earlier one's a little faded. And the lava itself, by how thick it lies.
+    coarseMarks[v * 2] = FL && planet.age[v] < 1e5 ? 1 : 0;
+    coarseMarks[v * 2 + 1] = lava > 0.0005 ? Math.min(1, lava * 8 + 0.03) : 0;
     const kind = LIFE ? ecology.kind[v] : -1, wash = kind >= 0 ? WASH[kind] : null, washBy = wash ? WASH_STRENGTH * Math.min(1, planet.life[v]) * (1 - hot) : 0;
     washWeight[v] += (washBy - washWeight[v]) * ease;
     for (let i = 0; i < 3; i++) {
       let x = PA[i] + (BA[i] - PA[i]) * fresh;
       // Where a world keeps the mark of it (the Moon's seas), ground lava has lain on stays dark.
-      if (FL && planet.age[v] < 1e5) x += (FL[i] - x) * 0.85;
-      else if (FL && MARKED && MARKED[v]) x += (FL[i] - x) * 0.5; // an earlier fire's, a little faded
+      // An earlier fire's seas, faded, as a soft tint (this fire's are drawn crisp in the shader).
+      if (FL && MARKED && MARKED[v] && planet.age[v] >= 1e5) x += (FL[i] - x) * 0.45;
       x += (AS[i] - x) * ash;
-      x += (VE[i] - x) * hot;
-      x += (DR[i] - x) * deep;
       if (wash) washTint[v3 + i] += (wash[i] - washTint[v3 + i]) * (washWeight[v] < 0.05 ? 1 : ease);
       x += (washTint[v3 + i] - x) * washWeight[v];
       coarseLand[v3 + i] = x;
     }
+  }
+  // The flooded ground's amount eased toward its neighbours', twice, so the edge the shader draws
+  // where it crosses a half is a curve, not the simulation's triangles.
+  if (FL) for (let pass = 0; pass < 2; pass++) {
+    const o = topo.nbrOffsets, l = topo.nbrList;
+    for (let v = 0; v < N; v++) {
+      let sum = 0;
+      for (let k = o[v]; k < o[v + 1]; k++) sum += coarseMarks[l[k] * 2];
+      markEase[v] = coarseMarks[v * 2] * 0.4 + (sum / Math.max(1, o[v + 1] - o[v])) * 0.6;
+    }
+    for (let v = 0; v < N; v++) coarseMarks[v * 2] = markEase[v];
   }
 }
 
@@ -354,11 +383,12 @@ const shaper = offThread(() => { if (noWorkers) throw new Error('no workers'); r
 shaper.post({ init: { parts: fine.parts, triangles: ftopo.triangles.slice(), basePositions: fbase.slice(), relief: RELIEF } });
 let shapeOut = false;
 shaper.onmessage = (data) => {
-  const d = data as { height: Float32Array; land: Float32Array; position: Float32Array; normal: Float32Array };
+  const d = data as { height: Float32Array; land: Float32Array; position: Float32Array; normal: Float32Array; marks: Float32Array };
   // What was being drawn becomes where the new one eases in from, over about as long as it took to come.
-  prevHeight.set(fineHeight); prevColour.set(landColour); prevPositions.set(positions);
+  prevHeight.set(fineHeight); prevColour.set(landColour); prevPositions.set(positions); prevMarks.set(fineMarks);
+  fineMarks.set(d.marks);
   fineHeight.set(d.height); landColour.set(d.land); positions.set(d.position); normals.set(d.normal);
-  for (const name of ['position', 'normal', 'color', 'aH', 'aPrevPos', 'aPrevColour', 'aPrevH']) geometry.getAttribute(name).needsUpdate = true;
+  for (const name of ['position', 'normal', 'color', 'aH', 'aPrevPos', 'aPrevColour', 'aPrevH', 'aMarks', 'aPrevMarks']) geometry.getAttribute(name).needsUpdate = true;
   const now = performance.now() / 1000;
   blendFrom.span = Math.min(0.8, Math.max(0.05, now - blendFrom.at));
   blendFrom.at = now;
@@ -369,14 +399,15 @@ function draw(): void {
   if (shapeOut) return;
   coarse();
   shapeOut = true;
-  const height = coarseHeight.slice(), land = coarseLand.slice();
-  shaper.post({ shape: { height, land } }, [height.buffer, land.buffer]);
+  const height = coarseHeight.slice(), land = coarseLand.slice(), marks = coarseMarks.slice();
+  shaper.post({ shape: { height, land, marks } }, [height.buffer, land.buffer, marks.buffer]);
 }
 
 /** Redraw the surface here and now: at the start, on taking up a kept world, and for the kept chart. */
 function drawNow(): void {
   coarse();
   fine.carryDrawn(coarseHeight, coarseLand, fineHeight, landColour);
+  fine.carry(coarseMarks, fineMarks, 2);
   const nm = ftopo.normals;
   for (let v = 0; v < FN; v++) {
     const r = 1 + RELIEF * Math.max(0, fineHeight[v]);
@@ -387,9 +418,9 @@ function drawNow(): void {
     nm[v * 3] = x; nm[v * 3 + 1] = y; nm[v * 3 + 2] = z;
   }
   smoothNormals();
-  prevHeight.set(fineHeight); prevColour.set(landColour); prevPositions.set(positions);
+  prevHeight.set(fineHeight); prevColour.set(landColour); prevPositions.set(positions); prevMarks.set(fineMarks);
   blend.value = 1;
-  for (const name of ['position', 'normal', 'color', 'aH', 'aPrevPos', 'aPrevColour', 'aPrevH']) geometry.getAttribute(name).needsUpdate = true;
+  for (const name of ['position', 'normal', 'color', 'aH', 'aPrevPos', 'aPrevColour', 'aPrevH', 'aMarks', 'aPrevMarks']) geometry.getAttribute(name).needsUpdate = true;
 }
 
 /** The ground's normals, each the sum of its triangles' (weighted by their area), in plain arrays: three's own way is several times slower. */
@@ -613,15 +644,6 @@ function drawAim(now: number): void {
 const NORMAL = new THREE.Vector3(), EYE = new THREE.Vector3();
 
 // ---------------------------------------------------------------- touch
-const raycaster = new THREE.Raycaster();
-function pickAt(x: number, y: number): THREE.Vector3 | null {
-  const r = renderer.domElement.getBoundingClientRect();
-  raycaster.setFromCamera(new THREE.Vector2(((x - r.left) / r.width) * 2 - 1, -((y - r.top) / r.height) * 2 + 1), camera);
-  // Against a sphere a little above the sea, not the ground's many thousand triangles: close
-  // enough for knowing whether a finger is on the world, and quick.
-  const hit = raycaster.ray.intersectSphere(new THREE.Sphere(new THREE.Vector3(), 1.01), new THREE.Vector3());
-  return hit ? group.worldToLocal(hit).normalize() : null;
-}
 
 const spin = new THREE.Vector2();
 const turn = new THREE.Quaternion(), axis = new THREE.Vector3();
@@ -637,13 +659,16 @@ const gestures = new GestureRecognizer(
     spin(dx, dy) { spin.set(0, 0); rotate(dx * 0.006, dy * 0.006); },
     fling(vx, vy) { spin.set(vx * 0.006, vy * 0.006); },
     zoom(f) { dist /= f; look(); zoomedAt = seconds; },
+    // Two fingers turning turn the world about the line of sight, so it can be spun any way at all.
+    twist(a) { turn.setFromAxisAngle(axis.set(0, 0, 1), -a); group.quaternion.premultiply(turn); },
     grab() { /* nothing to take hold of */ },
     press() { /* nor to press */ },
     pull() { /* nor to pull */ },
     release() { /* nor to let go */ },
     drawer() { /* none */ },
   },
-  (x, y) => pickAt(x, y) !== null,
+  // Nothing on the world is taken hold of, so a finger on it spins it at once, however long it rests first.
+  () => false,
 );
 stage.addEventListener('pointerdown', (e) => {
   stage.setPointerCapture(e.pointerId);

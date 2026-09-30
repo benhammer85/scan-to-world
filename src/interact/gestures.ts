@@ -24,6 +24,8 @@ export interface GestureSink {
   fling(vx: number, vy: number): void;
   /** >1 = come closer. */
   zoom(factor: number): void;
+  /** Two fingers turning about each other: radians since the last call, clockwise on screen. */
+  twist?(radians: number): void;
   /** A finger has rested on the object long enough to take hold of it. */
   grab(x: number, y: number): void;
   /** Still holding, still still: press in for `dt` seconds. */
@@ -57,6 +59,7 @@ export class GestureRecognizer {
   private velocity: Pt = { x: 0, y: 0 };
   private grabbedAt = 0;
   private pinchDist = 0;
+  private pinchAngle = 0;
   private multiSince = 0;
   private multiStill = true;
 
@@ -82,6 +85,7 @@ export class GestureRecognizer {
     if (n === 2) {
       this.phase = 'pinching';
       this.pinchDist = this.spread();
+      this.pinchAngle = this.angle();
     } else {
       this.phase = 'multi';
       this.multiSince = t;
@@ -116,6 +120,12 @@ export class GestureRecognizer {
         const d = this.spread();
         if (this.pinchDist > 0 && d > 0) this.sink.zoom(d / this.pinchDist);
         this.pinchDist = d;
+        const a = this.angle();
+        let da = a - this.pinchAngle;
+        if (da > Math.PI) da -= Math.PI * 2;
+        if (da < -Math.PI) da += Math.PI * 2;
+        this.sink.twist?.(da);
+        this.pinchAngle = a;
         break;
       }
       case 'multi':
@@ -166,6 +176,11 @@ export class GestureRecognizer {
     this.velocity.x = this.velocity.x * 0.6 + (dx / dt) * 0.4;
     this.velocity.y = this.velocity.y * 0.6 + (dy / dt) * 0.4;
     this.last = { x, y, t };
+  }
+
+  private angle(): number {
+    const [a, b] = [...this.pointers.values()];
+    return a && b ? Math.atan2(b.y - a.y, b.x - a.x) : 0;
   }
 
   private spread(): number {
