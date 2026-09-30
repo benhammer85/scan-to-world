@@ -39,6 +39,7 @@ Every world you make, what grew on it, the railways between worlds, which way ea
 * **Nothing opposes you but the planet itself:** waves wear exposed coasts (less behind shallows and reefs), rain wears the heights, and steep ground slumps. Cooled ground sinks, and stones fall from the sky. You see a stone's shadow a few seconds before it lands; it digs a crater and kills what lives there, though its heat joins yours. The cooling is the clock.
 * **Eras** follow the heat: the young fire, the long burning, the cooling, and the last embers. When the fire is out, a long age passes quickly while the sea and rain work on what you made, and then you're told what lasted: land and life.
 * The pen plots the coasts and contours as they form: pencil while lava runs, inked once it sets.
+* **Drawn finer than it's simulated.** The world is drawn on an icosphere of twice the simulation's detail, the values carried across by Loop subdivision (`src/volcano/fine.ts`), so coasts and contours are curves rather than the mesh's straight cuts. The coast's colour edge is chosen per pixel. Contours are rounded by Chaikin corner-cutting and drawn as joined, antialiased ribbons about a CSS pixel wide at up to 3× pixel ratio (`widthPx` in `PlotterLines`; Atlas Minor still uses plain GL lines). Add `?seed=` to the URL to see the same world again.
 
 Locally, run `npm run dev` and open `/volcano.html`. The simulation (`src/volcano/sim.ts`) has no drawing in it and is tested in `test/volcano.test.ts`.
 

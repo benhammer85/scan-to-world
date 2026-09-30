@@ -55,22 +55,28 @@ export class Stipple {
         uniform float uAppear;
         attribute float aBorn;
         varying float vRim;
+        varying float vSize;
         ${rimGlsl}
         void main() {
           vec4 v = modelViewMatrix * vec4(position, 1.0);
           gl_Position = projectionMatrix * v;
           // Finer from further off, so a town far away is a grey of dots, not a black blot.
           gl_PointSize = uSize * clamp(2.6 / -v.z, 0.5, 1.3);
+          vSize = gl_PointSize;
+          gl_PointSize += 1.0; // room for the soft edge
           // A new dot comes in slowly, as light does when a place grows: never all at once.
           vRim = rimFade(position, v) * smoothstep(0.0, uAppear, uNow - aBorn);
         }`,
       fragmentShader: /* glsl */ `
         uniform vec3 uInk;
         varying float vRim;
+        varying float vSize;
         void main() {
-          vec2 d = gl_PointCoord - 0.5;
-          if (dot(d, d) > 0.25 || vRim <= 0.0) discard;
-          gl_FragColor = vec4(uInk, vRim);
+          // A round dot with a soft edge a pixel wide, so the stipple is smooth at any size, not stepped.
+          float r = length(gl_PointCoord - 0.5) * (vSize + 1.0); // the point is a pixel larger than the dot
+          float cover = clamp(vSize * 0.5 - r + 0.5, 0.0, 1.0);
+          if (cover <= 0.0 || vRim <= 0.0) discard;
+          gl_FragColor = vec4(uInk, vRim * cover);
           #include <colorspace_fragment>
         }`,
     });

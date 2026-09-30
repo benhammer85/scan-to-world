@@ -57,6 +57,13 @@ export interface PlotterStyle {
    */
   pen: boolean;
   appearSeconds: number;
+  /**
+   * How wide a line is drawn, in CSS pixels. 0 draws plain GL lines, which are a single device
+   * pixel wide whatever the screen and aren't antialiased. Wider than 0, each segment is a thin
+   * ribbon facing the eye with a soft edge, so the ink stays fine and smooth on any screen; set
+   * `setResolution` whenever the canvas changes size.
+   */
+  widthPx: number;
 }
 
 export const defaultPlotterStyle: PlotterStyle = {
@@ -74,6 +81,7 @@ export const defaultPlotterStyle: PlotterStyle = {
   fadeSeconds: 45,
   pen: true,
   appearSeconds: 4,
+  widthPx: 0,
 };
 
 /** A line faces the eye, for fading, if the ground under it looks at least this much towards it. */
@@ -108,6 +116,14 @@ const vertexShader = /* glsl */ `
   uniform float uHold;
   uniform float uFade;
   varying float vFaded;
+  #ifdef RIBBON
+  attribute vec3 aPrev;
+  attribute vec3 aNext;
+  attribute float aSide;
+  uniform vec2 uResolution;
+  uniform float uWidth;
+  varying float vEdge;
+  #endif
   varying float vAlong;
   varying float vProgress;
   varying float vLevel;
@@ -121,7 +137,28 @@ const vertexShader = /* glsl */ `
     vAppear = uAppear <= 0.0 ? 1.0 : smoothstep(0.0, uAppear, uNow - aBorn);
     vec4 mv = modelViewMatrix * vec4(position, 1.0);
     vRim = rimFade(position, mv);
-    gl_Position = projectionMatrix * mv;
+    vec4 clip = projectionMatrix * mv;
+    #ifdef RIBBON
+    // Out to the side of the line, on the screen, by half its width and a pixel for the soft
+    // edge, along the mitre between the segment coming in and the one going out: the segments
+    // share this point, so a line is one ribbon with no overlaps where it bends, and no ink
+    // is laid twice. The fragment fades the edge by its distance from the middle.
+    vec4 prev = projectionMatrix * modelViewMatrix * vec4(aPrev, 1.0);
+    vec4 next = projectionMatrix * modelViewMatrix * vec4(aNext, 1.0);
+    vec2 here = clip.xy / clip.w * uResolution;
+    vec2 din = here - prev.xy / prev.w * uResolution, dout = next.xy / next.w * uResolution - here;
+    if (dot(din, din) < 1e-8) din = dout;
+    if (dot(dout, dout) < 1e-8) dout = din;
+    vec2 tin = normalize(din + vec2(1e-9, 0.0)), tout = normalize(dout + vec2(1e-9, 0.0));
+    vec2 tang = tin + tout;
+    tang = dot(tang, tang) < 1e-6 ? tin : normalize(tang);
+    vec2 mitre = vec2(-tang.y, tang.x);
+    float stretch = 1.0 / max(dot(mitre, vec2(-tin.y, tin.x)), 0.5); // a sharp corner is cut short, not spiked
+    float hw = uWidth * 0.5 + 1.0;
+    clip.xy += mitre * aSide * hw * stretch * 2.0 / uResolution * clip.w;
+    vEdge = aSide * hw;
+    #endif
+    gl_Position = clip;
   }
 `;
 
@@ -140,18 +177,28 @@ const fragmentShader = /* glsl */ `
   varying float vFaded;
   varying float vRim;
   varying float vAppear;
+  #ifdef RIBBON
+  uniform float uWidth;
+  varying float vEdge;
+  #endif
   void main() {
     if (vRim <= 0.0 || vAppear <= 0.0) discard;
+    #ifdef RIBBON
+    float cover = clamp(uWidth * 0.5 + 0.5 - abs(vEdge), 0.0, 1.0);
+    if (cover <= 0.0) discard;
+    #else
+    float cover = 1.0;
+    #endif
     bool inked = vProgress > 0.0 && vAlong <= vProgress;
     if (!inked) {
       if (vPencil < 0.5) discard;
-      gl_FragColor = vec4(uPencil, 0.55 * vRim * vAppear);
+      gl_FragColor = vec4(uPencil, 0.55 * vRim * vAppear * cover);
       return;
     }
     vec3 ink = mix(uInk, uInkHigh, clamp(vLevel / max(uLevelCount - 1.0, 1.0), 0.0, 1.0));
     bool isIndex = mod(vLevel + 0.5, uIndexEvery) < 1.0;
     // Out of sight long enough, ink fades back to pencil, and no further.
-    gl_FragColor = vec4(mix(ink, uPencil, vFaded), mix(isIndex ? uIndexAlpha : uAlpha, 0.55, vFaded) * vRim * vAppear);
+    gl_FragColor = vec4(mix(ink, uPencil, vFaded), mix(isIndex ? uIndexAlpha : uAlpha, 0.55, vFaded) * vRim * vAppear * cover);
   }
 `;
 
@@ -175,7 +222,9 @@ interface Run {
 
 export class PlotterLines {
   readonly object = new THREE.Group();
-  private lines: THREE.LineSegments;
+  private lines: THREE.LineSegments | THREE.Mesh;
+  /** Two vertices to each point of a line drawn as a ribbon (a side each), one otherwise. */
+  private perEnd: number;
   private nib: THREE.Group;
   private nibRing: THREE.Mesh;
   private material: THREE.ShaderMaterial;
@@ -207,9 +256,15 @@ export class PlotterLines {
         uHold: { value: style.holdSeconds },
         uFade: { value: style.fadeSeconds },
         uAppear: { value: style.pen ? 0 : style.appearSeconds },
+        uResolution: { value: new THREE.Vector2(1, 1) },
+        uWidth: { value: style.widthPx },
       },
+      defines: style.widthPx > 0 ? { RIBBON: 1 } : {},
+      // A ribbon winds one way or the other with the direction of the line: show both faces.
+      side: THREE.DoubleSide,
     });
-    this.lines = new THREE.LineSegments(new THREE.BufferGeometry(), this.material);
+    this.perEnd = style.widthPx > 0 ? 2 : 1;
+    this.lines = style.widthPx > 0 ? new THREE.Mesh(new THREE.BufferGeometry(), this.material) : new THREE.LineSegments(new THREE.BufferGeometry(), this.material);
     this.lines.frustumCulled = false;
     this.lines.renderOrder = 1;
 
@@ -229,6 +284,12 @@ export class PlotterLines {
     this.nib.add(dot, ring);
     this.nib.visible = false;
     this.object.add(this.lines, this.nib);
+  }
+
+  /** The canvas's size in CSS pixels and its pixel ratio, for lines drawn as ribbons. */
+  setResolution(width: number, height: number, pixelRatio: number): void {
+    this.material.uniforms.uResolution.value.set(width * pixelRatio, height * pixelRatio);
+    this.material.uniforms.uWidth.value = this.style.widthPx * pixelRatio;
   }
 
   /** Has the pen inked this line (by `lineKey`)? */
@@ -420,17 +481,27 @@ export class PlotterLines {
     let segCount = 0;
     for (const l of lines) segCount += l.points.length / 3 - 1 + (l.closed ? 1 : 0);
 
-    const position = new Float32Array(segCount * 6);
-    const along = new Float32Array(segCount * 2);
-    const timing = new Float32Array(segCount * 4);
-    const level = new Float32Array(segCount * 2);
-    const pencil = new Float32Array(segCount * 2);
-    const seen = new Float32Array(segCount * 2);
-    const born = new Float32Array(segCount * 2);
+    // A GL line has two vertices to each segment; a ribbon, two to each point (a side each), the
+    // points shared by the segments either side of them, and a ring's first point repeated to close it.
+    const ribbon = this.perEnd === 2;
+    let stations = 0;
+    if (ribbon) for (const l of lines) stations += l.points.length / 3 + (l.closed ? 1 : 0);
+    const verts = ribbon ? stations * 2 : segCount * 2;
+    const position = new Float32Array(verts * 3);
+    const along = new Float32Array(verts);
+    const timing = new Float32Array(verts * 2);
+    const level = new Float32Array(verts);
+    const pencil = new Float32Array(verts);
+    const seen = new Float32Array(verts);
+    const born = new Float32Array(verts);
+    const prev = ribbon ? new Float32Array(verts * 3) : null;
+    const next = ribbon ? new Float32Array(verts * 3) : null;
+    const side = ribbon ? new Float32Array(verts) : null;
+    const index = ribbon ? new Uint32Array(segCount * 6) : null;
     const live = new Set(keys);
     for (const k of this.bornAt.keys()) if (!live.has(k)) this.bornAt.delete(k);
     this.ranges = [];
-    let maxLevel = 0, o = 0;
+    let maxLevel = 0, o = 0, q = 0;
 
     lines.forEach((line, li) => {
       const run = runOf.get(keys[li]);
@@ -449,22 +520,48 @@ export class PlotterLines {
       if (!this.bornAt.has(keys[li])) this.bornAt.set(keys[li], this.clock);
       const came = this.bornAt.get(keys[li])!;
       const m = Math.floor(n / 2) * 3;
+      const put = (v: number, src: number, at: number) => {
+        position.set(pts.subarray(src * 3, src * 3 + 3), v * 3);
+        along[v] = line.length > 0 ? at / line.length : 1;
+        timing[v * 2] = start;
+        timing[v * 2 + 1] = cost;
+        level[v] = line.level;
+        pencil[v] = isPencil;
+        seen[v] = when;
+        born[v] = came;
+      };
+      const gap = (i: number, j: number) => Math.hypot(pts[j * 3] - pts[i * 3], pts[j * 3 + 1] - pts[i * 3 + 1], pts[j * 3 + 2] - pts[i * 3 + 2]);
+
+      if (ribbon) {
+        const count = segs + 1;
+        this.ranges.push({ from: q * 2, to: (q + count) * 2, mid: [pts[m], pts[m + 1], pts[m + 2]] });
+        let d = 0;
+        for (let st = 0; st < count; st++) {
+          const i = st % n;
+          // Before and after: round the ring for a closed line, the point itself at an open end.
+          const before = st > 0 ? (st - 1) % n : line.closed ? n - 1 : i;
+          const after = st < count - 1 ? (st + 1) % n : line.closed ? 1 % n : i;
+          if (st > 0) d += gap((st - 1) % n, i);
+          for (let sd = 0; sd < 2; sd++) {
+            const v = q * 2 + sd;
+            put(v, i, d);
+            prev!.set(pts.subarray(before * 3, before * 3 + 3), v * 3);
+            next!.set(pts.subarray(after * 3, after * 3 + 3), v * 3);
+            side![v] = sd === 0 ? -1 : 1;
+          }
+          if (st > 0) { const b = (q - 1) * 2; index!.set([b, b + 1, b + 2, b + 2, b + 1, b + 3], (o + st - 1) * 6); }
+          q++;
+        }
+        o += segs;
+        return;
+      }
+
       this.ranges.push({ from: o * 2, to: (o + segs) * 2, mid: [pts[m], pts[m + 1], pts[m + 2]] });
       let d = 0;
       for (let s = 0; s < segs; s++) {
-        const i = s, j = (s + 1) % n;
-        const seg = Math.hypot(pts[j * 3] - pts[i * 3], pts[j * 3 + 1] - pts[i * 3 + 1], pts[j * 3 + 2] - pts[i * 3 + 2]);
-        for (let e = 0; e < 2; e++) {
-          const src = e === 0 ? i : j, v = o * 2 + e;
-          position.set(pts.subarray(src * 3, src * 3 + 3), v * 3);
-          along[v] = line.length > 0 ? (d + (e === 0 ? 0 : seg)) / line.length : 1;
-          timing[v * 2] = start;
-          timing[v * 2 + 1] = cost;
-          level[v] = line.level;
-          pencil[v] = isPencil;
-          seen[v] = when;
-          born[v] = came;
-        }
+        const i = s, j = (s + 1) % n, seg = gap(i, j);
+        put(o * 2, i, d);
+        put(o * 2 + 1, j, d + seg);
         d += seg;
         o++;
       }
@@ -478,6 +575,12 @@ export class PlotterLines {
     geom.setAttribute('aPencil', new THREE.BufferAttribute(pencil, 1));
     geom.setAttribute('aSeen', new THREE.BufferAttribute(seen, 1));
     geom.setAttribute('aBorn', new THREE.BufferAttribute(born, 1));
+    if (ribbon) {
+      geom.setAttribute('aPrev', new THREE.BufferAttribute(prev!, 3));
+      geom.setAttribute('aNext', new THREE.BufferAttribute(next!, 3));
+      geom.setAttribute('aSide', new THREE.BufferAttribute(side!, 1));
+      geom.setIndex(new THREE.BufferAttribute(index!, 1));
+    }
     this.lines.geometry.dispose();
     this.lines.geometry = geom;
     this.material.uniforms.uLevelCount.value = maxLevel + 1;

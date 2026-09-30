@@ -6,18 +6,20 @@
  */
 import * as THREE from 'three';
 import { buildTopology } from '../mesh/topology';
-import { extractContours } from '../terrain/contours';
+import { extractContours, type Polyline } from '../terrain/contours';
 import { PlotterLines, defaultPlotterStyle, type RevealMode } from '../render/plotterLines';
 import { GestureRecognizer } from '../interact/gestures';
 import { Stipple, stippleDots } from '../render/stipple';
 import { Planet, VOLCANO, type Era } from './sim';
+import { FineSurface } from './fine';
 
 const $ = (id: string) => document.getElementById(id)!;
 const stage = $('stage');
 
 // ---------------------------------------------------------------- the scene
 const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+// As sharp as the screen is, up to three device pixels to a CSS pixel.
+renderer.setPixelRatio(Math.min(3, window.devicePixelRatio || 1));
 stage.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color('#f4efe4');
@@ -37,7 +39,9 @@ function fit(): void {
   camera.position.set(0, 0, dist);
   camera.lookAt(0, 0, 0);
   camera.updateProjectionMatrix();
+  for (const pen of pens) pen.setResolution(w, h, renderer.getPixelRatio());
 }
+const pens: PlotterLines[] = [];
 addEventListener('resize', fit);
 new ResizeObserver(fit).observe(stage);
 
@@ -49,23 +53,50 @@ const nearest = (x: number, y: number, z: number) => {
   for (let v = 0; v < N; v++) { const d = Math.hypot(base[v * 3] - x, base[v * 3 + 1] - y, base[v * 3 + 2] - z); if (d < bd) { bd = d; best = v; } }
   return best;
 };
-const planet = new Planet(topo, nearest(0.1, 0.15, 0.98), 1 + Math.floor(Math.random() * 1e6));
+// A new world each time, unless one is asked for by its number (?seed=), to see the same world again.
+const seed = Number(new URLSearchParams(location.search).get('seed')) || 1 + Math.floor(Math.random() * 1e6);
+const planet = new Planet(topo, nearest(0.1, 0.15, 0.98), seed);
 
 /** How far above the sea the land stands, drawn: heights are small, so the relief is raised. */
 const RELIEF = 0.32;
 const group = new THREE.Group();
 scene.add(group);
+
+/** Drawn on a surface of twice the detail, the values carried across smoothly (see fine.ts). */
+const fine = new FineSurface(topo, buildTopology(new THREE.IcosahedronGeometry(1, 80).attributes.position.array, null));
+const ftopo = fine.fine, FN = ftopo.vertexCount, fbase = ftopo.basePositions;
 const geometry = new THREE.BufferGeometry();
-const positions = new Float32Array(N * 3), colors = new Float32Array(N * 3);
+const positions = new Float32Array(FN * 3);
+const landColour = new Float32Array(FN * 3), seaColour = new Float32Array(FN * 3), fineHeight = new Float32Array(FN);
 geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-geometry.setIndex(new THREE.BufferAttribute(topo.triangles, 1));
-const mesh = new THREE.Mesh(geometry, new THREE.MeshLambertMaterial({ vertexColors: true }));
+geometry.setAttribute('color', new THREE.BufferAttribute(landColour, 3));
+geometry.setAttribute('aSea', new THREE.BufferAttribute(seaColour, 3));
+geometry.setAttribute('aH', new THREE.BufferAttribute(fineHeight, 1));
+geometry.setIndex(new THREE.BufferAttribute(ftopo.triangles, 1));
+
+/**
+ * The ground's colour is chosen in each pixel rather than at each vertex: land and sea each have
+ * their own colour carried across the surface, and where the height crosses the sea the one gives
+ * way to the other in the space of a pixel, so the coast is a clean edge, not a smear.
+ */
+const material = new THREE.MeshLambertMaterial({ vertexColors: true, dithering: true });
+material.onBeforeCompile = (shader) => {
+  shader.vertexShader = shader.vertexShader
+    .replace('void main() {', 'attribute vec3 aSea;\nattribute float aH;\nvarying vec3 vSea;\nvarying float vH;\nvoid main() {')
+    .replace('#include <color_vertex>', '#include <color_vertex>\n  vSea = aSea;\n  vH = aH;');
+  shader.fragmentShader = shader.fragmentShader
+    .replace('void main() {', 'varying vec3 vSea;\nvarying float vH;\nvoid main() {')
+    .replace('#include <color_fragment>', `
+      float edge = max(fwidth(vH), 1e-5) * 0.7;
+      diffuseColor.rgb *= mix(vSea, vColor.rgb, smoothstep(-edge, edge, vH));`);
+};
+const mesh = new THREE.Mesh(geometry, material);
 group.add(mesh);
 
-const landPen = new PlotterLines({ ...defaultPlotterStyle, ink: '#6b4a2e', inkHigh: '#4a2f1c', pencil: '#b9a68c', alpha: 0.6, indexAlpha: 0.95, indexEvery: 5, fadeSeconds: 0 });
-const seaPen = new PlotterLines({ ...defaultPlotterStyle, ink: '#5b82a3', inkHigh: '#5b82a3', pencil: '#a9bfd0', alpha: 0.45, indexAlpha: 0.6, fadeSeconds: 0, pen: false, appearSeconds: 2 });
+const landPen = new PlotterLines({ ...defaultPlotterStyle, ink: '#6b4a2e', inkHigh: '#4a2f1c', pencil: '#b9a68c', alpha: 0.62, indexAlpha: 0.95, indexEvery: 5, fadeSeconds: 0, widthPx: 1.15 });
+const seaPen = new PlotterLines({ ...defaultPlotterStyle, ink: '#5b82a3', inkHigh: '#5b82a3', pencil: '#a9bfd0', alpha: 0.45, indexAlpha: 0.6, fadeSeconds: 0, pen: false, appearSeconds: 2, widthPx: 0.95 });
 landPen.width = seaPen.width = 2;
+pens.push(landPen, seaPen);
 group.add(seaPen.object, landPen.object);
 const life = new Stipple('#3f4a2a'), reef = new Stipple('#3e6f6a');
 group.add(life.object, reef.object);
@@ -89,27 +120,58 @@ function surface(v: number): number {
   return planet.rock[v] + planet.lava[v];
 }
 
+// The simulation's values, a vertex at a time, before they are carried onto the finer surface.
+const coarseHeight = new Float32Array(N), coarseLand = new Float32Array(N * 3), coarseSea = new Float32Array(N * 3);
+const fineLife = new Float32Array(FN);
+
 function draw(): void {
-  const nm = topo.normals;
   for (let v = 0; v < N; v++) {
     const h = surface(v), r = 1 + RELIEF * Math.max(0, h);
-    const x = base[v * 3], y = base[v * 3 + 1], z = base[v * 3 + 2];
-    positions[v * 3] = x * r; positions[v * 3 + 1] = y * r; positions[v * 3 + 2] = z * r;
-    topo.positions[v * 3] = x * r; topo.positions[v * 3 + 1] = y * r; topo.positions[v * 3 + 2] = z * r;
-    nm[v * 3] = x; nm[v * 3 + 1] = y; nm[v * 3 + 2] = z;
+    topo.positions[v * 3] = base[v * 3] * r; topo.positions[v * 3 + 1] = base[v * 3 + 1] * r; topo.positions[v * 3 + 2] = base[v * 3 + 2] * r;
+    coarseHeight[v] = h;
     const lava = planet.lava[v];
-    if (h < 0 && lava < 0.004) c.copy(SHALLOW).lerp(DEEP, Math.min(1, -h / 0.3));
-    else {
-      // Fresh basalt, dark, weathering to paper; hot lava darker still, with the least warmth at its thickest.
-      c.copy(PAPER).lerp(BASALT, Math.exp(-planet.age[v] / 30) * 0.9).lerp(ASH, planet.ash[v] * 0.6);
-      if (lava > 0.002) c.lerp(LAVA, Math.min(1, lava * 25)).lerp(GLOW, Math.min(0.35, lava * 6));
-    }
-    colors[v * 3] = c.r; colors[v * 3 + 1] = c.g; colors[v * 3 + 2] = c.b;
+    // The sea, paler over the shallows; the land, fresh basalt dark and weathering to paper, ash
+    // grey, and hot lava darker still, with the least warmth at its thickest.
+    c.copy(SHALLOW).lerp(DEEP, Math.min(1, Math.max(0, -h) / 0.3));
+    coarseSea[v * 3] = c.r; coarseSea[v * 3 + 1] = c.g; coarseSea[v * 3 + 2] = c.b;
+    c.copy(PAPER).lerp(BASALT, Math.exp(-planet.age[v] / 30) * 0.9).lerp(ASH, planet.ash[v] * 0.6);
+    if (lava > 0.002) c.lerp(LAVA, Math.min(1, lava * 25)).lerp(GLOW, Math.min(0.35, lava * 6));
+    coarseLand[v * 3] = c.r; coarseLand[v * 3 + 1] = c.g; coarseLand[v * 3 + 2] = c.b;
   }
-  geometry.attributes.position.needsUpdate = true;
-  geometry.attributes.color.needsUpdate = true;
-  geometry.computeVertexNormals();
-  geometry.computeBoundingSphere();
+  fine.carryDrawn(coarseHeight, coarseLand, coarseSea, fineHeight, landColour, seaColour);
+  const nm = ftopo.normals;
+  for (let v = 0; v < FN; v++) {
+    const r = 1 + RELIEF * Math.max(0, fineHeight[v]);
+    const x = fbase[v * 3], y = fbase[v * 3 + 1], z = fbase[v * 3 + 2];
+    positions[v * 3] = ftopo.positions[v * 3] = x * r;
+    positions[v * 3 + 1] = ftopo.positions[v * 3 + 1] = y * r;
+    positions[v * 3 + 2] = ftopo.positions[v * 3 + 2] = z * r;
+    nm[v * 3] = x; nm[v * 3 + 1] = y; nm[v * 3 + 2] = z;
+  }
+  smoothNormals();
+  for (const name of ['position', 'normal', 'color', 'aSea', 'aH']) geometry.getAttribute(name).needsUpdate = true;
+}
+
+/** The ground's normals, each the sum of its triangles' (weighted by their area), in plain arrays: three's own way is several times slower. */
+const normals = new Float32Array(FN * 3);
+geometry.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1 + RELIEF);
+function smoothNormals(): void {
+  const t = ftopo.triangles, p = positions, nm = normals;
+  nm.fill(0);
+  for (let i = 0; i < t.length; i += 3) {
+    const a = t[i] * 3, b = t[i + 1] * 3, c3 = t[i + 2] * 3;
+    const ux = p[b] - p[a], uy = p[b + 1] - p[a + 1], uz = p[b + 2] - p[a + 2];
+    const vx = p[c3] - p[a], vy = p[c3 + 1] - p[a + 1], vz = p[c3 + 2] - p[a + 2];
+    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    nm[a] += nx; nm[a + 1] += ny; nm[a + 2] += nz;
+    nm[b] += nx; nm[b + 1] += ny; nm[b + 2] += nz;
+    nm[c3] += nx; nm[c3 + 1] += ny; nm[c3 + 2] += nz;
+  }
+  for (let i = 0; i < nm.length; i += 3) {
+    const l = Math.hypot(nm[i], nm[i + 1], nm[i + 2]) || 1;
+    nm[i] /= l; nm[i + 1] /= l; nm[i + 2] /= l;
+  }
 }
 
 // ---------------------------------------------------------------- the pen, and life
@@ -123,24 +185,63 @@ function redrawLines(now: number): void {
   const mode: RevealMode = busy ? 'live' : lastQuiet ? 'settle' : 'ink';
   lastLines = now;
   lastQuiet = !busy;
-  const h = new Float32Array(N), sea = new Uint8Array(N), land = new Uint8Array(N);
-  for (let v = 0; v < N; v++) { h[v] = surface(v); if (h[v] < 0) sea[v] = 1; else land[v] = 1; }
-  landPen.setLines(extractContours(topo, h, { interval: 0.035, lift: 0.002, mask: sea }), mode, facingPoint());
-  seaPen.setLines(extractContours(topo, h, { interval: 0.07, lift: 0.001, mask: land }), 'settle');
+  const h = fineHeight, sea = new Uint8Array(FN), land = new Uint8Array(FN);
+  for (let v = 0; v < FN; v++) { if (h[v] < 0) sea[v] = 1; else land[v] = 1; }
+  landPen.setLines(rounded(extractContours(ftopo, h, { interval: 0.035, lift: 0.003, mask: sea })), mode, facingPoint());
+  seaPen.setLines(rounded(extractContours(ftopo, h, { interval: 0.07, lift: 0.002, mask: land })), 'settle');
+}
+
+/** Scraps of line shorter than this are only the triangles showing, not the land: they're left out. */
+const SCRAP = 0.02;
+
+/**
+ * Contours as a hand would draw them: each corner cut twice (Chaikin's rule, a quarter and three
+ * quarters along every segment), so the little zigzags where a line crosses the triangles go, and
+ * the scraps are dropped.
+ */
+function rounded(lines: Polyline[]): Polyline[] {
+  const out: Polyline[] = [];
+  for (const line of lines) {
+    if (line.length < SCRAP) continue;
+    let p = line.points;
+    for (let pass = 0; pass < 2; pass++) p = chaikin(p, line.closed);
+    let length = 0;
+    const n = p.length / 3;
+    for (let i = 1; i < n + (line.closed ? 1 : 0); i++) {
+      const a = (i - 1) * 3, b = (i % n) * 3;
+      length += Math.hypot(p[b] - p[a], p[b + 1] - p[a + 1], p[b + 2] - p[a + 2]);
+    }
+    out.push({ ...line, points: p, length });
+  }
+  return out;
+}
+
+function chaikin(p: Float32Array, closed: boolean): Float32Array {
+  const n = p.length / 3;
+  if (n < 3) return p;
+  const segs = closed ? n : n - 1, out: number[] = [];
+  if (!closed) out.push(p[0], p[1], p[2]); // an open line keeps its ends where they are
+  for (let s = 0; s < segs; s++) {
+    const a = s * 3, b = ((s + 1) % n) * 3;
+    for (const t of [0.25, 0.75]) out.push(p[a] + (p[b] - p[a]) * t, p[a + 1] + (p[b + 1] - p[a + 1]) * t, p[a + 2] + (p[b + 2] - p[a + 2]) * t);
+  }
+  if (!closed) out.push(p[(n - 1) * 3], p[(n - 1) * 3 + 1], p[(n - 1) * 3 + 2]);
+  return Float32Array.from(out);
 }
 
 /** Life as stipple, denser where there is more of it: on land in dark ink, in the shallows as reef in a sea-green one. */
 function redrawLife(now: number): void {
   if (now - lastLife < 1.2) return;
   lastLife = now;
-  const onLand: number[][] = [[], [], [], []], inSea: number[][] = [[], [], [], []], t = topo.triangles;
+  const onLand: number[][] = [[], [], [], []], inSea: number[][] = [[], [], [], []], t = ftopo.triangles, P = ftopo.positions;
+  fine.carry(planet.life, fineLife);
   for (let i = 0; i < t.length; i += 3) {
     const a = t[i], b = t[i + 1], d = t[i + 2];
-    const l = Math.min(planet.life[a], planet.life[b], planet.life[d]);
+    const l = Math.min(fineLife[a], fineLife[b], fineLife[d]);
     if (l <= 0.02) continue;
     const k = Math.min(3, Math.floor(l * 4));
-    const into = surface(a) + surface(b) + surface(d) > 0 ? onLand : inSea;
-    for (const v of [a, b, d]) into[k].push(topo.positions[v * 3] * 1.002, topo.positions[v * 3 + 1] * 1.002, topo.positions[v * 3 + 2] * 1.002);
+    const into = fineHeight[a] + fineHeight[b] + fineHeight[d] > 0 ? onLand : inSea;
+    for (const v of [a, b, d]) into[k].push(P[v * 3] * 1.002, P[v * 3 + 1] * 1.002, P[v * 3 + 2] * 1.002);
   }
   life.set(onLand.flatMap((tris, k) => stippleDots(tris, 4000 + 9000 * k)));
   reef.set(inSea.flatMap((tris, k) => stippleDots(tris, 2500 + 5000 * k)));
@@ -189,8 +290,10 @@ const raycaster = new THREE.Raycaster();
 function pickAt(x: number, y: number): THREE.Vector3 | null {
   const r = renderer.domElement.getBoundingClientRect();
   raycaster.setFromCamera(new THREE.Vector2(((x - r.left) / r.width) * 2 - 1, -((y - r.top) / r.height) * 2 + 1), camera);
-  const hit = raycaster.intersectObject(mesh)[0];
-  return hit ? group.worldToLocal(hit.point.clone()).normalize() : null;
+  // Against a sphere a little above the sea, not the ground's many thousand triangles: close
+  // enough for where the heat is called, and quick enough to follow a finger.
+  const hit = raycaster.ray.intersectSphere(new THREE.Sphere(new THREE.Vector3(), 1.01), new THREE.Vector3());
+  return hit ? group.worldToLocal(hit).normalize() : null;
 }
 function facingPoint(): THREE.Vector3 {
   return group.worldToLocal(camera.position.clone().normalize());
@@ -281,7 +384,7 @@ fit();
 draw();
 redrawLines(0);
 const clock = new THREE.Clock();
-let seconds = 0, lastWords = 0;
+let seconds = 0, lastWords = 0, lastDraw = 0;
 renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta(), 1 / 20);
   seconds += dt;
@@ -293,7 +396,9 @@ renderer.setAnimationLoop(() => {
   // Once the fire is out, the long age runs quickly, in small steps so the sea's work stays as it would be.
   const speed = ending && !ending.shown ? AGE_SPEED : 1;
   for (let k = 0; k < speed; k++) planet.step(dt);
-  draw();
+  // The surface is redrawn often while lava runs, and now and then while only the slow forces work.
+  const flowing = planet.erupting || planet.molten > 0.01;
+  if (seconds - lastDraw >= (flowing || speed > 1 ? 1 / 24 : 0.5)) { lastDraw = seconds; draw(); }
   redrawLines(seconds);
   redrawLife(seconds);
   drawMarks(seconds);
@@ -305,4 +410,4 @@ renderer.setAnimationLoop(() => {
   renderer.render(scene, camera);
 });
 
-if (import.meta.env.DEV) (window as unknown as { volcano: unknown }).volcano = { planet, rotate };
+if (import.meta.env.DEV) (window as unknown as { volcano: unknown }).volcano = { planet, rotate, draw, lines: () => { lastLines = -1; redrawLines(1e6); } };
