@@ -45,18 +45,26 @@ Every world you make, what grew on it, the railways between worlds, which way ea
 In headless play-throughs, gentle flows alone kept 4 kinds, doing nothing kept 3, and mixing flows with bursts kept all 6.
 
 **How to play: only by how you hold it.** There's no tapping and no holding, just the world held as a globe in the hands.
-* **Tilt your phone**, or turn the world with a finger (on a keyboard, the arrow keys). The first touch, on a quiet card, begins the world. It's what lets the phone share how it's held (iPhones ask for motion access then) and lets sound play. However you're holding the phone at that moment counts as level.
+* **Tilt your phone**, or turn the world with a finger (on a keyboard, the arrow keys). The first touch, on a quiet card, begins the world. It's what lets the phone share how it's held (iPhones ask for motion access then). However you're holding the phone at that moment counts as level.
 * **Held level**, the heat gathers beneath whatever is uppermost; a small ring marks the top. **Tipped**, it pours down the world the way gravity would take it. That's measured along gravity as the world is seen, with the relief as drawn: near the top the terrain decides, further round the curve of the world pulls the lava down its side, and it never runs up the screen.
 * **Tip soon** for a gentle stream. **Keep it level past the dashed ring, then tip**, for a burst of ash. Level too long, and the mountain tears open into a caldera, and life dies far around it.
 * **The heat is buoyant:** it creeps slowly towards whatever is uppermost, so you move it by turning a place to the top. The land it leaves behind cools and sinks.
 * **Wishes:** now and then life wishes for a kind it lacks, shown by a dotted ring. Make that ground there and the wish is kept, which stirs the fire (more heat).
 * **Stones** are seen 20 seconds ahead, with a ring and a cross that close in and a countdown. Turn one to the top to bring the heat beneath it and catch four times its heat, or keep life clear of it.
-* **A spirit level** beside the heat rule shows how far the vent is tipped: the bubble moves uphill, and past its dashed ring the heat pours (the bubble turns red).
+* **A level at the vent:** a bubble sits at the vent when the world is level and moves uphill as it's tipped. Once it leaves the vent's smallest circle, the heat pours (the bubble turns red).
 * Without a phone's sensor, gravity is fixed a little down the screen and mostly into it, as if you were looking down at a globe on a table.
 
-**Reading it:** the era is shown at the top. Under it, a rule shortens as the heat runs out, and the six kinds' signs are inked in as each one lives. Lessons at the foot bring in one idea at a time, and stones only start falling once they've been explained. Nothing is named: the map is the land's.
+**Reading it:** everything that matters is drawn on the world itself, as a surveyor's marks.
+* At the vent: the pressure as a ring that grows, a dashed ring where a stream becomes a burst, a double rule where it tears open, the level's bubble, and an arc round it all that is the heat left, drawing itself away as the planet cools.
+* A dotted ring where life wishes for a kind; a ring and cross closing in where a stone will fall.
+* While an idea is new, a few words are written on the world beside it ("hold it level", "now tip it", "tip it now, for a burst", "the heat rises here", "turn it to the top to catch it"), changing with what you're doing. Once the idea has been tried, they go. Stones only start falling once they've been shown.
+* Off the world there's only the era at the top, as a map's title, and the key at the foot: the six kinds by their signs, inked once each is living.
+* Nothing is named: the map is the land's.
+* On phones that can, a burst is felt as a soft pulse, and a caldera as more. The camera eases out as the land spreads (a pinch takes over for a while), and the drawing gets less fine if the phone can't keep up.
 
-**What you see and hear:** it keeps to the language of the old survey and geological maps, not light and effects.
+**Kept as it's played:** the world is saved quietly (in IndexedDB) every 15 seconds and whenever the page is hidden. Come back and the card says *Your world, as you left it*; touch it and you're where you were, and however you hold the phone then is level. `?seed=` starts that world fresh instead.
+
+**What you see:** it keeps to the language of the old survey and geological maps, not light and effects.
 * Lava is laid on as a flat vermilion wash, the colour geological maps give it.
 * Steam and ash are small engraved rings rising and fading.
 * Each kind of life is drawn by its conventional sign in one ink:
@@ -67,18 +75,12 @@ In headless play-throughs, gentle flows alone kept 4 kinds, doing nothing kept 3
   * forest: small circles;
   * heath: carets.
 * Coasts are water-lined, and breakers are short blue strokes where the sea wears a coast. The shading is kept flat, like paper.
-* The sound is generated as you play:
-  * a drone that rises with the pressure and trembles near the edge;
-  * surf, as loud as the sea is working;
-  * a rumble for a burst and a hiss for a flow;
-  * chimes for new kinds and kept wishes.
-  It can be turned off at the top right.
 
-**The ending:** when the fire is out, a long age passes quickly, and then the world is set out as a chart, like a plate from an old atlas. It shows the land as it was left, the kinds that lasted by their signs, and the eras with what happened in each. You can keep the chart as a PNG.
+**The ending:** when the fire is out, a long age passes quickly while the sea and rain work on what you made. Then the chart is drawn round the world in place: a pen goes round the plate's double border, the world steps back and up the page, and what lasted and the eras, with what happened in each, come in at the foot above the key. You can still turn the world and look at it. Turning it right round begins another, and "keep the chart" saves it as a plate (PNG; this works on the site, but not inside the claude.ai viewer).
 
 **Drawing:** the world is drawn on an icosphere of twice the simulation's detail, with values carried across by Loop subdivision (`fine.ts`). The coast's colour edge is chosen per pixel. Contours are rounded by Chaikin corner-cutting and drawn as joined, antialiased ribbons (`widthPx` in `PlotterLines`), at up to 3× pixel ratio. Add `?seed=` to the URL to see the same world again.
 
-Files: `sim.ts` (the planet), `ecology.ts` (kinds and wishes), `islands.ts` (finding islands), `fine.ts`, `puffs.ts`, `sound.ts`, `chart.ts`, `main.ts`.
+Files: `sim.ts` (the planet), `ecology.ts` (kinds and wishes), `islands.ts` (finding islands), `fine.ts`, `puffs.ts`, `chart.ts`, `save.ts` (keeping the world), `main.ts`.
 
 Locally, run `npm run dev` and open `/volcano.html`. The simulation (`src/volcano/sim.ts`) has no drawing in it and is tested in `test/volcano.test.ts`.
 

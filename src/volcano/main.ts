@@ -12,14 +12,18 @@
  * world as gravity would take it; tipped when it's full, it bursts. Level is
  * however you were holding the phone when you began.
  *
- * What's on the page, so the game can be read at a glance:
- *   the era, at the top, and under it the heat left (a rule that shortens)
- *     and the six kinds of life (each by its sign, inked once it's living);
+ * Everything that matters is drawn on the world itself, as a surveyor's marks:
  *   at the vent, the pressure as a ring that grows, with a dashed ring where a
- *     flow becomes a burst and a double rule where it bursts on its own;
+ *     flow becomes a burst; round it an arc that is the heat left, drawing
+ *     itself away as the planet cools; and a level's bubble inside, that leaves
+ *     the vent's smallest circle when the world is tipped enough to pour;
  *   a dotted ring where life wishes for a kind, and a ring with a cross where a
  *     stone will fall, closing in as it comes;
- *   one lesson at a time at the foot, each introducing one idea.
+ *   a few words written beside the vent while an idea is new.
+ * Off the world there is only the era, as a map's title, and at the foot the
+ * key: the six kinds of life by their signs, inked once each is living. The
+ * world is kept as it's played; when the fire is out, the chart is drawn round
+ * it, and turning the world begins another.
  */
 import * as THREE from 'three';
 import { buildTopology } from '../mesh/topology';
@@ -33,16 +37,17 @@ import { FineSurface } from './fine';
 import { Ecology, ECOLOGY, KINDS } from './ecology';
 import { Islands } from './islands';
 import { Puffs } from './puffs';
-import { Sound } from './sound';
-import { drawChart } from './chart';
+import { drawChart, drawFrame, type ChartInfo } from './chart';
+import { snapshotOf, restoreInto, keep, recall, forget } from './save';
 
 const $ = (id: string) => document.getElementById(id)!;
 const stage = $('stage');
 
 // ---------------------------------------------------------------- the scene
 const renderer = new THREE.WebGLRenderer({ antialias: true });
-// As sharp as the screen is, up to three device pixels to a CSS pixel.
-renderer.setPixelRatio(Math.min(3, window.devicePixelRatio || 1));
+// As sharp as the screen is, up to three device pixels to a CSS pixel (less, if the phone can't keep up: see `pace`).
+let pixelRatio = Math.min(3, window.devicePixelRatio || 1);
+renderer.setPixelRatio(pixelRatio);
 stage.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color('#f4efe4');
@@ -53,17 +58,27 @@ const sun = new THREE.DirectionalLight('#ffffff', 0.28);
 sun.position.set(-2, 3, 2.5);
 scene.add(sun);
 
-let dist = 3.6;
+let dist = 3.2, farthest = 5;
 function fit(): void {
   const w = Math.max(1, stage.clientWidth || innerWidth), h = Math.max(1, stage.clientHeight || innerHeight);
   renderer.setSize(w, h, false);
   camera.aspect = w / h;
   const vfov = THREE.MathUtils.degToRad(camera.fov), hfov = 2 * Math.atan(Math.tan(vfov / 2) * camera.aspect);
-  dist = THREE.MathUtils.clamp(dist, 1.6, 1.35 / Math.sin(Math.min(vfov, hfov) / 2) * 1.4);
-  camera.position.set(0, 0, dist);
-  camera.lookAt(0, 0, 0);
+  farthest = 1.35 / Math.sin(Math.min(vfov, hfov) / 2) * 1.4;
+  look();
   camera.updateProjectionMatrix();
   for (const pen of pens) pen.setResolution(w, h, renderer.getPixelRatio());
+  sizeFrame(w, h);
+}
+/** How far the world is lifted up the page (a share of its height): at the end, to leave the foot for the chart. */
+let lift = 0;
+function look(): void {
+  dist = THREE.MathUtils.clamp(dist, 1.6, farthest * 1.3);
+  camera.position.set(0, 0, dist);
+  camera.lookAt(0, 0, 0);
+  const w = Math.max(1, stage.clientWidth || innerWidth), h = Math.max(1, stage.clientHeight || innerHeight);
+  if (lift > 1e-4) camera.setViewOffset(w, h, 0, lift * h, w, h); else camera.clearViewOffset();
+  camera.updateProjectionMatrix();
 }
 const pens: PlotterLines[] = [];
 addEventListener('resize', fit);
@@ -77,8 +92,10 @@ const nearest = (x: number, y: number, z: number) => {
   for (let v = 0; v < N; v++) { const d = Math.hypot(base[v * 3] - x, base[v * 3 + 1] - y, base[v * 3 + 2] - z); if (d < bd) { bd = d; best = v; } }
   return best;
 };
-// A new world each time, unless one is asked for by its number (?seed=), to see the same world again.
-const seed = Number(new URLSearchParams(location.search).get('seed')) || 1 + Math.floor(Math.random() * 1e6);
+// A new world each time, unless one is asked for by its number (?seed=), to see the same world again;
+// or the world that was being played, if there is one kept (see `resume`).
+const wanted = Number(new URLSearchParams(location.search).get('seed'));
+let seed = wanted || 1 + Math.floor(Math.random() * 1e6);
 const planet = new Planet(topo, nearest(0.1, 0.15, 0.98), seed);
 planet.stonesFall = false; // until the lesson that shows them
 const ecology = new Ecology(planet, topo);
@@ -128,12 +145,11 @@ landPen.width = seaPen.width = waterPen.width = 2;
 pens.push(landPen, seaPen, waterPen);
 group.add(seaPen.object, waterPen.object, landPen.object);
 /** Life by the sign of its kind; and breakers, short blue strokes, where the sea is wearing at a coast. */
-const kindDots = KINDS.map((k) => new Stipple(k.ink, k.sign, k.sign === 'dot' ? 2.1 : 7.5));
+const kindDots = KINDS.map((k) => new Stipple(k.ink, k.sign, k.sign === 'dot' ? 2.1 : 6));
 const foam = new Stipple('#46708f', 'dash', 6);
 for (const s of [...kindDots, foam]) group.add(s.object);
 const puffs = new Puffs(renderer.getPixelRatio());
 group.add(puffs.object);
-const sound = new Sound();
 
 /**
  * Marks on the surface, each a fine ink ring laid flat on the ground: whole, dashed (so many
@@ -155,6 +171,21 @@ const INK = '#2e2118';
  */
 const pressureRing = ring(INK, 0.85, 0.9), burstBand = ring(INK, 0.55, 0.94, 28), capRing = ring(INK, 0.6, 0.96), capInner = ring(INK, 0.35, 0.965);
 const dial = (share: number) => 0.02 + 0.08 * share;
+/** The heat left: an arc round the dial, as long as the share of the heat still to come, drawing itself away. */
+const heatArc = ring(INK, 0.5, 0.95);
+let heatDrawn = -1;
+function drawHeat(left: number): void {
+  const f = Math.max(0, Math.min(1, left));
+  if (Math.abs(f - heatDrawn) < 0.004) return;
+  heatDrawn = f;
+  heatArc.geometry.dispose();
+  heatArc.geometry = new THREE.RingGeometry(0.95, 1, 96, 1, Math.PI / 2, Math.max(1e-4, f * Math.PI * 2));
+}
+/** The level: a bubble that sits at the vent when the world is level and moves uphill as it's tipped; out of the small circle, it pours. */
+const levelRing = ring(INK, 0.45, 0.82);
+const bubble = new THREE.Mesh(new THREE.CircleGeometry(1, 24), new THREE.MeshBasicMaterial({ color: INK, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false }));
+bubble.renderOrder = 6;
+group.add(bubble);
 /** The top of the world as it's held, where the heat is rising to (a small ring); a stone's ring and cross; a dotted ring where life wishes. */
 const targetRing = ring(INK, 0.5, 0.8), stoneRing = ring(INK, 0.7, 0.95), wishRing = ring(INK, 0.6, 0.9, 40, 0.28);
 const stoneCross = new THREE.Mesh(
@@ -286,9 +317,6 @@ function chaikin(p: Float32Array, closed: boolean): Float32Array {
   return Float32Array.from(out);
 }
 
-/** How hard the sea is working, over the whole world, 0 to about 1: for the surf's sound. */
-let surfLevel = 0;
-
 /**
  * Life as stipple in the ink of its kind, denser where there's more of it; and surf, white dots
  * on the water just off coasts the sea is wearing, thicker the harder it works.
@@ -300,9 +328,6 @@ function redrawLife(now: number): void {
   const t = ftopo.triangles, P = ftopo.positions;
   fine.carry(planet.life, fineLife);
   fine.carry(planet.wear, fineWear);
-  let worn = 0;
-  for (let v = 0; v < N; v++) worn += planet.wear[v];
-  surfLevel = Math.min(1, worn / 0.25);
   const push = (into: number[], a: number, b: number, d: number, lift: number) => {
     for (const v of [a, b, d]) into.push(P[v * 3] * lift, P[v * 3 + 1] * lift, P[v * 3 + 2] * lift);
   };
@@ -317,7 +342,7 @@ function redrawLife(now: number): void {
     if (w > 0.0003 && Math.min(fineHeight[a], fineHeight[b], fineHeight[d]) < 0) push(surf[Math.min(2, Math.floor(w / 0.0012))], a, b, d, 1.0015);
   }
   // Signs are set sparsely, as a map sets them, closer where there's more; moss is a fine stipple.
-  kindDots.forEach((s, k) => s.set(byKind[k].flatMap((tris, lv) => stippleDots(tris, KINDS[k].sign === 'dot' ? 3000 + 7000 * lv : 500 + 1100 * lv))));
+  kindDots.forEach((s, k) => s.set(byKind[k].flatMap((tris, lv) => stippleDots(tris, KINDS[k].sign === 'dot' ? 3000 + 7000 * lv : 220 + 420 * lv))));
   foam.set(surf.flatMap((tris, lv) => stippleDots(tris, 900 + 1500 * lv)));
 }
 
@@ -346,13 +371,26 @@ const at = (v: number) => [base[v * 3], base[v * 3 + 1], base[v * 3 + 2]] as con
 function drawMarks(now: number): void {
   const q = planet.plume, share = Math.min(1, planet.pressure / VOLCANO.cap);
   const live = !planet.over;
-  pressureRing.visible = burstBand.visible = capRing.visible = capInner.visible = live;
+  pressureRing.visible = burstBand.visible = capRing.visible = capInner.visible = heatArc.visible = levelRing.visible = bubble.visible = live;
   // Nearly too much, and the ring trembles.
   const tremble = share > 0.85 ? 0.003 * Math.sin(now * 40) : 0.0015 * Math.sin(now * 3);
   place(pressureRing, q.x, q.y, q.z, dial(share) + tremble);
   place(burstBand, q.x, q.y, q.z, dial(VOLCANO.explosive / VOLCANO.cap));
   place(capRing, q.x, q.y, q.z, dial(1));
   place(capInner, q.x, q.y, q.z, dial(1) - 0.006);
+  drawHeat(planet.heatLeft);
+  place(heatArc, q.x, q.y, q.z, dial(1) + 0.022);
+  // The level's small circle is as far as the bubble goes before the heat pours.
+  place(levelRing, q.x, q.y, q.z, VOLCANO.tipPour * dial(1));
+  const g = planet.gravity;
+  if (g) {
+    // Uphill along the ground at the vent, as far as the world is tipped.
+    const n = Math.hypot(q.x, q.y, q.z), along = (g.x * q.x + g.y * q.y + g.z * q.z) / n;
+    const ux = -(g.x - along * q.x / n), uy = -(g.y - along * q.y / n), uz = -(g.z - along * q.z / n);
+    const r = Math.min(1, planet.tip) * dial(1);
+    place(bubble, q.x + ux * r, q.y + uy * r, q.z + uz * r, 0.0065);
+    (bubble.material as THREE.MeshBasicMaterial).color.set(planet.pouring ? '#9a4230' : INK);
+  }
   // Past the dashed ring, the pressure ring is drawn in the lava's red: this one will be a burst.
   (pressureRing.material as THREE.MeshBasicMaterial).color.set(planet.bursting ? '#9a4230' : INK);
   const t = planet.target;
@@ -403,6 +441,8 @@ function drawLabels(): void {
     if (w) { const k = KINDS.find((x) => x.kind === w.kind)!; label('wish', `${k.name} ${/s$/.test(k.name) ? 'want' : 'wants'} ${k.wants}`, w.vertex, true, 48); }
     const s = planet.impact;
     if (s) label('stone', `a stone, in ${Math.ceil(s.in)}`, s.vertex, true, 22);
+    const words = cue();
+    if (words) label('cue', words.text, words.at, true, words.dy);
   }
   for (const [key, el] of labels) if (!el.dataset.seen) { el.remove(); labels.delete(key); }
 }
@@ -434,7 +474,7 @@ const gestures = new GestureRecognizer(
     tap() { /* a tap does nothing: it's all in how you hold the world */ },
     spin(dx, dy) { spin.set(0, 0); rotate(dx * 0.006, dy * 0.006); },
     fling(vx, vy) { spin.set(vx * 0.006, vy * 0.006); },
-    zoom(f) { dist = THREE.MathUtils.clamp(dist / f, 1.6, 9); fit(); },
+    zoom(f) { dist /= f; look(); zoomedAt = seconds; },
     grab() { /* nothing to take hold of */ },
     press() { /* nor to press */ },
     pull() { /* nor to pull */ },
@@ -462,62 +502,68 @@ function arrows(dt: number): void {
   if (keys.has('ArrowUp')) rotate(0, -k);
   if (keys.has('ArrowDown')) rotate(0, k);
 }
-$('sound').addEventListener('click', () => { sound.start(); $('sound').textContent = sound.toggle() ? 'sound on' : 'sound off'; });
 
-// ---------------------------------------------------------------- lessons, one idea at a time
+// ---------------------------------------------------------------- cues, one idea at a time
 /**
- * Each lesson brings in one idea, and stays until it has been tried (or, if it isn't, until
- * it has been up long enough); stones only begin to fall once they've been explained.
+ * Each idea is brought in by a few words written on the world beside the vent (or where the
+ * idea is), and only while it's new: they change with what the player is doing, and go once
+ * the idea has been tried, or has been up long enough. Stones only begin to fall once they've
+ * been shown.
  */
-const LESSONS: { text: string; ready: () => boolean; done: (since: number) => boolean; begin?: () => void }[] = [
+const CUES: { ready: () => boolean; done: (since: number) => boolean; begin?: () => void; words: () => { text: string; at: number; dy: number } | null }[] = [
   {
-    text: 'Held level, the heat gathers beneath the top of the world. Tip it, and lava pours down the slope.',
     ready: () => true, done: () => planet.landShare() > 0,
+    words: () => ({ text: planet.pouring ? 'pouring' : planet.pressure < 2.5 ? 'hold it level' : 'now tip it', at: planet.plumeVertex, dy: -44 }),
   },
   {
-    text: 'Tip it soon for a gentle stream. Keep it level past the dashed ring, then tip it, for a burst of ash. Level too long, and the mountain tears open.',
     ready: () => true, done: (s) => planet.tally.bursts > 0 || s > 60,
+    words: () => {
+      const share = planet.pressure / VOLCANO.cap;
+      if (planet.pouring) return null;
+      return { text: share > 0.85 ? 'too long, and it tears open' : planet.bursting ? 'tip it now, for a burst' : 'level, to the dashed ring', at: planet.plumeVertex, dy: -44 };
+    },
   },
   {
-    text: 'Life needs six kinds of ground, the signs at the top. Streams make shallows and shores; bursts make heights and rich ash. Answer its wishes.',
     ready: () => ecology.held.length > 0, done: (s) => ecology.kept > 0 || s > 80,
+    begin: () => { $('legend').classList.add('new'); announce('Six kinds of life, each on its own ground'); },
+    words: () => null,
   },
-  { text: 'The heat rises to whatever is uppermost. Turn a place to the top, and the heat will creep there. Land it leaves behind cools and sinks.', ready: () => true, done: (s) => s > 45 },
   {
-    text: 'Stones fall now, where a ring shows. Turn one to the top to bring the heat beneath it and catch its warmth, or keep life clear of it.',
+    ready: () => true, done: (s) => s > 40,
+    words: () => (planet.target ? { text: 'the heat rises here', at: nearestAbove(new THREE.Vector3(planet.target.x, planet.target.y, planet.target.z)), dy: -26 } : null),
+  },
+  {
     ready: () => true, begin: () => { planet.stonesFall = true; }, done: () => planet.tally.stones > 0,
+    words: () => (planet.impact ? { text: 'turn it to the top to catch it', at: planet.impact.vertex, dy: 40 } : null),
   },
 ];
 let lesson = 0, lessonSince = 0, lessonShown = false, embersSaid = false;
 function lessons(): void {
-  const el = $('lesson');
-  if (ending) { el.classList.remove('shown'); return; }
-  if (lesson < LESSONS.length) {
-    const L = LESSONS[lesson];
+  if (ending) return;
+  if (lesson < CUES.length) {
+    const L = CUES[lesson];
     if (!lessonShown) {
       if (!L.ready()) return;
       lessonShown = true; lessonSince = seconds;
       L.begin?.();
-      el.textContent = L.text;
-      el.classList.add('shown');
       return;
     }
-    if (L.done(seconds - lessonSince) && seconds - lessonSince > 6) {
-      el.classList.remove('shown');
-      lesson++; lessonShown = false;
-    }
+    if (L.done(seconds - lessonSince) && seconds - lessonSince > 6) { lesson++; lessonShown = false; $('legend').classList.remove('new'); }
     return;
   }
   planet.stonesFall = true;
-  if (!embersSaid && planet.era === 'embers') {
-    embersSaid = true;
-    el.textContent = 'The heat is nearly gone. What lives when the fire is out is what your world keeps.';
-    el.classList.add('shown');
-    setTimeout(() => el.classList.remove('shown'), 12000);
-  }
+  if (!embersSaid && planet.era === 'embers') { embersSaid = true; announce('The heat is nearly gone. What lives when it is out is what your world keeps'); }
+}
+function cue(): { text: string; at: number; dy: number } | null {
+  return lesson < CUES.length && lessonShown && !ending ? CUES[lesson].words() : null;
 }
 
-// ---------------------------------------------------------------- words, the meter, and what they mean for sound
+/** A soft pulse in the hand, where the phone can give one (not iPhones). */
+function feel(pattern: number | number[]): void {
+  try { navigator.vibrate?.(pattern); } catch { /* none */ }
+}
+
+// ---------------------------------------------------------------- words, and the key
 const ERAS: Record<Era, string> = { young: 'The young fire', burning: 'The long burning', cooling: 'The cooling', embers: 'The last embers', out: 'The fire is out' };
 let shownEra: Era = 'young';
 const eraFrom: { name: string; from: number }[] = [{ name: ERAS.young, from: 0 }];
@@ -534,7 +580,7 @@ function showNext(): void {
   e.classList.add('shown');
   showingUntil = seconds + 3.2;
 }
-/** The six kinds at the top, each by its sign: faint until the kind is living, then inked. */
+/** The key at the foot: the six kinds by their signs, faint until the kind is living, then inked. */
 const SIGN_SVG: Record<string, string> = {
   dot: '<circle cx="6" cy="6" r="1.6" fill="currentColor"/>',
   ring: '<circle cx="6" cy="6" r="3.4" fill="none" stroke="currentColor" stroke-width="1.1"/>',
@@ -544,11 +590,11 @@ const SIGN_SVG: Record<string, string> = {
   caret: '<path d="M2 8.5L6 3.5L10 8.5" stroke="currentColor" stroke-width="1.1" fill="none"/>',
 };
 const kindEls = KINDS.map((k) => {
-  const b = document.createElement('b');
-  b.innerHTML = `<svg viewBox="0 0 12 12" width="13" height="13">${SIGN_SVG[k.sign]}</svg>`;
+  const b = document.createElement('span');
+  b.innerHTML = `<svg viewBox="0 0 12 12" width="12" height="12">${SIGN_SVG[k.sign]}</svg> ${k.name}`;
   b.style.color = k.ink;
   b.title = `${k.name}: ${k.wants}`;
-  $('kinds').appendChild(b);
+  $('legend').appendChild(b);
   return b;
 });
 function words(): void {
@@ -556,23 +602,21 @@ function words(): void {
   if (era !== shownEra && !ending) { shownEra = era; $('stage-name').textContent = ERAS[era]; eraFrom.push({ name: ERAS[era], from: planet.seconds }); }
   for (const text of planet.news.splice(0)) {
     if (!ending) announce(text);
-    if (/first|Moss|wish kept|takes in/.test(text)) sound.chime('gain');
-    else if (/stone is coming|wishes for/.test(text)) sound.chime(/stone/.test(text) ? 'warn' : 'gain');
+    if (/wish kept|takes in|Land breaks/.test(text)) feel(12);
+    else if (/The stone falls/.test(text)) feel(30);
   }
-  ($('heat').firstElementChild as HTMLElement).style.width = `${Math.round(Math.min(1, planet.heatLeft) * 100)}%`;
   const living = new Set(ecology.living);
-  KINDS.forEach((k, i) => { kindEls[i].style.opacity = living.has(k.kind) ? '1' : '0.28'; });
+  KINDS.forEach((k, i) => { kindEls[i].style.opacity = living.has(k.kind) ? '1' : '0.3'; });
 }
 
-// ---------------------------------------------------------------- what happens, seen and heard
+// ---------------------------------------------------------------- what happens, seen and felt
 const tallied = { ...planet.tally };
 let steamIn = 0, smokeIn = 0;
 function effects(dt: number): void {
   const p = topo.positions, v0 = planet.plumeVertex;
-  if (planet.tally.flows > tallied.flows) sound.flow();
   if (planet.tally.bursts > tallied.bursts || planet.tally.calderas > tallied.calderas) {
     const torn = planet.tally.calderas > tallied.calderas;
-    sound.burst(torn ? 1 : 0.6);
+    feel(torn ? [40, 60, 90] : 25);
     // The column of ash: many puffs from the vent, rising and spreading.
     for (let i = 0; i < (torn ? 80 : 40); i++) puffs.add('ash', p[v0 * 3], p[v0 * 3 + 1], p[v0 * 3 + 2], torn ? 1.6 : 1);
   }
@@ -596,21 +640,26 @@ const PLUME = new THREE.Vector3(), SWING = new THREE.Quaternion();
 // ---------------------------------------------------------------- the end
 /**
  * When the fire is out, a long age passes quickly, the sea and the rain at work on what you
- * made, and then the world is set out as a chart: what lasted.
+ * made, and then the chart is drawn round the world as it's left, in place: a pen goes round
+ * the border, and the eras and what lasted come in at the foot. The world can still be turned
+ * and looked at; turning it right round begins another.
  */
-const LONG_AGE = 360, AGE_SPEED = 14;
-let ending: { from: number; shown: boolean } | null = null;
+const LONG_AGE = 360, AGE_SPEED = 14, DRAWING = 7, TURN_AGAIN = 2.6;
+let ending: { from: number; shown: boolean; at: number; info: ChartInfo | null; turned: number } | null = null;
 function theEnd(): void {
   if (!ending && planet.over) {
-    ending = { from: planet.seconds, shown: false };
+    ending = { from: planet.seconds, shown: false, at: 0, info: null, turned: 0 };
     $('stage-name').textContent = ERAS.out;
     queue.length = 0;
     announce('The fire is out. A long age passes');
   }
   if (ending && !ending.shown && planet.seconds - ending.from >= LONG_AGE) {
     ending.shown = true;
+    ending.at = seconds;
     ecology.update(0);
-    showChart();
+    ending.info = chartInfo();
+    $('stage-name').textContent = ending.info.title;
+    void forget(); // the world is finished: nothing to come back to
   }
 }
 
@@ -624,18 +673,7 @@ const SHORT: [RegExp, (m: RegExpMatchArray) => string][] = [
   [/takes in the stone/, () => 'a stone caught'],
   [/The stone falls/, () => 'a stone falls'],
 ];
-function showChart(): void {
-  // The world as it's left, drawn once more for the picture, turned so its land faces us.
-  for (const el of labels.values()) el.remove();
-  labels.clear();
-  const biggest = islands.list.slice().sort((a, b) => b.vertices.length - a.vertices.length)[0];
-  if (biggest) {
-    PLUME.set(...at(biggest.centre)).applyQuaternion(group.quaternion);
-    group.quaternion.premultiply(SWING.setFromUnitVectors(PLUME, new THREE.Vector3(0, 0, 1)));
-  }
-  group.updateMatrixWorld(true);
-  renderer.render(scene, camera);
-  const cv = renderer.domElement;
+function chartInfo(): ChartInfo {
   const living = new Set(ecology.living), seen = new Set<string>(), events: { t: number; text: string }[] = [];
   for (const e of planet.log) {
     for (const [re, f] of SHORT) {
@@ -646,7 +684,7 @@ function showChart(): void {
   const length = ending!.from, mm = `${Math.floor(length / 60)}:${String(Math.floor(length % 60)).padStart(2, '0')}`;
   const eras = eraFrom.filter((e) => e.from < length).map((e, i, all) => ({ name: e.name.replace(/^The /, ''), from: e.from, to: i + 1 < all.length ? all[i + 1].from : length }));
   const count = islands.list.length;
-  const chart = drawChart(cv, {
+  return {
     title: count ? 'What lasted' : 'A world of water',
     subtitle: `world ${seed} · ${mm} of fire · ${count === 0 ? 'no land' : count === 1 ? 'one island' : `${count} islands`}`,
     kinds: KINDS.map((k) => ({ name: k.name, ink: k.ink, sign: k.sign, living: living.has(k.kind) })),
@@ -654,14 +692,62 @@ function showChart(): void {
     length,
     eras,
     events,
-  });
-  const url = chart.toDataURL('image/png');
-  const plate = $('plate');
-  (plate.querySelector('img') as HTMLImageElement).src = url;
-  plate.classList.add('shown');
-  $('keep').onclick = () => { const a = document.createElement('a'); a.href = url; a.download = `volcano-${seed}.png`; a.click(); };
-  $('again').onclick = () => { location.href = location.pathname; };
+  };
 }
+
+/** The chart's canvas, over the world, in device pixels. */
+const frameCanvas = $('frame') as HTMLCanvasElement;
+const frameInk = frameCanvas.getContext('2d')!;
+function sizeFrame(w: number, h: number): void {
+  const k = renderer.getPixelRatio();
+  frameCanvas.width = Math.round(w * k); frameCanvas.height = Math.round(h * k);
+  frameDrawn = -1;
+}
+let frameDrawn = -1;
+/** Draw the chart round the world, as far as it has got; and, once it's drawn, see whether the world has been turned right round. */
+function drawEnding(): void {
+  if (!ending?.shown || !ending.info) return;
+  const progress = Math.min(1, (seconds - ending.at) / DRAWING);
+  if (progress !== frameDrawn) {
+    frameDrawn = progress;
+    drawFrame(frameInk, frameCanvas.width, frameCanvas.height, renderer.getPixelRatio(), ending.info, progress, 64);
+  }
+  if (progress >= 1) {
+    $('again').classList.add('shown');
+    $('keep').classList.add('shown');
+  }
+}
+/** How far the world has been turned since the chart was drawn, by any means: gravity's swing in the planet's frame. */
+const LAST_DOWN = new THREE.Vector3(), NOW_DOWN = new THREE.Vector3();
+function turnedSince(): void {
+  if (!ending?.shown || seconds - ending.at < DRAWING) { LAST_DOWN.copy(GRAV); return; }
+  NOW_DOWN.copy(GRAV);
+  ending.turned += Math.acos(Math.max(-1, Math.min(1, LAST_DOWN.dot(NOW_DOWN))));
+  LAST_DOWN.copy(NOW_DOWN);
+  if (ending.turned > TURN_AGAIN) { ending.turned = -1e9; anew(); }
+}
+/** A new world: the page fades to paper, and comes back with nothing on it. */
+function anew(): void {
+  void forget();
+  $('begin').classList.remove('gone');
+  const q = new URLSearchParams(location.search);
+  q.delete('seed');
+  setTimeout(() => { location.search = q.toString(); }, 900);
+}
+$('keep').addEventListener('click', () => {
+  // The plate, as a picture: the world drawn once more, turned so its land faces us.
+  const biggest = islands.list.slice().sort((a, b) => b.vertices.length - a.vertices.length)[0];
+  const was = group.quaternion.clone();
+  if (biggest) {
+    PLUME.set(...at(biggest.centre)).applyQuaternion(group.quaternion);
+    group.quaternion.premultiply(SWING.setFromUnitVectors(PLUME, new THREE.Vector3(0, 0, 1)));
+  }
+  group.updateMatrixWorld(true);
+  renderer.render(scene, camera);
+  const url = drawChart(renderer.domElement, ending!.info!).toDataURL('image/png');
+  group.quaternion.copy(was);
+  const a = document.createElement('a'); a.href = url; a.download = `volcano-${seed}.png`; a.click();
+});
 
 // ---------------------------------------------------------------- held like a globe
 /**
@@ -697,37 +783,109 @@ function askForTilt(): void {
   else addEventListener('deviceorientation', onTilt);
 }
 
-/**
- * A spirit level, as a surveyor carries: the bubble sits in the middle when the vent is level,
- * and moves uphill as the world is tipped; past the dashed ring, the heat pours.
- */
-const levelEl = $('level');
-const NW = new THREE.Vector3(), TW = new THREE.Vector3();
+/** The hand's tilt, smoothed a little each frame so a shaking hand doesn't slop the lava about. */
 function drawLevel(): void {
   if (sensing) held.lerp(sensed, 0.15);
-  const v = planet.plumeVertex;
-  NW.set(base[v * 3], base[v * 3 + 1], base[v * 3 + 2]).applyQuaternion(group.quaternion);
-  TW.copy(held).normalize();
-  TW.addScaledVector(NW, -TW.dot(NW)); // gravity along the ground at the vent
-  const r = 13; // the level's radius, in its own units
-  const bubble = levelEl.querySelector('circle.bubble') as SVGCircleElement;
-  bubble.setAttribute('cx', String(-TW.x * r));
-  bubble.setAttribute('cy', String(TW.y * r));
-  bubble.style.fill = planet.pouring ? '#9a4230' : '#2e2118';
 }
+
+// ---------------------------------------------------------------- keeping the world
+/** Everything the world is, as it's kept: the planet, its life, its islands, and where the page had got to. */
+interface Kept {
+  seed: number;
+  planet: Record<string, unknown>;
+  ecology: Record<string, unknown>;
+  islands: Record<string, unknown>;
+  page: { lesson: number; embersSaid: boolean; shownEra: Era; eraFrom: { name: string; from: number }[]; turn: number[]; dist: number };
+}
+function world(): Kept {
+  return {
+    seed,
+    planet: snapshotOf(planet, ['topo', 'next', 'firmness', 'scale', 'news']),
+    ecology: snapshotOf(ecology, ['pl', 'topo', 'scale']),
+    islands: snapshotOf(islands, ['topo', 'scale']),
+    page: { lesson, embersSaid, shownEra, eraFrom: eraFrom.slice(), turn: group.quaternion.toArray() as number[], dist },
+  };
+}
+let keptAt = 0;
+function save(): void {
+  if (!begun || ending) return;
+  keptAt = seconds;
+  void keep(world());
+}
+addEventListener('pagehide', save);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') save(); });
+
+/** Take up the kept world, if there is one and no other was asked for. */
+async function resume(): Promise<boolean> {
+  if (wanted) return false;
+  const w = await recall<Kept>();
+  if (!w || !w.planet) return false;
+  seed = w.seed;
+  restoreInto(planet, w.planet, ['plume', 'tally', 'drift', 'wear']);
+  restoreInto(ecology, w.ecology);
+  restoreInto(islands, w.islands);
+  lesson = w.page.lesson; embersSaid = w.page.embersSaid; shownEra = w.page.shownEra;
+  eraFrom.length = 0; eraFrom.push(...w.page.eraFrom);
+  group.quaternion.fromArray(w.page.turn);
+  dist = w.page.dist; look();
+  $('stage-name').textContent = ERAS[shownEra];
+  Object.assign(tallied, planet.tally);
+  draw();
+  lastLines = -1; redrawLines(1e6);
+  return true;
+}
+
 /**
- * The first touch begins the world: it's what lets a phone share how it's held, and lets sound
- * play, so it's asked for once, on a quiet card, and never again.
+ * The first touch begins the world: it's what lets a phone share how it's held, so it's asked
+ * for once, on a quiet card. A world that was kept is taken up where it was left.
  */
 let begun = false;
 $('begin').addEventListener('pointerdown', () => {
   if (begun) return;
   begun = true;
   askForTilt();
-  sound.start();
   $('begin').classList.add('gone');
-  setTimeout(() => $('begin').remove(), 1600);
 });
+void resume().then((back) => {
+  if (!back) return;
+  ($('begin').querySelector('.first') as HTMLElement).textContent = 'Your world, as you left it.';
+  ($('begin').querySelector('.then') as HTMLElement).textContent = 'However you hold it now is level.';
+  ($('begin').querySelector('.touch') as HTMLElement).textContent = 'touch to return to it';
+});
+
+// ---------------------------------------------------------------- the camera, and the pace
+/**
+ * The camera breathes with the land: close while there's little, easing out as it spreads, so
+ * the whole of what you've made is in view; a pinch takes over for a while.
+ */
+let zoomedAt = -100, lastReach = -10, reachDist = 3.2;
+function breathe(dt: number): void {
+  if (seconds - lastReach > 2) {
+    lastReach = seconds;
+    // How far the land reaches from the vent, as an angle.
+    const q = planet.plume;
+    let least = 1;
+    for (let v = 0; v < N; v += 3) if (planet.rock[v] > 0) least = Math.min(least, base[v * 3] * q.x + base[v * 3 + 1] * q.y + base[v * 3 + 2] * q.z);
+    reachDist = THREE.MathUtils.clamp(2.9 + 2.4 * Math.acos(least), 2.9, 4.6);
+  }
+  // At the end, the world steps back and up the page, leaving the foot for the chart.
+  const want = ending?.shown ? farthest * 0.92 : reachDist, wantLift = ending?.shown ? 0.09 : 0;
+  if (!ending?.shown && seconds - zoomedAt < 10) return;
+  const d = dist + (want - dist) * Math.min(1, 0.4 * dt), l = lift + (wantLift - lift) * Math.min(1, 0.6 * dt);
+  if (Math.abs(d - dist) > 1e-4 || Math.abs(l - lift) > 1e-5) { dist = d; lift = l; look(); }
+}
+/** If the phone can't keep up, draw a little less finely: the pixel ratio comes down a half at a time, to no less than 1. */
+let slowFor = 0, frameTime = 1 / 60;
+function pace(raw: number): void {
+  frameTime += (raw - frameTime) * 0.05;
+  slowFor = frameTime > 1 / 36 ? slowFor + raw : 0;
+  if (slowFor > 3 && pixelRatio > 1) {
+    slowFor = 0;
+    pixelRatio = Math.max(1, pixelRatio - 0.5);
+    renderer.setPixelRatio(pixelRatio);
+    fit();
+  }
+}
 
 // ---------------------------------------------------------------- the loop
 const INVERSE = new THREE.Quaternion(), GRAV = new THREE.Vector3();
@@ -737,8 +895,9 @@ redrawLines(0);
 const clock = new THREE.Clock();
 let seconds = 0, lastWords = 0, lastDraw = 0, lastIslands = 0, lastEcology = 0;
 renderer.setAnimationLoop(() => {
-  const dt = Math.min(clock.getDelta(), 1 / 20);
+  const raw = clock.getDelta(), dt = Math.min(raw, 1 / 20);
   seconds += dt;
+  pace(raw);
   gestures.tick(performance.now(), dt);
   if (spin.lengthSq() > 1e-6) { rotate(spin.x * dt, spin.y * dt); spin.multiplyScalar(Math.exp(-2.2 * dt)); }
   arrows(dt);
@@ -754,8 +913,8 @@ renderer.setAnimationLoop(() => {
   // The surface is redrawn often while lava runs, and now and then while only the slow forces work.
   const flowing = planet.erupting || planet.molten > 0.01;
   if (seconds - lastDraw >= (flowing || speed > 1 ? 1 / 24 : 0.5)) { lastDraw = seconds; draw(); }
-  if (seconds - lastEcology >= 1) { ecology.update((seconds - lastEcology) * speed); lastEcology = seconds; }
-  if (seconds - lastIslands >= 2) {
+  if (begun && seconds - lastEcology >= 1) { ecology.update((seconds - lastEcology) * speed); lastEcology = seconds; }
+  if (begun && seconds - lastIslands >= 2) {
     lastIslands = seconds;
     for (const _ of islands.update(planet.rock, planet.seconds)) {
       const first = !planet.log.some((l) => l.text.startsWith('Land breaks'));
@@ -771,11 +930,14 @@ renderer.setAnimationLoop(() => {
   waterPen.update(dt, camera);
   for (const s of [...kindDots, foam]) s.update(dt);
   puffs.update(dt * speed);
+  if (begun) breathe(dt);
   if (begun && seconds - lastWords > 0.5) { lastWords = seconds; words(); theEnd(); lessons(); }
+  if (begun && seconds - keptAt > 15) save();
   showNext();
-  sound.set(Math.min(1, planet.pressure / VOLCANO.cap), surfLevel, planet.over);
   renderer.render(scene, camera);
   drawLabels();
+  drawEnding();
+  turnedSince();
 });
 
-if (import.meta.env.DEV) (window as unknown as { volcano: unknown }).volcano = { planet, ecology, islands, rotate, draw, lines: () => { lastLines = -1; redrawLines(1e6); } };
+if (import.meta.env.DEV) (window as unknown as { volcano: unknown }).volcano = { planet, ecology, islands, rotate, draw, save, lines: () => { lastLines = -1; redrawLines(1e6); } };

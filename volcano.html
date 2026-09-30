@@ -11,46 +11,43 @@
       #stage { position: fixed; inset: 0; width: 100vw; height: 100dvh; }
       #stage canvas { width: 100% !important; height: 100% !important; display: block; }
       .engraved { font-family: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif; color: #2e2118; }
-      #stage-name { position: fixed; top: calc(14px + env(safe-area-inset-top)); left: 0; right: 0; text-align: center; font-size: 19px; font-style: italic; letter-spacing: 0.04em; pointer-events: none; }
-      /* The heat left, as a thin rule that shortens; and the six kinds of life by their signs, inked once living. */
-      #meter { position: fixed; top: calc(46px + env(safe-area-inset-top)); left: 0; right: 0; display: flex; justify-content: center; align-items: center; gap: 14px; pointer-events: none; }
-      #heat { width: 90px; height: 1.5px; background: rgba(46,33,24,0.14); position: relative; }
-      #heat i { position: absolute; left: 0; top: 0; bottom: 0; background: #2e2118; transition: width 0.5s; }
-      #kinds { display: flex; gap: 7px; }
-      #kinds b { display: block; width: 13px; height: 13px; transition: opacity 1.5s; }
-      #lesson { position: fixed; bottom: calc(18px + env(safe-area-inset-bottom)); left: 20px; right: 20px; margin: 0; text-align: center; font-size: 15px; line-height: 1.45; opacity: 0; pointer-events: none; transition: opacity 1.2s; }
-      #lesson.shown { opacity: 0.8; }
-      #event { position: fixed; top: 19%; left: 16px; right: 16px; text-align: center; font-size: 20px; font-style: italic; opacity: 0; pointer-events: none; transition: opacity 1.4s; }
-      #event.shown { opacity: 0.85; }
+      /* The era, as a map's title; and, at the end, the chart drawn round the world, on a canvas over it. */
+      #stage-name { position: fixed; top: calc(22px + env(safe-area-inset-top)); left: 0; right: 0; text-align: center; font-size: 19px; font-style: italic; letter-spacing: 0.04em; pointer-events: none; }
+      #frame { position: fixed; inset: 0; width: 100vw; height: 100dvh; pointer-events: none; }
+      /* The key, at the foot: the six kinds by their signs, faint until living; drawn out a little when it's new. */
+      #legend { position: fixed; bottom: calc(24px + env(safe-area-inset-bottom)); left: 26px; right: 26px; display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 14px; font-size: 12px; font-style: italic; pointer-events: none; }
+      #legend span { display: inline-flex; align-items: center; gap: 4px; transition: opacity 1.5s; }
+      #legend.new span { animation: drawn 2.4s ease-in-out 2; }
+      @keyframes drawn { 50% { transform: translateY(-2px); } }
+      #event { position: fixed; top: 16%; left: 16px; right: 16px; text-align: center; font-size: 18px; font-style: italic; opacity: 0; pointer-events: none; transition: opacity 1.4s; }
+      #event.shown { opacity: 0.8; }
       #labels { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
       #labels span { position: absolute; transform: translate(-50%, -50%); font-style: italic; font-size: 15px; letter-spacing: 0.22em; white-space: nowrap; }
       #labels span.small { font-size: 12px; letter-spacing: 0.06em; }
-      /* The card the world begins from: one touch, which lets the phone share how it's held and sound play. */
+      /* The card the world begins from: one touch, which lets the phone share how it's held. */
       #begin { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; background: #f4efe4; transition: opacity 1.5s; cursor: pointer; }
       #begin.gone { opacity: 0; pointer-events: none; }
       #begin p { margin: 0; text-align: center; }
       #begin .first { font-size: 22px; font-style: italic; max-width: 20em; line-height: 1.4; padding: 0 24px; }
       #begin .then { font-size: 14px; opacity: 0.6; max-width: 22em; line-height: 1.5; padding: 0 24px; }
       #begin .touch { font-size: 13px; opacity: 0.45; letter-spacing: 0.12em; margin-top: 18px; }
-      #sound { position: fixed; top: calc(10px + env(safe-area-inset-top)); right: 10px; font-size: 12px; opacity: 0.5; padding: 8px; cursor: pointer; background: none; border: none; }
-      /* The chart at the end. */
-      #plate { position: fixed; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: rgba(244,239,228,0.97); padding: 16px; box-sizing: border-box; }
-      #plate.shown { display: flex; }
-      #plate img { max-width: 100%; max-height: calc(100% - 70px); box-shadow: 0 2px 18px rgba(46,33,24,0.18); }
-      #plate div { display: flex; gap: 22px; }
-      #plate button { font: italic 16px "Iowan Old Style", Palatino, Georgia, serif; color: #2e2118; background: none; border: none; border-bottom: 1px solid rgba(46,33,24,0.4); padding: 4px 2px; cursor: pointer; }
+      /* After the chart: a word on beginning again, and a way to keep it. */
+      #again { position: fixed; top: calc(96px + env(safe-area-inset-top)); left: 0; right: 0; text-align: center; font-size: 12px; font-style: italic; opacity: 0; pointer-events: none; transition: opacity 2s; margin: 0; }
+      #again.shown { opacity: 0.55; }
+      #keep { position: fixed; top: calc(22px + env(safe-area-inset-top)); right: 24px; font: italic 12px "Iowan Old Style", Palatino, Georgia, serif; color: #2e2118; background: none; border: none; opacity: 0; pointer-events: none; transition: opacity 2s; cursor: pointer; padding: 4px; }
+      #keep.shown { opacity: 0.5; pointer-events: auto; }
     </style>
   </head>
   <body>
     <div id="stage"></div>
+    <canvas id="frame"></canvas>
     <div id="labels" class="engraved"></div>
     <div id="stage-name" class="engraved">The young fire</div>
-    <div id="meter" class="engraved"><svg id="level" viewBox="-17 -17 34 34" width="26" height="26" aria-label="how level the vent is"><circle r="15.5" fill="none" stroke="#2e2118" stroke-width="1"/><circle r="2.9" fill="none" stroke="#2e2118" stroke-width="0.8" stroke-dasharray="1.6 1.6"/><circle class="bubble" r="2.6" fill="#2e2118"/></svg><span id="heat" title="heat left"><i></i></span><span id="kinds"></span></div>
-    <button id="sound" class="engraved">sound on</button>
     <div id="event" class="engraved"></div>
-    <p id="lesson" class="engraved"></p>
+    <div id="legend" class="engraved"></div>
+    <p id="again" class="engraved">turn the world right round to begin another</p>
+    <button id="keep">keep the chart</button>
     <div id="begin" class="engraved"><p class="first">A young world of water, and the heat beneath it, which will not last.</p><p class="then">Hold it as you would a globe. Tip it, and the heat pours out; hold it level, and the heat gathers.</p><p class="touch">touch to begin</p></div>
-    <div id="plate"><img alt="The chart of your world" /><div><button id="keep" class="engraved">keep this chart</button><button id="again" class="engraved">begin a new world</button></div></div>
     <script type="module" src="/src/volcano/main.ts"></script>
   </body>
 </html>
