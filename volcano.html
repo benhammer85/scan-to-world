@@ -11,20 +11,38 @@
       #stage { position: fixed; inset: 0; width: 100vw; height: 100dvh; }
       #stage canvas { width: 100% !important; height: 100% !important; display: block; }
       .engraved { font-family: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif; color: #2e2118; }
-      #stage-name { position: fixed; top: calc(14px + env(safe-area-inset-top)); left: 0; right: 0; text-align: center; font-size: 19px; font-style: italic; letter-spacing: 0.04em; pointer-events: none; transition: opacity 1.2s; }
-      #shares { position: fixed; top: calc(40px + env(safe-area-inset-top)); left: 0; right: 0; text-align: center; font-size: 12px; opacity: 0.7; pointer-events: none; }
-      #hint { position: fixed; bottom: calc(14px + env(safe-area-inset-bottom)); left: 16px; right: 16px; text-align: center; font-size: 13px; opacity: 0.65; pointer-events: none; transition: opacity 2s; }
-      #hint.gone { opacity: 0; }
-      #event { position: fixed; top: 38%; left: 0; right: 0; text-align: center; font-size: 22px; font-style: italic; opacity: 0; pointer-events: none; transition: opacity 1.4s; }
+      #stage-name { position: fixed; top: calc(14px + env(safe-area-inset-top)); left: 0; right: 0; text-align: center; font-size: 19px; font-style: italic; letter-spacing: 0.04em; pointer-events: none; }
+      /* The heat left, as a thin rule that shortens; and the six kinds of life, a dot each, filled once living. */
+      #meter { position: fixed; top: calc(46px + env(safe-area-inset-top)); left: 0; right: 0; display: flex; justify-content: center; align-items: center; gap: 14px; pointer-events: none; }
+      #heat { width: 90px; height: 3px; background: rgba(46,33,24,0.12); position: relative; }
+      #heat i { position: absolute; left: 0; top: 0; bottom: 0; background: #8a3a1e; transition: width 0.5s; }
+      #kinds { display: flex; gap: 7px; }
+      #kinds b { width: 8px; height: 8px; border-radius: 50%; border: 1.3px solid currentColor; box-sizing: border-box; transition: background-color 1s; }
+      #lesson { position: fixed; bottom: calc(18px + env(safe-area-inset-bottom)); left: 20px; right: 20px; margin: 0; text-align: center; font-size: 15px; line-height: 1.45; opacity: 0; pointer-events: none; transition: opacity 1.2s; }
+      #lesson.shown { opacity: 0.8; }
+      #event { position: fixed; top: 19%; left: 16px; right: 16px; text-align: center; font-size: 20px; font-style: italic; opacity: 0; pointer-events: none; transition: opacity 1.4s; }
       #event.shown { opacity: 0.85; }
+      #labels { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+      #labels span { position: absolute; transform: translate(-50%, -50%); font-style: italic; font-size: 15px; letter-spacing: 0.22em; white-space: nowrap; }
+      #labels span.small { font-size: 12px; letter-spacing: 0.06em; }
+      #sound { position: fixed; top: calc(10px + env(safe-area-inset-top)); right: 10px; font-size: 12px; opacity: 0.5; padding: 8px; cursor: pointer; background: none; border: none; }
+      /* The chart at the end. */
+      #plate { position: fixed; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: rgba(244,239,228,0.97); padding: 16px; box-sizing: border-box; }
+      #plate.shown { display: flex; }
+      #plate img { max-width: 100%; max-height: calc(100% - 70px); box-shadow: 0 2px 18px rgba(46,33,24,0.18); }
+      #plate div { display: flex; gap: 22px; }
+      #plate button { font: italic 16px "Iowan Old Style", Palatino, Georgia, serif; color: #2e2118; background: none; border: none; border-bottom: 1px solid rgba(46,33,24,0.4); padding: 4px 2px; cursor: pointer; }
     </style>
   </head>
   <body>
     <div id="stage"></div>
+    <div id="labels" class="engraved"></div>
     <div id="stage-name" class="engraved">The young fire</div>
-    <div id="shares" class="engraved"></div>
+    <div id="meter" class="engraved"><span id="heat" title="heat left"><i></i></span><span id="kinds"></span></div>
+    <button id="sound" class="engraved">sound on</button>
     <div id="event" class="engraved"></div>
-    <p id="hint" class="engraved">you are the heat beneath a young ocean world, and it will not last · the pressure gathers on its own: tap to let it out, often for gentle flows, or wait for a burst, but not too long · hold the world to call the heat there · tip it and the lava runs down the screen</p>
+    <p id="lesson" class="engraved"></p>
+    <div id="plate"><img alt="The chart of your world" /><div><button id="keep" class="engraved">keep this chart</button><button id="again" class="engraved">begin a new world</button></div></div>
     <script type="module" src="/src/volcano/main.ts"></script>
   </body>
 </html>

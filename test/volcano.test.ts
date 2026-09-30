@@ -135,7 +135,7 @@ describe('the volcano', () => {
     pl.strike(at);
     expect(pl.rock[at]).toBeLessThan(rock);
     expect(pl.life[at]).toBe(0);
-    expect(pl.reserve).toBe(reserve + VOLCANO.impactHeat);
+    expect(pl.reserve).toBeCloseTo(reserve + VOLCANO.impactHeat, 6); // far from the plume: its heat alone
   });
 
   it('left alone, land the plume has moved on from sinks and wears away', () => {

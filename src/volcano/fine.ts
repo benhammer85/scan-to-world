@@ -97,6 +97,11 @@ export class FineSurface {
     }
   }
 
+  /** The coarse vertex nearest a fine one (the first it takes from, in both of Loop's rules). */
+  nearestCoarse(f: number): number {
+    return this.from[this.offsets[f]];
+  }
+
   /** Carry a field (of `stride` values a vertex) from the coarse vertices onto the fine. */
   carry(coarse: ArrayLike<number>, fine: Float32Array, stride = 1): void {
     const o = this.offsets, from = this.from, w = this.weights, n = this.fine.vertexCount;
