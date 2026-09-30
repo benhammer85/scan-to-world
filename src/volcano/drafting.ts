@@ -43,7 +43,10 @@ export function rounded(lines: Polyline[]): Polyline[] {
   const out: Polyline[] = [];
   for (const line of lines) {
     if (line.length < SCRAP) continue;
+    // First eased along (each point drawn toward its neighbours), which takes out the sawtooth a
+    // line gets crossing the triangles one by one on a steep slope; then its corners cut.
     let p = line.points;
+    for (let pass = 0; pass < 3; pass++) p = ease(p, line.closed);
     for (let pass = 0; pass < 2; pass++) p = chaikin(p, line.closed);
     let length = 0;
     const n = p.length / 3;
@@ -52,6 +55,19 @@ export function rounded(lines: Polyline[]): Polyline[] {
       length += Math.hypot(p[b] - p[a], p[b + 1] - p[a + 1], p[b + 2] - p[a + 2]);
     }
     out.push({ ...line, points: p, length });
+  }
+  return out;
+}
+
+/** Each point moved halfway toward the middle of its two neighbours (an open line keeps its ends). */
+function ease(p: Float32Array, closed: boolean): Float32Array {
+  const n = p.length / 3;
+  if (n < 4) return p;
+  const out = p.slice();
+  for (let i = 0; i < n; i++) {
+    if (!closed && (i === 0 || i === n - 1)) continue;
+    const a = ((i - 1 + n) % n) * 3, b = i * 3, c = ((i + 1) % n) * 3;
+    for (let k = 0; k < 3; k++) out[b + k] = p[b + k] * 0.5 + (p[a + k] + p[c + k]) * 0.25;
   }
   return out;
 }

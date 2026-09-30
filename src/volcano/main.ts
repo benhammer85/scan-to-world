@@ -60,8 +60,9 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color('#f4efe4');
 const camera = new THREE.PerspectiveCamera(40, 1, 0.01, 100);
 // Flat, as paper is: only a little light from one side, so relief reads without the gloss of a model.
-scene.add(new THREE.HemisphereLight('#fffaf0', '#efe7d6', 2.6));
-const sun = new THREE.DirectionalLight('#ffffff', 0.28);
+// (Almost none: shading on a bumpy surface reads as smudges, not relief. The contours show the relief.)
+scene.add(new THREE.HemisphereLight('#fffaf0', '#f8f2e6', 2.75));
+const sun = new THREE.DirectionalLight('#ffffff', 0.12);
 sun.position.set(-2, 3, 2.5);
 scene.add(sun);
 
@@ -164,8 +165,8 @@ material.onBeforeCompile = (shader) => {
       vec3 sea = mix(uShallow, uDeep, clamp(-vH / 0.3, 0.0, 1.0));
       // The land's colour laid on as watercolour is: never quite even, a little darker where it
       // pooled and lighter where it thinned, in soft blotches fixed to the ground.
-      float pool = noise3(vDir * 38.0) * 0.6 + noise3(vDir * 110.0) * 0.4;
-      vec3 land = vColor.rgb * (0.95 + 0.1 * pool);
+      float pool = noise3(vDir * 30.0);
+      vec3 land = vColor.rgb * (0.98 + 0.04 * pool);
       diffuseColor.rgb *= mix(sea, land, smoothstep(-edge, edge, vH));`);
 };
 const mesh = new THREE.Mesh(geometry, material);
@@ -266,7 +267,7 @@ function coarse(): void {
     // lava a flat vermilion wash, deeper where it lies thick. (Plain arithmetic, not Colors: this
     // is sixteen thousand vertices, many times a second.)
     const v3 = v * 3;
-    const fresh = planet.age[v] < 200 ? Math.exp(-planet.age[v] / 30) * 0.7 : 0, ash = planet.ash[v] * 0.5;
+    const fresh = planet.age[v] < 200 ? Math.exp(-planet.age[v] / 30) * 0.3 : 0, ash = Math.min(0.22, planet.ash[v] * 0.3);
     const hot = lava > 0.002 ? Math.min(1, lava * 40) : 0, deep = lava > 0.002 ? Math.min(0.6, lava * 8) : 0;
     const kind = LIFE ? ecology.kind[v] : -1, wash = kind >= 0 ? WASH[kind] : null, washBy = wash ? WASH_STRENGTH * Math.min(1, planet.life[v]) * (1 - hot) : 0;
     washWeight[v] += (washBy - washWeight[v]) * ease;
@@ -1026,14 +1027,16 @@ function breathe(dt: number): void {
   const d = dist + (want - dist) * Math.min(1, 0.15 * dt), l = lift + (wantLift - lift) * Math.min(1, 0.6 * dt);
   if (Math.abs(d - dist) > 1e-4 || Math.abs(l - lift) > 1e-5) { dist = d; lift = l; look(); }
 }
-/** If the phone can't keep up, draw a little less finely: the pixel ratio comes down a half at a time, to no less than 1. */
+/** If the phone can't keep up, draw a little less finely: the pixel ratio comes down a half at a time, but never below two to a point (see FINEST). */
 let slowFor = 0, frameTime = 1 / 60;
+/** Never coarser than this, however slow the phone: below two pixels to a point, lines and edges look pixelated. */
+const FINEST = Math.min(2, window.devicePixelRatio || 1);
 function pace(raw: number): void {
   frameTime += (raw - frameTime) * 0.05;
   slowFor = frameTime > 1 / 36 ? slowFor + raw : 0;
-  if (slowFor > 3 && pixelRatio > 1) {
+  if (slowFor > 3 && pixelRatio > FINEST) {
     slowFor = 0;
-    pixelRatio = Math.max(1, pixelRatio - 0.5);
+    pixelRatio = Math.max(FINEST, pixelRatio - 0.5);
     renderer.setPixelRatio(pixelRatio);
     fit();
   }
