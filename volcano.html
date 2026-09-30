@@ -22,9 +22,6 @@
       /* A quiet word now and then, at the foot above the key, never across the world. */
       #event { position: fixed; bottom: calc(66px + env(safe-area-inset-bottom)); left: 16px; right: 16px; text-align: center; font-size: 14px; font-style: italic; opacity: 0; pointer-events: none; transition: opacity 2s; }
       #event.shown { opacity: 0.6; }
-      #labels { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
-      #labels span { position: absolute; transform: translate(-50%, -50%); font-style: italic; font-size: 15px; letter-spacing: 0.22em; white-space: nowrap; }
-      #labels span.small { font-size: 12px; letter-spacing: 0.06em; }
       /* The card the world begins from: one touch, which lets the phone share how it's held. */
       #begin { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; background: #f4efe4; transition: opacity 1.5s; cursor: pointer; }
       #begin.gone { opacity: 0; pointer-events: none; }
@@ -43,7 +40,6 @@
   <body>
     <div id="stage"></div>
     <canvas id="frame"></canvas>
-    <div id="labels" class="engraved"></div>
     <div id="stage-name" class="engraved">The young fire</div>
     <div id="event" class="engraved"></div>
     <div id="legend" class="engraved"></div>

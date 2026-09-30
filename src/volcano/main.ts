@@ -13,13 +13,13 @@
  * however you were holding the phone when you began.
  *
  * Nothing on the world is a control or a gauge; what it's doing shows as itself:
- *   the vent is the map's sign for a volcano, and the heat gathering beneath
- *     it rises as smoke, a wisp while there's little, heavier as it builds, a
- *     dark column once it would burst; held too long, the cone trembles;
+ *   the vent has no mark of its own: the heat gathering beneath it rises as
+ *     smoke, a wisp while there's little, heavier as it builds, a dark column
+ *     once it would burst;
  *   tipped, the lava is seen to pour;
- *   a dotted ring where life wishes for a kind, and a ring with a cross where a
- *     stone will fall, closing in as it comes;
- *   a few words written beside the vent while an idea is new.
+ *   a few of a kind's signs pencilled where life wishes for it, and a small
+ *     star where a stone will fall.
+ * No words are written on the world: what's new is told in a quiet line at the foot.
  * Off the world there is only the era, as a map's title, and at the foot the
  * key: the six kinds of life by their signs, inked once each is living. The
  * world is kept as it's played; when the fire is out, the chart is drawn round
@@ -202,29 +202,7 @@ function mark(draw: (g: CanvasRenderingContext2D) => void, foot = 0.5): THREE.Sp
   return sprite;
 }
 const INK = '#2e2118';
-/**
- * The vent, by the map's own sign for a volcano: a small inked cone, standing upright however
- * the world is turned. It is the only mark at the vent. What the heat is doing shows as smoke
- * rising from it (see `effects`): a wisp now and then while there's little, thickening as it
- * gathers, heavy once it would burst; held too long, the cone trembles.
- */
-const cone = (() => {
-  const cv = document.createElement('canvas');
-  cv.width = cv.height = 64;
-  const g = cv.getContext('2d')!;
-  g.fillStyle = '#f4efe4'; g.strokeStyle = INK; g.lineWidth = 3.2; g.lineJoin = 'round';
-  g.beginPath(); g.moveTo(32, 14); g.lineTo(52, 50); g.lineTo(12, 50); g.closePath(); g.fill(); g.stroke();
-  // The crater at its top: a short dark rule across it.
-  g.lineWidth = 3; g.beginPath(); g.moveTo(27, 23); g.lineTo(37, 23); g.stroke();
-  const tex = new THREE.CanvasTexture(cv);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false }));
-  sprite.center.set(0.5, 0.2); // it stands on the ground at its foot
-  sprite.renderOrder = 7;
-  group.add(sprite);
-  return sprite;
-})();
-/** Where a stone will fall: a small star of six strokes, the old sign for a hazard, with its countdown written beside it. */
+/** Where a stone will fall: a small star of six strokes, the old sign for a hazard. */
 const stoneMark = mark((g) => {
   g.lineWidth = 3.4;
   for (let i = 0; i < 3; i++) {
@@ -234,8 +212,7 @@ const stoneMark = mark((g) => {
 });
 /**
  * Where life wishes for a kind: a few of that kind's own signs, sketched in broken pencil where
- * they would stand, as a surveyor pencils what is yet to be inked, with the ground it wants
- * written beside it.
+ * they would stand, as a surveyor pencils what is yet to be inked.
  */
 const wishMarks = KINDS.map((k) => mark((g) => {
   g.setLineDash([3.5, 3]);
@@ -430,19 +407,7 @@ function nearestAbove(u: THREE.Vector3): number {
 }
 const at = (v: number) => [base[v * 3], base[v * 3 + 1], base[v * 3 + 2]] as const;
 
-function drawMarks(now: number): void {
-  const q = planet.plume, share = Math.min(1, planet.pressure / VOLCANO.cap);
-  // The cone, standing on the ground at the vent, facing us; hidden round the back of the world.
-  const v = planet.plumeVertex;
-  PROJ.set(topo.positions[v * 3], topo.positions[v * 3 + 1], topo.positions[v * 3 + 2]).multiplyScalar(1.004);
-  cone.position.copy(PROJ);
-  NORMAL.set(q.x, q.y, q.z).applyQuaternion(group.quaternion);
-  const facing = NORMAL.dot(EYE.copy(camera.position).normalize());
-  cone.material.opacity = planet.over ? 0.5 : Math.max(0, Math.min(1, (facing - 0.1) / 0.25));
-  // Held too long, it trembles; otherwise it stands still.
-  const tremble = share > 0.85 && !planet.over ? 0.12 * Math.sin(now * 38) : 0;
-  cone.material.rotation = tremble;
-  cone.scale.setScalar(0.055 * (dist / 3.2));
+function drawMarks(): void {
   const s = planet.impact;
   stoneMark.visible = !!s && !ending;
   if (s) {
@@ -473,7 +438,7 @@ function setMark(m: THREE.Sprite, v: number, size: number): void {
  *     is held while something lives on or by it, and then marked by an inked tick across the
  *     route instead of its pencil. Ringed when every stretch is held at once.
  *   The Moon: each great basin's edge, inked once its floor is flooded.
- *   Mars: the mountain's spot height, printed by its summit as a map prints one.
+ *   Mars: nothing on the map; the mountain's height is told at the foot as it rises.
  */
 let chain = WORLD.goal === 'ring' ? new Chain(planet.plume, planet.driftDirection) : null;
 const FLOODED_ENOUGH = 0.7;
@@ -489,13 +454,8 @@ function reckonAim(): void {
   else if (WORLD.goal === 'height') { aimDone = Math.max(0, planet.summit * HEIGHT.kmPerUnit); aimOf = HEIGHT.target; }
   else { aimDone = planet.basins.filter((b) => planet.flooded(b) >= FLOODED_ENOUGH).length; aimOf = planet.basins.length; }
 }
-/** Where the summit is: the highest vertex, for its spot height. */
-function summitVertex(): number {
-  let best = 0;
-  for (let v = 1; v < N; v++) if (planet.rock[v] > planet.rock[best]) best = v;
-  return best;
-}
 const won = () => aimOf > 0 && aimDone >= aimOf;
+let toldHeight = 0;
 /** A line on the ground through these points (on the unit sphere), lifted to the land's height; dashed if `dashed`. */
 function onGround(pts: { x: number; y: number; z: number }[], dashed: boolean): Polyline[] {
   const lifted = pts.map((q) => {
@@ -519,7 +479,12 @@ function drawAim(now: number): void {
   lastAim = now;
   reckonAim();
   const inked: Polyline[] = [], pencilled: Polyline[] = [];
-  if (WORLD.goal === 'height') return; // its mark is a spot height, set with the labels
+  if (WORLD.goal === 'height') {
+    // No mark on the world: its height is told at the foot, each time it stands two km higher.
+    const step = Math.floor(aimDone / 2) * 2;
+    if (begun && step > toldHeight && step < aimOf) { toldHeight = step; announce(`The mountain stands ${step} km above the plain, of ${aimOf}`); }
+    return;
+  }
   if (chain) {
     // The route is pencilled across what's still to do; a stretch held is marked only by a short
     // inked tick across the route, as a chart marks a voyage's stages, so no line cuts the land.
@@ -549,38 +514,7 @@ function drawAim(now: number): void {
   aimPencil.setLines(pencilled, 'settle');
 }
 
-// ---------------------------------------------------------------- labels on the map
-const labelLayer = $('labels');
-const labels = new Map<string, HTMLSpanElement>();
-const PROJ = new THREE.Vector3(), NORMAL = new THREE.Vector3(), EYE = new THREE.Vector3();
-/** Put a label at a vertex, lifted a little off the ground, faded towards the rim and hidden round the back. */
-function label(key: string, text: string, v: number, small = false, dy = 0): void {
-  let el = labels.get(key);
-  if (!el) { el = document.createElement('span'); if (small) el.className = 'small'; labelLayer.appendChild(el); labels.set(key, el); }
-  if (el.textContent !== text) el.textContent = text;
-  PROJ.set(topo.positions[v * 3], topo.positions[v * 3 + 1], topo.positions[v * 3 + 2]).multiplyScalar(1.01);
-  group.localToWorld(PROJ);
-  NORMAL.copy(PROJ).normalize();
-  const facing = NORMAL.dot(EYE.copy(camera.position).sub(PROJ).normalize());
-  PROJ.project(camera);
-  const r = renderer.domElement.getBoundingClientRect();
-  el.style.left = `${((PROJ.x + 1) / 2) * r.width}px`;
-  el.style.top = `${((1 - PROJ.y) / 2) * r.height + dy}px`;
-  el.style.opacity = String(Math.max(0, Math.min(1, (facing - 0.3) / 0.3)) * (small ? 0.75 : 0.85));
-  el.dataset.seen = '1';
-}
-function drawLabels(): void {
-  for (const el of labels.values()) el.dataset.seen = '';
-  if (!ending?.shown) {
-    const w = ecology.wish;
-    if (w) { const k = KINDS.find((x) => x.kind === w.kind)!; label('wish', `${k.name} wanted: ${k.wants}`, w.vertex, true, 26); }
-    const s = planet.impact;
-    if (s) label('stone', `a stone falls here, in ${Math.ceil(s.in)}`, s.vertex, true, 22);
-    // Mars: the mountain's height, printed by its summit, as a map prints a spot height.
-    if (WORLD.goal === 'height' && begun && aimDone >= 1) label('summit', `${Math.round(aimDone)} km`, summitVertex(), true, 20);
-  }
-  for (const [key, el] of labels) if (!el.dataset.seen) { el.remove(); labels.delete(key); }
-}
+const NORMAL = new THREE.Vector3(), EYE = new THREE.Vector3();
 
 // ---------------------------------------------------------------- touch
 const raycaster = new THREE.Raycaster();
@@ -698,7 +632,7 @@ function feel(pattern: number | number[]): void {
 
 // ---------------------------------------------------------------- words, and the key
 /** What's worth saying: the turns in the world's story, not every happening in it. */
-const QUIET_WORDS = /^(Land breaks|Life begins in|The first|Moss takes|A wish kept|Held too long|The plume takes in|The fire is out|The heat is nearly|A dust storm|The storm passes)/;
+const QUIET_WORDS = /^(Life wishes|A stone is coming|Land breaks|Life begins in|The first|Moss takes|A wish kept|Held too long|The plume takes in|The fire is out|The heat is nearly|A dust storm|The storm passes)/;
 const ERAS: Record<Era, string> = { young: 'The young fire', burning: 'The long burning', cooling: 'The cooling', embers: 'The last embers', out: 'The fire is out' };
 let shownEra: Era = 'young';
 const eraFrom: { name: string; from: number }[] = [{ name: ERAS.young, from: 0 }];
@@ -1114,7 +1048,7 @@ renderer.setAnimationLoop(() => {
   }
   redrawLines(seconds);
   redrawLife(seconds);
-  drawMarks(seconds);
+  drawMarks();
   effects(dt);
   landPen.update(dt, camera);
   seaPen.update(dt, camera);
@@ -1131,7 +1065,6 @@ renderer.setAnimationLoop(() => {
   showNext();
   if (import.meta.env.DEV) { frameCost.push(performance.now() - began0); if (frameCost.length > 600) frameCost.shift(); }
   renderer.render(scene, camera);
-  drawLabels();
   drawEnding();
   turnedSince();
 });
