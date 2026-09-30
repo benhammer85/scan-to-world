@@ -149,8 +149,22 @@ export const VOLCANO = {
    * What the world is like at the start: 'ocean', one sea over an even floor; or 'moon', airless
    * highland scarred by `basins` great old impact basins, and a scatter of smaller craters.
    */
-  terrain: 'ocean' as 'ocean' | 'moon',
+  terrain: 'ocean' as 'ocean' | 'moon' | 'mars',
   basins: 0,
+  /** Smaller craters scattered over the ground, on a world that starts scarred. */
+  craters: 40,
+  /**
+   * Dust storms, on a world with thin air: one every so many seconds (between; none if both are 0),
+   * each seen rising `stormWarning` seconds before it comes, lasting `stormLasts`, and scouring
+   * the heights while it blows (per second, in proportion to how high the ground stands above the
+   * floor, and more where it's soft ash).
+   */
+  stormEvery: [0, 0] as [number, number],
+  stormWarning: 12,
+  stormLasts: 22,
+  stormWear: 0.012,
+  /** How much of a mountain's top counts as its summit (see `summit`), as vertices on a planet of the drawn detail. */
+  summitOf: 30,
   /** Whether there is life at all; and, if there is, how often (seconds) it begins afresh at a vent that has none near it. */
   life: true,
   reseed: 30,
@@ -262,7 +276,8 @@ export class Planet {
     const t2 = cross(this.plume, t1);
     this.drift = { x: t1.x * Math.cos(a) + t2.x * Math.sin(a), y: t1.y * Math.cos(a) + t2.y * Math.sin(a), z: t1.z * Math.cos(a) + t2.z * Math.sin(a) };
     this.impactIn = this.between(this.k.impactEvery);
-    if (this.k.terrain === 'moon') this.scar();
+    if (this.k.terrain !== 'ocean') this.scar();
+    if (this.k.stormEvery[1] > 0) this.stormIn = this.between(this.k.stormEvery);
   }
 
   /**
@@ -292,7 +307,9 @@ export class Planet {
       this.basins.push({ ...c, r });
       bowl(c, r, 0.12);
     }
-    for (let i = 0; i < 40; i++) bowl(point(), 0.03 + this.rand() * 0.06, 0.05);
+    for (let i = 0; i < this.k.craters; i++) bowl(point(), 0.03 + this.rand() * 0.06, 0.05);
+    // A world without a sea keeps even its deepest craters dry.
+    if (this.k.terrain === 'mars') for (let v = 0; v < n; v++) this.rock[v] = Math.max(0.004, this.rock[v]);
   }
 
   /** Which way the crust carries the heat, along the ground at the vent (a unit vector). */
@@ -421,6 +438,40 @@ export class Planet {
     else if (this.livingDue) { this.livingDue = false; this.living(0.25); }
     else if (this.slowIn <= 0) { this.slow(0.25, 0, half); this.slowIn = 0.25; this.slowHalf = true; }
     this.stones(dt);
+    this.storms(dt);
+  }
+
+  /** Whether a dust storm is blowing now; and, if one is on its way, how soon it comes. */
+  storm = false;
+  stormComing: number | null = null;
+  private stormIn = 0;
+  private stormLeft = 0;
+  private storms(dt: number): void {
+    if (this.k.stormEvery[1] <= 0 || this.over) { this.storm = false; return; }
+    if (this.storm) {
+      this.stormLeft -= dt;
+      if (this.stormLeft <= 0) { this.storm = false; this.stormIn = this.between(this.k.stormEvery); this.tell('The storm passes'); }
+      return;
+    }
+    this.stormIn -= dt;
+    if (this.stormComing === null && this.stormIn <= this.k.stormWarning) { this.stormComing = this.stormIn; this.tell('A dust storm is rising'); }
+    if (this.stormComing !== null) this.stormComing = Math.max(0, this.stormIn);
+    if (this.stormIn <= 0) { this.storm = true; this.stormComing = null; this.stormLeft = this.k.stormLasts; }
+  }
+
+  /**
+   * How high the mountain stands above the floor: not its single highest point (lava piles a spike
+   * at the vent that is no mountain) but the height that a fair patch of its top reaches, the
+   * `summitOf`-th highest ground (on a planet of the drawn detail).
+   */
+  get summit(): number {
+    const k = Math.max(1, Math.round(this.k.summitOf * this.scale)), top: number[] = [];
+    for (let v = 0; v < this.rock.length; v++) {
+      const h = this.rock[v];
+      if (top.length < k) { top.push(h); top.sort((a, b) => a - b); }
+      else if (h > top[0]) { top[0] = h; top.sort((a, b) => a - b); }
+    }
+    return top[0] - this.k.floor;
   }
 
   /** Say something, and remember it for the chart. */
@@ -660,6 +711,8 @@ export class Planet {
         this.wear[v] = worn / dt;
       } else this.wear[v] = 0;
       if (r[v] > 0) next[v] -= this.k.rain * dt * r[v] * wear;
+      // A dust storm scours whatever stands high, and soft ash most of all.
+      if (this.storm && r[v] > this.k.floor) next[v] -= this.k.stormWear * dt * (r[v] - this.k.floor) * (1 + (this.k.softer - 1) * this.ash[v]);
       // Too steep, and the ground slides towards its lower neighbours; ash stands less steeply than lava rock.
       const talus = this.k.talus * this.firmness[v] * (1 - 0.4 * this.ash[v]);
       for (let k = a; k < b; k++) {

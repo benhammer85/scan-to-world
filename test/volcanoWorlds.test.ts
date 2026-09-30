@@ -16,11 +16,12 @@ const run = (pl: Planet, seconds: number) => { for (let t = 0; t < seconds; t +=
 
 describe('the worlds', () => {
   it('come one after another, and each has its own aim', () => {
-    expect(WORLDS.map((w) => w.id)).toEqual(['ocean', 'moon']);
+    expect(WORLDS.map((w) => w.id)).toEqual(['ocean', 'moon', 'mars']);
     expect(worldOf('moon').goal).toBe('basins');
     expect(worldOf('nowhere').id).toBe('ocean');
     expect(nextWorld(worldOf('ocean'))!.id).toBe('moon');
-    expect(nextWorld(worldOf('moon'))).toBe(null);
+    expect(nextWorld(worldOf('moon'))!.id).toBe('mars');
+    expect(nextWorld(worldOf('mars'))).toBe(null);
   });
 });
 
@@ -73,5 +74,34 @@ describe('the Moon', () => {
       if (Math.round(t * 20) % 50 === 0) pl.erupt();
     }
     expect(pl.flooded(b)).toBeGreaterThan(0.5);
+  });
+});
+
+describe('Mars', () => {
+  const mars = () => new Planet(topo, nearest(0, 0, 1), 5, worldOf('mars').rules);
+
+  it('keeps its heat in one place, and the mountain rises over it', () => {
+    const pl = mars(), start = { ...pl.plume };
+    const low = pl.summit;
+    for (let t = 0; t < 120; t += 1 / 20) { pl.step(1 / 20); if (Math.round(t * 20) % 60 === 0) pl.erupt(); }
+    expect(pl.plume.x).toBeCloseTo(start.x, 6);
+    expect(pl.plume.y).toBeCloseTo(start.y, 6);
+    expect(pl.plume.z).toBeCloseTo(start.z, 6);
+    expect(pl.summit).toBeGreaterThan(low + 0.1);
+  });
+
+  it('dust storms come, seen rising first, and wear the heights while they blow', () => {
+    // Two worlds alike in everything but the storms' wear: the one the storms wear ends lower.
+    const worn = mars(), calm = new Planet(topo, nearest(0, 0, 1), 5, { ...worldOf('mars').rules, stormWear: 0 });
+    let warned = false, blew = false;
+    for (let t = 0; t < 260; t += 1 / 20) {
+      for (const pl of [worn, calm]) { pl.step(1 / 20); if (Math.round(t * 20) % 60 === 0) pl.erupt(); }
+      if (worn.stormComing !== null) warned = true;
+      if (worn.storm) blew = true;
+      if (blew && !worn.storm) break;
+    }
+    expect(warned).toBe(true);
+    expect(blew).toBe(true);
+    expect(worn.summit).toBeLessThan(calm.summit);
   });
 });

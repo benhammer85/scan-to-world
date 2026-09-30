@@ -6,10 +6,13 @@
  *       Carry the chain, living, all the way round.
  *   II  The Moon: no air, no water, no drift, and stones falling all the while; lava so fluid it
  *       floods the low ground rather than building mountains. Flood the great basins into seas.
+ *   III Mars: no drift, so the heat stays in one place, as it did under the great Martian
+ *       volcanoes, and gravity weak enough for slopes to stand steep; thin air, and dust storms
+ *       that scour the heights, soft ash most. Raise the great mountain to its height.
  */
 import type { Rules } from './sim';
 
-export type WorldId = 'ocean' | 'moon';
+export type WorldId = 'ocean' | 'moon' | 'mars';
 
 export interface Palette {
   /** The ground: bare old rock, fresh basalt, ash, lava as it runs (and where it lies thick), and, for worlds that keep a mark of it, rock that lava has flooded. */
@@ -39,7 +42,9 @@ export interface World {
   then: string;
   rules: Partial<Rules>;
   palette: Palette;
-  goal: 'ring' | 'basins';
+  goal: 'ring' | 'basins' | 'height';
+  /** For a world whose aim is height: how high, in km, and how many km a unit of the world's height stands for. */
+  height?: { target: number; kmPerUnit: number };
 }
 
 export const WORLDS: World[] = [
@@ -76,6 +81,28 @@ export const WORLDS: World[] = [
       landInk: '#55524d', landInkHigh: '#35332f', pencil: '#b6b2aa', seaInk: '#5b82a3', waterInk: '#6b8fac',
     },
     goal: 'basins',
+  },
+  {
+    id: 'mars',
+    numeral: 'III',
+    title: 'Mars',
+    first: 'A cold red world, its crust too thick to move, and one great fire under it.',
+    then: 'The heat stays where it is, and the mountain rises over it; the slopes can stand steep here, but a tall mountain needs a broad foot. Dust storms scour the heights, and soft ash most: cover it with lava before one comes. Raise the mountain twenty-six kilometres above the plain.',
+    rules: {
+      terrain: 'mars', basins: 0, craters: 18, floor: 0.05, rough: 0.025,
+      waves: 0, rain: 0, sink: 0, life: false,
+      talus: 2.2, flow: 8, channel: 2, coolLand: 0.25,
+      drift: 0, rises: 0, heat: 250, rising: 1.3,
+      impactEvery: [60, 100], impactWarning: 14, impactHeat: 6,
+      stormEvery: [60, 100], stormWarning: 12, stormLasts: 22, stormWear: 0.02,
+    },
+    palette: {
+      paper: '#ead3b4', basalt: '#a67a5c', ash: '#c9ad92', lava: '#b8563c', deepLava: '#8f3b28',
+      shallow: '#d4e3ec', deep: '#b1c8d8',
+      landInk: '#7a4a2e', landInkHigh: '#5a321c', pencil: '#cfae8e', seaInk: '#5b82a3', waterInk: '#6b8fac',
+    },
+    goal: 'height',
+    height: { target: 26, kmPerUnit: 40 },
   },
 ];
 

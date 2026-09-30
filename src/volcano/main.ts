@@ -464,6 +464,7 @@ function setMark(m: THREE.Sprite, v: number, size: number): void {
  *   An ocean world: the way the crust carries the heat, round the world, in stretches; a stretch
  *     is inked while something lives on or by it. Ringed when every stretch is inked at once.
  *   The Moon: each great basin's edge, inked once its floor is flooded.
+ *   Mars: the mountain's spot height, printed by its summit as a map prints one.
  */
 let chain = WORLD.goal === 'ring' ? new Chain(planet.plume, planet.driftDirection) : null;
 const FLOODED_ENOUGH = 0.7;
@@ -471,12 +472,19 @@ const aimInk = new PlotterLines({ ...defaultPlotterStyle, ink: P.landInkHigh, in
 const aimPencil = new PlotterLines({ ...defaultPlotterStyle, ink: P.landInk, inkHigh: P.landInk, pencil: P.pencil, alpha: 0.4, indexAlpha: 0.4, fadeSeconds: 0, pen: false, appearSeconds: 1.5, widthPx: 1, nib: false, overGround: true });
 pens.push(aimInk, aimPencil);
 group.add(aimPencil.object, aimInk.object);
-let aimDone = 0, aimOf = WORLD.goal === 'ring' ? CHAIN.stretches : planet.basins.length, lastAim = -10;
+const HEIGHT = WORLD.height ?? { target: 0, kmPerUnit: 40 };
+let aimDone = 0, aimOf = WORLD.goal === 'ring' ? CHAIN.stretches : WORLD.goal === 'height' ? HEIGHT.target : planet.basins.length, lastAim = -10;
 /** How much of the aim is done now, reckoned afresh. */
 function reckonAim(): void {
-  if (chain) aimDone = chain.update(planet, topo);
-  else aimDone = planet.basins.filter((b) => planet.flooded(b) >= FLOODED_ENOUGH).length;
-  aimOf = chain ? CHAIN.stretches : planet.basins.length;
+  if (chain) { aimDone = chain.update(planet, topo); aimOf = CHAIN.stretches; }
+  else if (WORLD.goal === 'height') { aimDone = Math.max(0, planet.summit * HEIGHT.kmPerUnit); aimOf = HEIGHT.target; }
+  else { aimDone = planet.basins.filter((b) => planet.flooded(b) >= FLOODED_ENOUGH).length; aimOf = planet.basins.length; }
+}
+/** Where the summit is: the highest vertex, for its spot height. */
+function summitVertex(): number {
+  let best = 0;
+  for (let v = 1; v < N; v++) if (planet.rock[v] > planet.rock[best]) best = v;
+  return best;
 }
 const won = () => aimOf > 0 && aimDone >= aimOf;
 /** A line on the ground through these points (on the unit sphere), lifted to the land's height; dashed if `dashed`. */
@@ -502,6 +510,7 @@ function drawAim(now: number): void {
   lastAim = now;
   reckonAim();
   const inked: Polyline[] = [], pencilled: Polyline[] = [];
+  if (WORLD.goal === 'height') return; // its mark is a spot height, set with the labels
   if (chain) {
     const per = 12, pts = chain.points(per);
     chain.held.forEach((h, i) => (h ? inked : pencilled).push(...onGround(pts.slice(i * per, (i + 1) * per + 1), !h)));
@@ -551,6 +560,8 @@ function drawLabels(): void {
     if (w) { const k = KINDS.find((x) => x.kind === w.kind)!; label('wish', `${k.name} wanted: ${k.wants}`, w.vertex, true, 26); }
     const s = planet.impact;
     if (s) label('stone', `a stone falls here, in ${Math.ceil(s.in)}`, s.vertex, true, 22);
+    // Mars: the mountain's height, printed by its summit, as a map prints a spot height.
+    if (WORLD.goal === 'height' && begun && aimDone >= 1) label('summit', `${Math.round(aimDone)} km`, summitVertex(), true, 20);
   }
   for (const [key, el] of labels) if (!el.dataset.seen) { el.remove(); labels.delete(key); }
 }
@@ -671,7 +682,7 @@ function feel(pattern: number | number[]): void {
 
 // ---------------------------------------------------------------- words, and the key
 /** What's worth saying: the turns in the world's story, not every happening in it. */
-const QUIET_WORDS = /^(Land breaks|Life begins in|The first|Moss takes|A wish kept|Held too long|The plume takes in|The fire is out|The heat is nearly)/;
+const QUIET_WORDS = /^(Land breaks|Life begins in|The first|Moss takes|A wish kept|Held too long|The plume takes in|The fire is out|The heat is nearly|A dust storm|The storm passes)/;
 const ERAS: Record<Era, string> = { young: 'The young fire', burning: 'The long burning', cooling: 'The cooling', embers: 'The last embers', out: 'The fire is out' };
 let shownEra: Era = 'young';
 const eraFrom: { name: string; from: number }[] = [{ name: ERAS.young, from: 0 }];
@@ -721,12 +732,14 @@ function words(): void {
 // ---------------------------------------------------------------- what happens, seen and felt
 const tallied = { ...planet.tally };
 let steamIn = 0, smokeIn = 0;
-const UPWARD = new THREE.Vector3();
+const UPWARD = new THREE.Vector3(), INVERSE_RIGHT = new THREE.Vector3();
 function effects(dt: number): void {
   const p = topo.positions, v0 = planet.plumeVertex;
   // Up the page, in the planet's frame: the way smoke drifts, as a map draws it.
   UPWARD.set(0, 1, 0).applyQuaternion(INVERSE.copy(group.quaternion).invert());
   const up = { x: UPWARD.x, y: UPWARD.y, z: UPWARD.z };
+  // Across the page, the way the storm drives the dust.
+  INVERSE_RIGHT.set(1, 0.15, 0).normalize().applyQuaternion(INVERSE);
   if (planet.tally.bursts > tallied.bursts || planet.tally.calderas > tallied.calderas) {
     const torn = planet.tally.calderas > tallied.calderas;
     feel(torn ? [40, 60, 90] : 25);
@@ -741,6 +754,14 @@ function effects(dt: number): void {
     for (let v = 0; v < N; v++) {
       const l = planet.lava[v];
       if (l > 0.004 && planet.rock[v] < 0.005 && Math.random() < Math.min(0.25, l * 4)) puffs.add('steam', p[v * 3], p[v * 3 + 1], p[v * 3 + 2], 1, Math.random, up);
+    }
+  }
+  // A dust storm: dust driven across the face of the world, low and fast.
+  if (planet.storm) {
+    for (let i = 0; i < 3; i++) {
+      const v = Math.floor(Math.random() * N);
+      NORMAL.set(base[v * 3], base[v * 3 + 1], base[v * 3 + 2]).applyQuaternion(group.quaternion);
+      if (NORMAL.z > 0.2) puffs.add('smoke', p[v * 3], p[v * 3 + 1], p[v * 3 + 2], 0.8, Math.random, { x: up.y * 0 + INVERSE_RIGHT.x, y: INVERSE_RIGHT.y, z: INVERSE_RIGHT.z });
     }
   }
   // The vent smokes as the heat gathers: a wisp now and then while there's little, more and
@@ -771,7 +792,7 @@ function theEnd(): void {
   if (!ending && begun && won()) {
     ending = { from: planet.seconds, shown: false, at: 0, info: null, turned: 0, won: true };
     queue.length = 0;
-    announce(WORLD.goal === 'ring' ? 'The world is ringed with living islands' : 'The seas of the Moon are flooded');
+    announce(WORLD.goal === 'ring' ? 'The world is ringed with living islands' : WORLD.goal === 'height' ? 'The great mountain stands' : 'The seas of the Moon are flooded');
     feel([30, 50, 30]);
   }
   if (!ending && planet.over) {
@@ -814,12 +835,12 @@ function chartInfo(): ChartInfo {
   reckonAim();
   const met = !!ending?.won, ring = WORLD.goal === 'ring';
   return {
-    title: ring ? (met ? 'A ringed world' : 'Not yet ringed') : met ? 'The seas of the Moon' : 'The seas not yet filled',
+    title: ring ? (met ? 'A ringed world' : 'Not yet ringed') : WORLD.goal === 'height' ? (met ? 'The great mountain' : 'Not yet the great mountain') : met ? 'The seas of the Moon' : 'The seas not yet filled',
     subtitle: `${WORLD.numeral} · ${WORLD.title} · world ${seed} · ${mm} of fire`,
     kinds: LIFE ? KINDS.map((k) => ({ name: k.name, ink: k.ink, sign: k.sign, living: living.has(k.kind) })) : [],
     summary: ring
       ? `${aimDone} of ${aimOf} stretches held · ${living.size} of ${KINDS.length} kinds of life`
-      : `${aimDone} of ${aimOf} basins flooded`,
+      : WORLD.goal === 'height' ? `the summit ${Math.round(aimDone)} km above the plain, of ${aimOf}` : `${aimDone} of ${aimOf} basins flooded`,
     length,
     eras,
     events,
