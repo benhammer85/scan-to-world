@@ -51,6 +51,14 @@ In headless play-throughs, gentle flows alone kept 4 kinds, doing nothing kept 3
 * **Wishes:** now and then life wishes for a kind it lacks, shown by a dotted ring. Make that ground there and the wish is kept, which stirs the fire (more heat).
 * **Stones** are seen 20 seconds ahead, with a ring and a cross that close in and a countdown. Bring the plume beneath one and you catch four times its heat; otherwise keep life clear of it.
 
+**Or play it held like a globe, with nothing but tilt** (`?mode=tilt`, or "play by tilting" at the top left). There's no tapping and no holding:
+* **Tilt your phone** (it asks for motion access on the first touch), or turn the world with a finger.
+* **Held level**, the heat gathers beneath whatever is uppermost; a small ring marks the top. **Tipped**, it pours down the world the way gravity would take it. That's measured along gravity as the world is seen, with the relief as drawn: near the top the terrain decides, further round the curve of the world pulls the lava down its side, and it never runs up the screen.
+* **Tip soon** for a gentle stream. **Keep it level past the dashed ring, then tip**, for a burst. Level too long, and the mountain tears open.
+* **The heat is buoyant:** it creeps slowly towards whatever is uppermost, so you move it by turning a place to the top. That's also how you bring it under a stone to catch its heat.
+* **A spirit level** beside the heat rule shows how far the vent is tipped: the bubble moves uphill, and past its dashed ring the heat pours (the bubble turns red).
+* Without a phone's sensor, gravity is fixed a little down the screen and mostly into it, as if you were looking down at a globe on a table.
+
 **Reading it:** the era is shown at the top. Under it, a rule shortens as the heat runs out, and the six kinds' signs are inked in as each one lives. Lessons at the foot bring in one idea at a time, and stones only start falling once they've been explained. Nothing is named: the map is the land's.
 
 **What you see and hear:** it keeps to the language of the old survey and geological maps, not light and effects.

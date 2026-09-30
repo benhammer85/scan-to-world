@@ -6,6 +6,13 @@
  * is laid on as the vermilion wash the geological maps gave it, and steam and
  * ash are engraved strokes, not light.
  *
+ * Two ways to play it. Tapped (the default): tap to let the heat out, hold to
+ * call it somewhere, and tip the world to steer the lava. Held like a globe
+ * (?mode=tilt): nothing but how you hold it. Tilt the phone, or turn the world
+ * with a finger; level, the heat gathers beneath whatever is uppermost; tipped,
+ * it pours down the world as gravity would take it; tipped when it's full, it
+ * bursts.
+ *
  * What's on the page, so the game can be read at a glance:
  *   the era, at the top, and under it the heat left (a rule that shortens)
  *     and the six kinds of life (each by its sign, inked once it's living);
@@ -71,6 +78,8 @@ const nearest = (x: number, y: number, z: number) => {
   for (let v = 0; v < N; v++) { const d = Math.hypot(base[v * 3] - x, base[v * 3 + 1] - y, base[v * 3 + 2] - z); if (d < bd) { bd = d; best = v; } }
   return best;
 };
+/** Held like a globe, with nothing but tilt; or tapped. */
+const TILT = new URLSearchParams(location.search).get('mode') === 'tilt';
 // A new world each time, unless one is asked for by its number (?seed=), to see the same world again.
 const seed = Number(new URLSearchParams(location.search).get('seed')) || 1 + Math.floor(Math.random() * 1e6);
 const planet = new Planet(topo, nearest(0.1, 0.15, 0.98), seed);
@@ -429,6 +438,7 @@ const gestures = new GestureRecognizer(
   {
     tap() {
       if (ending) return;
+      if (TILT) return; // held like a globe, a tap does nothing: it's all in how you hold it
       // Let the pressure out, all of it: gently if there's little, as a burst if it has built.
       if (planet.erupt() === null) announce('Not enough heat yet: watch the ring grow');
     },
@@ -436,9 +446,9 @@ const gestures = new GestureRecognizer(
     fling(vx, vy) { spin.set(vx * 0.006, vy * 0.006); },
     zoom(f) { dist = THREE.MathUtils.clamp(dist / f, 1.6, 9); fit(); },
     // Hold the world, and the heat is called there; it creeps beneath the crust to follow your finger.
-    grab(x, y) { call(x, y); },
+    grab(x, y) { if (!TILT) call(x, y); },
     press() { /* holding still: the call stands */ },
-    pull() { call(finger.x, finger.y); },
+    pull() { if (!TILT) call(finger.x, finger.y); },
     release() { /* the heat goes on to where it was called */ },
     drawer() { /* none */ },
   },
@@ -446,6 +456,7 @@ const gestures = new GestureRecognizer(
 );
 stage.addEventListener('pointerdown', (e) => {
   sound.start();
+  if (TILT) askForTilt();
   lastTouch = seconds;
   stage.setPointerCapture(e.pointerId);
   finger.x = e.clientX; finger.y = e.clientY;
@@ -477,12 +488,29 @@ const LESSONS: { text: string; ready: () => boolean; done: (since: number) => bo
     ready: () => true, begin: () => { planet.stonesFall = true; }, done: () => planet.tally.stones > 0,
   },
 ];
+const TILT_LESSONS: typeof LESSONS = [
+  {
+    text: 'Tilt your phone, or turn the world with a finger. Held level, the heat gathers beneath the top; tip it, and lava pours down the slope.',
+    ready: () => true, done: () => planet.landShare() > 0,
+  },
+  {
+    text: 'Tip it soon for a gentle stream. Keep it level past the dashed ring, then tip it, for a burst of ash. Level too long, and the mountain tears open.',
+    ready: () => true, done: (s) => planet.tally.bursts > 0 || s > 60,
+  },
+  LESSONS[2],
+  { text: 'The heat rises to whatever is uppermost. Turn a place to the top, and the heat will creep there. Land it leaves behind cools and sinks.', ready: () => true, done: (s) => s > 45 },
+  {
+    text: 'Stones fall now, where a ring shows. Turn one to the top to bring the heat beneath it and catch its warmth, or keep life clear of it.',
+    ready: () => true, begin: () => { planet.stonesFall = true; }, done: () => planet.tally.stones > 0,
+  },
+];
+const lessonList = TILT ? TILT_LESSONS : LESSONS;
 let lesson = 0, lessonSince = 0, lessonShown = false, embersSaid = false;
 function lessons(): void {
   const el = $('lesson');
   if (ending) { el.classList.remove('shown'); return; }
-  if (lesson < LESSONS.length) {
-    const L = LESSONS[lesson];
+  if (lesson < lessonList.length) {
+    const L = lessonList[lesson];
     if (!lessonShown) {
       if (!L.ready()) return;
       lessonShown = true; lessonSince = seconds;
@@ -583,7 +611,7 @@ function effects(dt: number): void {
 /** Left alone a while, the world turns itself gently so the vent is in view. */
 const FACE = new THREE.Vector3(0, 0.12, 1).normalize(), PLUME = new THREE.Vector3(), SWING = new THREE.Quaternion(), NONE = new THREE.Quaternion();
 function frame(dt: number): void {
-  if (seconds - lastTouch < 5 || ending || spin.lengthSq() > 1e-4) return;
+  if (TILT || seconds - lastTouch < 5 || ending || spin.lengthSq() > 1e-4) return;
   PLUME.set(planet.plume.x, planet.plume.y, planet.plume.z).applyQuaternion(group.quaternion);
   SWING.setFromUnitVectors(PLUME, FACE);
   NONE.identity().slerp(SWING, Math.min(1, 0.5 * dt));
@@ -660,8 +688,65 @@ function showChart(): void {
   $('again').onclick = () => { location.href = location.pathname; };
 }
 
+// ---------------------------------------------------------------- held like a globe
+/**
+ * Which way is down, in the camera's frame (x right, y up, z towards you). Without a phone's
+ * sense of it, down the screen a little and mostly into it, as if looking down at a globe on a
+ * table; with one, as the phone is held, smoothed so a shaking hand doesn't slop the lava about.
+ */
+const held = new THREE.Vector3(0, -0.3, -1).normalize();
+const sensed = new THREE.Vector3();
+let sensing = false;
+function onTilt(e: DeviceOrientationEvent): void {
+  if (e.beta === null || e.gamma === null) return;
+  const b = THREE.MathUtils.degToRad(e.beta), g = THREE.MathUtils.degToRad(e.gamma);
+  // Gravity in the phone's frame, from how it's tipped forward (beta) and sideways (gamma)...
+  let x = Math.sin(g) * Math.cos(b), y = -Math.sin(b);
+  const z = -Math.cos(g) * Math.cos(b);
+  // ...turned with the screen, if it's been turned on its side.
+  const turned = THREE.MathUtils.degToRad(screen.orientation?.angle ?? 0);
+  [x, y] = [x * Math.cos(turned) + y * Math.sin(turned), -x * Math.sin(turned) + y * Math.cos(turned)];
+  sensed.set(x, y, z);
+  if (!sensing) { sensing = true; held.copy(sensed); }
+}
+let asked = false;
+function askForTilt(): void {
+  if (asked) return;
+  asked = true;
+  const D = window.DeviceOrientationEvent as unknown as { requestPermission?: () => Promise<string> } | undefined;
+  if (D?.requestPermission) D.requestPermission().then((r) => { if (r === 'granted') addEventListener('deviceorientation', onTilt); }).catch(() => {});
+  else addEventListener('deviceorientation', onTilt);
+}
+if (TILT) addEventListener('deviceorientation', onTilt);
+
+/**
+ * A spirit level, as a surveyor carries: the bubble sits in the middle when the vent is level,
+ * and moves uphill as the world is tipped; past the dashed ring, the heat pours.
+ */
+const levelEl = $('level');
+if (TILT) levelEl.style.display = 'block';
+const NW = new THREE.Vector3(), TW = new THREE.Vector3();
+function drawLevel(): void {
+  if (sensing) held.lerp(sensed, 0.15);
+  const v = planet.plumeVertex;
+  NW.set(base[v * 3], base[v * 3 + 1], base[v * 3 + 2]).applyQuaternion(group.quaternion);
+  TW.copy(held).normalize();
+  TW.addScaledVector(NW, -TW.dot(NW)); // gravity along the ground at the vent
+  const r = 13; // the level's radius, in its own units
+  const bubble = levelEl.querySelector('circle.bubble') as SVGCircleElement;
+  bubble.setAttribute('cx', String(-TW.x * r));
+  bubble.setAttribute('cy', String(TW.y * r));
+  bubble.style.fill = planet.pouring ? '#9a4230' : '#2e2118';
+}
+$('mode').textContent = TILT ? 'play by tapping' : 'play by tilting';
+$('mode').addEventListener('click', () => {
+  const q = new URLSearchParams(location.search);
+  if (TILT) q.delete('mode'); else q.set('mode', 'tilt');
+  location.search = q.toString();
+});
+
 // ---------------------------------------------------------------- the loop
-const DOWN = new THREE.Vector3(), INVERSE = new THREE.Quaternion();
+const DOWN = new THREE.Vector3(), INVERSE = new THREE.Quaternion(), GRAV = new THREE.Vector3();
 fit();
 draw();
 redrawLines(0);
@@ -674,8 +759,15 @@ renderer.setAnimationLoop(() => {
   if (spin.lengthSq() > 1e-6) { rotate(spin.x * dt, spin.y * dt); spin.multiplyScalar(Math.exp(-2.2 * dt)); }
   frame(dt);
   // The bottom of the screen is down for the lava: tip the world, and the flows follow.
-  DOWN.set(0, -1, 0).applyQuaternion(INVERSE.copy(group.quaternion).invert());
+  INVERSE.copy(group.quaternion).invert();
+  DOWN.set(0, -1, 0).applyQuaternion(INVERSE);
   planet.downhill.x = DOWN.x; planet.downhill.y = DOWN.y; planet.downhill.z = DOWN.z;
+  if (TILT) {
+    // Gravity as the phone is held (or, without one, a little down the screen and into it), in the planet's frame.
+    GRAV.copy(held).normalize().applyQuaternion(INVERSE);
+    planet.gravity = { x: GRAV.x, y: GRAV.y, z: GRAV.z };
+    drawLevel();
+  }
   // Once the fire is out, the long age runs quickly, in small steps so the sea's work stays as it would be.
   const speed = ending && !ending.shown ? AGE_SPEED : 1;
   if (!ending?.shown) for (let k = 0; k < speed; k++) planet.step(dt);

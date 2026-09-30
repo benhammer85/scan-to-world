@@ -74,6 +74,18 @@ export const VOLCANO = {
 
   /** Tipping the world steers the lava: towards `downhill` counts as this much steeper, per unit of distance. */
   tilt: 0.9,
+  /**
+   * Held as a globe is held (when `gravity` is set): lava runs down the world as it is seen, its
+   * relief raised this much as it is drawn, so what looks downhill is downhill. Tipped at least
+   * `tipPour` (the sine of the angle from level, at the vent), the heat pours out, faster the more
+   * it is tipped; tipped when it's past `explosive`, it bursts. And the heat, which is buoyant,
+   * creeps towards whatever is uppermost, at this many radians a second.
+   */
+  relief: 0.32,
+  tipPour: 0.22,
+  pourLeast: 0.8,
+  pourMost: 6,
+  rises: 0.016,
   /** How strongly lava keeps to the steepest way down (1 spreads evenly; higher runs in tongues). */
   channel: 3,
   flow: 10,
@@ -159,6 +171,14 @@ export class Planet {
   private sunk: Float32Array;
   /** Which way is down for the lava, in the planet's own frame: the bottom of the screen, as you hold the world. */
   readonly downhill = { x: 0, y: -1, z: 0 };
+  /**
+   * Which way gravity pulls, in the planet's frame, when the world is held like a globe: set it
+   * (a unit vector) and the lava runs down the world as it is seen, the heat pours when the world
+   * is tipped, and rises to whatever is uppermost. Left null, the world is played by tapping.
+   */
+  gravity: { x: number; y: number; z: number } | null = null;
+  /** Whether the heat is pouring out now, the world being tipped. */
+  pouring = false;
   /** Where the plume is, as a unit vector, and the vertex above it. */
   readonly plume = { x: 0, y: 0, z: 1 };
   plumeVertex = 0;
@@ -278,6 +298,32 @@ export class Planet {
     return 'burst';
   }
 
+  /** How far from level the world is at the vent, as held: 0 with the vent uppermost, 1 on its side. */
+  get tip(): number {
+    const g = this.gravity;
+    if (!g) return 0;
+    const p = this.topo.basePositions, v = this.plumeVertex;
+    const along = g.x * p[v * 3] + g.y * p[v * 3 + 1] + g.z * p[v * 3 + 2];
+    return Math.hypot(g.x - along * p[v * 3], g.y - along * p[v * 3 + 1], g.z - along * p[v * 3 + 2]);
+  }
+
+  /** Held like a globe: level, the pressure builds; tipped, it pours, and tipped when full, it bursts. */
+  private tipped(dt: number): void {
+    const tip = this.tip;
+    if (!this.pouring && tip >= VOLCANO.tipPour) {
+      this.pouring = true;
+      if (this.pressure >= VOLCANO.explosive) { this.erupt(); return; }
+      if (this.pressure >= VOLCANO.least) this.tally.flows++;
+    } else if (this.pouring && tip < VOLCANO.tipPour * 0.7) this.pouring = false;
+    if (!this.pouring) return;
+    const rate = VOLCANO.pourLeast + (VOLCANO.pourMost - VOLCANO.pourLeast) * Math.min(1, (tip - VOLCANO.tipPour) / (1 - VOLCANO.tipPour));
+    const amount = Math.min(this.pressure, Math.max(0, rate) * dt);
+    if (amount <= 0) return;
+    this.pressure -= amount;
+    const v = this.plumeVertex, a = amount * this.scale;
+    this.eruptions.push({ vertex: v, flank: v, left: a, rate: a / dt });
+  }
+
   /** Call the heat towards a point on the world (a unit vector); it creeps there beneath the crust. */
   callTo(x: number, y: number, z: number): void {
     this.target = unit({ x, y, z });
@@ -293,6 +339,7 @@ export class Planet {
     // The store is spent: whatever pressure is left comes out by itself, the last of the fire.
     if (this.reserve < 0.01 && this.pressure >= VOLCANO.least && !this.erupting) { this.erupt(); this.tell('The last of the heat comes out'); }
     if (this.reserve < 0.01 && this.pressure < VOLCANO.least) this.pressure = 0;
+    if (this.gravity) this.tipped(dt);
     this.movePlume(dt);
     this.pour(dt);
     this.flow(dt);
@@ -370,6 +417,9 @@ export class Planet {
 
   private movePlume(dt: number): void {
     const q = this.plume;
+    // Held like a globe, the heat rises towards whatever is uppermost, slowly.
+    const g = this.gravity;
+    if (g) this.target = unit({ x: -g.x, y: -g.y, z: -g.z });
     // On its own, slowly one way; towards where it's called, faster, until it gets there.
     let mx = this.drift.x * VOLCANO.drift, my = this.drift.y * VOLCANO.drift, mz = this.drift.z * VOLCANO.drift;
     if (this.target) {
@@ -377,7 +427,7 @@ export class Planet {
       const tx = t.x - along * q.x, ty = t.y - along * q.y, tz = t.z - along * q.z, tl = Math.hypot(tx, ty, tz);
       const angle = Math.acos(Math.min(1, along));
       if (angle < 0.01 || tl < 1e-6) this.target = null;
-      else { const sp = Math.min(VOLCANO.creep, angle / dt); mx += (tx / tl) * sp; my += (ty / tl) * sp; mz += (tz / tl) * sp; }
+      else { const sp = Math.min(g ? VOLCANO.rises : VOLCANO.creep, angle / dt); mx += (tx / tl) * sp; my += (ty / tl) * sp; mz += (tz / tl) * sp; }
     }
     const moved = unit({ x: q.x + mx * dt, y: q.y + my * dt, z: q.z + mz * dt });
     // The drift stays across the plume as it goes round the world.
@@ -464,15 +514,24 @@ export class Planet {
   /** Lava runs downhill, mostly by the steepest way, and tipping the world tips the ways down. */
   private flow(dt: number): void {
     const t = this.topo, n = this.rock.length, next = this.next, p = t.basePositions, g = this.downhill;
+    const G = this.gravity, R = VOLCANO.relief;
     next.set(this.lava);
     for (let v = 0; v < n; v++) {
       const l = this.lava[v];
       if (l < VOLCANO.thin) continue;
       const s = this.rock[v] + l, a = t.nbrOffsets[v], b = t.nbrOffsets[v + 1];
-      const drop = (w: number) => {
-        const ex = p[w * 3] - p[v * 3], ey = p[w * 3 + 1] - p[v * 3 + 1], ez = p[w * 3 + 2] - p[v * 3 + 2];
-        return s - (this.rock[w] + this.lava[w]) + VOLCANO.tilt * (ex * g.x + ey * g.y + ez * g.z);
-      };
+      const drop = G
+        // Held like a globe: how far down the neighbour is along gravity, the ground raised as it
+        // is drawn, counted back into the ground's own heights. Near the top the relief is all of
+        // it; further round, the curve of the world pulls the lava down its side.
+        ? (w: number) => {
+          const sw = this.rock[w] + this.lava[w], kv = 1 + R * s, kw = 1 + R * sw;
+          return ((p[w * 3] * kw - p[v * 3] * kv) * G.x + (p[w * 3 + 1] * kw - p[v * 3 + 1] * kv) * G.y + (p[w * 3 + 2] * kw - p[v * 3 + 2] * kv) * G.z) / R;
+        }
+        : (w: number) => {
+          const ex = p[w * 3] - p[v * 3], ey = p[w * 3 + 1] - p[v * 3 + 1], ez = p[w * 3 + 2] - p[v * 3 + 2];
+          return s - (this.rock[w] + this.lava[w]) + VOLCANO.tilt * (ex * g.x + ey * g.y + ez * g.z);
+        };
       let sum = 0, weights = 0;
       for (let q = a; q < b; q++) { const d = drop(t.nbrList[q]); if (d > 0) { sum += d; weights += Math.pow(d, VOLCANO.channel); } }
       if (sum <= 0) continue;
