@@ -37,7 +37,7 @@ Every world you make, what grew on it, the railways between worlds, which way ea
 | II | **The Moon** | No air, no water, no drift, no life, and stones falling all the while. Lava as thin as water, which floods low ground instead of building mountains. The heat rises to whatever you turn uppermost. | **Flood the seas:** fill each of the five great basins (70% of its floor) before the heat is gone. Flooded ground stays dark, as the Moon's seas are. |
 | III | **Mars** | No drift, so the heat stays in one place and the mountain rises over it; weak gravity, so slopes stand steep. Thin air: dust storms, seen rising first, scour the heights, soft ash most. Craters, and a stone now and then. | **Raise the great mountain:** stand the summit 26 km above the plain. Its height is told at the foot each time it stands two km higher. Cover soft ash with lava before a storm comes. |
 
-The aim is drawn on the map in small dots, as a chart marks a route or a boundary: pale where it's still to do, inked where it's done. Dots rather than a line, so the route round the ocean world doesn't read as an equator. Met, the world says so ("The world is ringed with living islands") and the chart is drawn, titled *A ringed world*, *The seas of the Moon* or *The great mountain*. Turning the world right round then goes on to the next world. Not met when the fire goes out, a long age passes, the chart says how far you got ("12 of 16 stretches held"), and turning the world tries again. The world being played is remembered, and `?world=moon` goes straight to one.
+The aim is drawn on the map in small dots, as a chart marks a route or a boundary: pale where it's still to do, inked where it's done. Dots rather than a line, so the route round the ocean world doesn't read as an equator. The aim is also said in the quiet line at the foot once the world begins ("Leave living islands along the dotted line, all the way round the world"), again after three minutes with nothing gained, and each time something is ("6 of 16 stretches of the chain are living"). Met, the world says so ("The world is ringed with living islands") and the chart is drawn, titled *A ringed world*, *The seas of the Moon* or *The great mountain*. Turning the world right round then goes on to the next world. Not met when the fire goes out, a long age passes, the chart says how far you got ("12 of 16 stretches held"), and turning the world tries again. The world being played is remembered. The worlds' numerals sit along the foot of the start card, I · II · III, and touching one goes to that world; `?world=moon` also goes straight to one.
 
 Headless balance: on the ocean world (about 18 minutes of fire), idle play held 11 of 16 stretches and steady play 14, so ringing it takes more: steering lava along the way, catching stones and keeping wishes, which add heat. On the Moon, a bot that knew where every basin was flooded all five in about six minutes. On Mars, idle play raised the summit to 15 km, gentle flows to 25, and play that burst between storms and covered the ash with flows before them to 28, so the aim of 26 needs the storms read.
 
@@ -83,13 +83,13 @@ In headless play-throughs, gentle flows alone kept 4 kinds, doing nothing kept 3
 **What you see:** it keeps to the language of the old survey and geological maps, not light and effects.
 * Lava is laid on as a flat vermilion wash, the colour geological maps give it.
 * Smoke, steam and ash are short wavy pen strokes drifting up the page and fading, as engraved maps drew smoke curling from a volcano. They're drawn over the map, not hidden by the slope they drift up.
-* Each kind of life is drawn by a little picture of what grows there, in one ink, so it reads without the key. Every sign is a few pen strokes kept once in `render/signs.ts` and drawn from them on the world, on the chart and in the key; each is a touch larger or smaller, and some are mirrored, so a field of them doesn't look stamped:
-  * moss: fine stipple;
-  * reef: the scalloped edge sea charts give a reef, in the sea's blue;
-  * mangroves: reeds rising from the waterline;
-  * meadows: grass tufts;
-  * forest: small trees, a lobed crown on a trunk;
-  * heath: low shrubs.
+* Each kind of life is drawn by a little picture of what grows there, so it reads without the key, and tinted as hand-coloured maps were, in soft watercolour inks. Every sign is a few pen strokes kept once in `render/signs.ts` and drawn from them on the world, on the chart and in the key. No two neighbours need look alike: each sign has a few shapes (round trees and conifers, reeds in threes and fives), and each is drawn its own way by where it stands: one of its shapes, a little larger or smaller, leaning a little, some mirrored, and its colour somewhere between its kind's two inks, lighter or darker:
+  * moss: fine stipple, sage to olive green;
+  * reef: the scalloped edge sea charts give a reef, coral to ochre;
+  * mangroves: reeds rising from the waterline, olive to root-brown;
+  * meadows: grass tufts, yellow-green to straw;
+  * forest: small trees, leafy or conifer, deep green;
+  * heath: low shrubs, heather purple to brown.
 * Coasts are water-lined, and breakers are short blue strokes where the sea wears a coast. The shading is kept flat, like paper.
 
 **The ending:** when the fire is out, a long age passes quickly while the sea and rain work on what you made. Then the chart is drawn round the world in place: a pen goes round the plate's double border, the world steps back and up the page, and what lasted and the eras, with what happened in each, come in at the foot above the key. You can still turn the world and look at it. Turning it right round begins another, and "keep the chart" saves it as a plate (PNG; this works on the site, but not inside the claude.ai viewer).

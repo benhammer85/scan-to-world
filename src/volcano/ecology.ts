@@ -27,16 +27,18 @@ import type { Sign } from '../render/stipple';
 export type Kind = 'moss' | 'reef' | 'mangrove' | 'meadow' | 'forest' | 'heath';
 
 /**
- * Each kind is drawn as the old survey maps drew it, by a little picture of what grows there, in
- * one ink rather than by a colour of its own (see render/signs.ts): the land's in sepia, the sea's in the blue of the water-lines.
+ * Each kind is drawn as the old survey maps drew it, by a little picture of what grows there (see
+ * render/signs.ts), and tinted as the hand-coloured maps were, in soft watercolour inks rather
+ * than bright ones: each sign somewhere between its kind's two, so a wood or a reef is never one
+ * flat colour.
  */
-export const KINDS: { kind: Kind; name: string; wants: string; ink: string; sign: Sign }[] = [
-  { kind: 'moss', name: 'moss', wants: 'new rock', ink: '#6b5a44', sign: 'dot' },
-  { kind: 'reef', name: 'reef', wants: 'shallows', ink: '#46708f', sign: 'reef' },
-  { kind: 'mangrove', name: 'mangroves', wants: 'a low, gentle shore', ink: '#4a3a2a', sign: 'reeds' },
-  { kind: 'meadow', name: 'meadows', wants: 'ground rich with ash', ink: '#5a4a36', sign: 'grass' },
-  { kind: 'forest', name: 'forest', wants: 'high ground', ink: '#3a2c20', sign: 'tree' },
-  { kind: 'heath', name: 'heath', wants: 'a high cone of ash', ink: '#4a3a2a', sign: 'shrub' },
+export const KINDS: { kind: Kind; name: string; wants: string; ink: string; ink2: string; sign: Sign }[] = [
+  { kind: 'moss', name: 'moss', wants: 'new rock', ink: '#6f8a4a', ink2: '#8f8f4c', sign: 'dot' },
+  { kind: 'reef', name: 'reef', wants: 'shallows', ink: '#c0604e', ink2: '#cf8a48', sign: 'reef' },
+  { kind: 'mangrove', name: 'mangroves', wants: 'a low, gentle shore', ink: '#4c6a3c', ink2: '#6b5a3a', sign: 'reeds' },
+  { kind: 'meadow', name: 'meadows', wants: 'ground rich with ash', ink: '#86983c', ink2: '#a8923e', sign: 'grass' },
+  { kind: 'forest', name: 'forest', wants: 'high ground', ink: '#2f5a36', ink2: '#44602c', sign: 'tree' },
+  { kind: 'heath', name: 'heath', wants: 'a high cone of ash', ink: '#7a4a6c', ink2: '#8c5a48', sign: 'shrub' },
 ];
 
 export const ECOLOGY = {

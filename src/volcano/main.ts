@@ -44,7 +44,7 @@ import { handleDrafts } from './drafts';
 import { handleSurface } from './surface';
 import { offThread } from './offthread';
 import { snapshotOf, restoreInto, keep, recall, forget } from './save';
-import { worldOf, nextWorld } from './worlds';
+import { worldOf, nextWorld, WORLDS } from './worlds';
 import { Chain, CHAIN } from './chain';
 
 const $ = (id: string) => document.getElementById(id)!;
@@ -168,7 +168,7 @@ landPen.width = seaPen.width = waterPen.width = 2;
 pens.push(landPen, seaPen, waterPen);
 group.add(seaPen.object, waterPen.object, landPen.object);
 /** Life by the sign of its kind; and breakers, short blue strokes, where the sea is wearing at a coast. */
-const kindDots = KINDS.map((k) => new Stipple(k.ink, k.sign, k.sign === 'dot' ? 2.1 : k.sign === 'tree' ? 9 : 7));
+const kindDots = KINDS.map((k) => new Stipple(k.ink, k.sign, k.sign === 'dot' ? 2.1 : k.sign === 'tree' ? 9 : 7, { ink2: k.ink2 }));
 const foam = new Stipple('#46708f', 'dash', 6);
 for (const s of [...kindDots, foam]) {
   s.byDirection = true;
@@ -452,7 +452,23 @@ function reckonAim(): void {
   else { aimDone = planet.basins.filter((b) => planet.flooded(b) >= FLOODED_ENOUGH).length; aimOf = planet.basins.length; }
 }
 const won = () => aimOf > 0 && aimDone >= aimOf;
-let toldHeight = 0;
+let toldHeight = 0, toldDone = 0, toldAimAt = -1e9;
+/** The aim, in a line for the foot: said once the world has begun, and again if a long while passes with nothing gained. */
+const AIM_WORDS = WORLD.goal === 'ring' ? 'Leave living islands along the dotted line, all the way round the world'
+  : WORLD.goal === 'basins' ? 'Flood each dotted basin with lava'
+  : `Raise the mountain ${HEIGHT.target} km above the plain`;
+/** Say the aim now and then, and what's been gained each time something is. */
+function tellAim(now: number): void {
+  if (planet.over || ending) return;
+  if (now - toldAimAt > 180) { toldAimAt = now; announce(AIM_WORDS); }
+  if (WORLD.goal === 'height') return;
+  const done = Math.round(aimDone);
+  if (done > toldDone && done < aimOf) {
+    toldAimAt = now;
+    announce(WORLD.goal === 'ring' ? `${done} of ${aimOf} stretches of the chain are living` : `${done} of ${aimOf} basins flooded`);
+  }
+  toldDone = done;
+}
 /** Dots on the ground at these points (on the unit sphere), lifted to the land's height. */
 function onGround(pts: { x: number; y: number; z: number }[], into: number[]): void {
   for (const q of pts) {
@@ -465,11 +481,12 @@ function drawAim(now: number): void {
   if (now - lastAim < 2) return;
   lastAim = now;
   reckonAim();
+  if (begun) tellAim(now);
   const inked: number[] = [], pencilled: number[] = [];
   if (WORLD.goal === 'height') {
     // No mark on the world: its height is told at the foot, each time it stands two km higher.
     const step = Math.floor(aimDone / 2) * 2;
-    if (begun && step > toldHeight && step < aimOf) { toldHeight = step; announce(`The mountain stands ${step} km above the plain, of ${aimOf}`); }
+    if (begun && step > toldHeight && step < aimOf) { toldHeight = step; toldAimAt = now; announce(`The mountain stands ${step} km above the plain, of ${aimOf}`); }
     return;
   }
   if (chain) {
@@ -693,7 +710,7 @@ function effects(dt: number): void {
   smokeIn -= dt;
   const share = Math.min(1, planet.pressure / VOLCANO.cap);
   if (!planet.over && !planet.pouring && planet.pressure > 0.5 && smokeIn <= 0) {
-    smokeIn = planet.bursting ? 0.3 : 1.6 - 1.1 * (planet.pressure / VOLCANO.explosive);
+    smokeIn = planet.bursting ? 0.25 : 0.9 - 0.55 * Math.min(1, planet.pressure / VOLCANO.explosive);
     puffs.add('smoke', p[v0 * 3], p[v0 * 3 + 1], p[v0 * 3 + 2], planet.bursting ? 1.4 + share : 0.5 + share, Math.random, up);
   }
 }
@@ -930,6 +947,20 @@ let begun = false;
 // The card says which world this is, and what there is to know of it.
 ($('begin').querySelector('.world') as HTMLElement).textContent = `${WORLD.numeral} · ${WORLD.title}`;
 ($('begin').querySelector('.first') as HTMLElement).textContent = WORLD.first;
+// The worlds, along the card's foot, as an atlas lists its plates: touch another to go to it.
+for (const w of WORLDS) {
+  const b = document.createElement('span');
+  b.textContent = w.numeral;
+  b.title = w.title;
+  if (w === WORLD) b.className = 'here';
+  else b.addEventListener('pointerdown', (e) => {
+    e.stopPropagation();
+    remember('volcano.world', w.id);
+    if (remembered('volcano.world') === w.id) location.reload();
+    else location.search = `?world=${w.id}`;
+  });
+  $('begin').querySelector('.worlds')!.appendChild(b);
+}
 ($('begin').querySelector('.then') as HTMLElement).textContent = WORLD.then;
 // A world without life has no key of its kinds.
 if (!LIFE) $('legend').style.display = 'none';

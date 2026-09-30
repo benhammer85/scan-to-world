@@ -29,6 +29,9 @@
       #begin .world { font-size: 13px; letter-spacing: 0.18em; opacity: 0.55; font-variant: small-caps; }
       #begin .first { font-size: 22px; font-style: italic; max-width: 20em; line-height: 1.4; padding: 0 24px; }
       #begin .then { font-size: 14px; opacity: 0.6; max-width: 22em; line-height: 1.5; padding: 0 24px; }
+      #begin .worlds { display: flex; gap: 22px; font-size: 13px; letter-spacing: 0.12em; margin-top: 26px; }
+      #begin .worlds span { opacity: 0.35; padding: 8px 6px; cursor: pointer; }
+      #begin .worlds span.here { opacity: 0.75; border-bottom: 1px solid currentColor; cursor: default; }
       #begin .touch { font-size: 13px; opacity: 0.45; letter-spacing: 0.12em; margin-top: 18px; }
       /* After the chart: a word on beginning again, and a way to keep it. */
       #again { position: fixed; top: calc(96px + env(safe-area-inset-top)); left: 0; right: 0; text-align: center; font-size: 12px; font-style: italic; opacity: 0; pointer-events: none; transition: opacity 2s; margin: 0; }
@@ -45,7 +48,7 @@
     <div id="legend" class="engraved"></div>
     <p id="again" class="engraved">turn the world right round to begin another</p>
     <button id="keep">keep the chart</button>
-    <div id="begin" class="engraved"><p class="world"></p><p class="first">A young world of water, and the heat beneath it, which will not last.</p><p class="then">Hold it as you would a globe. Held level, the heat gathers beneath the volcano, and its smoke thickens; tip it, and the heat pours out. Tip it when the smoke is heavy, and it bursts; wait too long, and it tears open.</p><p class="touch">touch to begin</p></div>
+    <div id="begin" class="engraved"><p class="world"></p><p class="first">A young world of water, and the heat beneath it, which will not last.</p><p class="then">Hold it as you would a globe. Held level, the heat gathers beneath the volcano, and its smoke thickens; tip it, and the heat pours out. Tip it when the smoke is heavy, and it bursts; wait too long, and it tears open.</p><p class="touch">touch to begin</p><p class="worlds"></p></div>
     <script type="module" src="/src/volcano/main.ts"></script>
   </body>
 </html>

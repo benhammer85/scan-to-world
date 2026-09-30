@@ -73,11 +73,11 @@ export class Puffs {
           float amp = (0.12 + 0.1 * fract(vSeed * 3.7)) * (vSeed > 0.5 ? 1.0 : -1.0);
           float y = amp * sin(x * 3.927);
           float d = length(vec2(q.x - x, -q.y - y)) * vPx * 0.5;
-          float line = clamp(0.9 - d, 0.0, 1.0);
+          float line = clamp((vTint > 1.5 ? 1.6 : 0.9) - d, 0.0, 1.0);
           float a = vAlpha * line;
           if (a <= 0.01) discard;
           // Steam in the sea's blue ink, ash and smoke in sepia.
-          vec3 c = vTint < 0.5 ? vec3(0.36, 0.49, 0.6) : vTint < 1.5 ? vec3(0.23, 0.17, 0.12) : vec3(0.35, 0.28, 0.22);
+          vec3 c = vTint < 0.5 ? vec3(0.36, 0.49, 0.6) : vTint < 1.5 ? vec3(0.23, 0.17, 0.12) : vec3(0.24, 0.18, 0.14);
           gl_FragColor = vec4(c, a);
           #include <colorspace_fragment>
         }`,
@@ -106,7 +106,7 @@ export class Puffs {
     this.seed[this.nextSlot === 0 ? MOST - 1 : this.nextSlot - 1] = rand();
     if (kind === 'steam') { p.life = 2.2 + rand(); p.rise = 0.035; p.size = 0.012; p.grow = 0.02; }
     else if (kind === 'ash') { p.life = 5 + rand() * 3; p.rise = 0.14 * strength * (0.6 + rand() * 0.8); p.size = 0.018; p.grow = 0.03; }
-    else { p.life = 4.5 + rand() * 1.5; p.rise = 0.035 * strength; p.size = 0.012 + 0.006 * strength; p.grow = 0.02 * strength; }
+    else { p.life = 5 + rand() * 2; p.rise = 0.11 * strength; p.size = 0.03 + 0.012 * strength; p.grow = 0.04 * strength; }
   }
 
   update(dt: number): void {
@@ -116,12 +116,13 @@ export class Puffs {
       p.age += dt;
       if (p.age >= p.life) { p.alive = false; this.alpha[i] = 0; continue; }
       // Rising, and slowing as it goes, as a column does once the heat has left it.
-      const slow = Math.exp(-p.age * 0.6);
+      const slow = Math.exp(-p.age * (p.kind === 2 ? 0.35 : 0.6));
       p.x += p.ux * p.rise * slow * dt; p.y += p.uy * p.rise * slow * dt; p.z += p.uz * p.rise * slow * dt;
       const f = p.age / p.life;
       this.position[i * 3] = p.x; this.position[i * 3 + 1] = p.y; this.position[i * 3 + 2] = p.z;
       this.size[i] = p.size + p.grow * f;
-      this.alpha[i] = (p.kind === 1 ? 0.6 : p.kind === 0 ? 0.45 : 0.5) * Math.min(1, f * 6) * (1 - f) ** 1.5;
+      // Coming in quickly, then fading slowly as it thins; smoke the strongest, so a wisp is seen.
+      this.alpha[i] = (p.kind === 1 ? 0.7 : p.kind === 0 ? 0.5 : 1.0) * Math.min(1, f * 5) * (1 - f) ** (p.kind === 2 ? 0.9 : 1.5);
       this.tint[i] = p.kind;
     }
     const g = this.object.geometry;
