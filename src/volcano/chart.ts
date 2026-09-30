@@ -1,15 +1,13 @@
 /**
  * The chart at the end: what you made, as a plate from an old atlas. The world
- * as it was left, with its islands named on it; the kinds of life it holds; and
+ * as it was left; the kinds of life it holds, by their signs; and
  * the eras along the foot, with what happened in each. It's drawn on a canvas of
  * its own, so it can be kept as a picture.
  */
 export interface ChartInfo {
   title: string;
   subtitle: string;
-  /** Island names, where they are on the globe's canvas (in its pixels). */
-  labels: { name: string; x: number; y: number }[];
-  kinds: { name: string; ink: string; living: boolean }[];
+  kinds: { name: string; ink: string; sign: string; living: boolean }[];
   summary: string;
   /** The game's length in seconds, its eras, and what happened when. */
   length: number;
@@ -40,12 +38,6 @@ export function drawChart(globe: HTMLCanvasElement, info: ChartInfo): HTMLCanvas
   const side = Math.min(globe.width, globe.height), sx = (globe.width - side) / 2, sy = (globe.height - side) / 2;
   const box = 960, bx = (W - box) / 2, by = 210;
   g.drawImage(globe, sx, sy, side, side, bx, by, box, box);
-  g.font = `italic 30px ${SERIF}`; g.fillStyle = INK;
-  for (const l of info.labels) {
-    const x = bx + ((l.x - sx) / side) * box, y = by + ((l.y - sy) / side) * box;
-    if (x < bx || x > bx + box || y < by || y > by + box) continue;
-    spaced(g, l.name, x, y, 3);
-  }
 
   // What lives there.
   let y = by + box + 60;
@@ -55,10 +47,9 @@ export function drawChart(globe: HTMLCanvasElement, info: ChartInfo): HTMLCanvas
   const step = (W - 240) / info.kinds.length;
   info.kinds.forEach((k, i) => {
     const x = 120 + step * (i + 0.5);
-    g.beginPath(); g.arc(x, y, 13, 0, Math.PI * 2);
-    g.lineWidth = 2; g.strokeStyle = k.ink;
-    if (k.living) { g.fillStyle = k.ink; g.fill(); }
-    g.stroke();
+    g.globalAlpha = k.living ? 1 : 0.3;
+    sign(g, k.sign, x, y, 13, k.ink);
+    g.globalAlpha = 1;
     g.font = `20px ${SERIF}`; g.fillStyle = k.living ? INK : FAINT;
     g.fillText(k.name, x, y + 42);
   });
@@ -92,13 +83,15 @@ export function drawChart(globe: HTMLCanvasElement, info: ChartInfo): HTMLCanvas
   return cv;
 }
 
-/** Text with its letters spaced apart, as maps letter names. */
-function spaced(g: CanvasRenderingContext2D, text: string, x: number, y: number, gap: number): void {
-  const widths = [...text].map((ch) => g.measureText(ch).width);
-  const total = widths.reduce((s, w) => s + w, 0) + gap * (text.length - 1);
-  let cx = x - total / 2;
-  const align = g.textAlign;
-  g.textAlign = 'left';
-  [...text].forEach((ch, i) => { g.fillText(ch, cx, y); cx += widths[i] + gap; });
-  g.textAlign = align;
+/** A kind's conventional sign, as the page draws it, at a size (half its width). */
+function sign(g: CanvasRenderingContext2D, name: string, x: number, y: number, r: number, ink: string): void {
+  g.strokeStyle = ink; g.fillStyle = ink; g.lineWidth = 2.2; g.lineCap = 'round';
+  g.beginPath();
+  if (name === 'dot') { g.arc(x, y, r * 0.3, 0, Math.PI * 2); g.fill(); return; }
+  if (name === 'ring') g.arc(x, y, r * 0.65, 0, Math.PI * 2);
+  if (name === 'cross') { g.moveTo(x - r, y); g.lineTo(x + r, y); g.moveTo(x, y - r); g.lineTo(x, y + r); }
+  if (name === 'dash') { g.moveTo(x - r, y); g.lineTo(x + r, y); }
+  if (name === 'tuft') { g.moveTo(x - r, y + r * 0.5); g.lineTo(x + r, y + r * 0.5); g.moveTo(x, y + r * 0.5); g.lineTo(x, y - r * 0.6); g.moveTo(x - r * 0.6, y + r * 0.5); g.lineTo(x - r * 0.8, y - r * 0.3); g.moveTo(x + r * 0.6, y + r * 0.5); g.lineTo(x + r * 0.8, y - r * 0.3); }
+  if (name === 'caret') { g.moveTo(x - r * 0.8, y + r * 0.45); g.lineTo(x, y - r * 0.5); g.lineTo(x + r * 0.8, y + r * 0.45); }
+  g.stroke();
 }

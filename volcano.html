@@ -12,12 +12,12 @@
       #stage canvas { width: 100% !important; height: 100% !important; display: block; }
       .engraved { font-family: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif; color: #2e2118; }
       #stage-name { position: fixed; top: calc(14px + env(safe-area-inset-top)); left: 0; right: 0; text-align: center; font-size: 19px; font-style: italic; letter-spacing: 0.04em; pointer-events: none; }
-      /* The heat left, as a thin rule that shortens; and the six kinds of life, a dot each, filled once living. */
+      /* The heat left, as a thin rule that shortens; and the six kinds of life by their signs, inked once living. */
       #meter { position: fixed; top: calc(46px + env(safe-area-inset-top)); left: 0; right: 0; display: flex; justify-content: center; align-items: center; gap: 14px; pointer-events: none; }
-      #heat { width: 90px; height: 3px; background: rgba(46,33,24,0.12); position: relative; }
-      #heat i { position: absolute; left: 0; top: 0; bottom: 0; background: #8a3a1e; transition: width 0.5s; }
+      #heat { width: 90px; height: 1.5px; background: rgba(46,33,24,0.14); position: relative; }
+      #heat i { position: absolute; left: 0; top: 0; bottom: 0; background: #2e2118; transition: width 0.5s; }
       #kinds { display: flex; gap: 7px; }
-      #kinds b { width: 8px; height: 8px; border-radius: 50%; border: 1.3px solid currentColor; box-sizing: border-box; transition: background-color 1s; }
+      #kinds b { display: block; width: 13px; height: 13px; transition: opacity 1.5s; }
       #lesson { position: fixed; bottom: calc(18px + env(safe-area-inset-bottom)); left: 20px; right: 20px; margin: 0; text-align: center; font-size: 15px; line-height: 1.45; opacity: 0; pointer-events: none; transition: opacity 1.2s; }
       #lesson.shown { opacity: 0.8; }
       #event { position: fixed; top: 19%; left: 16px; right: 16px; text-align: center; font-size: 20px; font-style: italic; opacity: 0; pointer-events: none; transition: opacity 1.4s; }

@@ -1,7 +1,7 @@
 /**
  * Puffs: steam where lava meets the sea, ash thrown up by a burst, and the
- * thin smoke of a vent under pressure. Soft round marks like a wash of ink,
- * rising from the ground, spreading and fading. A fixed number of them, reused
+ * thin smoke of a vent under pressure. Each is a small engraved ring, as old
+ * maps drew smoke, rising from the ground, spreading and fading. A fixed number of them, reused
  * in turn, so there's never more than the page can bear.
  */
 import * as THREE from 'three';
@@ -53,11 +53,14 @@ export class Puffs {
         varying float vAlpha;
         varying float vTint;
         void main() {
+          // Not a soft blob of light but a small engraved ring, as the old maps drew smoke and
+          // steam: a fine line round, fading at its edges over about a pixel.
           float r = length(gl_PointCoord - 0.5) * 2.0;
-          float a = vAlpha * (1.0 - smoothstep(0.35, 1.0, r));
-          if (a <= 0.002) discard;
-          // Steam white, ash the grey of a wash of ink, smoke fainter and warmer.
-          vec3 c = vTint < 0.5 ? vec3(0.99, 0.99, 0.98) : vTint < 1.5 ? vec3(0.42, 0.39, 0.36) : vec3(0.55, 0.5, 0.46);
+          float line = 1.0 - smoothstep(0.0, 0.14, abs(r - 0.72));
+          float a = vAlpha * line;
+          if (a <= 0.01) discard;
+          // Steam in the sea's blue ink, ash and smoke in sepia.
+          vec3 c = vTint < 0.5 ? vec3(0.36, 0.49, 0.6) : vTint < 1.5 ? vec3(0.23, 0.17, 0.12) : vec3(0.35, 0.28, 0.22);
           gl_FragColor = vec4(c, a);
           #include <colorspace_fragment>
         }`,
@@ -96,7 +99,7 @@ export class Puffs {
       const f = p.age / p.life;
       this.position[i * 3] = p.x; this.position[i * 3 + 1] = p.y; this.position[i * 3 + 2] = p.z;
       this.size[i] = p.size + p.grow * f;
-      this.alpha[i] = (p.kind === 1 ? 0.55 : p.kind === 0 ? 0.5 : 0.25) * Math.min(1, f * 6) * (1 - f) ** 1.5;
+      this.alpha[i] = (p.kind === 1 ? 0.6 : p.kind === 0 ? 0.45 : 0.35) * Math.min(1, f * 6) * (1 - f) ** 1.5;
       this.tint[i] = p.kind;
     }
     const g = this.object.geometry;

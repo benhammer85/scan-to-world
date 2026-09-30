@@ -45,30 +45,38 @@ Every world you make, what grew on it, the railways between worlds, which way ea
 In headless play-throughs, gentle flows alone kept 4 kinds, doing nothing kept 3, and mixing flows with bursts kept all 6.
 
 **How to play**
-* **Tap** to let the pressure out. The ring at the vent is the pressure. Tap soon and you get a gentle flow. Wait for the rust band and you get a burst of ash. Past the dark edge, the mountain tears open into a caldera and life dies far around it.
+* **Tap** to let the pressure out. The ring at the vent is the pressure. Tap soon and you get a gentle flow. Wait past the dashed ring and you get a burst of ash. At the double rule, the mountain tears open into a caldera and life dies far around it.
 * **Hold** the world to call the heat somewhere new. It creeps there beneath the crust, and the land it leaves behind cools and sinks.
 * **Tip** the world and the lava runs down the screen.
-* **Wishes:** now and then life wishes for a kind it lacks, shown by a ring in that kind's ink. Make that ground there and the wish is kept, which stirs the fire (more heat).
-* **Stones** are seen 20 seconds ahead, with a ring that shrinks and a countdown. Bring the plume beneath one and you catch four times its heat; otherwise keep life clear of it.
+* **Wishes:** now and then life wishes for a kind it lacks, shown by a dotted ring. Make that ground there and the wish is kept, which stirs the fire (more heat).
+* **Stones** are seen 20 seconds ahead, with a ring and a cross that close in and a countdown. Bring the plume beneath one and you catch four times its heat; otherwise keep life clear of it.
 
-**Reading it:** the era is shown at the top. Under it, a rule shortens as the heat runs out, and the six dots fill in as each kind lives. Lessons at the foot bring in one idea at a time, and stones only start falling once they've been explained. Islands are named on the map as they rise.
+**Reading it:** the era is shown at the top. Under it, a rule shortens as the heat runs out, and the six kinds' signs are inked in as each one lives. Lessons at the foot bring in one idea at a time, and stones only start falling once they've been explained. Nothing is named: the map is the land's.
 
-**What you see and hear**
-* Lava is the only warm light in the ink world: a dark crust that glows where it runs.
-* Steam rises where lava meets the sea, ash columns go up from bursts, and a vent near bursting smokes. Surf shows as white dots where the sea is wearing a coast.
+**What you see and hear:** it keeps to the language of the old survey and geological maps, not light and effects.
+* Lava is laid on as a flat vermilion wash, the colour geological maps give it.
+* Steam and ash are small engraved rings rising and fading.
+* Each kind of life is drawn by its conventional sign in one ink:
+  * moss: fine stipple;
+  * reef: crosses, in the sea's blue;
+  * mangroves: marsh tufts;
+  * meadows: dashes;
+  * forest: small circles;
+  * heath: carets.
+* Coasts are water-lined, and breakers are short blue strokes where the sea wears a coast. The shading is kept flat, like paper.
 * The world turns itself gently to keep the vent in view when you leave it alone.
 * The sound is generated as you play:
-  * a drone that rises and brightens with the pressure and trembles near the edge;
+  * a drone that rises with the pressure and trembles near the edge;
   * surf, as loud as the sea is working;
   * a rumble for a burst and a hiss for a flow;
   * chimes for new kinds and kept wishes.
   It can be turned off at the top right.
 
-**The ending:** when the fire is out, a long age passes quickly, and then the world is set out as a chart. It shows your islands by name, the kinds that lasted, and the eras with what happened in each. You can keep the chart as a PNG.
+**The ending:** when the fire is out, a long age passes quickly, and then the world is set out as a chart, like a plate from an old atlas. It shows the land as it was left, the kinds that lasted by their signs, and the eras with what happened in each. You can keep the chart as a PNG.
 
 **Drawing:** the world is drawn on an icosphere of twice the simulation's detail, with values carried across by Loop subdivision (`fine.ts`). The coast's colour edge is chosen per pixel. Contours are rounded by Chaikin corner-cutting and drawn as joined, antialiased ribbons (`widthPx` in `PlotterLines`), at up to 3× pixel ratio. Add `?seed=` to the URL to see the same world again.
 
-Files: `sim.ts` (the planet), `ecology.ts` (kinds and wishes), `islands.ts` (finding and naming islands), `fine.ts`, `puffs.ts`, `sound.ts`, `chart.ts`, `main.ts`.
+Files: `sim.ts` (the planet), `ecology.ts` (kinds and wishes), `islands.ts` (finding islands), `fine.ts`, `puffs.ts`, `sound.ts`, `chart.ts`, `main.ts`.
 
 Locally, run `npm run dev` and open `/volcano.html`. The simulation (`src/volcano/sim.ts`) has no drawing in it and is tested in `test/volcano.test.ts`.
 

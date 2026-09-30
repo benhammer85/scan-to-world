@@ -42,13 +42,23 @@ function rand(seed: number, k: number): number {
   return x - Math.floor(x);
 }
 
+/**
+ * The mark each point is drawn as. A dot by default; the others are the conventional signs of
+ * the old survey maps, drawn in fine ink: a small circle (woods), a cross (rocks, reefs), a short
+ * dash (grass), a marsh tuft (three ticks on a line), and a caret (heights, heath).
+ */
+export type Sign = 'dot' | 'ring' | 'cross' | 'dash' | 'tuft' | 'caret';
+const SIGNS: Sign[] = ['dot', 'ring', 'cross', 'dash', 'tuft', 'caret'];
+
 export class Stipple {
   readonly object: THREE.Points;
-  constructor(ink: string) {
+  /** @param size a sign's size in CSS pixels (a dot's is `STIPPLE.size`) */
+  constructor(ink: string, sign: Sign = 'dot', size: number = STIPPLE.size) {
     const material = new THREE.ShaderMaterial({
       transparent: true,
       depthWrite: false,
-      uniforms: { uInk: { value: new THREE.Color(ink) }, uSize: { value: STIPPLE.size * Math.min(2, window.devicePixelRatio || 1) }, uNow: { value: 0 }, uAppear: { value: STIPPLE.appear } },
+      defines: { SIGN: SIGNS.indexOf(sign) },
+      uniforms: { uInk: { value: new THREE.Color(ink) }, uSize: { value: size * Math.min(2, window.devicePixelRatio || 1) }, uNow: { value: 0 }, uAppear: { value: STIPPLE.appear } },
       vertexShader: /* glsl */ `
         uniform float uSize;
         uniform float uNow;
@@ -71,10 +81,34 @@ export class Stipple {
         uniform vec3 uInk;
         varying float vRim;
         varying float vSize;
+        float segment(vec2 p, vec2 a, vec2 b) {
+          vec2 pa = p - a, ba = b - a;
+          return length(pa - ba * clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0));
+        }
         void main() {
+          // In pixels from the middle of the mark; the point is a pixel larger than the mark, for its soft edge.
+          vec2 p = (gl_PointCoord - 0.5) * (vSize + 1.0);
+          #if SIGN == 0
           // A round dot with a soft edge a pixel wide, so the stipple is smooth at any size, not stepped.
-          float r = length(gl_PointCoord - 0.5) * (vSize + 1.0); // the point is a pixel larger than the dot
-          float cover = clamp(vSize * 0.5 - r + 0.5, 0.0, 1.0);
+          float cover = clamp(vSize * 0.5 - length(p) + 0.5, 0.0, 1.0);
+          #else
+          // A sign in a fine line, its distance from the line fading to nothing over a pixel.
+          float R = vSize * 0.42, w = max(0.55, vSize * 0.07), d;
+          #if SIGN == 1
+          d = abs(length(p) - R * 0.8);
+          #elif SIGN == 2
+          d = min(segment(p, vec2(-R, 0.0), vec2(R, 0.0)), segment(p, vec2(0.0, -R), vec2(0.0, R)));
+          #elif SIGN == 3
+          d = segment(p, vec2(-R, 0.0), vec2(R, 0.0));
+          #elif SIGN == 4
+          d = min(segment(p, vec2(-R, R * 0.45), vec2(R, R * 0.45)),
+              min(segment(p, vec2(0.0, R * 0.45), vec2(0.0, -R * 0.55)),
+              min(segment(p, vec2(-R * 0.6, R * 0.45), vec2(-R * 0.75, -R * 0.25)), segment(p, vec2(R * 0.6, R * 0.45), vec2(R * 0.75, -R * 0.25)))));
+          #else
+          d = min(segment(p, vec2(-R * 0.8, R * 0.4), vec2(0.0, -R * 0.45)), segment(p, vec2(0.0, -R * 0.45), vec2(R * 0.8, R * 0.4)));
+          #endif
+          float cover = clamp(w + 0.5 - d, 0.0, 1.0);
+          #endif
           if (cover <= 0.0 || vRim <= 0.0) discard;
           gl_FragColor = vec4(uInk, vRim * cover);
           #include <colorspace_fragment>

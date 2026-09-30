@@ -2,17 +2,17 @@
  * Volcano, the prototype: a young ocean planet with nothing on it, and you the
  * heat beneath, with a finite store of it. Drawn in Atlas Minor's paper and
  * ink: the one pen plots the coastlines and contours of the land as it is
- * made, life comes in as stipple in the ink of its kind, and the only warm
- * light in the world is lava.
+ * made, life comes in as the conventional signs of the old survey maps, lava
+ * is laid on as the vermilion wash the geological maps gave it, and steam and
+ * ash are engraved strokes, not light.
  *
  * What's on the page, so the game can be read at a glance:
  *   the era, at the top, and under it the heat left (a rule that shortens)
- *     and the six kinds of life (a dot each, filled once the kind is living);
- *   at the vent, the pressure as a ring that grows, with a rust band where a
- *     flow becomes a burst and a dark edge where it bursts on its own;
- *   a ring in a kind's ink where life wishes for that kind, and a shrinking
- *     ring where a stone will fall;
- *   islands named on the map as they rise;
+ *     and the six kinds of life (each by its sign, inked once it's living);
+ *   at the vent, the pressure as a ring that grows, with a dashed ring where a
+ *     flow becomes a burst and a double rule where it bursts on its own;
+ *   a dotted ring where life wishes for a kind, and a ring with a cross where a
+ *     stone will fall, closing in as it comes;
  *   one lesson at a time at the foot, each introducing one idea.
  */
 import * as THREE from 'three';
@@ -21,6 +21,7 @@ import { extractContours, type Polyline } from '../terrain/contours';
 import { PlotterLines, defaultPlotterStyle, type RevealMode } from '../render/plotterLines';
 import { GestureRecognizer } from '../interact/gestures';
 import { Stipple, stippleDots } from '../render/stipple';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { Planet, VOLCANO, type Era } from './sim';
 import { FineSurface } from './fine';
 import { Ecology, ECOLOGY, KINDS } from './ecology';
@@ -40,8 +41,9 @@ stage.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color('#f4efe4');
 const camera = new THREE.PerspectiveCamera(40, 1, 0.01, 100);
-scene.add(new THREE.HemisphereLight('#fffaf0', '#efe7d6', 2.3));
-const sun = new THREE.DirectionalLight('#ffffff', 0.55);
+// Flat, as paper is: only a little light from one side, so relief reads without the gloss of a model.
+scene.add(new THREE.HemisphereLight('#fffaf0', '#efe7d6', 2.6));
+const sun = new THREE.DirectionalLight('#ffffff', 0.28);
 sun.position.set(-2, 3, 2.5);
 scene.add(sun);
 
@@ -74,7 +76,7 @@ const seed = Number(new URLSearchParams(location.search).get('seed')) || 1 + Mat
 const planet = new Planet(topo, nearest(0.1, 0.15, 0.98), seed);
 planet.stonesFall = false; // until the lesson that shows them
 const ecology = new Ecology(planet, topo);
-const islands = new Islands(topo, seed);
+const islands = new Islands(topo);
 
 /** How far above the sea the land stands, drawn: heights are small, so the relief is raised. */
 const RELIEF = 0.32;
@@ -86,65 +88,78 @@ const fine = new FineSurface(topo, buildTopology(new THREE.IcosahedronGeometry(1
 const ftopo = fine.fine, FN = ftopo.vertexCount, fbase = ftopo.basePositions;
 const geometry = new THREE.BufferGeometry();
 const positions = new Float32Array(FN * 3);
-const landColour = new Float32Array(FN * 3), seaColour = new Float32Array(FN * 3), fineHeight = new Float32Array(FN), fineGlow = new Float32Array(FN);
+const landColour = new Float32Array(FN * 3), seaColour = new Float32Array(FN * 3), fineHeight = new Float32Array(FN);
 geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
 geometry.setAttribute('color', new THREE.BufferAttribute(landColour, 3));
 geometry.setAttribute('aSea', new THREE.BufferAttribute(seaColour, 3));
 geometry.setAttribute('aH', new THREE.BufferAttribute(fineHeight, 1));
-geometry.setAttribute('aGlow', new THREE.BufferAttribute(fineGlow, 1));
 geometry.setIndex(new THREE.BufferAttribute(ftopo.triangles, 1));
 
 /**
  * The ground's colour is chosen in each pixel rather than at each vertex: land and sea each have
  * their own colour carried across the surface, and where the height crosses the sea the one gives
- * way to the other in the space of a pixel, so the coast is a clean edge, not a smear. Lava glows:
- * the only warm light in the world.
+ * way to the other in the space of a pixel, so the coast is a clean edge, not a smear.
  */
 const material = new THREE.MeshLambertMaterial({ vertexColors: true, dithering: true });
 material.onBeforeCompile = (shader) => {
   shader.vertexShader = shader.vertexShader
-    .replace('void main() {', 'attribute vec3 aSea;\nattribute float aH;\nattribute float aGlow;\nvarying vec3 vSea;\nvarying float vH;\nvarying float vGlow;\nvoid main() {')
-    .replace('#include <color_vertex>', '#include <color_vertex>\n  vSea = aSea;\n  vH = aH;\n  vGlow = aGlow;');
+    .replace('void main() {', 'attribute vec3 aSea;\nattribute float aH;\nvarying vec3 vSea;\nvarying float vH;\nvoid main() {')
+    .replace('#include <color_vertex>', '#include <color_vertex>\n  vSea = aSea;\n  vH = aH;');
   shader.fragmentShader = shader.fragmentShader
-    .replace('void main() {', 'varying vec3 vSea;\nvarying float vH;\nvarying float vGlow;\nvoid main() {')
+    .replace('void main() {', 'varying vec3 vSea;\nvarying float vH;\nvoid main() {')
     .replace('#include <color_fragment>', `
       float edge = max(fwidth(vH), 1e-5) * 0.7;
-      diffuseColor.rgb *= mix(vSea, vColor.rgb, smoothstep(-edge, edge, vH));`)
-    .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n  totalEmissiveRadiance += vec3(1.0, 0.42, 0.12) * vGlow;');
+      diffuseColor.rgb *= mix(vSea, vColor.rgb, smoothstep(-edge, edge, vH));`);
 };
 const mesh = new THREE.Mesh(geometry, material);
 group.add(mesh);
 
 const landPen = new PlotterLines({ ...defaultPlotterStyle, ink: '#6b4a2e', inkHigh: '#4a2f1c', pencil: '#b9a68c', alpha: 0.62, indexAlpha: 0.95, indexEvery: 5, fadeSeconds: 0, widthPx: 1.15 });
 const seaPen = new PlotterLines({ ...defaultPlotterStyle, ink: '#5b82a3', inkHigh: '#5b82a3', pencil: '#a9bfd0', alpha: 0.45, indexAlpha: 0.6, fadeSeconds: 0, pen: false, appearSeconds: 2, widthPx: 0.95 });
-landPen.width = seaPen.width = 2;
-pens.push(landPen, seaPen);
-group.add(seaPen.object, landPen.object);
-/** Life in the ink of its kind; and surf, white, where the sea is wearing at a coast. */
-const kindDots = KINDS.map((k) => new Stipple(k.ink));
-const foam = new Stipple('#fbfcfd');
+/** Water-lining: close lines following the coast out to sea, as the old engraved maps drew it. */
+const waterPen = new PlotterLines({ ...defaultPlotterStyle, ink: '#6b8fac', inkHigh: '#6b8fac', pencil: '#a9bfd0', alpha: 0.4, indexAlpha: 0.4, fadeSeconds: 0, pen: false, appearSeconds: 2, widthPx: 0.8 });
+landPen.width = seaPen.width = waterPen.width = 2;
+pens.push(landPen, seaPen, waterPen);
+group.add(seaPen.object, waterPen.object, landPen.object);
+/** Life by the sign of its kind; and breakers, short blue strokes, where the sea is wearing at a coast. */
+const kindDots = KINDS.map((k) => new Stipple(k.ink, k.sign, k.sign === 'dot' ? 2.1 : 7.5));
+const foam = new Stipple('#46708f', 'dash', 6);
 for (const s of [...kindDots, foam]) group.add(s.object);
 const puffs = new Puffs(renderer.getPixelRatio());
 group.add(puffs.object);
 const sound = new Sound();
 
-/** Marks on the surface, each a fine ink ring laid flat on the ground. */
-function ring(color: string, opacity: number, inner = 0.9): THREE.Mesh {
-  const m = new THREE.Mesh(new THREE.RingGeometry(inner, 1, 64), new THREE.MeshBasicMaterial({ color, transparent: true, opacity, side: THREE.DoubleSide, depthWrite: false }));
+/**
+ * Marks on the surface, each a fine ink ring laid flat on the ground: whole, dashed (so many
+ * dashes round) or dotted, as a surveyor marks a chart.
+ */
+function ring(color: string, opacity: number, inner = 0.9, dashes = 0, fill = 0.55): THREE.Mesh {
+  const g = dashes
+    ? mergeGeometries(Array.from({ length: dashes }, (_, i) => new THREE.RingGeometry(inner, 1, 6, 1, (i / dashes) * Math.PI * 2, (fill / dashes) * Math.PI * 2)))
+    : new THREE.RingGeometry(inner, 1, 96);
+  const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color, transparent: true, opacity, side: THREE.DoubleSide, depthWrite: false }));
   m.renderOrder = 5;
   group.add(m);
   return m;
 }
+const INK = '#2e2118';
 /**
- * The pressure dial at the vent: the ring that grows is the pressure; the rust band is where a
- * flow becomes a burst; the dark edge is where it bursts on its own and tears the mountain open.
+ * The pressure dial at the vent: the ring that grows is the pressure; the dashed ring is where a
+ * flow becomes a burst; the double rule is where it bursts on its own and tears the mountain open.
  */
-const pressureRing = ring('#2e2118', 0.9, 0.86), burstBand = ring('#8a3a1e', 0.35, 0.8), capRing = ring('#4a1a10', 0.55, 0.93);
+const pressureRing = ring(INK, 0.85, 0.9), burstBand = ring(INK, 0.55, 0.94, 28), capRing = ring(INK, 0.6, 0.96), capInner = ring(INK, 0.35, 0.965);
 const dial = (share: number) => 0.02 + 0.08 * share;
-/** Where you have called the heat to; a stone's ring as it falls; where life wishes for a kind. */
-const targetRing = ring('#2e2118', 0.5, 0.8), stoneRing = ring('#4a2f1c', 0.75, 0.9), wishRing = ring('#2f3f26', 0.6, 0.94);
+/** Where you have called the heat to (a small ring and its centre); a stone's ring and cross; a dotted ring where life wishes. */
+const targetRing = ring(INK, 0.5, 0.8), stoneRing = ring(INK, 0.7, 0.95), wishRing = ring(INK, 0.6, 0.9, 40, 0.28);
+const stoneCross = new THREE.Mesh(
+  mergeGeometries([new THREE.PlaneGeometry(0.5, 0.035), new THREE.PlaneGeometry(0.035, 0.5)]),
+  new THREE.MeshBasicMaterial({ color: INK, transparent: true, opacity: 0.7, side: THREE.DoubleSide, depthWrite: false }),
+);
+stoneCross.renderOrder = 5;
+group.add(stoneCross);
 
-const PAPER = new THREE.Color('#ecdfc2'), BASALT = new THREE.Color('#8b7c6b'), ASH = new THREE.Color('#a7a196'), CRUST = new THREE.Color('#3a1f16');
+/** Paper, fresh basalt, ash; and lava in the vermilion the geological surveys gave it, deeper where thick. */
+const PAPER = new THREE.Color('#ecdfc2'), BASALT = new THREE.Color('#9a8a76'), ASH = new THREE.Color('#b3ada2'), VERMILION = new THREE.Color('#b8563c'), DEEP_RED = new THREE.Color('#8f3b28');
 const SHALLOW = new THREE.Color('#d4e3ec'), DEEP = new THREE.Color('#b1c8d8');
 const c = new THREE.Color();
 
@@ -153,30 +168,23 @@ function surface(v: number): number {
 }
 
 // The simulation's values, a vertex at a time, before they are carried onto the finer surface.
-const coarseHeight = new Float32Array(N), coarseLand = new Float32Array(N * 3), coarseSea = new Float32Array(N * 3), coarseGlow = new Float32Array(N);
+const coarseHeight = new Float32Array(N), coarseLand = new Float32Array(N * 3), coarseSea = new Float32Array(N * 3);
 const fineLife = new Float32Array(FN), fineWear = new Float32Array(FN);
-let glowing = false;
-
 function draw(): void {
-  let anyGlow = false;
   for (let v = 0; v < N; v++) {
     const h = surface(v), r = 1 + RELIEF * Math.max(0, h);
     topo.positions[v * 3] = base[v * 3] * r; topo.positions[v * 3 + 1] = base[v * 3 + 1] * r; topo.positions[v * 3 + 2] = base[v * 3 + 2] * r;
     coarseHeight[v] = h;
     const lava = planet.lava[v];
-    // The sea, paler over the shallows; the land, fresh basalt dark and weathering to paper, ash
-    // grey; lava a dark crust that glows where it is thick and still running.
+    // The sea, paler over the shallows; the land, fresh basalt weathering to paper, ash grey;
+    // lava a flat vermilion wash, deeper where it lies thick.
     c.copy(SHALLOW).lerp(DEEP, Math.min(1, Math.max(0, -h) / 0.3));
     coarseSea[v * 3] = c.r; coarseSea[v * 3 + 1] = c.g; coarseSea[v * 3 + 2] = c.b;
-    c.copy(PAPER).lerp(BASALT, Math.exp(-planet.age[v] / 30) * 0.9).lerp(ASH, planet.ash[v] * 0.6);
-    if (lava > 0.002) c.lerp(CRUST, Math.min(1, lava * 25));
+    c.copy(PAPER).lerp(BASALT, Math.exp(-planet.age[v] / 30) * 0.7).lerp(ASH, planet.ash[v] * 0.5);
+    if (lava > 0.002) c.lerp(VERMILION, Math.min(1, lava * 40)).lerp(DEEP_RED, Math.min(0.6, lava * 8));
     coarseLand[v * 3] = c.r; coarseLand[v * 3 + 1] = c.g; coarseLand[v * 3 + 2] = c.b;
-    coarseGlow[v] = lava > 0.002 ? Math.min(0.95, lava * 30) : 0;
-    if (coarseGlow[v] > 0) anyGlow = true;
   }
   fine.carryDrawn(coarseHeight, coarseLand, coarseSea, fineHeight, landColour, seaColour);
-  if (anyGlow || glowing) { fine.carry(coarseGlow, fineGlow); geometry.getAttribute('aGlow').needsUpdate = true; }
-  glowing = anyGlow;
   const nm = ftopo.normals;
   for (let v = 0; v < FN; v++) {
     const r = 1 + RELIEF * Math.max(0, fineHeight[v]);
@@ -227,6 +235,11 @@ function redrawLines(now: number): void {
   for (let v = 0; v < FN; v++) { if (h[v] < 0) sea[v] = 1; else land[v] = 1; }
   landPen.setLines(rounded(extractContours(ftopo, h, { interval: 0.035, lift: 0.003, mask: sea })), mode, facingPoint());
   seaPen.setLines(rounded(extractContours(ftopo, h, { interval: 0.07, lift: 0.002, mask: land })), 'settle');
+  // The water-lines: the sea near the coast, held between just below the surface and a little
+  // deeper, so its contours are close lines following the shore out.
+  const held = new Float32Array(FN);
+  for (let v = 0; v < FN; v++) held[v] = Math.min(-0.001, Math.max(-0.05, h[v]));
+  waterPen.setLines(rounded(extractContours(ftopo, held, { interval: 0.011, lift: 0.0015, mask: land })), 'settle');
 }
 
 /** Scraps of line shorter than this are only the triangles showing, not the land: they're left out. */
@@ -297,8 +310,9 @@ function redrawLife(now: number): void {
     const w = Math.max(fineWear[a], fineWear[b], fineWear[d]);
     if (w > 0.0003 && Math.min(fineHeight[a], fineHeight[b], fineHeight[d]) < 0) push(surf[Math.min(2, Math.floor(w / 0.0012))], a, b, d, 1.0015);
   }
-  kindDots.forEach((s, k) => s.set(byKind[k].flatMap((tris, lv) => stippleDots(tris, (k === 1 ? 2500 : 4000) + (k === 1 ? 5000 : 9000) * lv))));
-  foam.set(surf.flatMap((tris, lv) => stippleDots(tris, 5000 + 9000 * lv)));
+  // Signs are set sparsely, as a map sets them, closer where there's more; moss is a fine stipple.
+  kindDots.forEach((s, k) => s.set(byKind[k].flatMap((tris, lv) => stippleDots(tris, KINDS[k].sign === 'dot' ? 3000 + 7000 * lv : 500 + 1100 * lv))));
+  foam.set(surf.flatMap((tris, lv) => stippleDots(tris, 900 + 1500 * lv)));
 }
 
 /** Lay a ring flat on the ground above a point of the planet, at a given size. */
@@ -326,30 +340,32 @@ const at = (v: number) => [base[v * 3], base[v * 3 + 1], base[v * 3 + 2]] as con
 function drawMarks(now: number): void {
   const q = planet.plume, share = Math.min(1, planet.pressure / VOLCANO.cap);
   const live = !planet.over;
-  pressureRing.visible = burstBand.visible = capRing.visible = live;
+  pressureRing.visible = burstBand.visible = capRing.visible = capInner.visible = live;
   // Nearly too much, and the ring trembles.
   const tremble = share > 0.85 ? 0.003 * Math.sin(now * 40) : 0.0015 * Math.sin(now * 3);
   place(pressureRing, q.x, q.y, q.z, dial(share) + tremble);
   place(burstBand, q.x, q.y, q.z, dial(VOLCANO.explosive / VOLCANO.cap));
   place(capRing, q.x, q.y, q.z, dial(1));
-  (pressureRing.material as THREE.MeshBasicMaterial).color.set(share > 0.85 ? '#6e1d10' : planet.bursting ? '#8a3a1e' : '#2e2118');
+  place(capInner, q.x, q.y, q.z, dial(1) - 0.006);
+  // Past the dashed ring, the pressure ring is drawn in the lava's red: this one will be a burst.
+  (pressureRing.material as THREE.MeshBasicMaterial).color.set(planet.bursting ? '#9a4230' : INK);
   const t = planet.target;
   targetRing.visible = !!t;
   if (t) place(targetRing, t.x, t.y, t.z, 0.02);
   const s = planet.impact;
-  stoneRing.visible = !!s;
+  stoneRing.visible = stoneCross.visible = !!s;
   if (s) {
     place(stoneRing, ...at(s.vertex), VOLCANO.crater + 0.2 * (s.in / VOLCANO.impactWarning));
-    // Warm, if the plume is under it and will catch its heat.
-    (stoneRing.material as THREE.MeshBasicMaterial).color.set(planet.warmthAt(s.vertex) > 0.5 ? '#8a3a1e' : '#4a2f1c');
+    place(stoneCross, ...at(s.vertex), 0.08);
+    // In the lava's red, if the plume is under it and will catch its heat.
+    const warm = planet.warmthAt(s.vertex) > 0.5 ? '#9a4230' : INK;
+    (stoneRing.material as THREE.MeshBasicMaterial).color.set(warm);
+    (stoneCross.material as THREE.MeshBasicMaterial).color.set(warm);
   }
   const w = ecology.wish;
   wishRing.visible = !!w;
   if (w) {
-    const k = KINDS.find((x) => x.kind === w.kind)!;
-    const mat = wishRing.material as THREE.MeshBasicMaterial;
-    mat.color.set(k.ink);
-    mat.opacity = 0.45 + 0.25 * Math.sin(now * 1.6);
+    (wishRing.material as THREE.MeshBasicMaterial).opacity = 0.5 + 0.15 * Math.sin(now * 1.2);
     place(wishRing, ...at(w.vertex), ECOLOGY.wishReach);
   }
 }
@@ -377,7 +393,6 @@ function label(key: string, text: string, v: number, small = false, dy = 0): voi
 function drawLabels(): void {
   for (const el of labels.values()) el.dataset.seen = '';
   if (!ending?.shown) {
-    for (const isl of islands.list) label(`isle:${isl.name}`, isl.name.toUpperCase(), isl.centre);
     const w = ecology.wish;
     if (w) { const k = KINDS.find((x) => x.kind === w.kind)!; label('wish', `${k.name} ${/s$/.test(k.name) ? 'want' : 'wants'} ${k.wants}`, w.vertex, true, 48); }
     const s = planet.impact;
@@ -449,11 +464,11 @@ $('sound').addEventListener('click', () => { sound.start(); $('sound').textConte
 const LESSONS: { text: string; ready: () => boolean; done: (since: number) => boolean; begin?: () => void }[] = [
   { text: 'Tap to let the heat out. Raise land from the sea.', ready: () => true, done: () => planet.landShare() > 0 },
   {
-    text: 'The ring is the pressure. Tap soon for a gentle flow; wait for the rust band for a burst of ash. Past the dark edge, the mountain tears open.',
+    text: 'The ring is the pressure. Tap soon for a gentle flow; wait past the dashed ring for a burst of ash. At the double rule, the mountain tears open.',
     ready: () => true, done: (s) => planet.tally.bursts > 0 || s > 60,
   },
   {
-    text: 'Life needs six kinds of ground, the dots at the top. Flows make shallows and shores; bursts make heights and rich ash. Answer its wishes.',
+    text: 'Life needs six kinds of ground, the signs at the top. Flows make shallows and shores; bursts make heights and rich ash. Answer its wishes.',
     ready: () => ecology.held.length > 0, done: (s) => ecology.kept > 0 || s > 80,
   },
   { text: 'Hold the world to call the heat somewhere new. Land it leaves behind cools and sinks.', ready: () => true, done: (s) => called || s > 60 },
@@ -508,8 +523,18 @@ function showNext(): void {
   e.classList.add('shown');
   showingUntil = seconds + 3.2;
 }
+/** The six kinds at the top, each by its sign: faint until the kind is living, then inked. */
+const SIGN_SVG: Record<string, string> = {
+  dot: '<circle cx="6" cy="6" r="1.6" fill="currentColor"/>',
+  ring: '<circle cx="6" cy="6" r="3.4" fill="none" stroke="currentColor" stroke-width="1.1"/>',
+  cross: '<path d="M2 6h8M6 2v8" stroke="currentColor" stroke-width="1.1"/>',
+  dash: '<path d="M2 6h8" stroke="currentColor" stroke-width="1.2"/>',
+  tuft: '<path d="M1.5 8.5h9M6 8.5V3.5M3.3 8.5l-0.6-4M8.7 8.5l0.6-4" stroke="currentColor" stroke-width="1" fill="none"/>',
+  caret: '<path d="M2 8.5L6 3.5L10 8.5" stroke="currentColor" stroke-width="1.1" fill="none"/>',
+};
 const kindEls = KINDS.map((k) => {
   const b = document.createElement('b');
+  b.innerHTML = `<svg viewBox="0 0 12 12" width="13" height="13">${SIGN_SVG[k.sign]}</svg>`;
   b.style.color = k.ink;
   b.title = `${k.name}: ${k.wants}`;
   $('kinds').appendChild(b);
@@ -525,7 +550,7 @@ function words(): void {
   }
   ($('heat').firstElementChild as HTMLElement).style.width = `${Math.round(Math.min(1, planet.heatLeft) * 100)}%`;
   const living = new Set(ecology.living);
-  KINDS.forEach((k, i) => { kindEls[i].style.backgroundColor = living.has(k.kind) ? k.ink : 'transparent'; });
+  KINDS.forEach((k, i) => { kindEls[i].style.opacity = living.has(k.kind) ? '1' : '0.28'; });
 }
 
 // ---------------------------------------------------------------- what happens, seen and heard
@@ -538,7 +563,7 @@ function effects(dt: number): void {
     const torn = planet.tally.calderas > tallied.calderas;
     sound.burst(torn ? 1 : 0.6);
     // The column of ash: many puffs from the vent, rising and spreading.
-    for (let i = 0; i < (torn ? 200 : 110); i++) puffs.add('ash', p[v0 * 3], p[v0 * 3 + 1], p[v0 * 3 + 2], torn ? 1.6 : 1);
+    for (let i = 0; i < (torn ? 80 : 40); i++) puffs.add('ash', p[v0 * 3], p[v0 * 3 + 1], p[v0 * 3 + 2], torn ? 1.6 : 1);
   }
   Object.assign(tallied, planet.tally);
   // Steam where lava runs into the sea, as much as there is lava there.
@@ -547,7 +572,7 @@ function effects(dt: number): void {
     steamIn = 0.12;
     for (let v = 0; v < N; v++) {
       const l = planet.lava[v];
-      if (l > 0.004 && planet.rock[v] < 0.005 && Math.random() < Math.min(0.6, l * 8)) puffs.add('steam', p[v * 3], p[v * 3 + 1], p[v * 3 + 2]);
+      if (l > 0.004 && planet.rock[v] < 0.005 && Math.random() < Math.min(0.25, l * 4)) puffs.add('steam', p[v * 3], p[v * 3 + 1], p[v * 3 + 2]);
     }
   }
   // A vent near bursting smokes.
@@ -607,16 +632,7 @@ function showChart(): void {
   }
   group.updateMatrixWorld(true);
   renderer.render(scene, camera);
-  const cv = renderer.domElement, placed: { name: string; x: number; y: number }[] = [];
-  for (const isl of islands.list) {
-    const v = isl.centre;
-    PROJ.set(topo.positions[v * 3], topo.positions[v * 3 + 1], topo.positions[v * 3 + 2]);
-    group.localToWorld(PROJ);
-    NORMAL.copy(PROJ).normalize();
-    if (NORMAL.dot(EYE.copy(camera.position).sub(PROJ).normalize()) < 0.3) continue;
-    PROJ.project(camera);
-    placed.push({ name: isl.name.toUpperCase(), x: ((PROJ.x + 1) / 2) * cv.width, y: ((1 - PROJ.y) / 2) * cv.height });
-  }
+  const cv = renderer.domElement;
   const living = new Set(ecology.living), seen = new Set<string>(), events: { t: number; text: string }[] = [];
   for (const e of planet.log) {
     for (const [re, f] of SHORT) {
@@ -626,12 +642,11 @@ function showChart(): void {
   }
   const length = ending!.from, mm = `${Math.floor(length / 60)}:${String(Math.floor(length % 60)).padStart(2, '0')}`;
   const eras = eraFrom.filter((e) => e.from < length).map((e, i, all) => ({ name: e.name.replace(/^The /, ''), from: e.from, to: i + 1 < all.length ? all[i + 1].from : length }));
-  const names = islands.list.map((i) => i.name);
+  const count = islands.list.length;
   const chart = drawChart(cv, {
-    title: biggest ? `${biggest.name}` : 'A world of water',
-    subtitle: `world ${seed} · ${mm} of fire · ${names.length === 1 ? 'one island' : `${names.length} islands`}`,
-    labels: placed,
-    kinds: KINDS.map((k) => ({ name: k.name, ink: k.ink, living: living.has(k.kind) })),
+    title: count ? 'What lasted' : 'A world of water',
+    subtitle: `world ${seed} · ${mm} of fire · ${count === 0 ? 'no land' : count === 1 ? 'one island' : `${count} islands`}`,
+    kinds: KINDS.map((k) => ({ name: k.name, ink: k.ink, sign: k.sign, living: living.has(k.kind) })),
     summary: `${living.size} of ${KINDS.length} kinds of life lasted · ${ecology.kept} ${ecology.kept === 1 ? 'wish' : 'wishes'} kept`,
     length,
     eras,
@@ -670,9 +685,9 @@ renderer.setAnimationLoop(() => {
   if (seconds - lastEcology >= 1) { ecology.update((seconds - lastEcology) * speed); lastEcology = seconds; }
   if (seconds - lastIslands >= 2) {
     lastIslands = seconds;
-    for (const isl of islands.update(planet.rock, planet.seconds)) {
-      const first = islands.list.length === 1 && !planet.log.some((l) => l.text.startsWith('Land breaks'));
-      planet.tell(first ? `Land breaks the surface. It is called ${isl.name}` : `A new island rises: ${isl.name}`);
+    for (const _ of islands.update(planet.rock, planet.seconds)) {
+      const first = !planet.log.some((l) => l.text.startsWith('Land breaks'));
+      planet.tell(first ? 'Land breaks the surface' : 'A new island rises');
     }
   }
   redrawLines(seconds);
@@ -681,6 +696,7 @@ renderer.setAnimationLoop(() => {
   effects(dt);
   landPen.update(dt, camera);
   seaPen.update(dt, camera);
+  waterPen.update(dt, camera);
   for (const s of [...kindDots, foam]) s.update(dt);
   puffs.update(dt * speed);
   if (seconds - lastWords > 0.5) { lastWords = seconds; words(); theEnd(); lessons(); }

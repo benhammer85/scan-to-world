@@ -22,16 +22,21 @@
  */
 import type { Topology } from '../mesh/topology';
 import type { Planet } from './sim';
+import type { Sign } from '../render/stipple';
 
 export type Kind = 'moss' | 'reef' | 'mangrove' | 'meadow' | 'forest' | 'heath';
 
-export const KINDS: { kind: Kind; name: string; wants: string; ink: string }[] = [
-  { kind: 'moss', name: 'moss', wants: 'new rock', ink: '#5e6b3a' },
-  { kind: 'reef', name: 'reef', wants: 'shallows', ink: '#3e6f6a' },
-  { kind: 'mangrove', name: 'mangroves', wants: 'a low, gentle shore', ink: '#44573a' },
-  { kind: 'meadow', name: 'meadows', wants: 'ground rich with ash', ink: '#7c7a36' },
-  { kind: 'forest', name: 'forest', wants: 'high ground', ink: '#2f3f26' },
-  { kind: 'heath', name: 'heath', wants: 'a high cone of ash', ink: '#6a4f5c' },
+/**
+ * Each kind is drawn as the old survey maps drew it, by its conventional sign in one ink rather
+ * than by a colour of its own: the land's in sepia, the sea's in the blue of the water-lines.
+ */
+export const KINDS: { kind: Kind; name: string; wants: string; ink: string; sign: Sign }[] = [
+  { kind: 'moss', name: 'moss', wants: 'new rock', ink: '#6b5a44', sign: 'dot' },
+  { kind: 'reef', name: 'reef', wants: 'shallows', ink: '#46708f', sign: 'cross' },
+  { kind: 'mangrove', name: 'mangroves', wants: 'a low, gentle shore', ink: '#4a3a2a', sign: 'tuft' },
+  { kind: 'meadow', name: 'meadows', wants: 'ground rich with ash', ink: '#5a4a36', sign: 'dash' },
+  { kind: 'forest', name: 'forest', wants: 'high ground', ink: '#3a2c20', sign: 'ring' },
+  { kind: 'heath', name: 'heath', wants: 'a high cone of ash', ink: '#4a3a2a', sign: 'caret' },
 ];
 
 export const ECOLOGY = {

@@ -65,22 +65,22 @@ describe('the kinds of life, and the ground each needs', () => {
 });
 
 describe('the islands', () => {
-  it('each island is named when it rises, and keeps its name as it grows', () => {
-    const isl = new Islands(topo, 5), h = new Float32Array(topo.vertexCount).fill(-0.1);
+  it('each island is found when it rises, and is still itself as it grows', () => {
+    const isl = new Islands(topo), h = new Float32Array(topo.vertexCount).fill(-0.1);
     const a = nearest(1, 0, 0), b = nearest(-1, 0, 0);
     for (const w of within(a, 0.15)) h[w] = 0.05;
     for (const w of within(b, 0.15)) h[w] = 0.05;
     const named = isl.update(h, 1);
     expect(named.length).toBe(2);
-    expect(named[0].name).not.toBe(named[1].name);
-    const first = isl.list.find((i) => i.vertices.includes(a))!.name;
+    expect(named[0].id).not.toBe(named[1].id);
+    const first = isl.list.find((i) => i.vertices.includes(a))!.id;
     for (const w of within(a, 0.3)) h[w] = 0.05; // it grows
     expect(isl.update(h, 2).length).toBe(0);
-    expect(isl.list.find((i) => i.vertices.includes(a))!.name).toBe(first);
+    expect(isl.list.find((i) => i.vertices.includes(a))!.id).toBe(first);
   });
 
   it('a rock too small to count is not an island', () => {
-    const isl = new Islands(topo, 5), h = new Float32Array(topo.vertexCount).fill(-0.1);
+    const isl = new Islands(topo), h = new Float32Array(topo.vertexCount).fill(-0.1);
     h[nearest(0, 1, 0)] = 0.05;
     expect(isl.update(h, 1).length).toBe(0);
   });
