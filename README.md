@@ -27,6 +27,19 @@ Every world you make, what grew on it, the railways between worlds, which way ea
 * **Starting over:** open the cabinet (tap the paper round the world) and tap *Begin a new atlas* twice.
 * **Not kept:** a scan's photo texture. Its vertex colours are kept, and the paper look uses only a little of either.
 
+## Volcano (a prototype beside it)
+
+`volcano.html` (`src/volcano/`) is a separate prototype, and Atlas Minor is untouched by it. You are a vent on the floor of an ocean planet.
+
+* **Hold** the world to build pressure, and **let go** to erupt. Lava pours from your vent and out at a flank, runs downhill in tongues, and cools into rock: fast in the sea, slower on land.
+* **Tip the world** and the lava runs towards the bottom of the screen, so turning is how you steer.
+* **The planet pushes back:** waves wear the coasts, steep ground slumps, and rain wears the heights. A rival vent on the far side raises land of its own, and either of you can bury the other's.
+* **Stages:** a seamount, then an island, a volcano and an archipelago. At the archipelago stage, tap your own coast to open a new vent.
+* **Life** takes land that stays quiet long enough, drawn as faint stipple.
+* The pen plots the coasts and contours as they form: pencil while lava runs, inked once it sets.
+
+Locally, run `npm run dev` and open `/volcano.html`. The simulation (`src/volcano/sim.ts`) has no drawing in it and is tested in `test/volcano.test.ts`.
+
 ## Run it
 
 ```bash

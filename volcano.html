@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#f4efe4" />
+    <link rel="icon" href="./icon.svg" type="image/svg+xml" />
+    <title>Volcano</title>
+    <style>
+      html, body { margin: 0; height: 100%; background: #f4efe4; overflow: hidden; touch-action: none; -webkit-user-select: none; user-select: none; }
+      #stage { position: fixed; inset: 0; width: 100vw; height: 100dvh; }
+      #stage canvas { width: 100% !important; height: 100% !important; display: block; }
+      .engraved { font-family: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif; color: #2e2118; }
+      #stage-name { position: fixed; top: calc(14px + env(safe-area-inset-top)); left: 0; right: 0; text-align: center; font-size: 19px; font-style: italic; letter-spacing: 0.04em; pointer-events: none; transition: opacity 1.2s; }
+      #shares { position: fixed; top: calc(40px + env(safe-area-inset-top)); left: 0; right: 0; text-align: center; font-size: 12px; opacity: 0.7; pointer-events: none; }
+      #hint { position: fixed; bottom: calc(14px + env(safe-area-inset-bottom)); left: 16px; right: 16px; text-align: center; font-size: 13px; opacity: 0.65; pointer-events: none; transition: opacity 2s; }
+      #hint.gone { opacity: 0; }
+      #event { position: fixed; top: 38%; left: 0; right: 0; text-align: center; font-size: 22px; font-style: italic; opacity: 0; pointer-events: none; transition: opacity 1.4s; }
+      #event.shown { opacity: 0.85; }
+    </style>
+  </head>
+  <body>
+    <div id="stage"></div>
+    <div id="stage-name" class="engraved">A seamount</div>
+    <div id="shares" class="engraved"></div>
+    <div id="event" class="engraved"></div>
+    <p id="hint" class="engraved">hold the world to build pressure, let go to erupt · tip the world and the lava runs down the screen · tap for a small eruption · pinch to come closer</p>
+    <script type="module" src="/src/volcano/main.ts"></script>
+  </body>
+</html>
