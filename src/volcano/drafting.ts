@@ -73,21 +73,19 @@ function chaikin(p: Float32Array, closed: boolean): Float32Array {
 }
 
 /**
- * The three sets of lines: the land's contours (the coast among them), the sea's depth lines,
- * and the water-lines, close lines following the coast out, from the sea held between just below
- * the surface and a little deeper.
+ * The two sets of lines: the land's contours (the coast among them), and the sea's depth lines,
+ * set wide, as a chart shows only a few. (No water-lining: of all the lines it was the most, and
+ * the most often redrawn, and a calm map is better without it.)
  */
-export function draftLines(s: Surface, h: Float32Array): { land: Polyline[]; sea: Polyline[]; water: Polyline[] } {
-  const n = s.vertexCount, sea = new Uint8Array(n), land = new Uint8Array(n), held = new Float32Array(n);
+export function draftLines(s: Surface, h: Float32Array): { land: Polyline[]; sea: Polyline[] } {
+  const n = s.vertexCount, sea = new Uint8Array(n), land = new Uint8Array(n);
   for (let v = 0; v < n; v++) {
     if (h[v] < 0) sea[v] = 1; else land[v] = 1;
-    held[v] = Math.min(-0.001, Math.max(-0.05, h[v]));
   }
   const t = s as unknown as Topology; // the extractor uses only what a Surface has: triangles, positions, normals
   return {
     land: rounded(extractContours(t, h, { interval: 0.035, lift: 0.003, mask: sea })),
-    sea: rounded(extractContours(t, h, { interval: 0.07, lift: 0.002, mask: land })),
-    water: rounded(extractContours(t, held, { interval: 0.011, lift: 0.0015, mask: land })),
+    sea: rounded(extractContours(t, h, { interval: 0.14, lift: 0.002, mask: land })),
   };
 }
 

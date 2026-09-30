@@ -73,8 +73,8 @@ In headless play-throughs, gentle flows alone kept 4 kinds, doing nothing kept 3
 
 **Kept as it's played:** the world is saved quietly (in IndexedDB) every 15 seconds and whenever the page is hidden. Come back and the card says *Your world, as you left it*; touch it and you're where you were, and however you hold the phone then is level. `?seed=` starts that world fresh instead.
 
-**Smooth by design:** the heavy work never runs on the page's own thread, and nothing pulses. A contour keeps who it is as the land grows beneath it (known by its level and where it lies, not by its exact points), so it stays inked and keeps its age instead of being pencilled or fading in afresh each time the lines are drawn again.
-* Contours, water-lines and life's signs are drafted in one worker (`drafts.ts`), and the finer surface is carried, raised and given its normals in another (`surface.ts`). Their results come back packed into flat arrays and move between threads without being copied.
+**Smooth by design:** the heavy work never runs on the page's own thread, and nothing pulses. The map is corrected seldom: contours every 1.5 s while lava runs (4 s at rest), life every 3 s, the camera easing gently; steam is a wisp or two, not a cloud; and on the ocean world wishes and stones come rarely (every 60–100 s and 90–150 s), so the chain stays the point. A contour keeps who it is as the land grows beneath it (known by its level and where it lies, not by its exact points), so it stays inked and keeps its age instead of being pencilled or fading in afresh each time the lines are drawn again.
+* Contours and life's signs are drafted in one worker (`drafts.ts`), and the finer surface is carried, raised and given its normals in another (`surface.ts`). Their results come back packed into flat arrays and move between threads without being copied.
 * What comes back is taken up one piece a frame (one pen, one kind), never on a frame that has already redrawn the surface or used much of its time, and never more than a few frames late.
 * The simulation's slow forces run in halves a step apart, with life the step after, so no one step carries them all. The sea's colour is worked out in the shader from depth rather than uploaded.
 * In a headless run with lava flowing, the page's own work per frame went from a worst of 35 ms to 13 ms, with 95% of frames under 9 ms.
@@ -91,7 +91,7 @@ In headless play-throughs, gentle flows alone kept 4 kinds, doing nothing kept 3
   * meadows: grass tufts, yellow-green to straw;
   * forest: small trees, leafy or conifer, deep green;
   * heath: low shrubs, heather purple to brown.
-* Coasts are water-lined, and breakers are short blue strokes where the sea wears a coast. The shading is kept flat, like paper.
+* The sea has only a few depth lines, set wide, and no water-lining: less on the map, and less changing, is calmer (Mars felt smoothest because it has least on it). Breakers are short blue strokes where the sea wears a coast. The shading is kept flat, like paper.
 
 **The ending:** when the fire is out, a long age passes quickly while the sea and rain work on what you made. Then the chart is drawn round the world in place: a pen goes round the plate's double border, the world steps back and up the page, and what lasted and the eras, with what happened in each, come in at the foot above the key. You can still turn the world and look at it. Turning it right round begins another, and "keep the chart" saves it as a plate (PNG; this works on the site, but not inside the claude.ai viewer).
 

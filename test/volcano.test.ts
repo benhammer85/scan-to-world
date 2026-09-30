@@ -97,7 +97,7 @@ describe('the volcano', () => {
     pl.pressure = VOLCANO.cap - 0.01;
     pl.step(1 / 30);
     expect(pl.pressure).toBeLessThan(1);
-    expect(pl.news.some((n) => n.includes('tears open'))).toBe(true);
+    expect(pl.news.some((n) => n.includes('blew apart'))).toBe(true);
     expect(pl.rock[at]).toBeLessThan(summit);
   });
 

@@ -30,7 +30,6 @@ export interface Palette {
   landInkHigh: string;
   pencil: string;
   seaInk: string;
-  waterInk: string;
 }
 
 export interface World {
@@ -52,13 +51,13 @@ export const WORLDS: World[] = [
     id: 'ocean',
     numeral: 'I',
     title: 'An ocean world',
-    first: 'A young world of water, and the heat beneath it, which will not last.',
-    then: 'The crust drifts over the heat, and carries it round the world. Held level, the heat gathers beneath the volcano and its smoke thickens; tip it, and the heat pours out; tip it when the smoke is heavy, and it bursts. Leave a chain of living islands all the way round before the fire goes out.',
-    rules: { drift: 0.0065, rises: 0, heat: 740, floor: -0.22 },
+    first: 'A young ocean world, with heat beneath it that won’t last.',
+    then: 'The sea floor drifts slowly over the heat. Hold the world level and pressure builds; tip it and lava pours out; tip it when the smoke is heavy and it erupts. Build living islands along the dotted line, all the way round, before the heat runs out.',
+    rules: { drift: 0.0065, rises: 0, heat: 740, floor: -0.22, impactEvery: [90, 150] },
     palette: {
       paper: '#ecdfc2', basalt: '#9a8a76', ash: '#b3ada2', lava: '#b8563c', deepLava: '#8f3b28',
       shallow: '#d4e3ec', deep: '#b1c8d8',
-      landInk: '#6b4a2e', landInkHigh: '#4a2f1c', pencil: '#b9a68c', seaInk: '#5b82a3', waterInk: '#6b8fac',
+      landInk: '#6b4a2e', landInkHigh: '#4a2f1c', pencil: '#b9a68c', seaInk: '#5b82a3',
     },
     goal: 'ring',
   },
@@ -66,8 +65,8 @@ export const WORLDS: World[] = [
     id: 'moon',
     numeral: 'II',
     title: 'The Moon',
-    first: 'An old, airless world, scarred by the stones that made it, with a little heat left in it.',
-    then: 'Here the lava is thin as water, and floods whatever is low. The heat rises to whatever you turn uppermost; tip it, and the lava pours. Flood each of the great basins into a dark sea before the heat is gone.',
+    first: 'The Moon: old, airless, and nearly cold.',
+    then: 'Lava here runs like water and fills low ground. The heat rises to whatever you turn to the top; tip the world to pour. Flood each dotted basin before the heat runs out.',
     rules: {
       terrain: 'moon', basins: 5, floor: 0.22, rough: 0.02,
       waves: 0, rain: 0, sink: 0, swell: 0, life: false,
@@ -78,7 +77,7 @@ export const WORLDS: World[] = [
     palette: {
       paper: '#e4e1da', basalt: '#9c9a95', ash: '#b9b6b0', lava: '#b8563c', deepLava: '#8f3b28', flooded: '#6f7074',
       shallow: '#d4e3ec', deep: '#b1c8d8',
-      landInk: '#55524d', landInkHigh: '#35332f', pencil: '#b6b2aa', seaInk: '#5b82a3', waterInk: '#6b8fac',
+      landInk: '#55524d', landInkHigh: '#35332f', pencil: '#b6b2aa', seaInk: '#5b82a3',
     },
     goal: 'basins',
   },
@@ -86,8 +85,8 @@ export const WORLDS: World[] = [
     id: 'mars',
     numeral: 'III',
     title: 'Mars',
-    first: 'A cold red world, its crust too thick to move, and one great fire under it.',
-    then: 'The heat stays where it is, and the mountain rises over it; the slopes can stand steep here, but a tall mountain needs a broad foot. Dust storms scour the heights, and soft ash most: cover it with lava before one comes. Raise the mountain twenty-six kilometres above the plain.',
+    first: 'Mars: cold, red, and still.',
+    then: 'The heat stays in one place, so the mountain grows over it. A tall mountain needs a wide base. Dust storms wear it down, loose ash most of all, so cover ash with lava before a storm arrives. Raise the mountain 26 km high.',
     rules: {
       terrain: 'mars', basins: 0, craters: 18, floor: 0.05, rough: 0.025,
       waves: 0, rain: 0, sink: 0, life: false,
@@ -99,7 +98,7 @@ export const WORLDS: World[] = [
     palette: {
       paper: '#ead3b4', basalt: '#a67a5c', ash: '#c9ad92', lava: '#b8563c', deepLava: '#8f3b28',
       shallow: '#d4e3ec', deep: '#b1c8d8',
-      landInk: '#7a4a2e', landInkHigh: '#5a321c', pencil: '#cfae8e', seaInk: '#5b82a3', waterInk: '#6b8fac',
+      landInk: '#7a4a2e', landInkHigh: '#5a321c', pencil: '#cfae8e', seaInk: '#5b82a3',
     },
     goal: 'height',
     height: { target: 26, kmPerUnit: 40 },

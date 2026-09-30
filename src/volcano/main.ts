@@ -173,11 +173,9 @@ group.add(mesh);
 
 const landPen = new PlotterLines({ ...defaultPlotterStyle, ink: P.landInk, inkHigh: P.landInkHigh, pencil: P.pencil, alpha: 0.62, indexAlpha: 0.95, indexEvery: 5, fadeSeconds: 0, widthPx: 1.15, nib: false, steady: true }); // no nib: nothing on the world should look like something to press
 const seaPen = new PlotterLines({ ...defaultPlotterStyle, ink: P.seaInk, inkHigh: P.seaInk, pencil: '#a9bfd0', alpha: 0.45, indexAlpha: 0.6, fadeSeconds: 0, pen: false, appearSeconds: 2, widthPx: 0.95, steady: true });
-/** Water-lining: close lines following the coast out to sea, as the old engraved maps drew it. */
-const waterPen = new PlotterLines({ ...defaultPlotterStyle, ink: P.waterInk, inkHigh: P.waterInk, pencil: '#a9bfd0', alpha: 0.4, indexAlpha: 0.4, fadeSeconds: 0, pen: false, appearSeconds: 2, widthPx: 0.8, steady: true });
-landPen.width = seaPen.width = waterPen.width = 2;
-pens.push(landPen, seaPen, waterPen);
-group.add(seaPen.object, waterPen.object, landPen.object);
+landPen.width = seaPen.width = 2;
+pens.push(landPen, seaPen);
+group.add(seaPen.object, landPen.object);
 /** Life by the sign of its kind; and breakers, short blue strokes, where the sea is wearing at a coast. */
 const kindDots = KINDS.map((k) => new Stipple(k.ink, k.sign, k.sign === 'dot' ? 1.7 : k.sign === 'tree' ? 5.5 : 4.5, { ink2: k.ink2 }));
 const foam = new Stipple('#46708f', 'dash', 6);
@@ -361,12 +359,12 @@ const nearestOf = Uint32Array.from({ length: FN }, (_, f) => fine.nearestCoarse(
 drafts.post({ init: { triangles: ftopo.triangles.slice(), basePositions: fbase.slice(), relief: RELIEF, parts: fine.parts, nearest: nearestOf } });
 let linesOut: { mode: RevealMode; from: THREE.Vector3 } | null = null, lifeOut = false;
 drafts.onmessage = (data) => {
-  const d = data as { lines?: { land: Packed; sea: Packed; water: Packed }; life?: { kinds: Float32Array[]; foam: Float32Array } };
+  const d = data as { lines?: { land: Packed; sea: Packed }; life?: { kinds: Float32Array[]; foam: Float32Array } };
   if (d.lines && linesOut) {
     // Taken up on the next frame that has room, not now: see `chores`.
     const { mode, from } = linesOut, got = d.lines;
     // A pen to a frame.
-    chores.push(() => landPen.setLines(unpack(got.land), mode, from), () => seaPen.setLines(unpack(got.sea), 'settle'), () => waterPen.setLines(unpack(got.water), 'settle'));
+    chores.push(() => landPen.setLines(unpack(got.land), mode, from), () => seaPen.setLines(unpack(got.sea), 'settle'));
     linesOut = null;
   }
   if (d.life) {
@@ -382,7 +380,8 @@ function redrawLines(now: number): void {
   const busy = planet.molten > 0.01 || planet.erupting;
   // While lava runs, new ground is pencilled; once it has cooled, the pen inks it. The sea's
   // slow wearing is simply redrawn, now and then, as a map is corrected.
-  const every = busy ? 0.5 : 2.5;
+  // Seldom, so the map changes calmly: a correction now and then, not a flicker.
+  const every = busy ? 1.5 : 4;
   if (now - lastLines < every && !(lastQuiet === false && !busy)) return;
   const mode: RevealMode = busy ? 'live' : lastQuiet ? 'settle' : 'ink';
   lastLines = now;
@@ -400,7 +399,7 @@ function redrawLines(now: number): void {
 const signDensity = KINDS.map((k): [number, number] => (k.sign === 'dot' ? [1600, 3600] : k.kind === 'forest' ? [90, 170] : [180, 330]));
 /** Life by its signs, and the breakers, drafted in the worker now and then. */
 function redrawLife(now: number): void {
-  if (lifeOut || now - lastLife < 1.2) return;
+  if (lifeOut || now - lastLife < 3) return;
   lastLife = now;
   lifeOut = true;
   // The simulation's own fields, small and coarse: the worker carries them onto the finer surface.
@@ -483,9 +482,9 @@ function reckonAim(): void {
 const won = () => aimOf > 0 && aimDone >= aimOf;
 let toldHeight = 0, toldDone = 0, toldAimAt = -1e9;
 /** The aim, in a line for the foot: said once the world has begun, and again if a long while passes with nothing gained. */
-const AIM_WORDS = WORLD.goal === 'ring' ? 'Leave living islands along the dotted line, all the way round the world'
+const AIM_WORDS = WORLD.goal === 'ring' ? 'Build living islands along the dotted line, all the way round'
   : WORLD.goal === 'basins' ? 'Flood each dotted basin with lava'
-  : `Raise the mountain ${HEIGHT.target} km above the plain`;
+  : `Raise the mountain ${HEIGHT.target} km high`;
 /** Say the aim now and then, and what's been gained each time something is. */
 function tellAim(now: number): void {
   if (planet.over || ending) return;
@@ -494,7 +493,7 @@ function tellAim(now: number): void {
   const done = Math.round(aimDone);
   if (done > toldDone && done < aimOf) {
     toldAimAt = now;
-    announce(WORLD.goal === 'ring' ? `${done} of ${aimOf} stretches of the chain are living` : `${done} of ${aimOf} basins flooded`);
+    announce(WORLD.goal === 'ring' ? `${done} of ${aimOf} stretches living` : `${done} of ${aimOf} basins flooded`);
   }
   toldDone = done;
 }
@@ -515,7 +514,7 @@ function drawAim(now: number): void {
   if (WORLD.goal === 'height') {
     // No mark on the world: its height is told at the foot, each time it stands two km higher.
     const step = Math.floor(aimDone / 2) * 2;
-    if (begun && step > toldHeight && step < aimOf) { toldHeight = step; toldAimAt = now; announce(`The mountain stands ${step} km above the plain, of ${aimOf}`); }
+    if (begun && step > toldHeight && step < aimOf) { toldHeight = step; toldAimAt = now; announce(`The mountain is ${step} of ${aimOf} km high`); }
     return;
   }
   if (chain) {
@@ -622,7 +621,7 @@ const CUES: { ready: () => boolean; done: (since: number) => boolean; begin?: ()
   },
   {
     ready: () => ecology.held.length > 0, done: (s) => ecology.kept > 0 || s > 80,
-    begin: () => { $('legend').classList.add('new'); announce('Six kinds of life, each on its own ground'); },
+    begin: () => { $('legend').classList.add('new'); announce('Six kinds of life, each needing its own ground'); },
     words: () => null,
   },
   {
@@ -649,7 +648,7 @@ function lessons(): void {
     return;
   }
   planet.stonesFall = true;
-  if (!embersSaid && planet.era === 'embers') { embersSaid = true; announce('The heat is nearly gone. What lives when it is out is what your world keeps'); }
+  if (!embersSaid && planet.era === 'embers') { embersSaid = true; announce('The heat is nearly gone'); }
 }
 
 
@@ -660,8 +659,8 @@ function feel(pattern: number | number[]): void {
 
 // ---------------------------------------------------------------- words, and the key
 /** What's worth saying: the turns in the world's story, not every happening in it. */
-const QUIET_WORDS = /^(Life wishes|A stone is coming|Land breaks|Life begins in|The first|Moss takes|A wish kept|Held too long|The plume takes in|The fire is out|The heat is nearly|A dust storm|The storm passes)/;
-const ERAS: Record<Era, string> = { young: 'The young fire', burning: 'The long burning', cooling: 'The cooling', embers: 'The last embers', out: 'The fire is out' };
+const QUIET_WORDS = /^(Wanted where|A stone is coming|Land breaks|Life begins in|The first|Moss grows|Wish met|Held too long|Stone caught|The fire is out|The heat is nearly|A dust storm|The storm passes)/;
+const ERAS: Record<Era, string> = { young: 'A young fire', burning: 'Burning strong', cooling: 'Cooling', embers: 'Last embers', out: 'The fire is out' };
 let shownEra: Era = 'young';
 const eraFrom: { name: string; from: number }[] = [{ name: ERAS.young, from: 0 }];
 const queue: string[] = [];
@@ -720,10 +719,10 @@ function effects(dt: number): void {
   // Steam where lava runs into the sea, as much as there is lava there.
   steamIn -= dt;
   if (steamIn <= 0) {
-    steamIn = 0.12;
+    steamIn = 0.6;
     for (let v = 0; v < N; v++) {
       const l = planet.lava[v];
-      if (l > 0.004 && planet.rock[v] < 0.005 && Math.random() < Math.min(0.25, l * 4)) puffs.add('steam', p[v * 3], p[v * 3 + 1], p[v * 3 + 2], 1, Math.random, up);
+      if (l > 0.004 && planet.rock[v] < 0.005 && Math.random() < Math.min(0.06, l)) puffs.add('steam', p[v * 3], p[v * 3 + 1], p[v * 3 + 2], 1, Math.random, up);
     }
   }
   // A dust storm: dust driven across the face of the world, low and fast.
@@ -762,14 +761,14 @@ function theEnd(): void {
   if (!ending && begun && won()) {
     ending = { from: planet.seconds, shown: false, at: 0, info: null, turned: 0, won: true };
     queue.length = 0;
-    announce(WORLD.goal === 'ring' ? 'The world is ringed with living islands' : WORLD.goal === 'height' ? 'The great mountain stands' : 'The seas of the Moon are flooded');
+    announce(WORLD.goal === 'ring' ? 'Done: living islands all the way round' : WORLD.goal === 'height' ? `Done: the mountain reaches ${HEIGHT.target} km` : 'Done: every basin flooded');
     feel([30, 50, 30]);
   }
   if (!ending && planet.over) {
     ending = { from: planet.seconds, shown: false, at: 0, info: null, turned: 0, won: false };
     $('stage-name').textContent = ERAS.out;
     queue.length = 0;
-    announce('The fire is out. A long age passes');
+    announce('The fire is out. Time passes');
   }
   // Met, the chart comes a few moments later; not, after a long age has worn at what was made.
   if (ending && !ending.shown && planet.seconds - ending.from >= (ending.won ? 0 : LONG_AGE) && (!ending.won || seconds - wonAt() > 4)) {
@@ -785,11 +784,11 @@ function theEnd(): void {
 const SHORT: [RegExp, (m: RegExpMatchArray) => string][] = [
   [/Land breaks the surface/, () => 'first land'],
   [/Life begins in/, () => 'life begins'],
-  [/Moss takes/, () => 'moss'],
+  [/Moss grows/, () => 'moss'],
   [/The first (\w+)/, (m) => m[1]],
-  [/A wish kept/, () => 'a wish kept'],
-  [/tears open/, () => 'a caldera'],
-  [/takes in the stone/, () => 'a stone caught'],
+  [/Wish met/, () => 'a wish met'],
+  [/blew apart/, () => 'a caldera'],
+  [/Stone caught/, () => 'a stone caught'],
   [/The stone falls/, () => 'a stone falls'],
 ];
 function chartInfo(): ChartInfo {
@@ -805,12 +804,12 @@ function chartInfo(): ChartInfo {
   reckonAim();
   const met = !!ending?.won, ring = WORLD.goal === 'ring';
   return {
-    title: ring ? (met ? 'A ringed world' : 'Not yet ringed') : WORLD.goal === 'height' ? (met ? 'The great mountain' : 'Not yet the great mountain') : met ? 'The seas of the Moon' : 'The seas not yet filled',
+    title: ring ? (met ? 'Ringed with islands' : 'Not yet ringed') : WORLD.goal === 'height' ? (met ? 'The great mountain' : 'Not high enough yet') : met ? 'Every basin flooded' : 'Not every basin flooded',
     subtitle: `${WORLD.numeral} · ${WORLD.title} · world ${seed} · ${mm} of fire`,
     kinds: LIFE ? KINDS.map((k) => ({ name: k.name, ink: k.ink, sign: k.sign, living: living.has(k.kind) })) : [],
     summary: ring
-      ? `${aimDone} of ${aimOf} stretches held · ${living.size} of ${KINDS.length} kinds of life`
-      : WORLD.goal === 'height' ? `the summit ${Math.round(aimDone)} km above the plain, of ${aimOf}` : `${aimDone} of ${aimOf} basins flooded`,
+      ? `${aimDone} of ${aimOf} stretches living · ${living.size} of ${KINDS.length} kinds of life`
+      : WORLD.goal === 'height' ? `${Math.round(aimDone)} of ${aimOf} km high` : `${aimDone} of ${aimOf} basins flooded`,
     length,
     eras,
     events,
@@ -836,7 +835,7 @@ function drawEnding(): void {
   }
   if (progress >= 1) {
     const next = ending.won ? nextWorld(WORLD) : null;
-    $('again').textContent = next ? `turn the world right round to go on to ${next.title.replace(/^An? /, 'an ').replace(/^The /, 'the ')}` : ending.won ? 'turn the world right round to begin again' : 'turn the world right round to try again';
+    $('again').textContent = next ? `turn the world all the way round for ${next.title.replace(/^An? /, 'an ').replace(/^The /, 'the ')}` : ending.won ? 'turn the world all the way round to start again' : 'turn the world all the way round to try again';
     $('again').classList.add('shown');
     $('keep').classList.add('shown');
   }
@@ -1002,8 +1001,8 @@ $('begin').addEventListener('pointerdown', () => {
 void resume().then((back) => {
   if (!back) return;
   ($('begin').querySelector('.first') as HTMLElement).textContent = 'Your world, as you left it.';
-  ($('begin').querySelector('.then') as HTMLElement).textContent = 'However you hold it now is level.';
-  ($('begin').querySelector('.touch') as HTMLElement).textContent = 'touch to return to it';
+  ($('begin').querySelector('.then') as HTMLElement).textContent = 'However you hold it now counts as level.';
+  ($('begin').querySelector('.touch') as HTMLElement).textContent = 'touch to continue';
 });
 
 // ---------------------------------------------------------------- the camera, and the pace
@@ -1024,7 +1023,7 @@ function breathe(dt: number): void {
   // At the end, the world steps back and up the page, leaving the foot for the chart.
   const want = ending?.shown ? farthest * 0.92 : reachDist, wantLift = ending?.shown ? 0.09 : 0;
   if (!ending?.shown && seconds - zoomedAt < 10) return;
-  const d = dist + (want - dist) * Math.min(1, 0.4 * dt), l = lift + (wantLift - lift) * Math.min(1, 0.6 * dt);
+  const d = dist + (want - dist) * Math.min(1, 0.15 * dt), l = lift + (wantLift - lift) * Math.min(1, 0.6 * dt);
   if (Math.abs(d - dist) > 1e-4 || Math.abs(l - lift) > 1e-5) { dist = d; lift = l; look(); }
 }
 /** If the phone can't keep up, draw a little less finely: the pixel ratio comes down a half at a time, to no less than 1. */
@@ -1094,7 +1093,6 @@ renderer.setAnimationLoop(() => {
   effects(dt);
   landPen.update(dt, camera);
   seaPen.update(dt, camera);
-  waterPen.update(dt, camera);
   if (begun) drawAim(seconds);
   aimInk.update(dt);
   aimPencil.update(dt);

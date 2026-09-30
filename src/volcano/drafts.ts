@@ -29,8 +29,8 @@ export const handleDrafts: Handler = (message, post) => {
   if ('lines' in ask) {
     shape(surface, ask.lines.heights, relief);
     const lines = draftLines(surface, ask.lines.heights);
-    const land = pack(lines.land), sea = pack(lines.sea), water = pack(lines.water);
-    post({ lines: { id: ask.lines.id, land, sea, water } }, [...packedBuffers(land), ...packedBuffers(sea), ...packedBuffers(water)]);
+    const land = pack(lines.land), sea = pack(lines.sea);
+    post({ lines: { id: ask.lines.id, land, sea } }, [...packedBuffers(land), ...packedBuffers(sea)]);
     return;
   }
   if ('life' in ask) {

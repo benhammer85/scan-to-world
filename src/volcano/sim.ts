@@ -421,9 +421,9 @@ export class Planet {
     const rise = Math.min(this.reserve, this.k.rising * Math.sqrt(Math.max(0, this.reserve) / this.k.heat) * dt + 1e-4 * dt);
     this.reserve -= rise;
     this.pressure += rise;
-    if (this.pressure >= this.k.cap) { this.collapse(); this.erupt(true); this.tally.calderas++; this.tell('Held too long, the mountain tears open'); }
+    if (this.pressure >= this.k.cap) { this.collapse(); this.erupt(true); this.tally.calderas++; this.tell('Held too long: the mountain blew apart'); }
     // The store is spent: whatever pressure is left comes out by itself, the last of the fire.
-    if (this.reserve < 0.01 && this.pressure >= this.k.least && !this.erupting) { this.erupt(); this.tell('The last of the heat comes out'); }
+    if (this.reserve < 0.01 && this.pressure >= this.k.least && !this.erupting) { this.erupt(); this.tell('The last of the heat escapes'); }
     if (this.reserve < 0.01 && this.pressure < this.k.least) this.pressure = 0;
     if (this.gravity) this.tipped(dt);
     this.movePlume(dt);
@@ -454,7 +454,7 @@ export class Planet {
       return;
     }
     this.stormIn -= dt;
-    if (this.stormComing === null && this.stormIn <= this.k.stormWarning) { this.stormComing = this.stormIn; this.tell('A dust storm is rising'); }
+    if (this.stormComing === null && this.stormIn <= this.k.stormWarning) { this.stormComing = this.stormIn; this.tell('A dust storm is coming'); }
     if (this.stormComing !== null) this.stormComing = Math.max(0, this.stormIn);
     if (this.stormIn <= 0) { this.storm = true; this.stormComing = null; this.stormLeft = this.k.stormLasts; }
   }
@@ -513,7 +513,7 @@ export class Planet {
     const caught = this.warmthAt(at);
     this.reserve += this.k.impactHeat * (1 + (this.k.caught - 1) * caught);
     this.tally.stones++;
-    if (caught > 0.5) { this.tally.caught++; this.tell("The plume takes in the stone's heat"); }
+    if (caught > 0.5) { this.tally.caught++; this.tell('Stone caught: more heat'); }
   }
 
   /** The share of the world that is land (above the sea). */
@@ -754,7 +754,7 @@ export class Planet {
       if (v >= 0) {
         L[v] = 0.5;
         for (let k = t.nbrOffsets[v]; k < t.nbrOffsets[v + 1]; k++) L[t.nbrList[k]] = 0.3;
-        if (!this.began) this.tell('Life begins in the warm water at the vents');
+        if (!this.began) this.tell('Life begins in the warm water');
         this.began = true;
       }
     }

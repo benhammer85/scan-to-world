@@ -56,7 +56,7 @@ export const ECOLOGY = {
   /** A kind has taken hold when it lives on this share of the world (as vertices). */
   holds: 0.0012,
   /** A wish comes every so many seconds (between) once life has begun, lasts this long, and wants its kind this near. */
-  wishEvery: [20, 40] as [number, number],
+  wishEvery: [60, 100] as [number, number],
   wishLasts: 100,
   wishReach: 0.14,
   /** Kept, it wants this many vertices of its kind there (on a planet of the drawn detail), and stirs the fire this much. */
@@ -116,7 +116,7 @@ export class Ecology {
     for (const k of KINDS) {
       if (!this.held.includes(k.kind) && this.count.get(k.kind)! >= ECOLOGY.holds * n) {
         this.held.push(k.kind);
-        pl.tell(k.kind === 'moss' ? 'Moss takes the new rock' : `The first ${k.name} ${k.kind === 'forest' || k.kind === 'heath' || k.kind === 'reef' ? 'takes' : 'take'} hold`);
+        pl.tell(k.kind === 'moss' ? 'Moss grows on the new rock' : `The first ${k.name} ${k.kind === 'forest' || k.kind === 'heath' || k.kind === 'reef' ? 'takes' : 'take'} hold`);
       }
     }
     this.wishes(dt);
@@ -130,7 +130,7 @@ export class Ecology {
         const k = KINDS.find((x) => x.kind === this.wish!.kind)!;
         this.kept++;
         pl.reserve += ECOLOGY.wishHeat;
-        pl.tell(`A wish kept: ${k.name} in its ${k.wants.replace(/^an? /, '')}. The fire stirs`);
+        pl.tell(`Wish met: ${k.name}. More heat`);
         this.wish = null;
         this.wishIn = this.between();
       } else if (this.wish.left <= 0 || pl.over) {
@@ -154,7 +154,7 @@ export class Ecology {
     if (this.here(wish) >= ECOLOGY.wishNeeds * this.scale) { this.wishIn = 3; return; } // already there: ask for something else
     this.wish = wish;
     const k = KINDS.find((x) => x.kind === kind)!;
-    pl.tell(`Life wishes for ${k.name} where it is pencilled: ${k.wants}`);
+    pl.tell(`Wanted where pencilled: ${k.name}, on ${k.wants}`);
   }
 
   /** How many vertices of the wished-for kind live near the wish. */
