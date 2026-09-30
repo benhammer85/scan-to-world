@@ -8,10 +8,12 @@
  * becomes its chart. `drawChart` sets it out as a plate on a canvas of its
  * own, so it can be kept as a picture.
  */
+import { drawSign, type Sign } from '../render/signs';
+
 export interface ChartInfo {
   title: string;
   subtitle: string;
-  kinds: { name: string; ink: string; sign: string; living: boolean }[];
+  kinds: { name: string; ink: string; sign: Sign; living: boolean }[];
   summary: string;
   /** The game's length in seconds, its eras, and what happened when. */
   length: number;
@@ -131,14 +133,6 @@ export function drawFrame(g: CanvasRenderingContext2D, w: number, h: number, k: 
 }
 
 /** A kind's conventional sign, as the page draws it, at a size (half its width). */
-export function sign(g: CanvasRenderingContext2D, name: string, x: number, y: number, r: number, ink: string): void {
-  g.strokeStyle = ink; g.fillStyle = ink; g.lineWidth = 2.2; g.lineCap = 'round';
-  g.beginPath();
-  if (name === 'dot') { g.arc(x, y, r * 0.3, 0, Math.PI * 2); g.fill(); return; }
-  if (name === 'ring') g.arc(x, y, r * 0.65, 0, Math.PI * 2);
-  if (name === 'cross') { g.moveTo(x - r, y); g.lineTo(x + r, y); g.moveTo(x, y - r); g.lineTo(x, y + r); }
-  if (name === 'dash') { g.moveTo(x - r, y); g.lineTo(x + r, y); }
-  if (name === 'tuft') { g.moveTo(x - r, y + r * 0.5); g.lineTo(x + r, y + r * 0.5); g.moveTo(x, y + r * 0.5); g.lineTo(x, y - r * 0.6); g.moveTo(x - r * 0.6, y + r * 0.5); g.lineTo(x - r * 0.8, y - r * 0.3); g.moveTo(x + r * 0.6, y + r * 0.5); g.lineTo(x + r * 0.8, y - r * 0.3); }
-  if (name === 'caret') { g.moveTo(x - r * 0.8, y + r * 0.45); g.lineTo(x, y - r * 0.5); g.lineTo(x + r * 0.8, y + r * 0.45); }
-  g.stroke();
+export function sign(g: CanvasRenderingContext2D, name: Sign, x: number, y: number, r: number, ink: string, width?: number): void {
+  drawSign(g, name, x, y, r, ink, width);
 }

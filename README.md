@@ -37,7 +37,7 @@ Every world you make, what grew on it, the railways between worlds, which way ea
 | II | **The Moon** | No air, no water, no drift, no life, and stones falling all the while. Lava as thin as water, which floods low ground instead of building mountains. The heat rises to whatever you turn uppermost. | **Flood the seas:** fill each of the five great basins (70% of its floor) before the heat is gone. Flooded ground stays dark, as the Moon's seas are. |
 | III | **Mars** | No drift, so the heat stays in one place and the mountain rises over it; weak gravity, so slopes stand steep. Thin air: dust storms, seen rising first, scour the heights, soft ash most. Craters, and a stone now and then. | **Raise the great mountain:** stand the summit 26 km above the plain, shown by a spot height beside it. Cover soft ash with lava before a storm comes. |
 
-The aim is drawn on the map as a surveyor would draw a route or a boundary: pencilled and dashed where it's still to do, inked where it's done. Met, the world says so ("The world is ringed with living islands") and the chart is drawn, titled *A ringed world*, *The seas of the Moon* or *The great mountain*. Turning the world right round then goes on to the next world. Not met when the fire goes out, a long age passes, the chart says how far you got ("12 of 16 stretches held"), and turning the world tries again. The world being played is remembered, and `?world=moon` goes straight to one.
+The aim is drawn on the map as a surveyor would draw a route or a boundary: pencilled and dashed where it's still to do, inked where it's done. On the ocean world a held stretch drops its pencil and is marked only by a short inked tick across the route, as a chart marks a voyage's stages, so no line cuts across the islands. Met, the world says so ("The world is ringed with living islands") and the chart is drawn, titled *A ringed world*, *The seas of the Moon* or *The great mountain*. Turning the world right round then goes on to the next world. Not met when the fire goes out, a long age passes, the chart says how far you got ("12 of 16 stretches held"), and turning the world tries again. The world being played is remembered, and `?world=moon` goes straight to one.
 
 Headless balance: on the ocean world (about 18 minutes of fire), idle play held 11 of 16 stretches and steady play 14, so ringing it takes more: steering lava along the way, catching stones and keeping wishes, which add heat. On the Moon, a bot that knew where every basin was flooded all five in about six minutes. On Mars, idle play raised the summit to 15 km, gentle flows to 25, and play that burst between storms and covered the ash with flows before them to 28, so the aim of 26 needs the storms read.
 
@@ -65,7 +65,7 @@ In headless play-throughs, gentle flows alone kept 4 kinds, doing nothing kept 3
 
 **Reading it:** everything that matters is drawn on the world itself, as a surveyor's marks.
 * Nothing is a control or a gauge. The vent is the map's sign for a volcano, a small inked cone that always stands upright. The heat gathering beneath it rises as smoke: a wisp now and then while there's little, heavier as it builds, and a dark column once it would burst. Held too long, the cone trembles. Tipped, you see the lava pour. The heat left is told by the era.
-* Marks for what's coming, as a map marks places. Where life wishes for a kind, that kind's own sign stands there, with the ground it wants written beside it ("heath wanted: a high cone of ash"). Where a stone will fall, a small six-stroke star, with its countdown beside it ("a stone falls here, in 12"); it turns red if the heat is beneath it to catch it. Even the pen's nib is hidden, so nothing on the world looks like something to press.
+* Marks for what's coming, as a map marks places. Where life wishes for a kind, a few of that kind's signs are sketched there in broken pencil, as a surveyor pencils what's yet to be inked, with the ground it wants written beside it ("heath wanted: a high cone of ash"). Where a stone will fall, a small six-stroke star, with its countdown beside it ("a stone falls here, in 12"); it turns red if the heat is beneath it to catch it. Even the pen's nib is hidden, so nothing on the world looks like something to press.
 * Nothing is written on the world to teach it. The card the world begins from says what there is to know (level gathers, tipping pours, heavy smoke then a tip bursts, too long tears it open), and the world shows the rest. Ideas still come in one at a time behind the scenes: stones only begin once the rest has had its turn. Only the turns in the world's story are ever said, quietly, at the foot above the key.
 * Off the world there's only the era at the top, as a map's title, and the key at the foot: the six kinds by their signs, inked once each is living.
 * Nothing is named: the map is the land's.
@@ -83,13 +83,13 @@ In headless play-throughs, gentle flows alone kept 4 kinds, doing nothing kept 3
 **What you see:** it keeps to the language of the old survey and geological maps, not light and effects.
 * Lava is laid on as a flat vermilion wash, the colour geological maps give it.
 * Steam and ash are small engraved rings rising and fading.
-* Each kind of life is drawn by its conventional sign in one ink:
+* Each kind of life is drawn by a little picture of what grows there, in one ink, so it reads without the key. Every sign is a few pen strokes kept once in `render/signs.ts` and drawn from them on the world, on the chart and in the key; each is a touch larger or smaller, and some are mirrored, so a field of them doesn't look stamped:
   * moss: fine stipple;
-  * reef: crosses, in the sea's blue;
-  * mangroves: marsh tufts;
-  * meadows: dashes;
-  * forest: small circles;
-  * heath: carets.
+  * reef: the scalloped edge sea charts give a reef, in the sea's blue;
+  * mangroves: reeds rising from the waterline;
+  * meadows: grass tufts;
+  * forest: small trees, a lobed crown on a trunk;
+  * heath: low shrubs.
 * Coasts are water-lined, and breakers are short blue strokes where the sea wears a coast. The shading is kept flat, like paper.
 
 **The ending:** when the fire is out, a long age passes quickly while the sea and rain work on what you made. Then the chart is drawn round the world in place: a pen goes round the plate's double border, the world steps back and up the page, and what lasted and the eras, with what happened in each, come in at the foot above the key. You can still turn the world and look at it. Turning it right round begins another, and "keep the chart" saves it as a plate (PNG; this works on the site, but not inside the claude.ai viewer).

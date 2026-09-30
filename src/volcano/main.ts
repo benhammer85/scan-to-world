@@ -32,6 +32,7 @@ import type { Polyline } from '../terrain/contours';
 import { PlotterLines, defaultPlotterStyle, type RevealMode } from '../render/plotterLines';
 import { GestureRecognizer } from '../interact/gestures';
 import { Stipple } from '../render/stipple';
+import { signSvg } from '../render/signs';
 import { Planet, VOLCANO, type Era } from './sim';
 import { FineSurface } from './fine';
 import { Ecology, KINDS } from './ecology';
@@ -168,7 +169,7 @@ landPen.width = seaPen.width = waterPen.width = 2;
 pens.push(landPen, seaPen, waterPen);
 group.add(seaPen.object, waterPen.object, landPen.object);
 /** Life by the sign of its kind; and breakers, short blue strokes, where the sea is wearing at a coast. */
-const kindDots = KINDS.map((k) => new Stipple(k.ink, k.sign, k.sign === 'dot' ? 2.1 : 6));
+const kindDots = KINDS.map((k) => new Stipple(k.ink, k.sign, k.sign === 'dot' ? 2.1 : k.sign === 'tree' ? 9 : 7));
 const foam = new Stipple('#46708f', 'dash', 6);
 for (const s of [...kindDots, foam]) {
   s.byDirection = true;
@@ -231,8 +232,15 @@ const stoneMark = mark((g) => {
     g.beginPath(); g.moveTo(32 - 18 * Math.cos(a), 32 - 18 * Math.sin(a)); g.lineTo(32 + 18 * Math.cos(a), 32 + 18 * Math.sin(a)); g.stroke();
   }
 });
-/** Where life wishes for a kind: that kind's own sign, as it will be drawn there, with the ground it wants written beside it. */
-const wishMarks = KINDS.map((k) => mark((g) => sign(g, k.sign, 32, 32, 16, '#ffffff')));
+/**
+ * Where life wishes for a kind: a few of that kind's own signs, sketched in broken pencil where
+ * they would stand, as a surveyor pencils what is yet to be inked, with the ground it wants
+ * written beside it.
+ */
+const wishMarks = KINDS.map((k) => mark((g) => {
+  g.setLineDash([3.5, 3]);
+  for (const [x, y, r] of [[22, 38, 11], [42, 36, 11], [32, 22, 10]]) sign(g, k.sign, x, y, r, '#ffffff', 1.8);
+}));
 
 /** Paper, fresh basalt, ash; and lava in the vermilion the geological surveys gave it, deeper where thick. */
 const PAPER = new THREE.Color(P.paper), BASALT = new THREE.Color(P.basalt), ASH = new THREE.Color(P.ash), VERMILION = new THREE.Color(P.lava), DEEP_RED = new THREE.Color(P.deepLava);
@@ -446,7 +454,7 @@ function drawMarks(now: number): void {
   wishMarks.forEach((m, i) => {
     const on = !!w && !ending && KINDS[i].kind === w.kind;
     m.visible = on;
-    if (on) { setMark(m, w!.vertex, 0.045); m.material.color.set(KINDS[i].ink); }
+    if (on) { setMark(m, w!.vertex, 0.07); m.material.color.set(KINDS[i].ink); m.material.opacity *= 0.7; }
   });
 }
 /** Set a mark on the ground at a vertex, a size in view, faded towards the rim and hidden round the back. */
@@ -462,7 +470,8 @@ function setMark(m: THREE.Sprite, v: number, size: number): void {
  * Each world's aim, reckoned now and then and drawn on the map as a surveyor would draw a route or
  * a boundary: pencilled where it's still to do, inked where it's done.
  *   An ocean world: the way the crust carries the heat, round the world, in stretches; a stretch
- *     is inked while something lives on or by it. Ringed when every stretch is inked at once.
+ *     is held while something lives on or by it, and then marked by an inked tick across the
+ *     route instead of its pencil. Ringed when every stretch is held at once.
  *   The Moon: each great basin's edge, inked once its floor is flooded.
  *   Mars: the mountain's spot height, printed by its summit as a map prints one.
  */
@@ -512,8 +521,15 @@ function drawAim(now: number): void {
   const inked: Polyline[] = [], pencilled: Polyline[] = [];
   if (WORLD.goal === 'height') return; // its mark is a spot height, set with the labels
   if (chain) {
+    // The route is pencilled across what's still to do; a stretch held is marked only by a short
+    // inked tick across the route, as a chart marks a voyage's stages, so no line cuts the land.
     const per = 12, pts = chain.points(per);
-    chain.held.forEach((h, i) => (h ? inked : pencilled).push(...onGround(pts.slice(i * per, (i + 1) * per + 1), !h)));
+    chain.held.forEach((h, i) => {
+      if (!h) { pencilled.push(...onGround(pts.slice(i * per, (i + 1) * per + 1), true)); return; }
+      const m = pts[i * per + per / 2], a = pts[i * per + per / 2 - 1], b = pts[i * per + per / 2 + 1];
+      const n = new THREE.Vector3(m.x, m.y, m.z).cross(new THREE.Vector3(b.x - a.x, b.y - a.y, b.z - a.z)).normalize().multiplyScalar(0.022);
+      inked.push(...onGround([{ x: m.x - n.x, y: m.y - n.y, z: m.z - n.z }, m, { x: m.x + n.x, y: m.y + n.y, z: m.z + n.z }], false));
+    });
   } else {
     for (const b of planet.basins) {
       // The basin's edge, as a circle on the ground round its middle.
@@ -700,17 +716,9 @@ function showNext(): void {
   showingUntil = seconds + 3.2;
 }
 /** The key at the foot: the six kinds by their signs, faint until the kind is living, then inked. */
-const SIGN_SVG: Record<string, string> = {
-  dot: '<circle cx="6" cy="6" r="1.6" fill="currentColor"/>',
-  ring: '<circle cx="6" cy="6" r="3.4" fill="none" stroke="currentColor" stroke-width="1.1"/>',
-  cross: '<path d="M2 6h8M6 2v8" stroke="currentColor" stroke-width="1.1"/>',
-  dash: '<path d="M2 6h8" stroke="currentColor" stroke-width="1.2"/>',
-  tuft: '<path d="M1.5 8.5h9M6 8.5V3.5M3.3 8.5l-0.6-4M8.7 8.5l0.6-4" stroke="currentColor" stroke-width="1" fill="none"/>',
-  caret: '<path d="M2 8.5L6 3.5L10 8.5" stroke="currentColor" stroke-width="1.1" fill="none"/>',
-};
 const kindEls = KINDS.map((k) => {
   const b = document.createElement('span');
-  b.innerHTML = `<svg viewBox="0 0 12 12" width="12" height="12">${SIGN_SVG[k.sign]}</svg> ${k.name}`;
+  b.innerHTML = `<svg viewBox="0 0 12 12" width="12" height="12">${signSvg(k.sign)}</svg> ${k.name}`;
   b.style.color = k.ink;
   b.title = `${k.name}: ${k.wants}`;
   $('legend').appendChild(b);

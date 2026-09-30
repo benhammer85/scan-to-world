@@ -14,13 +14,8 @@ import { STIPPLE } from './stippleDots';
 // Where the dots go is worked out apart from the drawing, so it can be done off the main thread.
 export { STIPPLE, stippleDots } from './stippleDots';
 
-/**
- * The mark each point is drawn as. A dot by default; the others are the conventional signs of
- * the old survey maps, drawn in fine ink: a small circle (woods), a cross (rocks, reefs), a short
- * dash (grass), a marsh tuft (three ticks on a line), and a caret (heights, heath).
- */
-export type Sign = 'dot' | 'ring' | 'cross' | 'dash' | 'tuft' | 'caret';
-const SIGNS: Sign[] = ['dot', 'ring', 'cross', 'dash', 'tuft', 'caret'];
+import { MIRRORS, signGlsl, type Sign } from './signs';
+export type { Sign } from './signs';
 
 export class Stipple {
   readonly object: THREE.Points;
@@ -29,7 +24,7 @@ export class Stipple {
     const material = new THREE.ShaderMaterial({
       transparent: true,
       depthWrite: false,
-      defines: { SIGN: SIGNS.indexOf(sign) },
+      defines: { DOT: sign === 'dot' ? 1 : 0, MIRROR: MIRRORS[sign] ? 1 : 0 },
       uniforms: { uInk: { value: new THREE.Color(ink) }, uSize: { value: size * Math.min(2, window.devicePixelRatio || 1) }, uNow: { value: 0 }, uAppear: { value: STIPPLE.appear } },
       vertexShader: /* glsl */ `
         uniform float uSize;
@@ -38,12 +33,19 @@ export class Stipple {
         attribute float aBorn;
         varying float vRim;
         varying float vSize;
+        varying float vFlip;
         ${rimGlsl}
         void main() {
           vec4 v = modelViewMatrix * vec4(position, 1.0);
           gl_Position = projectionMatrix * v;
           // Finer from further off, so a town far away is a grey of dots, not a black blot.
           gl_PointSize = uSize * clamp(2.6 / -v.z, 0.5, 1.3);
+          // Each sign a little its own, by where it stands: a touch larger or smaller, and some the other way round.
+          float h = fract(sin(dot(position, vec3(127.1, 311.7, 74.7))) * 43758.5453);
+          #if DOT == 0
+          gl_PointSize *= 0.82 + 0.36 * h;
+          #endif
+          vFlip = MIRROR == 1 && fract(h * 7.0) > 0.5 ? -1.0 : 1.0;
           vSize = gl_PointSize;
           gl_PointSize += 1.0; // room for the soft edge
           // A new dot comes in slowly, as light does when a place grows: never all at once.
@@ -53,6 +55,7 @@ export class Stipple {
         uniform vec3 uInk;
         varying float vRim;
         varying float vSize;
+        varying float vFlip;
         float segment(vec2 p, vec2 a, vec2 b) {
           vec2 pa = p - a, ba = b - a;
           return length(pa - ba * clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0));
@@ -60,27 +63,17 @@ export class Stipple {
         void main() {
           // In pixels from the middle of the mark; the point is a pixel larger than the mark, for its soft edge.
           vec2 p = (gl_PointCoord - 0.5) * (vSize + 1.0);
-          #if SIGN == 0
+          #if DOT == 1
           // A round dot with a soft edge a pixel wide, so the stipple is smooth at any size, not stepped.
           float cover = clamp(vSize * 0.5 - length(p) + 0.5, 0.0, 1.0);
           #else
-          // A sign in a fine line, its distance from the line fading to nothing over a pixel.
-          float R = vSize * 0.42, w = max(0.55, vSize * 0.07), d;
-          #if SIGN == 1
-          w = max(0.8, vSize * 0.09); // a small circle needs a firmer line to be seen at all
-          d = abs(length(p) - R * 0.75);
-          #elif SIGN == 2
-          d = min(segment(p, vec2(-R, 0.0), vec2(R, 0.0)), segment(p, vec2(0.0, -R), vec2(0.0, R)));
-          #elif SIGN == 3
-          d = segment(p, vec2(-R, 0.0), vec2(R, 0.0));
-          #elif SIGN == 4
-          d = min(segment(p, vec2(-R, R * 0.45), vec2(R, R * 0.45)),
-              min(segment(p, vec2(0.0, R * 0.45), vec2(0.0, -R * 0.55)),
-              min(segment(p, vec2(-R * 0.6, R * 0.45), vec2(-R * 0.75, -R * 0.25)), segment(p, vec2(R * 0.6, R * 0.45), vec2(R * 0.75, -R * 0.25)))));
-          #else
-          d = min(segment(p, vec2(-R * 0.8, R * 0.4), vec2(0.0, -R * 0.45)), segment(p, vec2(0.0, -R * 0.45), vec2(R * 0.8, R * 0.4)));
-          #endif
-          float cover = clamp(w + 0.5 - d, 0.0, 1.0);
+          // A sign in a fine line, its distance from the strokes fading to nothing over a pixel.
+          // (The strokes are in a box from -1 to 1, y up; the point's y runs down.)
+          float R = vSize * 0.44, w = max(0.6, vSize * 0.06);
+          vec2 q = vec2(p.x * vFlip, -p.y) / R;
+          float d = 1e9;
+          ${signGlsl(sign, 'q')}
+          float cover = clamp(w + 0.5 - d * R, 0.0, 1.0);
           #endif
           if (cover <= 0.0 || vRim <= 0.0) discard;
           gl_FragColor = vec4(uInk, vRim * cover);
