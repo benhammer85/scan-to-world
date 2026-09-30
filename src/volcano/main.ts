@@ -47,6 +47,7 @@ import { offThread } from './offthread';
 import { snapshotOf, restoreInto, keep, recall, forget, keepGround, recallGround, forgetGround, keepPage, pages, type Page } from './save';
 import { worldOf, nextWorld, WORLDS } from './worlds';
 import { Chain, CHAIN } from './chain';
+import { measureSecond, secondWords, type Second } from './second';
 
 const $ = (id: string) => document.getElementById(id)!;
 const stage = $('stage');
@@ -827,6 +828,18 @@ const PLUME = new THREE.Vector3(), SWING = new THREE.Quaternion();
  * the border, and the eras and what lasted come in at the foot. The world can still be turned
  * and looked at; turning it right round begins another.
  */
+/** The second aim, measured as the fire ends (see second.ts), and the best there has been on this world. */
+let second: Second | null = null;
+const BEST_KEY = `volcano.best.${WORLD.id}`;
+const bestSoFar = (): number | null => { const b = remembered(BEST_KEY); return b === null ? null : Number(b); };
+function measureTheSecond(): void {
+  second = measureSecond(WORLD, planet, topo, islands.list);
+  const best = bestSoFar();
+  if (best === null || second.value > best) {
+    remember(BEST_KEY, String(second.value));
+    if (best !== null) announce(`A new best: ${second.words}`);
+  }
+}
 const LONG_AGE = 360, AGE_SPEED = 14, DRAWING = 7, TURN_AGAIN = 2.6;
 /** What the long age after the fire does on this world, in a line for the foot: every world has one, met or not. */
 const AGE_WORDS = WORLD.goal === 'ring' ? 'The islands sink, and coral rings them' : WORLD.goal === 'basins' ? 'Time passes, and small stones still fall' : WORLD.goal === 'height' ? 'Time passes, and the storms go on' : 'Time passes, and the new ice greys';
@@ -840,6 +853,7 @@ function theEnd(): void {
     queue.length = 0;
     announce(WORLD.goal === 'ring' ? 'Done: living islands all the way round' : WORLD.goal === 'height' ? `Done: the mountain reaches ${HEIGHT.target} km` : WORLD.goal === 'cover' ? `Done: ${COVER}% of the ice made new` : 'Done: every basin flooded');
     feel([30, 50, 30]);
+    measureTheSecond();
     // On a world with a sea, the fire goes out and the long age follows even so, for its atolls.
     planet.reserve = 0; planet.pressure = 0;
     announce(AGE_WORDS);
@@ -849,6 +863,7 @@ function theEnd(): void {
     $('stage-name').textContent = ERAS.out;
     queue.length = 0;
     announce(`The fire is out. ${AGE_WORDS}`);
+    measureTheSecond();
   }
   // Met, the chart comes a few moments later; not, after a long age has worn at what was made.
   if (ending && !ending.shown && planet.seconds - ending.from >= LONG_AGE && (!ending.won || seconds - wonAt() > 4)) {
@@ -861,6 +876,7 @@ function theEnd(): void {
     if (FL) { marked = new Uint8Array(N); for (let v = 0; v < N; v++) marked[v] = planet.age[v] < 1e5 || (MARKED?.[v] ?? 0) ? 1 : 0; }
     keepGround(WORLD.id, { rock: planet.rock.slice(), fires: FIRES + 1, marked });
     $('stage-name').textContent = ending.info.title;
+    $('worlds').style.display = 'none'; // (the chart has its own title there)
     void forget(); // the world is finished: nothing to come back to
   }
 }
@@ -891,9 +907,11 @@ function chartInfo(): ChartInfo {
     title: ring ? (met ? 'Ringed with islands' : 'Not yet ringed') : WORLD.goal === 'height' ? (met ? 'The great mountain' : 'Not high enough yet') : WORLD.goal === 'cover' ? (met ? 'New ice' : 'Not enough new ice') : met ? 'Every basin flooded' : 'Not every basin flooded',
     subtitle: `${WORLD.numeral} · ${WORLD.title} · ${FIRES ? `fire ${FIRES + 1} · ` : ''}${mm} of fire`,
     kinds: LIFE ? KINDS.map((k) => ({ name: k.name, ink: k.ink, sign: k.sign, living: living.has(k.kind) })) : [],
-    summary: ring
-      ? `${aimDone} of ${aimOf} stretches living${planet.atolls ? ` · ${planet.atolls} atoll${planet.atolls === 1 ? '' : 's'}` : ''} · ${living.size} of ${KINDS.length} kinds of life`
-      : WORLD.goal === 'height' ? `${Math.round(aimDone)} of ${aimOf} km high` : WORLD.goal === 'cover' ? `${Math.round(aimDone)}% of the ice made new, of ${aimOf}%` : `${aimDone} of ${aimOf} basins flooded`,
+    // The first aim, how far it got; and the second, as the fire left it.
+    summary: (ring
+      ? `${aimDone} of ${aimOf} stretches living`
+      : WORLD.goal === 'height' ? `${Math.round(aimDone)} of ${aimOf} km high` : WORLD.goal === 'cover' ? `${Math.round(aimDone)}% of the ice new, of ${aimOf}%` : `${aimDone} of ${aimOf} basins flooded`)
+      + (second ? ` · ${second.words}` : ''),
     length,
     eras,
     events,
@@ -1113,7 +1131,17 @@ for (const w of WORLDS) {
   });
   $('begin').querySelector('.worlds')!.appendChild(b);
 }
-($('begin').querySelector('.then') as HTMLElement).textContent = WORLD.then + (FIRES ? ` The ground your last ${FIRES === 1 ? 'fire' : `${FIRES} fires`} left is still here, and this fire starts somewhere new.` : '');
+($('begin').querySelector('.then') as HTMLElement).textContent = WORLD.then + ' ' + WORLD.second + (FIRES ? ` The ground your last ${FIRES === 1 ? 'fire' : `${FIRES} fires`} left is still here, and this fire starts somewhere new.` : '');
+// The best there has been at the second aim on this world, under the card's words.
+{
+  const best = bestSoFar();
+  if (best !== null) {
+    const el = document.createElement('p');
+    el.className = 'best';
+    el.textContent = `best so far: ${secondWords(WORLD.goal, best)}`;
+    $('begin').querySelector('.then')!.after(el);
+  }
+}
 // The atlas, from the card: every chart kept so far, newest first, to leaf through.
 void pages().then((all) => {
   if (!all.length) return;

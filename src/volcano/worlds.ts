@@ -42,6 +42,8 @@ export interface World {
   first: string;
   then: string;
   rules: Partial<Rules>;
+  /** Its second aim, for the card: one that pulls against the first (see second.ts). */
+  second: string;
   palette: Palette;
   goal: 'ring' | 'basins' | 'height' | 'cover';
   /** For a world whose aim is height: how high, in km, and how many km a unit of the world's height stands for. */
@@ -59,6 +61,7 @@ export const WORLDS: World[] = [
     title: 'An ocean world',
     first: 'A young ocean world, with heat beneath it that won’t last.',
     then: 'The heat travels along the dotted line on its own. Keep building islands as it goes, and keep them alive: a gap breaks the chain. Hold the world level and pressure builds; tip it and lava pours out; tip it when the smoke is heavy and it erupts.',
+    second: 'Big islands leave atolls when they sink: spend the heat on a few big ones, or spread it thin to keep the chain whole.',
     rules: { drift: 0.0125, rises: 0, heat: 740, rising: 2.7, reseed: 15, floor: -0.22, impactEvery: [60, 100], atolls: true },
     palette: {
       paper: '#ecdfc2', basalt: '#9a8a76', ash: '#b3ada2', lava: '#b8563c', deepLava: '#8f3b28',
@@ -73,6 +76,7 @@ export const WORLDS: World[] = [
     title: 'The Moon',
     first: 'The Moon: old, airless, and nearly cold.',
     then: 'Lava here runs like water and fills low ground. The heat rises to whatever you turn to the top; tip the world to pour. Flood each dotted basin before the heat runs out.',
+    second: 'Lava spilled outside a basin is wasted: the neater the seas, the better.',
     rules: {
       terrain: 'moon', basins: 5, floor: 0.22, rough: 0.02,
       waves: 0, rain: 0, sink: 0, swell: 0, life: false,
@@ -93,6 +97,7 @@ export const WORLDS: World[] = [
     title: 'Mars',
     first: 'Mars: cold, red, and still.',
     then: 'The heat stays in one place, so the mountain grows over it. A tall mountain needs a wide base. Dust storms wear it down, loose ash most of all, so cover ash with lava before a storm arrives. Raise the mountain 28 km high.',
+    second: 'A narrow peak rises fastest; a broad base lasts.',
     rules: {
       terrain: 'mars', basins: 0, craters: 18, floor: 0.05, rough: 0.025,
       waves: 0, rain: 0, sink: 0, life: false,
@@ -115,6 +120,7 @@ export const WORLDS: World[] = [
     title: 'An ice moon',
     first: 'An ice moon: a frozen shell over a hidden sea.',
     then: 'Here water is the lava and ice is the rock. The heat rises to whatever you turn to the top; tip the world to pour. Bursts throw frost far across the ice. Make 35% of the surface new before the heat runs out.',
+    second: 'New ice everywhere, or one great sheet?',
     rules: {
       terrain: 'ice', basins: 0, craters: 40, floor: 0.05, rough: 0.015,
       waves: 0, rain: 0, sink: 0, life: false,

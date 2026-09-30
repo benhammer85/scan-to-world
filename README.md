@@ -44,6 +44,15 @@ Each world lasts about eight to ten minutes. Headless balance, with simple bots:
 
 **Atolls.** On the ocean world the long age follows every fire, met or not (the world stands still for it). The islands sink much further than while the fire burns, and the reef's seaward edge, marked once as the age begins (living ground bordering water that holds nothing, three wide), keeps growing up with the sinking. Its rock is cemented and doesn't slump into the lagoon. Here and there along it, in clusters, coral sand builds islets just above the surface; between them the reef lies awash. The middle drowns into a lagoon. What's left is a ring of islets round a lagoon where each island stood, as Darwin explained atolls, and the chart counts them. The next fire on that world rises among them.
 
+**Two aims that pull against each other.** Each world has a second aim beside the first, measured as the fire ends (`second.ts`), shown on the chart and in the atlas, with the best so far on each world under the card's words. The heat is finite, so they compete for it:
+
+| World | First aim | Second aim | Why they pull apart |
+| --- | --- | --- | --- |
+| Ocean | ring the world | atolls: islands at least 30 vertices across when the fire ends | the crust keeps moving, so heat spent on a few big islands leaves gaps; a chain spread whole runs together into one |
+| Moon | flood the basins | the share of lava kept in the basins | flooding fast spills; flooding neatly is slower |
+| Mars | 28 km high | the base's width, 5 km up | a narrow peak rises fastest; a broad shield lasts through the storms |
+| Ice moon | 35% new | the largest single sheet | new ice everywhere covers most; one sheet means staying |
+
 **Every world has a long age.** When the fire goes out, met or not, time runs on quickly for a while before the chart is drawn, and each world does its own thing with what was made: the ocean's islands sink into atolls; on the Moon and the ice moon small stones still fall and pock the new ground; on Mars the storms go on wearing the mountain; and the ice moon's new ice slowly greys. What the fire achieved is counted as the fire ends, so the long age can't undo it.
 
 **The atlas.** Each chart, once drawn, is kept as a page (a small picture of the plate, and what it says) in IndexedDB, the last sixty. The start card shows "the atlas · N charts"; it opens as pages to leaf through, newest first, and one opened fills the screen. The plate is drawn with the world centred, whole.
