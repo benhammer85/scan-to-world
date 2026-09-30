@@ -52,8 +52,8 @@ export const WORLDS: World[] = [
     numeral: 'I',
     title: 'An ocean world',
     first: 'A young ocean world, with heat beneath it that won’t last.',
-    then: 'The sea floor drifts slowly over the heat. Hold the world level and pressure builds; tip it and lava pours out; tip it when the smoke is heavy and it erupts. Build living islands along the dotted line, all the way round, before the heat runs out.',
-    rules: { drift: 0.0065, rises: 0, heat: 740, floor: -0.22, impactEvery: [90, 150] },
+    then: 'The heat travels along the dotted line on its own. Keep building islands as it goes, and keep them alive: a gap breaks the chain. Hold the world level and pressure builds; tip it and lava pours out; tip it when the smoke is heavy and it erupts.',
+    rules: { drift: 0.0125, rises: 0, heat: 740, rising: 2.7, reseed: 15, floor: -0.22, impactEvery: [60, 100] },
     palette: {
       paper: '#ecdfc2', basalt: '#9a8a76', ash: '#b3ada2', lava: '#b8563c', deepLava: '#8f3b28',
       shallow: '#d4e3ec', deep: '#b1c8d8',
@@ -71,7 +71,7 @@ export const WORLDS: World[] = [
       terrain: 'moon', basins: 5, floor: 0.22, rough: 0.02,
       waves: 0, rain: 0, sink: 0, swell: 0, life: false,
       flow: 16, channel: 1, coolLand: 0.06,
-      drift: 0, rises: 0.02, heat: 400, rising: 1.3,
+      drift: 0, rises: 0.02, heat: 400, rising: 1.48,
       impactEvery: [12, 22], impactWarning: 12, crater: 0.08, craterDepth: 0.05, impactHeat: 4,
     },
     palette: {
@@ -86,14 +86,14 @@ export const WORLDS: World[] = [
     numeral: 'III',
     title: 'Mars',
     first: 'Mars: cold, red, and still.',
-    then: 'The heat stays in one place, so the mountain grows over it. A tall mountain needs a wide base. Dust storms wear it down, loose ash most of all, so cover ash with lava before a storm arrives. Raise the mountain 26 km high.',
+    then: 'The heat stays in one place, so the mountain grows over it. A tall mountain needs a wide base. Dust storms wear it down, loose ash most of all, so cover ash with lava before a storm arrives. Raise the mountain 28 km high.',
     rules: {
       terrain: 'mars', basins: 0, craters: 18, floor: 0.05, rough: 0.025,
       waves: 0, rain: 0, sink: 0, life: false,
       talus: 2.2, flow: 8, channel: 2, coolLand: 0.25,
-      drift: 0, rises: 0, heat: 250, rising: 1.3,
+      drift: 0, rises: 0, heat: 250, rising: 0.52, steady: true,
       impactEvery: [60, 100], impactWarning: 14, impactHeat: 6,
-      stormEvery: [60, 100], stormWarning: 12, stormLasts: 22, stormWear: 0.02,
+      stormEvery: [60, 100], stormWarning: 12, stormLasts: 22, stormWear: 0.006,
     },
     palette: {
       paper: '#ead3b4', basalt: '#a67a5c', ash: '#c9ad92', lava: '#b8563c', deepLava: '#8f3b28',
@@ -101,7 +101,7 @@ export const WORLDS: World[] = [
       landInk: '#7a4a2e', landInkHigh: '#5a321c', pencil: '#cfae8e', seaInk: '#5b82a3',
     },
     goal: 'height',
-    height: { target: 26, kmPerUnit: 40 },
+    height: { target: 28, kmPerUnit: 40 },
   },
 ];
 

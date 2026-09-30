@@ -49,6 +49,8 @@ export const VOLCANO = {
    */
   heat: 420,
   rising: 1.4,
+  /** Whether the heat rises evenly, at `rising` a second until it's gone, rather than fast at first and slowing. */
+  steady: false,
   /** Pressure bursts out on its own at this much; above `explosive`, an eruption is a burst rather than a flow. */
   cap: 24,
   explosive: 7,
@@ -418,7 +420,8 @@ export class Planet {
   step(dt: number): void {
     this.seconds += dt;
     // The heat rises out of its store: fast at first, slower as the planet cools, and then it is gone.
-    const rise = Math.min(this.reserve, this.k.rising * Math.sqrt(Math.max(0, this.reserve) / this.k.heat) * dt + 1e-4 * dt);
+    // (Or, on a world whose heat rises evenly, at one pace until it's gone.)
+    const rise = Math.min(this.reserve, this.k.rising * (this.k.steady ? 1 : Math.sqrt(Math.max(0, this.reserve) / this.k.heat)) * dt + 1e-4 * dt);
     this.reserve -= rise;
     this.pressure += rise;
     if (this.pressure >= this.k.cap) { this.collapse(); this.erupt(true); this.tally.calderas++; this.tell('Held too long: the mountain blew apart'); }

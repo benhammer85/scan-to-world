@@ -38,6 +38,8 @@
       #again.shown { opacity: 0.55; }
       #keep { position: fixed; top: calc(22px + env(safe-area-inset-top)); right: 24px; font: italic 12px "Iowan Old Style", Palatino, Georgia, serif; color: #2e2118; background: none; border: none; opacity: 0; pointer-events: none; transition: opacity 2s; cursor: pointer; padding: 4px; }
       #keep.shown { opacity: 0.5; pointer-events: auto; }
+      /* The worlds, in a corner off the world: back to the card that lists them. */
+      #worlds { position: fixed; top: calc(22px + env(safe-area-inset-top)); left: 20px; font: 12px "Iowan Old Style", Palatino, Georgia, serif; letter-spacing: 0.12em; color: #2e2118; background: none; border: none; opacity: 0.35; cursor: pointer; padding: 6px; }
     </style>
   </head>
   <body>
@@ -46,8 +48,9 @@
     <div id="stage-name" class="engraved">The young fire</div>
     <div id="event" class="engraved"></div>
     <div id="legend" class="engraved"></div>
-    <p id="again" class="engraved">turn the world all the way round to start again</p>
+    <p id="again" class="engraved">touch to start again</p>
     <button id="keep">keep the chart</button>
+    <button id="worlds" aria-label="the worlds"></button>
     <div id="begin" class="engraved"><p class="world"></p><p class="first"></p><p class="then"></p><p class="touch">touch to begin</p><p class="worlds"></p></div>
     <script type="module" src="/src/volcano/main.ts"></script>
   </body>

@@ -471,7 +471,9 @@ let chain = WORLD.goal === 'ring' ? new Chain(planet.plume, planet.driftDirectio
 const FLOODED_ENOUGH = 0.7;
 // Small dots, as a chart marks a route or a boundary: pale where it's still to do, inked where it's done.
 const aimInk = new Stipple(P.landInkHigh, 'dot', 2.1), aimPencil = new Stipple('#' + new THREE.Color(P.pencil).lerp(new THREE.Color(P.landInk), 0.6).getHexString(), 'dot', 1.8);
-for (const s of [aimInk, aimPencil]) { s.byDirection = true; (s.object.material as THREE.Material).depthTest = false; group.add(s.object); }
+/** On the ocean world, the stretch the heat is on and the next, still to do, a little stronger: where to build now. */
+const aimNext = new Stipple(P.landInk, 'dot', 2.3);
+for (const s of [aimInk, aimPencil, aimNext]) { s.byDirection = true; (s.object.material as THREE.Material).depthTest = false; group.add(s.object); }
 const HEIGHT = WORLD.height ?? { target: 0, kmPerUnit: 40 };
 let aimDone = 0, aimOf = WORLD.goal === 'ring' ? CHAIN.stretches : WORLD.goal === 'height' ? HEIGHT.target : planet.basins.length, lastAim = -10;
 /** How much of the aim is done now, reckoned afresh. */
@@ -483,7 +485,7 @@ function reckonAim(): void {
 const won = () => aimOf > 0 && aimDone >= aimOf;
 let toldHeight = 0, toldDone = 0, toldAimAt = -1e9;
 /** The aim, in a line for the foot: said once the world has begun, and again if a long while passes with nothing gained. */
-const AIM_WORDS = WORLD.goal === 'ring' ? 'Build living islands along the dotted line, all the way round'
+const AIM_WORDS = WORLD.goal === 'ring' ? 'Keep building islands as the heat travels the dotted line. A gap breaks the chain'
   : WORLD.goal === 'basins' ? 'Flood each dotted basin with lava'
   : `Raise the mountain ${HEIGHT.target} km high`;
 /** Say the aim now and then, and what's been gained each time something is. */
@@ -511,7 +513,7 @@ function drawAim(now: number): void {
   lastAim = now;
   reckonAim();
   if (begun) tellAim(now);
-  const inked: number[] = [], pencilled: number[] = [];
+  const inked: number[] = [], pencilled: number[] = [], next: number[] = [];
   if (WORLD.goal === 'height') {
     // No mark on the world: its height is told at the foot, each time it stands two km higher.
     const step = Math.floor(aimDone / 2) * 2;
@@ -520,8 +522,8 @@ function drawAim(now: number): void {
   }
   if (chain) {
     // The route in small dots round the world: pale across what's still to do, inked where held.
-    const per = 6, pts = chain.points(per);
-    chain.held.forEach((h, i) => onGround(pts.slice(i * per, (i + 1) * per), h ? inked : pencilled));
+    const per = 6, pts = chain.points(per), here = Math.floor(chain.where(planet.plume).round * CHAIN.stretches);
+    chain.held.forEach((h, i) => onGround(pts.slice(i * per, (i + 1) * per), h ? inked : (i - here + CHAIN.stretches) % CHAIN.stretches <= 1 ? next : pencilled));
   } else {
     for (const b of planet.basins) {
       // The basin's edge, as a circle on the ground round its middle.
@@ -540,6 +542,7 @@ function drawAim(now: number): void {
   }
   aimInk.set(inked);
   aimPencil.set(pencilled);
+  aimNext.set(next);
 }
 
 const NORMAL = new THREE.Vector3(), EYE = new THREE.Vector3();
@@ -836,11 +839,32 @@ function drawEnding(): void {
   }
   if (progress >= 1) {
     const next = ending.won ? nextWorld(WORLD) : null;
-    $('again').textContent = next ? `turn the world all the way round for ${next.title.replace(/^An? /, 'an ').replace(/^The /, 'the ')}` : ending.won ? 'turn the world all the way round to start again' : 'turn the world all the way round to try again';
+    $('again').textContent = next ? `touch to go on to ${next.title.replace(/^An? /, 'an ').replace(/^The /, 'the ')}` : ending.won ? 'touch to start again' : 'touch to try again';
     $('again').classList.add('shown');
-    $('keep').classList.add('shown');
+    // The chart can be kept as a picture where the page may hand over a file: not inside a frame (as a hosted preview), which can't.
+    if (window.self === window.top) $('keep').classList.add('shown');
   }
 }
+/**
+ * Once the chart is drawn, a touch (a tap, not a drag, which still turns the world) goes on: to
+ * the next world if this one's aim was met, or this one again. Turning the world all the way round
+ * does the same.
+ */
+let tapFrom: { x: number; y: number; t: number } | null = null;
+addEventListener('pointerdown', (e) => { tapFrom = { x: e.clientX, y: e.clientY, t: performance.now() }; });
+addEventListener('pointerup', (e) => {
+  const from = tapFrom;
+  tapFrom = null;
+  if (!from || !ending?.shown || seconds - ending.at < DRAWING || ending.turned < 0) return;
+  if ((e.target as HTMLElement).closest?.('#keep, #worlds')) return;
+  if (performance.now() - from.t < 350 && Math.hypot(e.clientX - from.x, e.clientY - from.y) < 12) { ending.turned = -1e9; anew(); }
+});
+// The worlds, off the world in a corner: touch to go back to the card that lists them (the world is kept, to come back to).
+$('worlds').textContent = WORLDS.map((w) => w.numeral).join(' · ');
+$('worlds').addEventListener('click', () => {
+  save();
+  setTimeout(() => location.reload(), 300);
+});
 /** How far the world has been turned since the chart was drawn, by any means: gravity's swing in the planet's frame. */
 const LAST_DOWN = new THREE.Vector3(), NOW_DOWN = new THREE.Vector3();
 function turnedSince(): void {
@@ -1099,6 +1123,7 @@ renderer.setAnimationLoop(() => {
   if (begun) drawAim(seconds);
   aimInk.update(dt);
   aimPencil.update(dt);
+  aimNext.update(dt);
   for (const s of [...kindDots, foam]) s.update(dt);
   puffs.update(dt * speed);
   if (begun) breathe(dt);
