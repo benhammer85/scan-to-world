@@ -1,7 +1,8 @@
 /**
  * Puffs: steam where lava meets the sea, ash thrown up by a burst, and the
- * thin smoke of a vent under pressure. Each is a small engraved ring, as old
- * maps drew smoke, rising from the ground, spreading and fading. A fixed number of them, reused
+ * thin smoke of a vent under pressure. Each is a short wavy stroke of the pen,
+ * as the old engraved maps drew smoke curling up from a volcano, drifting
+ * slowly up, lengthening and fading; a few together read as a wisp. A fixed number of them, reused
  * in turn, so there's never more than the page can bear.
  */
 import * as THREE from 'three';
@@ -22,6 +23,7 @@ export class Puffs {
   private alpha = new Float32Array(MOST);
   private size = new Float32Array(MOST);
   private tint = new Float32Array(MOST);
+  private seed = new Float32Array(MOST);
 
   constructor(pixelRatio: number) {
     for (let i = 0; i < MOST; i++) this.puffs.push({ alive: false, age: 0, life: 1, x: 0, y: 0, z: 0, ux: 0, uy: 0, uz: 0, rise: 0, size: 0, grow: 0, kind: 0 });
@@ -30,17 +32,24 @@ export class Puffs {
     g.setAttribute('aAlpha', new THREE.BufferAttribute(this.alpha, 1));
     g.setAttribute('aSize', new THREE.BufferAttribute(this.size, 1));
     g.setAttribute('aTint', new THREE.BufferAttribute(this.tint, 1));
+    g.setAttribute('aSeed', new THREE.BufferAttribute(this.seed, 1));
     const material = new THREE.ShaderMaterial({
       transparent: true,
       depthWrite: false,
+      // Drawn over the map, as an engraver draws smoke over the land it rises from, rather than
+      // lost behind the slope it drifts up (the far side of the world fades it away regardless).
+      depthTest: false,
       uniforms: { uScale: { value: 900 * pixelRatio } },
       vertexShader: /* glsl */ `
         uniform float uScale;
         attribute float aAlpha;
         attribute float aSize;
         attribute float aTint;
+        attribute float aSeed;
         varying float vAlpha;
         varying float vTint;
+        varying float vSeed;
+        varying float vPx;
         ${rimGlsl}
         void main() {
           vec4 v = modelViewMatrix * vec4(position, 1.0);
@@ -48,15 +57,23 @@ export class Puffs {
           gl_PointSize = aSize * uScale / -v.z;
           vAlpha = aAlpha * rimFade(position, v);
           vTint = aTint;
+          vSeed = aSeed;
+          vPx = gl_PointSize;
         }`,
       fragmentShader: /* glsl */ `
         varying float vAlpha;
         varying float vTint;
+        varying float vSeed;
+        varying float vPx;
         void main() {
-          // Not a soft blob of light but a small engraved ring, as the old maps drew smoke and
-          // steam: a fine line round, fading at its edges over about a pixel.
-          float r = length(gl_PointCoord - 0.5) * 2.0;
-          float line = 1.0 - smoothstep(0.0, 0.14, abs(r - 0.72));
+          // A short wavy stroke across the point, one crest up and one down (which way, and how
+          // deep, its own), in a fine line fading at its edges over about a pixel.
+          vec2 q = (gl_PointCoord - 0.5) * 2.0;
+          float x = clamp(q.x, -0.8, 0.8);
+          float amp = (0.12 + 0.1 * fract(vSeed * 3.7)) * (vSeed > 0.5 ? 1.0 : -1.0);
+          float y = amp * sin(x * 3.927);
+          float d = length(vec2(q.x - x, -q.y - y)) * vPx * 0.5;
+          float line = clamp(0.9 - d, 0.0, 1.0);
           float a = vAlpha * line;
           if (a <= 0.01) discard;
           // Steam in the sea's blue ink, ash and smoke in sepia.
@@ -86,9 +103,10 @@ export class Puffs {
     p.alive = true;
     p.age = 0;
     p.kind = TINT[kind];
+    this.seed[this.nextSlot === 0 ? MOST - 1 : this.nextSlot - 1] = rand();
     if (kind === 'steam') { p.life = 2.2 + rand(); p.rise = 0.035; p.size = 0.012; p.grow = 0.02; }
     else if (kind === 'ash') { p.life = 5 + rand() * 3; p.rise = 0.14 * strength * (0.6 + rand() * 0.8); p.size = 0.018; p.grow = 0.03; }
-    else { p.life = 3.2 + rand(); p.rise = 0.05 * strength; p.size = 0.006 + 0.004 * strength; p.grow = 0.014 * strength; }
+    else { p.life = 4.5 + rand() * 1.5; p.rise = 0.035 * strength; p.size = 0.012 + 0.006 * strength; p.grow = 0.02 * strength; }
   }
 
   update(dt: number): void {
@@ -103,10 +121,10 @@ export class Puffs {
       const f = p.age / p.life;
       this.position[i * 3] = p.x; this.position[i * 3 + 1] = p.y; this.position[i * 3 + 2] = p.z;
       this.size[i] = p.size + p.grow * f;
-      this.alpha[i] = (p.kind === 1 ? 0.6 : p.kind === 0 ? 0.45 : 0.35) * Math.min(1, f * 6) * (1 - f) ** 1.5;
+      this.alpha[i] = (p.kind === 1 ? 0.6 : p.kind === 0 ? 0.45 : 0.5) * Math.min(1, f * 6) * (1 - f) ** 1.5;
       this.tint[i] = p.kind;
     }
     const g = this.object.geometry;
-    for (const name of ['position', 'aAlpha', 'aSize', 'aTint']) g.getAttribute(name).needsUpdate = true;
+    for (const name of ['position', 'aAlpha', 'aSize', 'aTint', 'aSeed']) g.getAttribute(name).needsUpdate = true;
   }
 }

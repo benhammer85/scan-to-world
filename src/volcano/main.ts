@@ -28,7 +28,6 @@
 import * as THREE from 'three';
 import { buildTopology } from '../mesh/topology';
 import { unpack, type Packed } from './drafting';
-import type { Polyline } from '../terrain/contours';
 import { PlotterLines, defaultPlotterStyle, type RevealMode } from '../render/plotterLines';
 import { GestureRecognizer } from '../interact/gestures';
 import { Stipple } from '../render/stipple';
@@ -161,10 +160,10 @@ material.onBeforeCompile = (shader) => {
 const mesh = new THREE.Mesh(geometry, material);
 group.add(mesh);
 
-const landPen = new PlotterLines({ ...defaultPlotterStyle, ink: P.landInk, inkHigh: P.landInkHigh, pencil: P.pencil, alpha: 0.62, indexAlpha: 0.95, indexEvery: 5, fadeSeconds: 0, widthPx: 1.15, nib: false }); // no nib: nothing on the world should look like something to press
-const seaPen = new PlotterLines({ ...defaultPlotterStyle, ink: P.seaInk, inkHigh: P.seaInk, pencil: '#a9bfd0', alpha: 0.45, indexAlpha: 0.6, fadeSeconds: 0, pen: false, appearSeconds: 2, widthPx: 0.95 });
+const landPen = new PlotterLines({ ...defaultPlotterStyle, ink: P.landInk, inkHigh: P.landInkHigh, pencil: P.pencil, alpha: 0.62, indexAlpha: 0.95, indexEvery: 5, fadeSeconds: 0, widthPx: 1.15, nib: false, steady: true }); // no nib: nothing on the world should look like something to press
+const seaPen = new PlotterLines({ ...defaultPlotterStyle, ink: P.seaInk, inkHigh: P.seaInk, pencil: '#a9bfd0', alpha: 0.45, indexAlpha: 0.6, fadeSeconds: 0, pen: false, appearSeconds: 2, widthPx: 0.95, steady: true });
 /** Water-lining: close lines following the coast out to sea, as the old engraved maps drew it. */
-const waterPen = new PlotterLines({ ...defaultPlotterStyle, ink: P.waterInk, inkHigh: P.waterInk, pencil: '#a9bfd0', alpha: 0.4, indexAlpha: 0.4, fadeSeconds: 0, pen: false, appearSeconds: 2, widthPx: 0.8 });
+const waterPen = new PlotterLines({ ...defaultPlotterStyle, ink: P.waterInk, inkHigh: P.waterInk, pencil: '#a9bfd0', alpha: 0.4, indexAlpha: 0.4, fadeSeconds: 0, pen: false, appearSeconds: 2, widthPx: 0.8, steady: true });
 landPen.width = seaPen.width = waterPen.width = 2;
 pens.push(landPen, seaPen, waterPen);
 group.add(seaPen.object, waterPen.object, landPen.object);
@@ -433,19 +432,17 @@ function setMark(m: THREE.Sprite, v: number, size: number): void {
 // ---------------------------------------------------------------- the aim
 /**
  * Each world's aim, reckoned now and then and drawn on the map as a surveyor would draw a route or
- * a boundary: pencilled where it's still to do, inked where it's done.
+ * a boundary, in small dots: pale where it's still to do, inked where it's done.
  *   An ocean world: the way the crust carries the heat, round the world, in stretches; a stretch
- *     is held while something lives on or by it, and then marked by an inked tick across the
- *     route instead of its pencil. Ringed when every stretch is held at once.
+ *     is held while something lives on or by it. Ringed when every stretch is held at once.
  *   The Moon: each great basin's edge, inked once its floor is flooded.
  *   Mars: nothing on the map; the mountain's height is told at the foot as it rises.
  */
 let chain = WORLD.goal === 'ring' ? new Chain(planet.plume, planet.driftDirection) : null;
 const FLOODED_ENOUGH = 0.7;
-const aimInk = new PlotterLines({ ...defaultPlotterStyle, ink: P.landInkHigh, inkHigh: P.landInkHigh, pencil: P.pencil, alpha: 0.6, indexAlpha: 0.6, fadeSeconds: 0, pen: false, appearSeconds: 1.5, widthPx: 1.3, nib: false, overGround: true });
-const aimPencil = new PlotterLines({ ...defaultPlotterStyle, ink: P.landInk, inkHigh: P.landInk, pencil: P.pencil, alpha: 0.4, indexAlpha: 0.4, fadeSeconds: 0, pen: false, appearSeconds: 1.5, widthPx: 1, nib: false, overGround: true });
-pens.push(aimInk, aimPencil);
-group.add(aimPencil.object, aimInk.object);
+// Small dots, as a chart marks a route or a boundary: pale where it's still to do, inked where it's done.
+const aimInk = new Stipple(P.landInk, 'dot', 1.5), aimPencil = new Stipple(P.pencil, 'dot', 1.7);
+for (const s of [aimInk, aimPencil]) { s.byDirection = true; (s.object.material as THREE.Material).depthTest = false; group.add(s.object); }
 const HEIGHT = WORLD.height ?? { target: 0, kmPerUnit: 40 };
 let aimDone = 0, aimOf = WORLD.goal === 'ring' ? CHAIN.stretches : WORLD.goal === 'height' ? HEIGHT.target : planet.basins.length, lastAim = -10;
 /** How much of the aim is done now, reckoned afresh. */
@@ -456,29 +453,19 @@ function reckonAim(): void {
 }
 const won = () => aimOf > 0 && aimDone >= aimOf;
 let toldHeight = 0;
-/** A line on the ground through these points (on the unit sphere), lifted to the land's height; dashed if `dashed`. */
-function onGround(pts: { x: number; y: number; z: number }[], dashed: boolean): Polyline[] {
-  const lifted = pts.map((q) => {
+/** Dots on the ground at these points (on the unit sphere), lifted to the land's height. */
+function onGround(pts: { x: number; y: number; z: number }[], into: number[]): void {
+  for (const q of pts) {
     const v = nearestAbove(new THREE.Vector3(q.x, q.y, q.z));
-    const r = Math.max(1, Math.hypot(topo.positions[v * 3], topo.positions[v * 3 + 1], topo.positions[v * 3 + 2])) + 0.004;
-    return [q.x * r, q.y * r, q.z * r];
-  });
-  const line = (from: number, to: number): Polyline => {
-    const points = Float32Array.from(lifted.slice(from, to + 1).flat());
-    let length = 0;
-    for (let i = 3; i < points.length; i += 3) length += Math.hypot(points[i] - points[i - 3], points[i + 1] - points[i - 2], points[i + 2] - points[i - 1]);
-    return { level: 0, iso: 0, points, closed: false, length };
-  };
-  if (!dashed) return [line(0, lifted.length - 1)];
-  const out: Polyline[] = [];
-  for (let i = 0; i + 1 < lifted.length; i += 2) out.push(line(i, i + 1));
-  return out;
+    const r = Math.max(1, Math.hypot(topo.positions[v * 3], topo.positions[v * 3 + 1], topo.positions[v * 3 + 2])) + 0.003;
+    into.push(q.x * r, q.y * r, q.z * r);
+  }
 }
 function drawAim(now: number): void {
   if (now - lastAim < 2) return;
   lastAim = now;
   reckonAim();
-  const inked: Polyline[] = [], pencilled: Polyline[] = [];
+  const inked: number[] = [], pencilled: number[] = [];
   if (WORLD.goal === 'height') {
     // No mark on the world: its height is told at the foot, each time it stands two km higher.
     const step = Math.floor(aimDone / 2) * 2;
@@ -486,15 +473,9 @@ function drawAim(now: number): void {
     return;
   }
   if (chain) {
-    // The route is pencilled across what's still to do; a stretch held is marked only by a short
-    // inked tick across the route, as a chart marks a voyage's stages, so no line cuts the land.
-    const per = 12, pts = chain.points(per);
-    chain.held.forEach((h, i) => {
-      if (!h) { pencilled.push(...onGround(pts.slice(i * per, (i + 1) * per + 1), true)); return; }
-      const m = pts[i * per + per / 2], a = pts[i * per + per / 2 - 1], b = pts[i * per + per / 2 + 1];
-      const n = new THREE.Vector3(m.x, m.y, m.z).cross(new THREE.Vector3(b.x - a.x, b.y - a.y, b.z - a.z)).normalize().multiplyScalar(0.022);
-      inked.push(...onGround([{ x: m.x - n.x, y: m.y - n.y, z: m.z - n.z }, m, { x: m.x + n.x, y: m.y + n.y, z: m.z + n.z }], false));
-    });
+    // The route in small dots round the world: pale across what's still to do, inked where held.
+    const per = 6, pts = chain.points(per);
+    chain.held.forEach((h, i) => onGround(pts.slice(i * per, (i + 1) * per), h ? inked : pencilled));
   } else {
     for (const b of planet.basins) {
       // The basin's edge, as a circle on the ground round its middle.
@@ -502,16 +483,17 @@ function drawAim(now: number): void {
       const u = new THREE.Vector3().crossVectors(c, Math.abs(c.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0)).normalize();
       const w = new THREE.Vector3().crossVectors(c, u);
       const r = b.r * 0.8, pts = [];
-      for (let i = 0; i <= 64; i++) {
-        const a = (i / 64) * Math.PI * 2;
+      const around = Math.max(24, Math.round((Math.PI * 2 * Math.sin(r)) / 0.066));
+      for (let i = 0; i < around; i++) {
+        const a = (i / around) * Math.PI * 2;
         pts.push(c.clone().multiplyScalar(Math.cos(r)).addScaledVector(u, Math.sin(r) * Math.cos(a)).addScaledVector(w, Math.sin(r) * Math.sin(a)));
       }
       const done = planet.flooded(b) >= FLOODED_ENOUGH;
-      (done ? inked : pencilled).push(...onGround(pts, !done));
+      onGround(pts, done ? inked : pencilled);
     }
   }
-  aimInk.setLines(inked, 'settle');
-  aimPencil.setLines(pencilled, 'settle');
+  aimInk.set(inked);
+  aimPencil.set(pencilled);
 }
 
 const NORMAL = new THREE.Vector3(), EYE = new THREE.Vector3();
@@ -1054,8 +1036,8 @@ renderer.setAnimationLoop(() => {
   seaPen.update(dt, camera);
   waterPen.update(dt, camera);
   if (begun) drawAim(seconds);
-  aimInk.update(dt, camera);
-  aimPencil.update(dt, camera);
+  aimInk.update(dt);
+  aimPencil.update(dt);
   for (const s of [...kindDots, foam]) s.update(dt);
   puffs.update(dt * speed);
   if (begun) breathe(dt);

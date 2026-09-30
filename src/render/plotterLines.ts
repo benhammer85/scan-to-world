@@ -68,6 +68,12 @@ export interface PlotterStyle {
   nib: boolean;
   /** Drawn over the ground rather than hidden where it rises in front: for marks laid on the map, not the land's own lines. */
   overGround: boolean;
+  /**
+   * Whether a line keeps who it is as it moves a little: a contour that shifts as the land grows is
+   * still the same contour, so it stays inked and keeps its age, rather than being pencilled or
+   * fading in afresh each time the lines are drawn again. Known by its level and where it lies.
+   */
+  steady: boolean;
 }
 
 export const defaultPlotterStyle: PlotterStyle = {
@@ -88,6 +94,7 @@ export const defaultPlotterStyle: PlotterStyle = {
   widthPx: 0,
   nib: true,
   overGround: false,
+  steady: false,
 };
 
 /** A line faces the eye, for fading, if the ground under it looks at least this much towards it. */
@@ -314,17 +321,48 @@ export class PlotterLines {
   }
   private uninkedCount = 0;
 
+  /** For steady lines: each known line's key, by its level and the cell it lies in. */
+  private cells = new Map<string, string>();
+  private made = 0;
+  /** Each line's key, taken over from a line of the same level lying where it lies (or near), else new. */
+  private steadyKeys(lines: Polyline[]): string[] {
+    const CELL = 0.03, next = new Map<string, string>(), taken = new Set<string>();
+    const keys = lines.map((l) => {
+      const p = l.points, n = p.length / 3;
+      let x = 0, y = 0, z = 0;
+      for (let i = 0; i < n; i++) { x += p[i * 3]; y += p[i * 3 + 1]; z += p[i * 3 + 2]; }
+      const r = Math.hypot(x, y, z) || 1;
+      const cx = Math.round(x / r / CELL), cy = Math.round(y / r / CELL), cz = Math.round(z / r / CELL);
+      const head = `${l.level}|${l.closed ? 1 : 0}|`;
+      let key: string | undefined;
+      // Where it lay before, or in a cell beside it: the nearest first.
+      search: for (let reach = 0; reach <= 1; reach++) {
+        for (let dx = -reach; dx <= reach; dx++) for (let dy = -reach; dy <= reach; dy++) for (let dz = -reach; dz <= reach; dz++) {
+          if (reach && Math.max(Math.abs(dx), Math.abs(dy), Math.abs(dz)) < reach) continue;
+          const k = this.cells.get(`${head}${cx + dx},${cy + dy},${cz + dz}`);
+          if (k && !taken.has(k)) { key = k; break search; }
+        }
+      }
+      key ??= `s${this.made++}|${head}`;
+      taken.add(key);
+      next.set(`${head}${cx},${cy},${cz}`, key);
+      return key;
+    });
+    this.cells = next;
+    return keys;
+  }
+
   setLines(lines: Polyline[], mode: RevealMode, from?: THREE.Vector3): void {
     // A new reveal cuts the running one short by finishing it, never by
     // dropping it: whatever the pen was still going to draw counts as drawn.
     if (this.animating) this.finish();
 
-    const keys = lines.map(lineKey);
+    const exact = lines.map(lineKey), keys = this.style.steady ? this.steadyKeys(lines) : exact;
     // Without a pen, nothing waits to be drawn: every line is there, each fading in from when it first came.
     if (!this.style.pen) mode = 'settle';
     // The same lines, all inked, asked for again: nothing to do. (A grown
     // world is thousands of lines, and rebuilding them all cost 370 ms.)
-    const same = keys.join('\n');
+    const same = exact.join('\n');
     if (mode !== 'plot' && same === this.lastKeys && keys.every((k) => this.inked.has(k))) return;
     this.lastKeys = same;
     if (mode === 'plot') this.inked.clear();

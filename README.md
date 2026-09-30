@@ -37,7 +37,7 @@ Every world you make, what grew on it, the railways between worlds, which way ea
 | II | **The Moon** | No air, no water, no drift, no life, and stones falling all the while. Lava as thin as water, which floods low ground instead of building mountains. The heat rises to whatever you turn uppermost. | **Flood the seas:** fill each of the five great basins (70% of its floor) before the heat is gone. Flooded ground stays dark, as the Moon's seas are. |
 | III | **Mars** | No drift, so the heat stays in one place and the mountain rises over it; weak gravity, so slopes stand steep. Thin air: dust storms, seen rising first, scour the heights, soft ash most. Craters, and a stone now and then. | **Raise the great mountain:** stand the summit 26 km above the plain. Its height is told at the foot each time it stands two km higher. Cover soft ash with lava before a storm comes. |
 
-The aim is drawn on the map as a surveyor would draw a route or a boundary: pencilled and dashed where it's still to do, inked where it's done. On the ocean world a held stretch drops its pencil and is marked only by a short inked tick across the route, as a chart marks a voyage's stages, so no line cuts across the islands. Met, the world says so ("The world is ringed with living islands") and the chart is drawn, titled *A ringed world*, *The seas of the Moon* or *The great mountain*. Turning the world right round then goes on to the next world. Not met when the fire goes out, a long age passes, the chart says how far you got ("12 of 16 stretches held"), and turning the world tries again. The world being played is remembered, and `?world=moon` goes straight to one.
+The aim is drawn on the map in small dots, as a chart marks a route or a boundary: pale where it's still to do, inked where it's done. Dots rather than a line, so the route round the ocean world doesn't read as an equator. Met, the world says so ("The world is ringed with living islands") and the chart is drawn, titled *A ringed world*, *The seas of the Moon* or *The great mountain*. Turning the world right round then goes on to the next world. Not met when the fire goes out, a long age passes, the chart says how far you got ("12 of 16 stretches held"), and turning the world tries again. The world being played is remembered, and `?world=moon` goes straight to one.
 
 Headless balance: on the ocean world (about 18 minutes of fire), idle play held 11 of 16 stretches and steady play 14, so ringing it takes more: steering lava along the way, catching stones and keeping wishes, which add heat. On the Moon, a bot that knew where every basin was flooded all five in about six minutes. On Mars, idle play raised the summit to 15 km, gentle flows to 25, and play that burst between storms and covered the ash with flows before them to 28, so the aim of 26 needs the storms read.
 
@@ -73,7 +73,7 @@ In headless play-throughs, gentle flows alone kept 4 kinds, doing nothing kept 3
 
 **Kept as it's played:** the world is saved quietly (in IndexedDB) every 15 seconds and whenever the page is hidden. Come back and the card says *Your world, as you left it*; touch it and you're where you were, and however you hold the phone then is level. `?seed=` starts that world fresh instead.
 
-**Smooth by design:** the heavy work never runs on the page's own thread.
+**Smooth by design:** the heavy work never runs on the page's own thread, and nothing pulses. A contour keeps who it is as the land grows beneath it (known by its level and where it lies, not by its exact points), so it stays inked and keeps its age instead of being pencilled or fading in afresh each time the lines are drawn again.
 * Contours, water-lines and life's signs are drafted in one worker (`drafts.ts`), and the finer surface is carried, raised and given its normals in another (`surface.ts`). Their results come back packed into flat arrays and move between threads without being copied.
 * What comes back is taken up one piece a frame (one pen, one kind), never on a frame that has already redrawn the surface or used much of its time, and never more than a few frames late.
 * The simulation's slow forces run in halves a step apart, with life the step after, so no one step carries them all. The sea's colour is worked out in the shader from depth rather than uploaded.
@@ -82,7 +82,7 @@ In headless play-throughs, gentle flows alone kept 4 kinds, doing nothing kept 3
 
 **What you see:** it keeps to the language of the old survey and geological maps, not light and effects.
 * Lava is laid on as a flat vermilion wash, the colour geological maps give it.
-* Steam and ash are small engraved rings rising and fading.
+* Smoke, steam and ash are short wavy pen strokes drifting up the page and fading, as engraved maps drew smoke curling from a volcano. They're drawn over the map, not hidden by the slope they drift up.
 * Each kind of life is drawn by a little picture of what grows there, in one ink, so it reads without the key. Every sign is a few pen strokes kept once in `render/signs.ts` and drawn from them on the world, on the chart and in the key; each is a touch larger or smaller, and some are mirrored, so a field of them doesn't look stamped:
   * moss: fine stipple;
   * reef: the scalloped edge sea charts give a reef, in the sea's blue;
