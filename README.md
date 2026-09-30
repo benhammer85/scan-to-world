@@ -44,18 +44,13 @@ Every world you make, what grew on it, the railways between worlds, which way ea
 
 In headless play-throughs, gentle flows alone kept 4 kinds, doing nothing kept 3, and mixing flows with bursts kept all 6.
 
-**How to play**
-* **Tap** to let the pressure out. The ring at the vent is the pressure. Tap soon and you get a gentle flow. Wait past the dashed ring and you get a burst of ash. At the double rule, the mountain tears open into a caldera and life dies far around it.
-* **Hold** the world to call the heat somewhere new. It creeps there beneath the crust, and the land it leaves behind cools and sinks.
-* **Tip** the world and the lava runs down the screen.
-* **Wishes:** now and then life wishes for a kind it lacks, shown by a dotted ring. Make that ground there and the wish is kept, which stirs the fire (more heat).
-* **Stones** are seen 20 seconds ahead, with a ring and a cross that close in and a countdown. Bring the plume beneath one and you catch four times its heat; otherwise keep life clear of it.
-
-**Or play it held like a globe, with nothing but tilt** (`?mode=tilt`, or "play by tilting" at the top left). There's no tapping and no holding:
-* **Tilt your phone** (it asks for motion access on the first touch), or turn the world with a finger.
+**How to play: only by how you hold it.** There's no tapping and no holding, just the world held as a globe in the hands.
+* **Tilt your phone**, or turn the world with a finger (on a keyboard, the arrow keys). The first touch, on a quiet card, begins the world. It's what lets the phone share how it's held (iPhones ask for motion access then) and lets sound play. However you're holding the phone at that moment counts as level.
 * **Held level**, the heat gathers beneath whatever is uppermost; a small ring marks the top. **Tipped**, it pours down the world the way gravity would take it. That's measured along gravity as the world is seen, with the relief as drawn: near the top the terrain decides, further round the curve of the world pulls the lava down its side, and it never runs up the screen.
-* **Tip soon** for a gentle stream. **Keep it level past the dashed ring, then tip**, for a burst. Level too long, and the mountain tears open.
-* **The heat is buoyant:** it creeps slowly towards whatever is uppermost, so you move it by turning a place to the top. That's also how you bring it under a stone to catch its heat.
+* **Tip soon** for a gentle stream. **Keep it level past the dashed ring, then tip**, for a burst of ash. Level too long, and the mountain tears open into a caldera, and life dies far around it.
+* **The heat is buoyant:** it creeps slowly towards whatever is uppermost, so you move it by turning a place to the top. The land it leaves behind cools and sinks.
+* **Wishes:** now and then life wishes for a kind it lacks, shown by a dotted ring. Make that ground there and the wish is kept, which stirs the fire (more heat).
+* **Stones** are seen 20 seconds ahead, with a ring and a cross that close in and a countdown. Turn one to the top to bring the heat beneath it and catch four times its heat, or keep life clear of it.
 * **A spirit level** beside the heat rule shows how far the vent is tipped: the bubble moves uphill, and past its dashed ring the heat pours (the bubble turns red).
 * Without a phone's sensor, gravity is fixed a little down the screen and mostly into it, as if you were looking down at a globe on a table.
 
@@ -72,7 +67,6 @@ In headless play-throughs, gentle flows alone kept 4 kinds, doing nothing kept 3
   * forest: small circles;
   * heath: carets.
 * Coasts are water-lined, and breakers are short blue strokes where the sea wears a coast. The shading is kept flat, like paper.
-* The world turns itself gently to keep the vent in view when you leave it alone.
 * The sound is generated as you play:
   * a drone that rises with the pressure and trembles near the edge;
   * surf, as loud as the sea is working;

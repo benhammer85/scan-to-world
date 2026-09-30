@@ -148,19 +148,4 @@ describe('the volcano', () => {
     expect(pl.landShare()).toBeLessThan(built);
   });
 
-  it('tipping the world steers the lava: it runs towards whichever way is down', () => {
-    const lean = (x: number) => {
-      const { planet: pl, topo, start } = planet();
-      pl.downhill.x = x; pl.downhill.y = 0; pl.downhill.z = 0;
-      pl.reserve = 0;
-      const before = Float32Array.from(pl.rock);
-      for (let i = 0; i < 4; i++) { pl.pressure = 5; pl.erupt(); run(pl, 3); }
-      run(pl, 10);
-      let sum = 0, weight = 0;
-      const p = topo.basePositions, x0 = p[start * 3];
-      for (let v = 0; v < pl.rock.length; v++) { const add = pl.rock[v] - before[v]; if (add > 0) { sum += add * (p[v * 3] - x0); weight += add; } }
-      return sum / weight;
-    };
-    expect(lean(1)).toBeGreaterThan(lean(-1) + 0.005);
-  });
 });

@@ -25,8 +25,13 @@
       #labels { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
       #labels span { position: absolute; transform: translate(-50%, -50%); font-style: italic; font-size: 15px; letter-spacing: 0.22em; white-space: nowrap; }
       #labels span.small { font-size: 12px; letter-spacing: 0.06em; }
-      #level { display: none; }
-      #mode { position: fixed; top: calc(10px + env(safe-area-inset-top)); left: 10px; font-size: 12px; opacity: 0.5; padding: 8px; cursor: pointer; background: none; border: none; }
+      /* The card the world begins from: one touch, which lets the phone share how it's held and sound play. */
+      #begin { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; background: #f4efe4; transition: opacity 1.5s; cursor: pointer; }
+      #begin.gone { opacity: 0; pointer-events: none; }
+      #begin p { margin: 0; text-align: center; }
+      #begin .first { font-size: 22px; font-style: italic; max-width: 20em; line-height: 1.4; padding: 0 24px; }
+      #begin .then { font-size: 14px; opacity: 0.6; max-width: 22em; line-height: 1.5; padding: 0 24px; }
+      #begin .touch { font-size: 13px; opacity: 0.45; letter-spacing: 0.12em; margin-top: 18px; }
       #sound { position: fixed; top: calc(10px + env(safe-area-inset-top)); right: 10px; font-size: 12px; opacity: 0.5; padding: 8px; cursor: pointer; background: none; border: none; }
       /* The chart at the end. */
       #plate { position: fixed; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: rgba(244,239,228,0.97); padding: 16px; box-sizing: border-box; }
@@ -42,9 +47,9 @@
     <div id="stage-name" class="engraved">The young fire</div>
     <div id="meter" class="engraved"><svg id="level" viewBox="-17 -17 34 34" width="26" height="26" aria-label="how level the vent is"><circle r="15.5" fill="none" stroke="#2e2118" stroke-width="1"/><circle r="2.9" fill="none" stroke="#2e2118" stroke-width="0.8" stroke-dasharray="1.6 1.6"/><circle class="bubble" r="2.6" fill="#2e2118"/></svg><span id="heat" title="heat left"><i></i></span><span id="kinds"></span></div>
     <button id="sound" class="engraved">sound on</button>
-    <button id="mode" class="engraved">play by tilting</button>
     <div id="event" class="engraved"></div>
     <p id="lesson" class="engraved"></p>
+    <div id="begin" class="engraved"><p class="first">A young world of water, and the heat beneath it, which will not last.</p><p class="then">Hold it as you would a globe. Tip it, and the heat pours out; hold it level, and the heat gathers.</p><p class="touch">touch to begin</p></div>
     <div id="plate"><img alt="The chart of your world" /><div><button id="keep" class="engraved">keep this chart</button><button id="again" class="engraved">begin a new world</button></div></div>
     <script type="module" src="/src/volcano/main.ts"></script>
   </body>
