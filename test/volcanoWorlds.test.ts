@@ -16,12 +16,13 @@ const run = (pl: Planet, seconds: number) => { for (let t = 0; t < seconds; t +=
 
 describe('the worlds', () => {
   it('come one after another, and each has its own aim', () => {
-    expect(WORLDS.map((w) => w.id)).toEqual(['ocean', 'moon', 'mars']);
+    expect(WORLDS.map((w) => w.id)).toEqual(['ocean', 'moon', 'mars', 'ice']);
     expect(worldOf('moon').goal).toBe('basins');
     expect(worldOf('nowhere').id).toBe('ocean');
     expect(nextWorld(worldOf('ocean'))!.id).toBe('moon');
     expect(nextWorld(worldOf('moon'))!.id).toBe('mars');
-    expect(nextWorld(worldOf('mars'))).toBe(null);
+    expect(nextWorld(worldOf('mars'))!.id).toBe('ice');
+    expect(nextWorld(worldOf('ice'))).toBe(null);
   });
 });
 
@@ -103,5 +104,33 @@ describe('Mars', () => {
     expect(warned).toBe(true);
     expect(blew).toBe(true);
     expect(worn.summit).toBeLessThan(calm.summit);
+  });
+});
+
+describe('an ice moon', () => {
+  const ice = (ground?: Float32Array) => new Planet(topo, nearest(0, 0, 1), 5, worldOf('ice').rules, ground);
+
+  it('is dry, cratered ice, and pouring water on it makes its surface new', () => {
+    const pl = ice();
+    expect(Math.min(...pl.rock)).toBeGreaterThan(0);
+    expect(pl.covered).toBe(0);
+    // Tipped, the water pours out and freezes over the old ice.
+    const q = pl.plume;
+    pl.gravity = { x: -q.x * 0.6 + 0.7, y: -q.y * 0.6, z: -q.z * 0.6 };
+    run(pl, 90);
+    expect(pl.covered).toBeGreaterThan(0.01);
+  });
+});
+
+describe('past fires', () => {
+  it('leave their ground for the next to rise through', () => {
+    const first = new Planet(topo, nearest(0, 0, 1), 5, worldOf('mars').rules);
+    for (let t = 0; t < 60; t += 1 / 20) { first.step(1 / 20); if (Math.round(t * 20) % 60 === 0) first.erupt(); }
+    const left = first.rock.slice();
+    const next = new Planet(topo, nearest(1, 0, 0), 9, worldOf('mars').rules, left);
+    // The old mountain still stands (fresh craters aside), and the new fire's summit is measured where it is, not there.
+    const at = first.plumeVertex;
+    expect(next.rock[at]).toBeGreaterThan(worldOf('mars').rules.floor! + 0.1);
+    expect(next.summit).toBeLessThan(first.summit * 0.5);
   });
 });

@@ -61,3 +61,46 @@ export async function recall<T>(): Promise<T | undefined> {
 export async function forget(): Promise<void> {
   try { await run('readwrite', (s) => s.delete(KEY)); } catch { /* nothing to forget */ }
 }
+
+/**
+ * The ground each world was left with: what the next fire on it rises through, so past games
+ * become its geology. Kept apart from the world being played (and in localStorage, not IndexedDB,
+ * since it's needed before the page can wait for anything): the heights, packed as text; how many
+ * fires the world has had; and where lava has ever lain, for worlds that keep the mark of it.
+ */
+export interface Ground { rock: Float32Array; fires: number; marked: Uint8Array | null }
+
+const groundKey = (world: string) => `volcano.ground.${world}`;
+
+function toText(bytes: Uint8Array): string {
+  let s = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+function fromText(text: string): Uint8Array {
+  const s = atob(text), out = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);
+  return out;
+}
+
+export function keepGround(world: string, g: Ground): void {
+  try {
+    localStorage.setItem(groundKey(world), JSON.stringify({ rock: toText(new Uint8Array(g.rock.buffer.slice(0))), fires: g.fires, marked: g.marked ? toText(g.marked) : null }));
+  } catch { /* not kept: the next fire begins on new ground, and that's all */ }
+}
+
+export function recallGround(world: string, n: number): Ground | null {
+  try {
+    const t = localStorage.getItem(groundKey(world));
+    if (!t) return null;
+    const o = JSON.parse(t) as { rock: string; fires: number; marked: string | null };
+    const rock = new Float32Array(fromText(o.rock).buffer);
+    if (rock.length !== n) return null;
+    const marked = o.marked ? fromText(o.marked) : null;
+    return { rock, fires: o.fires, marked: marked && marked.length === n ? marked : null };
+  } catch { return null; }
+}
+
+export function forgetGround(world: string): void {
+  try { localStorage.removeItem(groundKey(world)); } catch { /* nothing to forget */ }
+}

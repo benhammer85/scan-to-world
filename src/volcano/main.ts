@@ -43,7 +43,7 @@ import SurfaceWorker from './surface.worker?worker&inline';
 import { handleDrafts } from './drafts';
 import { handleSurface } from './surface';
 import { offThread } from './offthread';
-import { snapshotOf, restoreInto, keep, recall, forget } from './save';
+import { snapshotOf, restoreInto, keep, recall, forget, keepGround, recallGround, forgetGround } from './save';
 import { worldOf, nextWorld, WORLDS } from './worlds';
 import { Chain, CHAIN } from './chain';
 
@@ -117,7 +117,23 @@ function remembered(key: string): string | null {
 function remember(key: string, value: string): void {
   try { localStorage.setItem(key, value); } catch { /* not remembered, and that's all */ }
 }
-const planet = new Planet(topo, nearest(0.1, 0.15, 0.98), seed, WORLD.rules);
+/**
+ * What earlier fires on this world left: the next rises through it, so past games become the
+ * world's geology (not when a world is asked for by its number, to see it again as it was). The
+ * ocean's old islands have sunk meanwhile, to seamounts; and the new fire starts somewhere new.
+ */
+const GROUND = wanted ? null : recallGround(WORLD.id, N);
+const FIRES = GROUND?.fires ?? 0;
+if (GROUND && WORLD.id === 'ocean') for (let v = 0; v < N; v++) GROUND.rock[v] = Math.max(WORLD.rules.floor ?? -0.22, GROUND.rock[v] - 0.1);
+const START = (() => {
+  if (!GROUND) return nearest(0.1, 0.15, 0.98);
+  const h = (k: number) => { const x = Math.sin(seed * 12.9898 + k * 78.233) * 43758.5453; return x - Math.floor(x); };
+  const z = h(1) * 2 - 1, a = h(2) * Math.PI * 2, r = Math.sqrt(1 - z * z);
+  return nearest(r * Math.cos(a), r * Math.sin(a), z);
+})();
+/** Where lava has ever lain on this world (for those that keep the mark of it): the old seas, the old new ice. */
+const MARKED = GROUND?.marked ?? null;
+const planet = new Planet(topo, START, seed, WORLD.rules, GROUND?.rock);
 planet.stonesFall = !LIFE; // on a living world, not until life's ideas have come in (see `lessons`)
 const ecology = new Ecology(planet, topo);
 const islands = new Islands(topo);
@@ -126,6 +142,8 @@ const islands = new Islands(topo);
 const RELIEF = 0.32;
 const group = new THREE.Group();
 scene.add(group);
+// A fire that starts somewhere new starts facing us, where the first always did.
+if (GROUND) group.quaternion.setFromUnitVectors(new THREE.Vector3(base[START * 3], base[START * 3 + 1], base[START * 3 + 2]), new THREE.Vector3(0.1, 0.15, 0.98).normalize());
 
 /** Drawn on a surface of twice the detail, the values carried across smoothly (see fine.ts). */
 const fine = new FineSurface(topo, buildTopology(new THREE.IcosahedronGeometry(1, 80).attributes.position.array, null));
@@ -275,6 +293,7 @@ function coarse(): void {
       let x = PA[i] + (BA[i] - PA[i]) * fresh;
       // Where a world keeps the mark of it (the Moon's seas), ground lava has lain on stays dark.
       if (FL && planet.age[v] < 1e5) x += (FL[i] - x) * 0.85;
+      else if (FL && MARKED && MARKED[v]) x += (FL[i] - x) * 0.5; // an earlier fire's, a little faded
       x += (AS[i] - x) * ash;
       x += (VE[i] - x) * hot;
       x += (DR[i] - x) * deep;
@@ -357,7 +376,7 @@ let lastLines = -1, lastQuiet = true, lastLife = -1;
  */
 const drafts = offThread(() => { if (noWorkers) throw new Error('no workers'); return new DraftsWorker(); }, handleDrafts);
 const nearestOf = Uint32Array.from({ length: FN }, (_, f) => fine.nearestCoarse(f));
-drafts.post({ init: { triangles: ftopo.triangles.slice(), basePositions: fbase.slice(), relief: RELIEF, parts: fine.parts, nearest: nearestOf } });
+drafts.post({ init: { triangles: ftopo.triangles.slice(), basePositions: fbase.slice(), relief: RELIEF, parts: fine.parts, nearest: nearestOf, interval: WORLD.contour ?? 0.035 } });
 let linesOut: { mode: RevealMode; from: THREE.Vector3 } | null = null, lifeOut = false;
 drafts.onmessage = (data) => {
   const d = data as { lines?: { land: Packed; sea: Packed }; life?: { kinds: Float32Array[]; foam: Float32Array } };
@@ -475,11 +494,13 @@ const aimInk = new Stipple(P.landInkHigh, 'dot', 2.1), aimPencil = new Stipple('
 const aimNext = new Stipple(P.landInk, 'dot', 2.3);
 for (const s of [aimInk, aimPencil, aimNext]) { s.byDirection = true; (s.object.material as THREE.Material).depthTest = false; group.add(s.object); }
 const HEIGHT = WORLD.height ?? { target: 0, kmPerUnit: 40 };
-let aimDone = 0, aimOf = WORLD.goal === 'ring' ? CHAIN.stretches : WORLD.goal === 'height' ? HEIGHT.target : planet.basins.length, lastAim = -10;
+const COVER = Math.round((WORLD.cover ?? 0) * 100);
+let aimDone = 0, aimOf = WORLD.goal === 'ring' ? CHAIN.stretches : WORLD.goal === 'height' ? HEIGHT.target : WORLD.goal === 'cover' ? COVER : planet.basins.length, lastAim = -10;
 /** How much of the aim is done now, reckoned afresh. */
 function reckonAim(): void {
   if (chain) { aimDone = chain.update(planet, topo); aimOf = CHAIN.stretches; }
   else if (WORLD.goal === 'height') { aimDone = Math.max(0, planet.summit * HEIGHT.kmPerUnit); aimOf = HEIGHT.target; }
+  else if (WORLD.goal === 'cover') { aimDone = planet.covered * 100; aimOf = COVER; }
   else { aimDone = planet.basins.filter((b) => planet.flooded(b) >= FLOODED_ENOUGH).length; aimOf = planet.basins.length; }
 }
 const won = () => aimOf > 0 && aimDone >= aimOf;
@@ -487,12 +508,13 @@ let toldHeight = 0, toldDone = 0, toldAimAt = -1e9;
 /** The aim, in a line for the foot: said once the world has begun, and again if a long while passes with nothing gained. */
 const AIM_WORDS = WORLD.goal === 'ring' ? 'Keep building islands as the heat travels the dotted line. A gap breaks the chain'
   : WORLD.goal === 'basins' ? 'Flood each dotted basin with lava'
+  : WORLD.goal === 'cover' ? `Make ${COVER}% of the old ice new`
   : `Raise the mountain ${HEIGHT.target} km high`;
 /** Say the aim now and then, and what's been gained each time something is. */
 function tellAim(now: number): void {
   if (planet.over || ending) return;
   if (now - toldAimAt > 180) { toldAimAt = now; announce(AIM_WORDS); }
-  if (WORLD.goal === 'height') return;
+  if (WORLD.goal === 'height' || WORLD.goal === 'cover') return;
   const done = Math.round(aimDone);
   if (done > toldDone && done < aimOf) {
     toldAimAt = now;
@@ -514,10 +536,10 @@ function drawAim(now: number): void {
   reckonAim();
   if (begun) tellAim(now);
   const inked: number[] = [], pencilled: number[] = [], next: number[] = [];
-  if (WORLD.goal === 'height') {
-    // No mark on the world: its height is told at the foot, each time it stands two km higher.
-    const step = Math.floor(aimDone / 2) * 2;
-    if (begun && step > toldHeight && step < aimOf) { toldHeight = step; toldAimAt = now; announce(`The mountain is ${step} of ${aimOf} km high`); }
+  if (WORLD.goal === 'height' || WORLD.goal === 'cover') {
+    // No mark on the world: how far along is told at the foot, every two km (or every 5%).
+    const by = WORLD.goal === 'height' ? 2 : 5, step = Math.floor(aimDone / by) * by;
+    if (begun && step > toldHeight && step < aimOf) { toldHeight = step; toldAimAt = now; announce(WORLD.goal === 'height' ? `The mountain is ${step} of ${aimOf} km high` : `${step}% of the ice made new, of ${aimOf}%`); }
     return;
   }
   if (chain) {
@@ -765,7 +787,7 @@ function theEnd(): void {
   if (!ending && begun && won()) {
     ending = { from: planet.seconds, shown: false, at: 0, info: null, turned: 0, won: true };
     queue.length = 0;
-    announce(WORLD.goal === 'ring' ? 'Done: living islands all the way round' : WORLD.goal === 'height' ? `Done: the mountain reaches ${HEIGHT.target} km` : 'Done: every basin flooded');
+    announce(WORLD.goal === 'ring' ? 'Done: living islands all the way round' : WORLD.goal === 'height' ? `Done: the mountain reaches ${HEIGHT.target} km` : WORLD.goal === 'cover' ? `Done: ${COVER}% of the ice made new` : 'Done: every basin flooded');
     feel([30, 50, 30]);
   }
   if (!ending && planet.over) {
@@ -780,6 +802,10 @@ function theEnd(): void {
     ending.at = seconds;
     ecology.update(0);
     ending.info = chartInfo();
+    // What this fire left is the ground the next one on this world rises through.
+    let marked: Uint8Array | null = null;
+    if (FL) { marked = new Uint8Array(N); for (let v = 0; v < N; v++) marked[v] = planet.age[v] < 1e5 || (MARKED?.[v] ?? 0) ? 1 : 0; }
+    keepGround(WORLD.id, { rock: planet.rock.slice(), fires: FIRES + 1, marked });
     $('stage-name').textContent = ending.info.title;
     void forget(); // the world is finished: nothing to come back to
   }
@@ -808,12 +834,12 @@ function chartInfo(): ChartInfo {
   reckonAim();
   const met = !!ending?.won, ring = WORLD.goal === 'ring';
   return {
-    title: ring ? (met ? 'Ringed with islands' : 'Not yet ringed') : WORLD.goal === 'height' ? (met ? 'The great mountain' : 'Not high enough yet') : met ? 'Every basin flooded' : 'Not every basin flooded',
-    subtitle: `${WORLD.numeral} · ${WORLD.title} · world ${seed} · ${mm} of fire`,
+    title: ring ? (met ? 'Ringed with islands' : 'Not yet ringed') : WORLD.goal === 'height' ? (met ? 'The great mountain' : 'Not high enough yet') : WORLD.goal === 'cover' ? (met ? 'New ice' : 'Not enough new ice') : met ? 'Every basin flooded' : 'Not every basin flooded',
+    subtitle: `${WORLD.numeral} · ${WORLD.title} · ${FIRES ? `fire ${FIRES + 1} · ` : ''}${mm} of fire`,
     kinds: LIFE ? KINDS.map((k) => ({ name: k.name, ink: k.ink, sign: k.sign, living: living.has(k.kind) })) : [],
     summary: ring
       ? `${aimDone} of ${aimOf} stretches living · ${living.size} of ${KINDS.length} kinds of life`
-      : WORLD.goal === 'height' ? `${Math.round(aimDone)} of ${aimOf} km high` : `${aimDone} of ${aimOf} basins flooded`,
+      : WORLD.goal === 'height' ? `${Math.round(aimDone)} of ${aimOf} km high` : WORLD.goal === 'cover' ? `${Math.round(aimDone)}% of the ice made new, of ${aimOf}%` : `${aimDone} of ${aimOf} basins flooded`,
     length,
     eras,
     events,
@@ -1014,7 +1040,15 @@ for (const w of WORLDS) {
   });
   $('begin').querySelector('.worlds')!.appendChild(b);
 }
-($('begin').querySelector('.then') as HTMLElement).textContent = WORLD.then;
+($('begin').querySelector('.then') as HTMLElement).textContent = WORLD.then + (FIRES ? ` The ground your last ${FIRES === 1 ? 'fire' : `${FIRES} fires`} left is still here, and this fire starts somewhere new.` : '');
+// A world with a past can be begun afresh, on new ground.
+if (FIRES) {
+  const fresh = document.createElement('p');
+  fresh.className = 'fresh';
+  fresh.textContent = 'start this world on new ground';
+  fresh.addEventListener('pointerdown', (e) => { e.stopPropagation(); forgetGround(WORLD.id); void forget(); setTimeout(() => location.reload(), 200); });
+  $('begin').appendChild(fresh);
+}
 // A world without life has no key of its kinds.
 if (!LIFE) $('legend').style.display = 'none';
 $('begin').addEventListener('pointerdown', () => {

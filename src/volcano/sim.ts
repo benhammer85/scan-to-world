@@ -151,7 +151,7 @@ export const VOLCANO = {
    * What the world is like at the start: 'ocean', one sea over an even floor; or 'moon', airless
    * highland scarred by `basins` great old impact basins, and a scatter of smaller craters.
    */
-  terrain: 'ocean' as 'ocean' | 'moon' | 'mars',
+  terrain: 'ocean' as 'ocean' | 'moon' | 'mars' | 'ice',
   basins: 0,
   /** Smaller craters scattered over the ground, on a world that starts scarred. */
   craters: 40,
@@ -247,7 +247,11 @@ export class Planet {
   /** This world's own settings: VOLCANO, with whatever the world changes (see worlds.ts). */
   readonly k: Rules;
 
-  constructor(private topo: Topology, start: number, seed = 1, rules: Partial<Rules> = {}) {
+  /**
+   * @param ground the ground an earlier fire on this world left, to begin on instead of new rough
+   *   plain (see `Ground` in main.ts): the geology of past games, with this fire rising through it.
+   */
+  constructor(private topo: Topology, start: number, seed = 1, rules: Partial<Rules> = {}, ground?: Float32Array) {
     this.k = { ...VOLCANO, ...rules };
     this.reserve = this.k.heat;
     const n = topo.vertexCount, p = topo.basePositions;
@@ -278,6 +282,7 @@ export class Planet {
     const t2 = cross(this.plume, t1);
     this.drift = { x: t1.x * Math.cos(a) + t2.x * Math.sin(a), y: t1.y * Math.cos(a) + t2.y * Math.sin(a), z: t1.z * Math.cos(a) + t2.z * Math.sin(a) };
     this.impactIn = this.between(this.k.impactEvery);
+    if (ground && ground.length === n) this.rock.set(ground);
     if (this.k.terrain !== 'ocean') this.scar();
     if (this.k.stormEvery[1] > 0) this.stormIn = this.between(this.k.stormEvery);
   }
@@ -311,7 +316,7 @@ export class Planet {
     }
     for (let i = 0; i < this.k.craters; i++) bowl(point(), 0.03 + this.rand() * 0.06, 0.05);
     // A world without a sea keeps even its deepest craters dry.
-    if (this.k.terrain === 'mars') for (let v = 0; v < n; v++) this.rock[v] = Math.max(0.004, this.rock[v]);
+    if (this.k.terrain === 'mars' || this.k.terrain === 'ice') for (let v = 0; v < n; v++) this.rock[v] = Math.max(0.004, this.rock[v]);
   }
 
   /** Which way the crust carries the heat, along the ground at the vent (a unit vector). */
@@ -468,13 +473,22 @@ export class Planet {
    * `summitOf`-th highest ground (on a planet of the drawn detail).
    */
   get summit(): number {
-    const k = Math.max(1, Math.round(this.k.summitOf * this.scale)), top: number[] = [];
+    // Only the mountain over this fire: near where the heat is, not an old one elsewhere.
+    const k = Math.max(1, Math.round(this.k.summitOf * this.scale)), top: number[] = [], p = this.topo.basePositions, q = this.plume, near = Math.cos(0.45);
     for (let v = 0; v < this.rock.length; v++) {
+      if (p[v * 3] * q.x + p[v * 3 + 1] * q.y + p[v * 3 + 2] * q.z < near) continue;
       const h = this.rock[v];
       if (top.length < k) { top.push(h); top.sort((a, b) => a - b); }
       else if (h > top[0]) { top[0] = h; top.sort((a, b) => a - b); }
     }
     return top[0] - this.k.floor;
+  }
+
+  /** The share of the world's surface made new this fire: lava has lain on it, or a burst's ash (or frost) covers it. */
+  get covered(): number {
+    let c = 0;
+    for (let v = 0; v < this.age.length; v++) if (this.age[v] < 1e5 || this.ash[v] > 0.15) c++;
+    return c / this.age.length;
   }
 
   /** Say something, and remember it for the chart. */

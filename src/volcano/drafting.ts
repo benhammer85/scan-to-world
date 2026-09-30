@@ -93,14 +93,14 @@ function chaikin(p: Float32Array, closed: boolean): Float32Array {
  * set wide, as a chart shows only a few. (No water-lining: of all the lines it was the most, and
  * the most often redrawn, and a calm map is better without it.)
  */
-export function draftLines(s: Surface, h: Float32Array): { land: Polyline[]; sea: Polyline[] } {
+export function draftLines(s: Surface, h: Float32Array, interval = 0.035): { land: Polyline[]; sea: Polyline[] } {
   const n = s.vertexCount, sea = new Uint8Array(n), land = new Uint8Array(n);
   for (let v = 0; v < n; v++) {
     if (h[v] < 0) sea[v] = 1; else land[v] = 1;
   }
   const t = s as unknown as Topology; // the extractor uses only what a Surface has: triangles, positions, normals
   return {
-    land: rounded(extractContours(t, h, { interval: 0.035, lift: 0.003, mask: sea })),
+    land: rounded(extractContours(t, h, { interval, lift: 0.003, mask: sea })),
     sea: rounded(extractContours(t, h, { interval: 0.14, lift: 0.002, mask: land })),
   };
 }

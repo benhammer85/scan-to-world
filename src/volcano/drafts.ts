@@ -10,9 +10,11 @@ import type { Handler } from './offthread';
 
 let surface: Surface | null = null, fine: FineSurface | null = null, nearest: Uint32Array | null = null;
 let relief = 0.32;
+/** How far apart the land's contours are, in height: wider on a world of low relief, or its every ripple is a line. */
+let interval = 0.035;
 
 type Ask =
-  | { init: { triangles: Uint32Array; basePositions: Float32Array; relief: number; parts: FineSurface['parts']; nearest: Uint32Array } }
+  | { init: { triangles: Uint32Array; basePositions: Float32Array; relief: number; parts: FineSurface['parts']; nearest: Uint32Array; interval?: number } }
   | { lines: { id: number; heights: Float32Array } }
   | { life: { id: number; heights: Float32Array; life: Float32Array; wear: Float32Array; kind: Int8Array; density: [number, number][] } };
 // (For life, `life`, `wear` and `kind` are the simulation's own, a value to each coarse vertex: they're carried onto the finer surface here.)
@@ -21,14 +23,14 @@ type Ask =
 export const handleDrafts: Handler = (message, post) => {
   const ask = message as Ask;
   if ('init' in ask) {
-    surface = surfaceOf(ask.init.triangles, ask.init.basePositions); relief = ask.init.relief;
+    surface = surfaceOf(ask.init.triangles, ask.init.basePositions); relief = ask.init.relief; interval = ask.init.interval ?? interval;
     fine = FineSurface.fromParts(ask.init.parts); nearest = ask.init.nearest;
     return;
   }
   if (!surface) return;
   if ('lines' in ask) {
     shape(surface, ask.lines.heights, relief);
-    const lines = draftLines(surface, ask.lines.heights);
+    const lines = draftLines(surface, ask.lines.heights, interval);
     const land = pack(lines.land), sea = pack(lines.sea);
     post({ lines: { id: ask.lines.id, land, sea } }, [...packedBuffers(land), ...packedBuffers(sea)]);
     return;

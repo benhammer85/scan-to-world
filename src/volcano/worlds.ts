@@ -6,13 +6,15 @@
  *       Carry the chain, living, all the way round.
  *   II  The Moon: no air, no water, no drift, and stones falling all the while; lava so fluid it
  *       floods the low ground rather than building mountains. Flood the great basins into seas.
+ *   IV  An ice moon: a frozen shell over a hidden sea, where water is the lava and ice the rock.
+ *       Cover the old, cratered ice with new.
  *   III Mars: no drift, so the heat stays in one place, as it did under the great Martian
  *       volcanoes, and gravity weak enough for slopes to stand steep; thin air, and dust storms
  *       that scour the heights, soft ash most. Raise the great mountain to its height.
  */
 import type { Rules } from './sim';
 
-export type WorldId = 'ocean' | 'moon' | 'mars';
+export type WorldId = 'ocean' | 'moon' | 'mars' | 'ice';
 
 export interface Palette {
   /** The ground: bare old rock, fresh basalt, ash, lava as it runs (and where it lies thick), and, for worlds that keep a mark of it, rock that lava has flooded. */
@@ -41,9 +43,13 @@ export interface World {
   then: string;
   rules: Partial<Rules>;
   palette: Palette;
-  goal: 'ring' | 'basins' | 'height';
+  goal: 'ring' | 'basins' | 'height' | 'cover';
   /** For a world whose aim is height: how high, in km, and how many km a unit of the world's height stands for. */
   height?: { target: number; kmPerUnit: number };
+  /** For a world whose aim is to make its surface new: the share of it. */
+  cover?: number;
+  /** How far apart its contours are, in height (0.035 unless it says). */
+  contour?: number;
 }
 
 export const WORLDS: World[] = [
@@ -102,6 +108,29 @@ export const WORLDS: World[] = [
     },
     goal: 'height',
     height: { target: 28, kmPerUnit: 40 },
+  },
+  {
+    id: 'ice',
+    numeral: 'IV',
+    title: 'An ice moon',
+    first: 'An ice moon: a frozen shell over a hidden sea.',
+    then: 'Here water is the lava and ice is the rock. The heat rises to whatever you turn to the top; tip the world to pour. Bursts throw frost far across the ice. Make 35% of the surface new before the heat runs out.',
+    rules: {
+      terrain: 'ice', basins: 0, craters: 40, floor: 0.05, rough: 0.015,
+      waves: 0, rain: 0, sink: 0, life: false,
+      flow: 20, channel: 1, coolLand: 0.08,
+      drift: 0, rises: 0.02, heat: 380, rising: 1.4, ashShare: 0.75,
+      impactEvery: [50, 90], impactWarning: 12, impactHeat: 4,
+    },
+    palette: {
+      // Old ice grey with age and dust; new ice clean and white; water as it runs, blue.
+      paper: '#d8dcd8', basalt: '#eef3f5', ash: '#fbfcfc', lava: '#7fb0c8', deepLava: '#5a8fae', flooded: '#f3f6f7',
+      shallow: '#d4e3ec', deep: '#b1c8d8',
+      landInk: '#5a7080', landInkHigh: '#3c5463', pencil: '#b3bfc6', seaInk: '#5b82a3',
+    },
+    goal: 'cover',
+    cover: 0.35,
+    contour: 0.07,
   },
 ];
 
