@@ -115,9 +115,43 @@ export function draftLife(s: Surface, life: Float32Array, wear: Float32Array, h:
     if (w > 0.0003 && Math.min(h[a], h[b], h[d]) < 0) push(surf[Math.min(2, Math.floor(w / 0.0012))], a, b, d, 1.0015);
   }
   return {
-    kinds: byKind.map((levels, k) => Float32Array.from(levels.flatMap((tris, lv) => stippleDots(tris, density[k][0] + density[k][1] * lv, true)))),
+    kinds: byKind.map((levels, k) => Float32Array.from(clumped(levels.flatMap((tris, lv) => stippleDots(tris, density[k][0] + density[k][1] * lv, true)), 18 + k * 5, k))),
     foam: Float32Array.from(surf.flatMap((tris, lv) => stippleDots(tris, 900 + 1500 * lv, true))),
   };
+}
+
+/**
+ * Life grows in patches, not evenly: keep each dot or not by a smooth noise over the world (by its
+ * direction, so the same dot is always kept or not), thick in some places, thin or bare in others,
+ * each kind its own pattern (`seed`) at its own scale.
+ */
+function clumped(dots: number[], scale: number, seed: number): number[] {
+  const out: number[] = [];
+  for (let i = 0; i < dots.length; i += 3) {
+    const x = dots[i], y = dots[i + 1], z = dots[i + 2], l = Math.hypot(x, y, z) || 1;
+    const n = noise3(x / l * scale + seed * 17.1, y / l * scale - seed * 5.3, z / l * scale + seed * 9.7) * 0.65 + noise3(x / l * scale * 2.7, y / l * scale * 2.7, z / l * scale * 2.7 + seed) * 0.35;
+    // And a fixed chance of its own, so the edge of a patch is ragged, not a cut line.
+    if (hash3(Math.round(x / l * 4096), Math.round(y / l * 4096), Math.round(z / l * 4096)) < (n - 0.28) * 2.2) out.push(x, y, z);
+  }
+  return out;
+}
+
+function hash3(x: number, y: number, z: number): number {
+  const h = Math.sin(x * 127.1 + y * 311.7 + z * 74.7) * 43758.5453;
+  return h - Math.floor(h);
+}
+
+/** Smooth value noise, 0 to 1. */
+function noise3(x: number, y: number, z: number): number {
+  const ix = Math.floor(x), iy = Math.floor(y), iz = Math.floor(z), fx = x - ix, fy = y - iy, fz = z - iz;
+  const sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy), sz = fz * fz * (3 - 2 * fz);
+  const at = (a: number, b: number, c: number) => hash3(ix + a, iy + b, iz + c);
+  const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+  return lerp(
+    lerp(lerp(at(0, 0, 0), at(1, 0, 0), sx), lerp(at(0, 1, 0), at(1, 1, 0), sx), sy),
+    lerp(lerp(at(0, 0, 1), at(1, 0, 1), sx), lerp(at(0, 1, 1), at(1, 1, 1), sx), sy),
+    sz,
+  );
 }
 
 /**

@@ -145,17 +145,28 @@ geometry.setIndex(new THREE.BufferAttribute(ftopo.triangles, 1));
 const material = new THREE.MeshLambertMaterial({ vertexColors: true, dithering: true });
 material.onBeforeCompile = (shader) => {
   shader.vertexShader = shader.vertexShader
-    .replace('void main() {', 'attribute float aH;\nvarying float vH;\nvoid main() {')
-    .replace('#include <color_vertex>', '#include <color_vertex>\n  vH = aH;');
+    .replace('void main() {', 'attribute float aH;\nvarying float vH;\nvarying vec3 vDir;\nvoid main() {')
+    .replace('#include <color_vertex>', '#include <color_vertex>\n  vH = aH;\n  vDir = normalize(position);');
   // The sea's colour is only its depth, so it's worked out here rather than sent: paler over the shallows.
   shader.uniforms.uShallow = { value: SHALLOW };
   shader.uniforms.uDeep = { value: DEEP };
   shader.fragmentShader = shader.fragmentShader
-    .replace('void main() {', 'uniform vec3 uShallow;\nuniform vec3 uDeep;\nvarying float vH;\nvoid main() {')
+    .replace('void main() {', `uniform vec3 uShallow;\nuniform vec3 uDeep;\nvarying float vH;\nvarying vec3 vDir;
+      float hash3(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
+      float noise3(vec3 p) {
+        vec3 i = floor(p), f = fract(p), s = f * f * (3.0 - 2.0 * f);
+        return mix(mix(mix(hash3(i), hash3(i + vec3(1, 0, 0)), s.x), mix(hash3(i + vec3(0, 1, 0)), hash3(i + vec3(1, 1, 0)), s.x), s.y),
+                   mix(mix(hash3(i + vec3(0, 0, 1)), hash3(i + vec3(1, 0, 1)), s.x), mix(hash3(i + vec3(0, 1, 1)), hash3(i + vec3(1, 1, 1)), s.x), s.y), s.z);
+      }
+      void main() {`)
     .replace('#include <color_fragment>', `
       float edge = max(fwidth(vH), 1e-5) * 0.7;
       vec3 sea = mix(uShallow, uDeep, clamp(-vH / 0.3, 0.0, 1.0));
-      diffuseColor.rgb *= mix(sea, vColor.rgb, smoothstep(-edge, edge, vH));`);
+      // The land's colour laid on as watercolour is: never quite even, a little darker where it
+      // pooled and lighter where it thinned, in soft blotches fixed to the ground.
+      float pool = noise3(vDir * 38.0) * 0.6 + noise3(vDir * 110.0) * 0.4;
+      vec3 land = vColor.rgb * (0.95 + 0.1 * pool);
+      diffuseColor.rgb *= mix(sea, land, smoothstep(-edge, edge, vH));`);
 };
 const mesh = new THREE.Mesh(geometry, material);
 group.add(mesh);
@@ -168,10 +179,11 @@ landPen.width = seaPen.width = waterPen.width = 2;
 pens.push(landPen, seaPen, waterPen);
 group.add(seaPen.object, waterPen.object, landPen.object);
 /** Life by the sign of its kind; and breakers, short blue strokes, where the sea is wearing at a coast. */
-const kindDots = KINDS.map((k) => new Stipple(k.ink, k.sign, k.sign === 'dot' ? 2.1 : k.sign === 'tree' ? 9 : 7, { ink2: k.ink2 }));
+const kindDots = KINDS.map((k) => new Stipple(k.ink, k.sign, k.sign === 'dot' ? 1.7 : k.sign === 'tree' ? 5.5 : 4.5, { ink2: k.ink2 }));
 const foam = new Stipple('#46708f', 'dash', 6);
 for (const s of [...kindDots, foam]) {
   s.byDirection = true;
+  s.linger = 3; // come and go slowly: nothing pops
   // Signs are printed on the map, over the ground, not cut by it where a slope rises past them
   // (the far side of the world fades them away regardless).
   (s.object.material as THREE.Material).depthTest = false;
@@ -225,6 +237,16 @@ const SHALLOW = new THREE.Color(P.shallow), DEEP = new THREE.Color(P.deep);
 const rgb = (c: THREE.Color) => [c.r, c.g, c.b];
 const [PA, BA, AS, VE, DR] = [PAPER, BASALT, ASH, VERMILION, DEEP_RED].map(rgb);
 const FL = FLOODED ? rgb(FLOODED) : null;
+/**
+ * Life's own wash: where something lives, the ground takes its kind's colour, as the hand-coloured
+ * maps washed woods green, in a thin watercolour over the paper, stronger the more there is.
+ * (The reef's is left to its signs: the sea's colour is its depth alone.)
+ */
+const WASH = KINDS.map((k) => (k.kind === 'reef' ? null : rgb(new THREE.Color(k.ink).lerp(PAPER, 0.25))));
+const WASH_STRENGTH = 0.9;
+/** The wash as it's drawn, each vertex's colour and strength eased toward what lives there, so it comes and goes softly. */
+const washTint = new Float32Array(N * 3), washWeight = new Float32Array(N);
+let washedAt = -1;
 
 function surface(v: number): number {
   return planet.rock[v] + planet.lava[v];
@@ -234,6 +256,9 @@ function surface(v: number): number {
 const coarseHeight = new Float32Array(N), coarseLand = new Float32Array(N * 3);
 /** The simulation's heights and colours, a vertex at a time, ready to be carried onto the finer surface. */
 function coarse(): void {
+  // How far the wash eases this time: by the seconds since last, over a second or two.
+  const now = performance.now() / 1000, ease = washedAt < 0 ? 1 : 1 - Math.exp(-(now - washedAt) / 1.5);
+  washedAt = now;
   for (let v = 0; v < N; v++) {
     const h = surface(v), r = 1 + RELIEF * Math.max(0, h);
     topo.positions[v * 3] = base[v * 3] * r; topo.positions[v * 3 + 1] = base[v * 3 + 1] * r; topo.positions[v * 3 + 2] = base[v * 3 + 2] * r;
@@ -245,6 +270,8 @@ function coarse(): void {
     const v3 = v * 3;
     const fresh = planet.age[v] < 200 ? Math.exp(-planet.age[v] / 30) * 0.7 : 0, ash = planet.ash[v] * 0.5;
     const hot = lava > 0.002 ? Math.min(1, lava * 40) : 0, deep = lava > 0.002 ? Math.min(0.6, lava * 8) : 0;
+    const kind = LIFE ? ecology.kind[v] : -1, wash = kind >= 0 ? WASH[kind] : null, washBy = wash ? WASH_STRENGTH * Math.min(1, planet.life[v]) * (1 - hot) : 0;
+    washWeight[v] += (washBy - washWeight[v]) * ease;
     for (let i = 0; i < 3; i++) {
       let x = PA[i] + (BA[i] - PA[i]) * fresh;
       // Where a world keeps the mark of it (the Moon's seas), ground lava has lain on stays dark.
@@ -252,6 +279,8 @@ function coarse(): void {
       x += (AS[i] - x) * ash;
       x += (VE[i] - x) * hot;
       x += (DR[i] - x) * deep;
+      if (wash) washTint[v3 + i] += (wash[i] - washTint[v3 + i]) * (washWeight[v] < 0.05 ? 1 : ease);
+      x += (washTint[v3 + i] - x) * washWeight[v];
       coarseLand[v3 + i] = x;
     }
   }
@@ -368,7 +397,7 @@ function redrawLines(now: number): void {
  * thicker adds): moss a fine stipple; forest sparsely, a few small circles standing for a wood, as
  * a map draws one; the others between.
  */
-const signDensity = KINDS.map((k): [number, number] => (k.sign === 'dot' ? [3000, 7000] : k.kind === 'forest' ? [45, 85] : [220, 420]));
+const signDensity = KINDS.map((k): [number, number] => (k.sign === 'dot' ? [1600, 3600] : k.kind === 'forest' ? [90, 170] : [180, 330]));
 /** Life by its signs, and the breakers, drafted in the worker now and then. */
 function redrawLife(now: number): void {
   if (lifeOut || now - lastLife < 1.2) return;
@@ -441,7 +470,7 @@ function setMark(m: THREE.Sprite, v: number, size: number): void {
 let chain = WORLD.goal === 'ring' ? new Chain(planet.plume, planet.driftDirection) : null;
 const FLOODED_ENOUGH = 0.7;
 // Small dots, as a chart marks a route or a boundary: pale where it's still to do, inked where it's done.
-const aimInk = new Stipple(P.landInk, 'dot', 1.5), aimPencil = new Stipple(P.pencil, 'dot', 1.7);
+const aimInk = new Stipple(P.landInkHigh, 'dot', 2.1), aimPencil = new Stipple('#' + new THREE.Color(P.pencil).lerp(new THREE.Color(P.landInk), 0.6).getHexString(), 'dot', 1.8);
 for (const s of [aimInk, aimPencil]) { s.byDirection = true; (s.object.material as THREE.Material).depthTest = false; group.add(s.object); }
 const HEIGHT = WORLD.height ?? { target: 0, kmPerUnit: 40 };
 let aimDone = 0, aimOf = WORLD.goal === 'ring' ? CHAIN.stretches : WORLD.goal === 'height' ? HEIGHT.target : planet.basins.length, lastAim = -10;

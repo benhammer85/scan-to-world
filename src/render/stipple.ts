@@ -30,12 +30,14 @@ export class Stipple {
       transparent: true,
       depthWrite: false,
       defines: { DOT: sign === 'dot' ? 1 : 0, MIRROR: MIRRORS[sign] ? 1 : 0, VARY: vary ? 1 : 0 },
-      uniforms: { uInk: { value: new THREE.Color(ink) }, uInk2: { value: new THREE.Color(vary?.ink2 ?? ink) }, uSize: { value: size * Math.min(2, window.devicePixelRatio || 1) }, uNow: { value: 0 }, uAppear: { value: STIPPLE.appear } },
+      uniforms: { uInk: { value: new THREE.Color(ink) }, uInk2: { value: new THREE.Color(vary?.ink2 ?? ink) }, uSize: { value: size * Math.min(2, window.devicePixelRatio || 1) }, uNow: { value: 0 }, uAppear: { value: STIPPLE.appear }, uLinger: { value: 1 } },
       vertexShader: /* glsl */ `
         uniform float uSize;
         uniform float uNow;
         uniform float uAppear;
+        uniform float uLinger;
         attribute float aBorn;
+        attribute float aGone;
         varying float vRim;
         varying float vSize;
         varying float vFlip;
@@ -49,7 +51,7 @@ export class Stipple {
           // Each sign a little its own, by where it stands: a touch larger or smaller, and some the other way round.
           float h = fract(sin(dot(position, vec3(127.1, 311.7, 74.7))) * 43758.5453);
           #if VARY == 1
-          gl_PointSize *= DOT == 1 ? 0.55 + 0.9 * h : 0.72 + 0.56 * h;
+          gl_PointSize *= DOT == 1 ? 0.5 + 1.0 * h : 0.5 + 0.9 * h;
           #elif DOT == 0
           gl_PointSize *= 0.82 + 0.36 * h;
           #endif
@@ -60,6 +62,8 @@ export class Stipple {
           gl_PointSize += 1.0; // room for the soft edge
           // A new dot comes in slowly, as light does when a place grows: never all at once.
           vRim = rimFade(position, v) * smoothstep(0.0, uAppear, uNow - aBorn);
+          // And one that's gone fades away as slowly, rather than vanishing.
+          if (aGone >= 0.0) vRim *= 1.0 - smoothstep(0.0, uLinger, uNow - aGone);
         }`,
       fragmentShader: /* glsl */ `
         uniform vec3 uInk;
@@ -120,20 +124,58 @@ export class Stipple {
   /** Know a dot by its direction from the middle rather than where it is, so it keeps its age as the ground rises and wears under it. */
   byDirection = false;
 
+  /**
+   * Seconds a dot that's gone takes to fade away, rather than vanishing; and one that comes back
+   * meanwhile (or soon after) keeps its age rather than coming in again. 0: dots simply go.
+   */
+  linger = 0;
+  /** Dots gone, by key: where they were, and when they went. */
+  private gone = new Map<number, { x: number; y: number; z: number; at: number }>();
+  private where = new Map<number, [number, number, number]>();
+
   set(dots: ArrayLike<number>): void {
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.BufferAttribute(dots instanceof Float32Array ? dots : new Float32Array(dots), 3));
-    const born = new Float32Array(dots.length / 3), next = new Map<number, number>();
-    for (let i = 0; i < born.length; i++) {
+    const n = dots.length / 3, next = new Map<number, number>(), keys = new Float64Array(n);
+    for (let i = 0; i < n; i++) {
       // Where it is, to a 4096th, packed into one number (exact: well under 2^53), so no strings are made.
       const l = this.byDirection ? Math.hypot(dots[i * 3], dots[i * 3 + 1], dots[i * 3 + 2]) || 1 : 1;
-      const key = ((Math.round(dots[i * 3] / l * 4096) + 16384) * 32768 + (Math.round(dots[i * 3 + 1] / l * 4096) + 16384)) * 32768 + (Math.round(dots[i * 3 + 2] / l * 4096) + 16384);
+      keys[i] = ((Math.round(dots[i * 3] / l * 4096) + 16384) * 32768 + (Math.round(dots[i * 3 + 1] / l * 4096) + 16384)) * 32768 + (Math.round(dots[i * 3 + 2] / l * 4096) + 16384);
+    }
+    // Those that have gone since last time, kept a while to fade; those long gone, forgotten.
+    const fading: { x: number; y: number; z: number; at: number; key: number }[] = [];
+    if (this.linger > 0) {
+      const live = new Set(keys);
+      for (const [key, p] of this.where) if (!live.has(key) && !this.gone.has(key)) this.gone.set(key, { x: p[0], y: p[1], z: p[2], at: this.clock });
+      for (const [key, g] of this.gone) {
+        if (live.has(key) || this.clock - g.at > this.linger * 4) { this.gone.delete(key); continue; }
+        if (this.clock - g.at < this.linger) fading.push({ ...g, key });
+      }
+    }
+    const total = n + fading.length, position = new Float32Array(total * 3), born = new Float32Array(total), goneAt = new Float32Array(total).fill(-1);
+    const where = new Map<number, [number, number, number]>();
+    for (let i = 0; i < n; i++) {
+      const key = keys[i], x = dots[i * 3], y = dots[i * 3 + 1], z = dots[i * 3 + 2];
+      position[i * 3] = x; position[i * 3 + 1] = y; position[i * 3 + 2] = z;
       const when = this.bornAt.get(key) ?? this.clock;
       next.set(key, when);
       born[i] = when;
+      if (this.linger > 0) where.set(key, [x, y, z]);
     }
+    fading.forEach((f, j) => {
+      const i = n + j;
+      position[i * 3] = f.x; position[i * 3 + 1] = f.y; position[i * 3 + 2] = f.z;
+      born[i] = this.bornAt.get(f.key) ?? f.at - 1e3;
+      goneAt[i] = f.at;
+      next.set(f.key, born[i]);
+    });
+    // A dot gone a little while still remembers when it came, so it comes back as it was.
+    if (this.linger > 0) for (const [key] of this.gone) if (!next.has(key)) { const b = this.bornAt.get(key); if (b !== undefined) next.set(key, b); }
     this.bornAt = next;
+    this.where = where;
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(position, 3));
     g.setAttribute('aBorn', new THREE.BufferAttribute(born, 1));
+    g.setAttribute('aGone', new THREE.BufferAttribute(goneAt, 1));
+    (this.object.material as THREE.ShaderMaterial).uniforms.uLinger.value = Math.max(0.001, this.linger);
     this.object.geometry.dispose();
     this.object.geometry = g;
   }
