@@ -78,7 +78,7 @@ export const WORLDS: World[] = [
       waves: 0, rain: 0, sink: 0, swell: 0, life: false,
       flow: 16, channel: 1, coolLand: 0.06,
       drift: 0, rises: 0.02, heat: 400, rising: 1.48,
-      impactEvery: [12, 22], impactWarning: 12, crater: 0.08, craterDepth: 0.05, impactHeat: 4,
+      impactEvery: [12, 22], impactWarning: 12, crater: 0.08, craterDepth: 0.05, impactHeat: 4, ageCraters: 0.12,
     },
     palette: {
       paper: '#e4e1da', basalt: '#9c9a95', ash: '#b9b6b0', lava: '#b8563c', deepLava: '#8f3b28', flooded: '#6f7074',
@@ -120,7 +120,7 @@ export const WORLDS: World[] = [
       waves: 0, rain: 0, sink: 0, life: false,
       flow: 20, channel: 1, coolLand: 0.08,
       drift: 0, rises: 0.02, heat: 380, rising: 1.4, ashShare: 0.75,
-      impactEvery: [50, 90], impactWarning: 12, impactHeat: 4,
+      impactEvery: [50, 90], impactWarning: 12, impactHeat: 4, ageCraters: 0.06,
     },
     palette: {
       // Old ice grey with age and dust; new ice clean and white; water as it runs, blue.

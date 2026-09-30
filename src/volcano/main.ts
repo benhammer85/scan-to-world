@@ -44,7 +44,7 @@ import SurfaceWorker from './surface.worker?worker&inline';
 import { handleDrafts } from './drafts';
 import { handleSurface } from './surface';
 import { offThread } from './offthread';
-import { snapshotOf, restoreInto, keep, recall, forget, keepGround, recallGround, forgetGround } from './save';
+import { snapshotOf, restoreInto, keep, recall, forget, keepGround, recallGround, forgetGround, keepPage, pages, type Page } from './save';
 import { worldOf, nextWorld, WORLDS } from './worlds';
 import { Chain, CHAIN } from './chain';
 
@@ -135,7 +135,7 @@ const START = (() => {
 /** Where lava has ever lain on this world (for those that keep the mark of it): the old seas, the old new ice. */
 const MARKED = GROUND?.marked ?? null;
 const planet = new Planet(topo, START, seed, WORLD.rules, GROUND?.rock);
-planet.stonesFall = !LIFE; // on a living world, not until life's ideas have come in (see `lessons`)
+planet.stonesFall = false; // not until the first ideas have come in (see `lessons`)
 const ecology = new Ecology(planet, topo);
 const islands = new Islands(topo);
 
@@ -169,6 +169,8 @@ geometry.setAttribute('aMarks', new THREE.BufferAttribute(fineMarks, 2));
 geometry.setAttribute('aPrevMarks', new THREE.BufferAttribute(prevMarks, 2));
 geometry.setIndex(new THREE.BufferAttribute(ftopo.triangles, 1));
 const blend = { value: 1 }, blendFrom = { at: 0, span: 0.5 };
+/** How strongly ground lava has lain on is marked: less, as the ice moon's new ice greys in its long age. */
+const floodStrength = { value: 0.85 };
 
 /**
  * The ground's colour is chosen in each pixel rather than at each vertex: land and sea each have
@@ -184,12 +186,13 @@ material.onBeforeCompile = (shader) => {
   shader.uniforms.uBlend = blend;
   // The sea's colour is only its depth, so it's worked out here rather than sent: paler over the shallows.
   shader.uniforms.uFlooded = { value: FLOODED ?? PAPER };
+  shader.uniforms.uFloodStrength = floodStrength;
   shader.uniforms.uLava = { value: VERMILION };
   shader.uniforms.uDeepLava = { value: DEEP_RED };
   shader.uniforms.uShallow = { value: SHALLOW };
   shader.uniforms.uDeep = { value: DEEP };
   shader.fragmentShader = shader.fragmentShader
-    .replace('void main() {', `uniform vec3 uShallow;\nuniform vec3 uDeep;\nuniform vec3 uFlooded;\nuniform vec3 uLava;\nuniform vec3 uDeepLava;\nvarying float vH;\nvarying vec2 vMarks;\nvarying vec3 vDir;
+    .replace('void main() {', `uniform vec3 uShallow;\nuniform vec3 uDeep;\nuniform vec3 uFlooded;\nuniform float uFloodStrength;\nuniform vec3 uLava;\nuniform vec3 uDeepLava;\nvarying float vH;\nvarying vec2 vMarks;\nvarying vec3 vDir;
       float hash3(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
       float noise3(vec3 p) {
         vec3 i = floor(p), f = fract(p), s = f * f * (3.0 - 2.0 * f);
@@ -208,7 +211,7 @@ material.onBeforeCompile = (shader) => {
       // with an edge a pixel wide wherever its amount crosses a threshold: a clean edge, as a wash
       // laid with a brush has, not the soft, stepped smear of colour carried vertex to vertex.
       float fl = vMarks.x, fw = max(fwidth(fl), 1e-4) * 0.7;
-      land = mix(land, uFlooded, smoothstep(0.5 - fw, 0.5 + fw, fl) * 0.85);
+      land = mix(land, uFlooded, smoothstep(0.5 - fw, 0.5 + fw, fl) * uFloodStrength);
       float lv = vMarks.y, lw = max(fwidth(lv), 1e-4) * 0.7, on = smoothstep(0.03 - lw, 0.03 + lw, lv);
       land = mix(land, uLava, on);
       land = mix(land, uDeepLava, on * clamp((lv - 0.03) * 0.8, 0.0, 0.6));
@@ -607,7 +610,7 @@ function onGround(pts: { x: number; y: number; z: number }[], into: number[]): v
 function drawAim(now: number): void {
   if (now - lastAim < 2) return;
   lastAim = now;
-  if (!ending?.won) reckonAim(); // (met, what was met stands, whatever the long age does after)
+  if (!ending) reckonAim(); // (once the fire is done, what it did stands, whatever the long age does after)
   if (begun) tellAim(now);
   const inked: number[] = [], pencilled: number[] = [], next: number[] = [];
   if (WORLD.goal === 'height' || WORLD.goal === 'cover') {
@@ -692,39 +695,19 @@ function arrows(dt: number): void {
 
 // ---------------------------------------------------------------- cues, one idea at a time
 /**
- * The ideas come in one at a time, each once the one before has been tried or has had long
- * enough, with nothing written on the world: the card the world begins from says what there is to
- * know, and the world shows the rest. Stones only begin to fall once the rest has come in.
- * (Each idea's words are kept here, but not drawn.)
+ * The first minute: a few quiet lines at the foot, each said once, when it's what matters next,
+ * and never over what the world is saying itself. Then nothing more, but the aim now and then.
  */
-const CUES: { ready: () => boolean; done: (since: number) => boolean; begin?: () => void; words: () => { text: string; at: number; dy: number } | null }[] = [
-  {
-    ready: () => true, done: () => planet.landShare() > 0,
-    words: () => ({ text: planet.pouring ? 'pouring' : planet.pressure < 2.5 ? 'hold it level' : 'now tip it', at: planet.plumeVertex, dy: -44 }),
-  },
-  {
-    ready: () => true, done: (s) => planet.tally.bursts > 0 || s > 60,
-    words: () => {
-      const share = planet.pressure / VOLCANO.cap;
-      if (planet.pouring) return null;
-      return { text: share > 0.85 ? 'too long, and it tears open' : planet.bursting ? 'heavy smoke: tip it now, for a burst' : 'hold it level, and let the smoke gather', at: planet.plumeVertex, dy: -44 };
-    },
-  },
-  {
-    ready: () => ecology.held.length > 0, done: (s) => ecology.kept > 0 || s > 80,
-    begin: () => { $('legend').classList.add('new'); announce('Six kinds of life, each needing its own ground'); },
-    words: () => null,
-  },
-  {
-    ready: () => true, done: (s) => s > 40,
-    words: () => (planet.target ? { text: 'the heat rises here', at: nearestAbove(new THREE.Vector3(planet.target.x, planet.target.y, planet.target.z)), dy: -26 } : null),
-  },
-  {
-    ready: () => true, begin: () => { planet.stonesFall = true; }, done: () => planet.tally.stones > 0,
-    words: () => (planet.impact ? { text: 'turn it to the top to catch it', at: planet.impact.vertex, dy: 40 } : null),
-  },
+const CUES: { ready: () => boolean; say?: string; begin?: () => void; done: (since: number) => boolean }[] = [
+  { ready: () => true, say: 'Hold the world level, and the heat gathers under the smoke', done: () => planet.pressure > planet.k.least * 2 },
+  { ready: () => !planet.pouring, say: 'Tip it, and the lava pours out', done: (s) => planet.tally.flows + planet.tally.bursts > 0 || s > 40 },
+  { ready: () => planet.pressure > planet.k.explosive * 0.9 && !planet.pouring, say: 'The smoke is heavy: tip it now, and it erupts', done: (s) => planet.tally.bursts > 0 || s > 40 },
+  ...(WORLD.rules.rises ? [{ ready: () => true, say: 'Turn somewhere else to the top, and the heat creeps there', done: (s: number) => s > 25 }] : []),
+  ...(LIFE ? [{ ready: () => ecology.held.length > 0, say: 'Six kinds of life, each needing its own ground', begin: () => { $('legend').classList.add('new'); }, done: (s: number) => ecology.kept > 0 || s > 60 }] : []),
+  { ready: () => true, begin: () => { planet.stonesFall = true; }, done: () => planet.impact !== null || planet.tally.stones > 0 },
+  { ready: () => planet.impact !== null, say: 'Turn it to the top before it lands, and its heat is yours', done: (s) => s > 20 },
 ];
-let lesson = LIFE ? 0 : CUES.length, lessonSince = 0, lessonShown = false, embersSaid = false;
+let lesson = 0, lessonSince = 0, lessonShown = false, embersSaid = false;
 function lessons(): void {
   if (ending) return;
   if (lesson < CUES.length) {
@@ -733,6 +716,7 @@ function lessons(): void {
       if (!L.ready()) return;
       lessonShown = true; lessonSince = seconds;
       L.begin?.();
+      if (L.say) announce(L.say);
       return;
     }
     if (L.done(seconds - lessonSince) && seconds - lessonSince > 6) { lesson++; lessonShown = false; $('legend').classList.remove('new'); }
@@ -844,8 +828,8 @@ const PLUME = new THREE.Vector3(), SWING = new THREE.Quaternion();
  * and looked at; turning it right round begins another.
  */
 const LONG_AGE = 360, AGE_SPEED = 14, DRAWING = 7, TURN_AGAIN = 2.6;
-/** Whether this world has a long age after a win too: one with a sea, where it leaves atolls. */
-const AGES = WORLD.rules.atolls === true;
+/** What the long age after the fire does on this world, in a line for the foot: every world has one, met or not. */
+const AGE_WORDS = WORLD.goal === 'ring' ? 'The islands sink, and coral rings them' : WORLD.goal === 'basins' ? 'Time passes, and small stones still fall' : WORLD.goal === 'height' ? 'Time passes, and the storms go on' : 'Time passes, and the new ice greys';
 let ending: { from: number; shown: boolean; at: number; info: ChartInfo | null; turned: number; won: boolean } | null = null;
 let wonSeen = -1;
 const wonAt = () => (wonSeen < 0 ? (wonSeen = seconds) : wonSeen);
@@ -857,16 +841,17 @@ function theEnd(): void {
     announce(WORLD.goal === 'ring' ? 'Done: living islands all the way round' : WORLD.goal === 'height' ? `Done: the mountain reaches ${HEIGHT.target} km` : WORLD.goal === 'cover' ? `Done: ${COVER}% of the ice made new` : 'Done: every basin flooded');
     feel([30, 50, 30]);
     // On a world with a sea, the fire goes out and the long age follows even so, for its atolls.
-    if (AGES) { planet.reserve = 0; planet.pressure = 0; announce('The islands sink, and coral rings them'); }
+    planet.reserve = 0; planet.pressure = 0;
+    announce(AGE_WORDS);
   }
   if (!ending && planet.over) {
     ending = { from: planet.seconds, shown: false, at: 0, info: null, turned: 0, won: false };
     $('stage-name').textContent = ERAS.out;
     queue.length = 0;
-    announce(AGES ? 'The fire is out. The islands sink, and coral rings them' : 'The fire is out. Time passes');
+    announce(`The fire is out. ${AGE_WORDS}`);
   }
   // Met, the chart comes a few moments later; not, after a long age has worn at what was made.
-  if (ending && !ending.shown && planet.seconds - ending.from >= (ending.won && !AGES ? 0 : LONG_AGE) && (!ending.won || seconds - wonAt() > 4)) {
+  if (ending && !ending.shown && planet.seconds - ending.from >= LONG_AGE && (!ending.won || seconds - wonAt() > 4)) {
     ending.shown = true;
     ending.at = seconds;
     ecology.update(0);
@@ -900,7 +885,7 @@ function chartInfo(): ChartInfo {
   }
   const length = ending!.from, mm = `${Math.floor(length / 60)}:${String(Math.floor(length % 60)).padStart(2, '0')}`;
   const eras = eraFrom.filter((e) => e.from < length).map((e, i, all) => ({ name: e.name.replace(/^The /, ''), from: e.from, to: i + 1 < all.length ? all[i + 1].from : length }));
-  if (!ending?.won) reckonAim();
+
   const met = !!ending?.won, ring = WORLD.goal === 'ring';
   return {
     title: ring ? (met ? 'Ringed with islands' : 'Not yet ringed') : WORLD.goal === 'height' ? (met ? 'The great mountain' : 'Not high enough yet') : WORLD.goal === 'cover' ? (met ? 'New ice' : 'Not enough new ice') : met ? 'Every basin flooded' : 'Not every basin flooded',
@@ -936,6 +921,7 @@ function drawEnding(): void {
     const next = ending.won ? nextWorld(WORLD) : null;
     $('again').textContent = next ? `touch to go on to ${next.title.replace(/^An? /, 'an ').replace(/^The /, 'the ')}` : ending.won ? 'touch to start again' : 'touch to try again';
     $('again').classList.add('shown');
+    intoTheAtlas();
     // The chart can be kept as a picture where the page may hand over a file: not inside a frame (as a hosted preview), which can't.
     if (window.self === window.top) $('keep').classList.add('shown');
   }
@@ -981,20 +967,38 @@ function anew(): void {
   remember('volcano.world', (next ?? WORLD).id);
   setTimeout(() => { location.search = q.toString(); }, 900);
 }
-$('keep').addEventListener('click', () => {
-  // The plate, as a picture: the world drawn once more, turned so its land faces us.
+/** The plate, as a picture: the world drawn once more (turned so its biggest island faces us, where it has islands), in its chart. */
+function plate(): HTMLCanvasElement {
   const biggest = islands.list.slice().sort((a, b) => b.vertices.length - a.vertices.length)[0];
   const was = group.quaternion.clone();
   if (biggest) {
     PLUME.set(...at(biggest.centre)).applyQuaternion(group.quaternion);
     group.quaternion.premultiply(SWING.setFromUnitVectors(PLUME, new THREE.Vector3(0, 0, 1)));
   }
+  // Drawn centred, not stepped up the page as the chart on screen has it, so the world isn't cut.
+  const lifted = lift;
+  lift = 0; look();
   group.updateMatrixWorld(true);
   renderer.render(scene, camera);
-  const url = drawChart(renderer.domElement, ending!.info!).toDataURL('image/png');
+  const cv = drawChart(renderer.domElement, ending!.info!);
   group.quaternion.copy(was);
-  const a = document.createElement('a'); a.href = url; a.download = `volcano-${seed}.png`; a.click();
+  lift = lifted; look();
+  return cv;
+}
+$('keep').addEventListener('click', () => {
+  const a = document.createElement('a'); a.href = plate().toDataURL('image/png'); a.download = `volcano-${seed}.png`; a.click();
 });
+/** Once the chart is drawn, it goes into the atlas: a small picture of the plate, and what it says. */
+let paged = false;
+function intoTheAtlas(): void {
+  if (paged || !ending?.info) return;
+  paged = true;
+  const big = plate(), small = document.createElement('canvas');
+  small.width = 480; small.height = Math.round(480 * big.height / big.width);
+  small.getContext('2d')!.drawImage(big, 0, 0, small.width, small.height);
+  const i = ending.info;
+  void keepPage({ world: WORLD.id, numeral: WORLD.numeral, title: i.title, subtitle: i.subtitle, summary: i.summary, when: Date.now(), image: small.toDataURL('image/jpeg', 0.82) });
+}
 
 // ---------------------------------------------------------------- held like a globe
 /**
@@ -1110,6 +1114,32 @@ for (const w of WORLDS) {
   $('begin').querySelector('.worlds')!.appendChild(b);
 }
 ($('begin').querySelector('.then') as HTMLElement).textContent = WORLD.then + (FIRES ? ` The ground your last ${FIRES === 1 ? 'fire' : `${FIRES} fires`} left is still here, and this fire starts somewhere new.` : '');
+// The atlas, from the card: every chart kept so far, newest first, to leaf through.
+void pages().then((all) => {
+  if (!all.length) return;
+  const link = document.createElement('p');
+  link.className = 'atlas-link';
+  link.textContent = `the atlas · ${all.length} ${all.length === 1 ? 'chart' : 'charts'}`;
+  link.addEventListener('pointerdown', (e) => { e.stopPropagation(); openAtlas(all); });
+  $('begin').appendChild(link);
+});
+function openAtlas(all: Page[]): void {
+  const box = $('atlas'), list = box.querySelector('.pages')!, view = box.querySelector('.view img') as HTMLImageElement;
+  list.innerHTML = '';
+  for (const p of all.slice().reverse()) {
+    const fig = document.createElement('figure'), img = new Image(), cap = document.createElement('figcaption'), when = document.createElement('small');
+    img.src = p.image; img.alt = `${p.title}: ${p.summary}`;
+    cap.textContent = `${p.numeral} · ${p.title}`;
+    when.textContent = new Date(p.when).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+    cap.append(document.createElement('br'), when);
+    fig.append(img, cap);
+    fig.addEventListener('click', () => { view.src = p.image; view.alt = img.alt; box.classList.add('viewing'); });
+    list.appendChild(fig);
+  }
+  box.classList.add('open');
+}
+$('atlas').querySelector('.view')!.addEventListener('click', () => $('atlas').classList.remove('viewing'));
+$('atlas').querySelector('.close')!.addEventListener('click', () => $('atlas').classList.remove('open', 'viewing'));
 // A world with a past can be begun afresh, on new ground.
 if (FIRES) {
   const fresh = document.createElement('p');
@@ -1192,7 +1222,7 @@ renderer.setAnimationLoop(() => {
   planet.gravity = { x: GRAV.x, y: GRAV.y, z: GRAV.z };
   drawLevel();
   // Once the fire is out, the long age runs quickly, in small steps so the sea's work stays as it would be.
-  const speed = ending && !ending.shown && (!ending.won || (AGES && seconds - wonAt() > 4)) ? AGE_SPEED : 1;
+  const speed = ending && !ending.shown && (!ending.won || seconds - wonAt() > 4) ? AGE_SPEED : 1;
   // Nothing happens until the world is begun.
   if (begun && !ending?.shown) {
     const before = new THREE.Vector3(planet.plume.x, planet.plume.y, planet.plume.z);
@@ -1220,6 +1250,7 @@ renderer.setAnimationLoop(() => {
   redrawLines(seconds);
   redrawLife(seconds);
   blend.value = Math.min(1, (performance.now() / 1000 - blendFrom.at) / blendFrom.span);
+  if (WORLD.goal === 'cover' && ending) floodStrength.value = 0.85 * (1 - 0.5 * Math.min(1, (planet.seconds - ending.from) / LONG_AGE));
   crossFade();
   drawMarks();
   effects(dt);

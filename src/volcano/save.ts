@@ -104,3 +104,23 @@ export function recallGround(world: string, n: number): Ground | null {
 export function forgetGround(world: string): void {
   try { localStorage.removeItem(groundKey(world)); } catch { /* nothing to forget */ }
 }
+
+/**
+ * The atlas: every world's chart, kept as a page when it's drawn, to leaf through afterwards. A
+ * small picture of the plate and what it says, oldest first; the last sixty kept.
+ */
+export interface Page { world: string; numeral: string; title: string; subtitle: string; summary: string; when: number; image: string }
+const ATLAS = 'atlas';
+
+export async function keepPage(page: Page): Promise<void> {
+  try {
+    const all = ((await run('readonly', (s) => s.get(ATLAS))) as Page[] | undefined) ?? [];
+    all.push(page);
+    while (all.length > 60) all.shift();
+    await run('readwrite', (s) => s.put(all, ATLAS));
+  } catch { /* not kept, and that's all */ }
+}
+
+export async function pages(): Promise<Page[]> {
+  try { return ((await run('readonly', (s) => s.get(ATLAS))) as Page[] | undefined) ?? []; } catch { return []; }
+}

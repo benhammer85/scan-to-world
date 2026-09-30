@@ -143,6 +143,8 @@ export const VOLCANO = {
   ageSinks: 0.4,
   /** How high coral builds its islets above the surface. */
   islets: 0.006,
+  /** In the long age on an airless world, small stones still fall: about this many a second. */
+  ageCraters: 0,
   /** Where life is at its fullest, the rain and the sea wear the ground this much less. */
   holds: 0.75,
 
@@ -304,15 +306,17 @@ export class Planet {
    * by where they are and how wide, for a world whose aim is to flood them.
    */
   readonly basins: { x: number; y: number; z: number; r: number }[] = [];
-  private scar(): void {
+  /** A crater: a bowl `r` across and `depth` deep about a point, with a raised rim. */
+  private bowl(c: { x: number; y: number; z: number }, r: number, depth: number): void {
     const p = this.topo.basePositions, n = this.rock.length;
-    const bowl = (c: { x: number; y: number; z: number }, r: number, depth: number) => {
-      for (let v = 0; v < n; v++) {
-        const d = Math.hypot(p[v * 3] - c.x, p[v * 3 + 1] - c.y, p[v * 3 + 2] - c.z) / r;
-        if (d > 1.6) continue;
-        this.rock[v] += depth * (d < 1 ? -(1 - d * d) : 0.3 * Math.exp(-((d - 1.1) ** 2) / 0.05));
-      }
-    };
+    for (let v = 0; v < n; v++) {
+      const d = Math.hypot(p[v * 3] - c.x, p[v * 3 + 1] - c.y, p[v * 3 + 2] - c.z) / r;
+      if (d > 1.6) continue;
+      this.rock[v] += depth * (d < 1 ? -(1 - d * d) : 0.3 * Math.exp(-((d - 1.1) ** 2) / 0.05));
+    }
+  }
+  private scar(): void {
+    const n = this.rock.length, bowl = (c: { x: number; y: number; z: number }, r: number, depth: number) => this.bowl(c, r, depth);
     const point = () => {
       const z = this.rand() * 2 - 1, a = this.rand() * Math.PI * 2, s = Math.sqrt(1 - z * z);
       return { x: s * Math.cos(a), y: s * Math.sin(a), z };
@@ -458,6 +462,11 @@ export class Planet {
     else if (this.slowIn <= 0) { this.slow(0.25, 0, half); this.slowIn = 0.25; this.slowHalf = true; }
     this.stones(dt);
     this.storms(dt);
+    // The long age on an airless world: small stones still fall, and pock what the fire left.
+    if (this.over && this.k.ageCraters > 0 && this.rand() < this.k.ageCraters * dt) {
+      const z = this.rand() * 2 - 1, a = this.rand() * Math.PI * 2, s = Math.sqrt(1 - z * z);
+      this.bowl({ x: s * Math.cos(a), y: s * Math.sin(a), z }, 0.02 + this.rand() * 0.035, 0.02);
+    }
   }
 
   /** Whether a dust storm is blowing now; and, if one is on its way, how soon it comes. */
@@ -466,7 +475,8 @@ export class Planet {
   private stormIn = 0;
   private stormLeft = 0;
   private storms(dt: number): void {
-    if (this.k.stormEvery[1] <= 0 || this.over) { this.storm = false; return; }
+    // (The storms go on in the long age after the fire, wearing what it built.)
+    if (this.k.stormEvery[1] <= 0) { this.storm = false; return; }
     if (this.storm) {
       this.stormLeft -= dt;
       if (this.stormLeft <= 0) { this.storm = false; this.stormIn = this.between(this.k.stormEvery); this.tell('The storm passes'); }
