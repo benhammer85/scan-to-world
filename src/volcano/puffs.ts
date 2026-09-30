@@ -70,21 +70,25 @@ export class Puffs {
     this.object.renderOrder = 4;
   }
 
-  /** A puff at a point on the ground (in the planet's frame), rising along its up. */
-  add(kind: PuffKind, x: number, y: number, z: number, strength = 1, rand = Math.random): void {
+  /**
+   * A puff at a point on the ground (in the planet's frame), rising along its up; or, given a
+   * way to drift (`dir`, in the same frame), mostly that way, as smoke drawn on a map goes up the page.
+   */
+  add(kind: PuffKind, x: number, y: number, z: number, strength = 1, rand = Math.random, dir?: { x: number; y: number; z: number }): void {
     const p = this.puffs[this.nextSlot];
     this.nextSlot = (this.nextSlot + 1) % MOST;
     const l = Math.hypot(x, y, z) || 1;
     // Up, tipped a little at random, so a column of them spreads as it goes.
-    p.ux = x / l + (rand() - 0.5) * 0.5; p.uy = y / l + (rand() - 0.5) * 0.5; p.uz = z / l + (rand() - 0.5) * 0.5;
+    const d = dir ?? { x: 0, y: 0, z: 0 }, lean = dir ? 1.6 : 0;
+    p.ux = x / l * 0.4 + d.x * lean + (rand() - 0.5) * 0.5; p.uy = y / l * 0.4 + d.y * lean + (rand() - 0.5) * 0.5; p.uz = z / l * 0.4 + d.z * lean + (rand() - 0.5) * 0.5;
     const ul = Math.hypot(p.ux, p.uy, p.uz); p.ux /= ul; p.uy /= ul; p.uz /= ul;
     p.x = x; p.y = y; p.z = z;
     p.alive = true;
     p.age = 0;
     p.kind = TINT[kind];
     if (kind === 'steam') { p.life = 2.2 + rand(); p.rise = 0.035; p.size = 0.012; p.grow = 0.02; }
-    else if (kind === 'ash') { p.life = 5 + rand() * 3; p.rise = 0.06 * strength * (0.6 + rand() * 0.8); p.size = 0.02; p.grow = 0.035; }
-    else { p.life = 3 + rand(); p.rise = 0.02; p.size = 0.008; p.grow = 0.012; }
+    else if (kind === 'ash') { p.life = 5 + rand() * 3; p.rise = 0.14 * strength * (0.6 + rand() * 0.8); p.size = 0.018; p.grow = 0.03; }
+    else { p.life = 3.2 + rand(); p.rise = 0.05 * strength; p.size = 0.006 + 0.004 * strength; p.grow = 0.014 * strength; }
   }
 
   update(dt: number): void {

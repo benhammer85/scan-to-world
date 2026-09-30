@@ -46,18 +46,17 @@ In headless play-throughs, gentle flows alone kept 4 kinds, doing nothing kept 3
 
 **How to play: only by how you hold it.** There's no tapping and no holding, just the world held as a globe in the hands.
 * **Tilt your phone**, or turn the world with a finger (on a keyboard, the arrow keys). The first touch, on a quiet card, begins the world. It's what lets the phone share how it's held (iPhones ask for motion access then). However you're holding the phone at that moment counts as level.
-* **Held level**, the heat gathers beneath whatever is uppermost; a small ring marks the top. **Tipped**, it pours down the world the way gravity would take it. That's measured along gravity as the world is seen, with the relief as drawn: near the top the terrain decides, further round the curve of the world pulls the lava down its side, and it never runs up the screen.
-* **Tip soon** for a gentle stream. **Keep it level past the dashed ring, then tip**, for a burst of ash. Level too long, and the mountain tears open into a caldera, and life dies far around it.
+* **Held level**, the heat gathers beneath whatever is uppermost; **tipped**, it pours down the world the way gravity would take it. That's measured along gravity as the world is seen, with the relief as drawn: near the top the terrain decides, further round the curve of the world pulls the lava down its side, and it never runs up the screen.
+* **Tip soon** for a gentle stream. **Hold it level until the smoke is heavy, then tip**, for a burst of ash. Level too long, and the mountain tears open into a caldera, and life dies far around it.
 * **The heat is buoyant:** it creeps slowly towards whatever is uppermost, so you move it by turning a place to the top. The land it leaves behind cools and sinks.
 * **Wishes:** now and then life wishes for a kind it lacks, shown by a dotted ring. Make that ground there and the wish is kept, which stirs the fire (more heat).
 * **Stones** are seen 20 seconds ahead, with a ring and a cross that close in and a countdown. Turn one to the top to bring the heat beneath it and catch four times its heat, or keep life clear of it.
-* **A level at the vent:** a bubble sits at the vent when the world is level and moves uphill as it's tipped. Once it leaves the vent's smallest circle, the heat pours (the bubble turns red).
 * Without a phone's sensor, gravity is fixed a little down the screen and mostly into it, as if you were looking down at a globe on a table.
 
 **Reading it:** everything that matters is drawn on the world itself, as a surveyor's marks.
-* At the vent: the pressure as a ring that grows, a dashed ring where a stream becomes a burst, a double rule where it tears open, the level's bubble, and an arc round it all that is the heat left, drawing itself away as the planet cools.
+* Nothing is a control or a gauge. The vent is the map's sign for a volcano, a small inked cone that always stands upright. The heat gathering beneath it rises as smoke: a wisp now and then while there's little, heavier as it builds, and a dark column once it would burst. Held too long, the cone trembles. Tipped, you see the lava pour. The heat left is told by the era.
 * A dotted ring where life wishes for a kind; a ring and cross closing in where a stone will fall.
-* While an idea is new, a few words are written on the world beside it ("hold it level", "now tip it", "tip it now, for a burst", "the heat rises here", "turn it to the top to catch it"), changing with what you're doing. Once the idea has been tried, they go. Stones only start falling once they've been shown.
+* While an idea is new, a few words are written on the world beside it ("hold it level", "now tip it", "heavy smoke: tip it now, for a burst", "the heat rises here", "turn it to the top to catch it"), changing with what you're doing. Once the idea has been tried, they go. Stones only start falling once they've been shown.
 * Off the world there's only the era at the top, as a map's title, and the key at the foot: the six kinds by their signs, inked once each is living.
 * Nothing is named: the map is the land's.
 * On phones that can, a burst is felt as a soft pulse, and a caldera as more. The camera eases out as the land spreads (a pinch takes over for a while), and the drawing gets less fine if the phone can't keep up.

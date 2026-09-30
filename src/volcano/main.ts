@@ -12,11 +12,11 @@
  * world as gravity would take it; tipped when it's full, it bursts. Level is
  * however you were holding the phone when you began.
  *
- * Everything that matters is drawn on the world itself, as a surveyor's marks:
- *   at the vent, the pressure as a ring that grows, with a dashed ring where a
- *     flow becomes a burst; round it an arc that is the heat left, drawing
- *     itself away as the planet cools; and a level's bubble inside, that leaves
- *     the vent's smallest circle when the world is tipped enough to pour;
+ * Nothing on the world is a control or a gauge; what it's doing shows as itself:
+ *   the vent is the map's sign for a volcano, and the heat gathering beneath
+ *     it rises as smoke, a wisp while there's little, heavier as it builds, a
+ *     dark column once it would burst; held too long, the cone trembles;
+ *   tipped, the lava is seen to pour;
  *   a dotted ring where life wishes for a kind, and a ring with a cross where a
  *     stone will fall, closing in as it comes;
  *   a few words written beside the vent while an idea is new.
@@ -58,7 +58,7 @@ const sun = new THREE.DirectionalLight('#ffffff', 0.28);
 sun.position.set(-2, 3, 2.5);
 scene.add(sun);
 
-let dist = 3.2, farthest = 5;
+let dist = 3.6, farthest = 5;
 function fit(): void {
   const w = Math.max(1, stage.clientWidth || innerWidth), h = Math.max(1, stage.clientHeight || innerHeight);
   renderer.setSize(w, h, false);
@@ -166,28 +166,29 @@ function ring(color: string, opacity: number, inner = 0.9, dashes = 0, fill = 0.
 }
 const INK = '#2e2118';
 /**
- * The pressure dial at the vent: the ring that grows is the pressure; the dashed ring is where a
- * flow becomes a burst; the double rule is where it bursts on its own and tears the mountain open.
+ * The vent, by the map's own sign for a volcano: a small inked cone, standing upright however
+ * the world is turned. It is the only mark at the vent. What the heat is doing shows as smoke
+ * rising from it (see `effects`): a wisp now and then while there's little, thickening as it
+ * gathers, heavy once it would burst; held too long, the cone trembles.
  */
-const pressureRing = ring(INK, 0.85, 0.9), burstBand = ring(INK, 0.55, 0.94, 28), capRing = ring(INK, 0.6, 0.96), capInner = ring(INK, 0.35, 0.965);
-const dial = (share: number) => 0.02 + 0.08 * share;
-/** The heat left: an arc round the dial, as long as the share of the heat still to come, drawing itself away. */
-const heatArc = ring(INK, 0.5, 0.95);
-let heatDrawn = -1;
-function drawHeat(left: number): void {
-  const f = Math.max(0, Math.min(1, left));
-  if (Math.abs(f - heatDrawn) < 0.004) return;
-  heatDrawn = f;
-  heatArc.geometry.dispose();
-  heatArc.geometry = new THREE.RingGeometry(0.95, 1, 96, 1, Math.PI / 2, Math.max(1e-4, f * Math.PI * 2));
-}
-/** The level: a bubble that sits at the vent when the world is level and moves uphill as it's tipped; out of the small circle, it pours. */
-const levelRing = ring(INK, 0.45, 0.82);
-const bubble = new THREE.Mesh(new THREE.CircleGeometry(1, 24), new THREE.MeshBasicMaterial({ color: INK, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false }));
-bubble.renderOrder = 6;
-group.add(bubble);
-/** The top of the world as it's held, where the heat is rising to (a small ring); a stone's ring and cross; a dotted ring where life wishes. */
-const targetRing = ring(INK, 0.5, 0.8), stoneRing = ring(INK, 0.7, 0.95), wishRing = ring(INK, 0.6, 0.9, 40, 0.28);
+const cone = (() => {
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 64;
+  const g = cv.getContext('2d')!;
+  g.fillStyle = '#f4efe4'; g.strokeStyle = INK; g.lineWidth = 3.2; g.lineJoin = 'round';
+  g.beginPath(); g.moveTo(32, 14); g.lineTo(52, 50); g.lineTo(12, 50); g.closePath(); g.fill(); g.stroke();
+  // The crater at its top: a short dark rule across it.
+  g.lineWidth = 3; g.beginPath(); g.moveTo(27, 23); g.lineTo(37, 23); g.stroke();
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false }));
+  sprite.center.set(0.5, 0.2); // it stands on the ground at its foot
+  sprite.renderOrder = 7;
+  group.add(sprite);
+  return sprite;
+})();
+/** A stone's ring and cross; a dotted ring where life wishes. */
+const stoneRing = ring(INK, 0.7, 0.95), wishRing = ring(INK, 0.6, 0.9, 40, 0.28);
 const stoneCross = new THREE.Mesh(
   mergeGeometries([new THREE.PlaneGeometry(0.5, 0.035), new THREE.PlaneGeometry(0.035, 0.5)]),
   new THREE.MeshBasicMaterial({ color: INK, transparent: true, opacity: 0.7, side: THREE.DoubleSide, depthWrite: false }),
@@ -370,32 +371,17 @@ const at = (v: number) => [base[v * 3], base[v * 3 + 1], base[v * 3 + 2]] as con
 
 function drawMarks(now: number): void {
   const q = planet.plume, share = Math.min(1, planet.pressure / VOLCANO.cap);
-  const live = !planet.over;
-  pressureRing.visible = burstBand.visible = capRing.visible = capInner.visible = heatArc.visible = levelRing.visible = bubble.visible = live;
-  // Nearly too much, and the ring trembles.
-  const tremble = share > 0.85 ? 0.003 * Math.sin(now * 40) : 0.0015 * Math.sin(now * 3);
-  place(pressureRing, q.x, q.y, q.z, dial(share) + tremble);
-  place(burstBand, q.x, q.y, q.z, dial(VOLCANO.explosive / VOLCANO.cap));
-  place(capRing, q.x, q.y, q.z, dial(1));
-  place(capInner, q.x, q.y, q.z, dial(1) - 0.006);
-  drawHeat(planet.heatLeft);
-  place(heatArc, q.x, q.y, q.z, dial(1) + 0.022);
-  // The level's small circle is as far as the bubble goes before the heat pours.
-  place(levelRing, q.x, q.y, q.z, VOLCANO.tipPour * dial(1));
-  const g = planet.gravity;
-  if (g) {
-    // Uphill along the ground at the vent, as far as the world is tipped.
-    const n = Math.hypot(q.x, q.y, q.z), along = (g.x * q.x + g.y * q.y + g.z * q.z) / n;
-    const ux = -(g.x - along * q.x / n), uy = -(g.y - along * q.y / n), uz = -(g.z - along * q.z / n);
-    const r = Math.min(1, planet.tip) * dial(1);
-    place(bubble, q.x + ux * r, q.y + uy * r, q.z + uz * r, 0.0065);
-    (bubble.material as THREE.MeshBasicMaterial).color.set(planet.pouring ? '#9a4230' : INK);
-  }
-  // Past the dashed ring, the pressure ring is drawn in the lava's red: this one will be a burst.
-  (pressureRing.material as THREE.MeshBasicMaterial).color.set(planet.bursting ? '#9a4230' : INK);
-  const t = planet.target;
-  targetRing.visible = !!t;
-  if (t) place(targetRing, t.x, t.y, t.z, 0.02);
+  // The cone, standing on the ground at the vent, facing us; hidden round the back of the world.
+  const v = planet.plumeVertex;
+  PROJ.set(topo.positions[v * 3], topo.positions[v * 3 + 1], topo.positions[v * 3 + 2]).multiplyScalar(1.004);
+  cone.position.copy(PROJ);
+  NORMAL.set(q.x, q.y, q.z).applyQuaternion(group.quaternion);
+  const facing = NORMAL.dot(EYE.copy(camera.position).normalize());
+  cone.material.opacity = planet.over ? 0.5 : Math.max(0, Math.min(1, (facing - 0.1) / 0.25));
+  // Held too long, it trembles; otherwise it stands still.
+  const tremble = share > 0.85 && !planet.over ? 0.12 * Math.sin(now * 38) : 0;
+  cone.material.rotation = tremble;
+  cone.scale.setScalar(0.055 * (dist / 3.2));
   const s = planet.impact;
   stoneRing.visible = stoneCross.visible = !!s;
   if (s) {
@@ -520,7 +506,7 @@ const CUES: { ready: () => boolean; done: (since: number) => boolean; begin?: ()
     words: () => {
       const share = planet.pressure / VOLCANO.cap;
       if (planet.pouring) return null;
-      return { text: share > 0.85 ? 'too long, and it tears open' : planet.bursting ? 'tip it now, for a burst' : 'level, to the dashed ring', at: planet.plumeVertex, dy: -44 };
+      return { text: share > 0.85 ? 'too long, and it tears open' : planet.bursting ? 'heavy smoke: tip it now, for a burst' : 'hold it level, and let the smoke gather', at: planet.plumeVertex, dy: -44 };
     },
   },
   {
@@ -612,13 +598,17 @@ function words(): void {
 // ---------------------------------------------------------------- what happens, seen and felt
 const tallied = { ...planet.tally };
 let steamIn = 0, smokeIn = 0;
+const UPWARD = new THREE.Vector3();
 function effects(dt: number): void {
   const p = topo.positions, v0 = planet.plumeVertex;
+  // Up the page, in the planet's frame: the way smoke drifts, as a map draws it.
+  UPWARD.set(0, 1, 0).applyQuaternion(INVERSE.copy(group.quaternion).invert());
+  const up = { x: UPWARD.x, y: UPWARD.y, z: UPWARD.z };
   if (planet.tally.bursts > tallied.bursts || planet.tally.calderas > tallied.calderas) {
     const torn = planet.tally.calderas > tallied.calderas;
     feel(torn ? [40, 60, 90] : 25);
     // The column of ash: many puffs from the vent, rising and spreading.
-    for (let i = 0; i < (torn ? 80 : 40); i++) puffs.add('ash', p[v0 * 3], p[v0 * 3 + 1], p[v0 * 3 + 2], torn ? 1.6 : 1);
+    for (let i = 0; i < (torn ? 36 : 18); i++) puffs.add('ash', p[v0 * 3], p[v0 * 3 + 1], p[v0 * 3 + 2], torn ? 1.5 : 1, Math.random, up);
   }
   Object.assign(tallied, planet.tally);
   // Steam where lava runs into the sea, as much as there is lava there.
@@ -627,12 +617,17 @@ function effects(dt: number): void {
     steamIn = 0.12;
     for (let v = 0; v < N; v++) {
       const l = planet.lava[v];
-      if (l > 0.004 && planet.rock[v] < 0.005 && Math.random() < Math.min(0.25, l * 4)) puffs.add('steam', p[v * 3], p[v * 3 + 1], p[v * 3 + 2]);
+      if (l > 0.004 && planet.rock[v] < 0.005 && Math.random() < Math.min(0.25, l * 4)) puffs.add('steam', p[v * 3], p[v * 3 + 1], p[v * 3 + 2], 1, Math.random, up);
     }
   }
-  // A vent near bursting smokes.
+  // The vent smokes as the heat gathers: a wisp now and then while there's little, more and
+  // heavier as it builds, and a dark column once it would burst.
   smokeIn -= dt;
-  if (planet.bursting && !planet.over && smokeIn <= 0) { smokeIn = 0.25 / Math.min(1, planet.pressure / VOLCANO.cap + 0.2); puffs.add('smoke', p[v0 * 3], p[v0 * 3 + 1], p[v0 * 3 + 2]); }
+  const share = Math.min(1, planet.pressure / VOLCANO.cap);
+  if (!planet.over && !planet.pouring && planet.pressure > 0.5 && smokeIn <= 0) {
+    smokeIn = planet.bursting ? 0.3 : 1.6 - 1.1 * (planet.pressure / VOLCANO.explosive);
+    puffs.add('smoke', p[v0 * 3], p[v0 * 3 + 1], p[v0 * 3 + 2], planet.bursting ? 1.4 + share : 0.5 + share, Math.random, up);
+  }
 }
 
 const PLUME = new THREE.Vector3(), SWING = new THREE.Quaternion();
@@ -866,7 +861,7 @@ function breathe(dt: number): void {
     const q = planet.plume;
     let least = 1;
     for (let v = 0; v < N; v += 3) if (planet.rock[v] > 0) least = Math.min(least, base[v * 3] * q.x + base[v * 3 + 1] * q.y + base[v * 3 + 2] * q.z);
-    reachDist = THREE.MathUtils.clamp(2.9 + 2.4 * Math.acos(least), 2.9, 4.6);
+    reachDist = THREE.MathUtils.clamp(3.4 + 2 * Math.acos(least), 3.4, 4.8);
   }
   // At the end, the world steps back and up the page, leaving the foot for the chart.
   const want = ending?.shown ? farthest * 0.92 : reachDist, wantLift = ending?.shown ? 0.09 : 0;
