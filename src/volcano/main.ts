@@ -27,17 +27,21 @@
  */
 import * as THREE from 'three';
 import { buildTopology } from '../mesh/topology';
-import { extractContours, type Polyline } from '../terrain/contours';
+import { unpack, type Packed } from './drafting';
 import { PlotterLines, defaultPlotterStyle, type RevealMode } from '../render/plotterLines';
 import { GestureRecognizer } from '../interact/gestures';
-import { Stipple, stippleDots } from '../render/stipple';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { Stipple } from '../render/stipple';
 import { Planet, VOLCANO, type Era } from './sim';
 import { FineSurface } from './fine';
-import { Ecology, ECOLOGY, KINDS } from './ecology';
+import { Ecology, KINDS } from './ecology';
 import { Islands } from './islands';
 import { Puffs } from './puffs';
-import { drawChart, drawFrame, type ChartInfo } from './chart';
+import { drawChart, drawFrame, sign, type ChartInfo } from './chart';
+import DraftsWorker from './drafts.worker?worker&inline';
+import SurfaceWorker from './surface.worker?worker&inline';
+import { handleDrafts } from './drafts';
+import { handleSurface } from './surface';
+import { offThread } from './offthread';
 import { snapshotOf, restoreInto, keep, recall, forget } from './save';
 
 const $ = (id: string) => document.getElementById(id)!;
@@ -111,10 +115,9 @@ const fine = new FineSurface(topo, buildTopology(new THREE.IcosahedronGeometry(1
 const ftopo = fine.fine, FN = ftopo.vertexCount, fbase = ftopo.basePositions;
 const geometry = new THREE.BufferGeometry();
 const positions = new Float32Array(FN * 3);
-const landColour = new Float32Array(FN * 3), seaColour = new Float32Array(FN * 3), fineHeight = new Float32Array(FN);
+const landColour = new Float32Array(FN * 3), fineHeight = new Float32Array(FN);
 geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
 geometry.setAttribute('color', new THREE.BufferAttribute(landColour, 3));
-geometry.setAttribute('aSea', new THREE.BufferAttribute(seaColour, 3));
 geometry.setAttribute('aH', new THREE.BufferAttribute(fineHeight, 1));
 geometry.setIndex(new THREE.BufferAttribute(ftopo.triangles, 1));
 
@@ -126,18 +129,22 @@ geometry.setIndex(new THREE.BufferAttribute(ftopo.triangles, 1));
 const material = new THREE.MeshLambertMaterial({ vertexColors: true, dithering: true });
 material.onBeforeCompile = (shader) => {
   shader.vertexShader = shader.vertexShader
-    .replace('void main() {', 'attribute vec3 aSea;\nattribute float aH;\nvarying vec3 vSea;\nvarying float vH;\nvoid main() {')
-    .replace('#include <color_vertex>', '#include <color_vertex>\n  vSea = aSea;\n  vH = aH;');
+    .replace('void main() {', 'attribute float aH;\nvarying float vH;\nvoid main() {')
+    .replace('#include <color_vertex>', '#include <color_vertex>\n  vH = aH;');
+  // The sea's colour is only its depth, so it's worked out here rather than sent: paler over the shallows.
+  shader.uniforms.uShallow = { value: SHALLOW };
+  shader.uniforms.uDeep = { value: DEEP };
   shader.fragmentShader = shader.fragmentShader
-    .replace('void main() {', 'varying vec3 vSea;\nvarying float vH;\nvoid main() {')
+    .replace('void main() {', 'uniform vec3 uShallow;\nuniform vec3 uDeep;\nvarying float vH;\nvoid main() {')
     .replace('#include <color_fragment>', `
       float edge = max(fwidth(vH), 1e-5) * 0.7;
-      diffuseColor.rgb *= mix(vSea, vColor.rgb, smoothstep(-edge, edge, vH));`);
+      vec3 sea = mix(uShallow, uDeep, clamp(-vH / 0.3, 0.0, 1.0));
+      diffuseColor.rgb *= mix(sea, vColor.rgb, smoothstep(-edge, edge, vH));`);
 };
 const mesh = new THREE.Mesh(geometry, material);
 group.add(mesh);
 
-const landPen = new PlotterLines({ ...defaultPlotterStyle, ink: '#6b4a2e', inkHigh: '#4a2f1c', pencil: '#b9a68c', alpha: 0.62, indexAlpha: 0.95, indexEvery: 5, fadeSeconds: 0, widthPx: 1.15 });
+const landPen = new PlotterLines({ ...defaultPlotterStyle, ink: '#6b4a2e', inkHigh: '#4a2f1c', pencil: '#b9a68c', alpha: 0.62, indexAlpha: 0.95, indexEvery: 5, fadeSeconds: 0, widthPx: 1.15, nib: false }); // no nib: nothing on the world should look like something to press
 const seaPen = new PlotterLines({ ...defaultPlotterStyle, ink: '#5b82a3', inkHigh: '#5b82a3', pencil: '#a9bfd0', alpha: 0.45, indexAlpha: 0.6, fadeSeconds: 0, pen: false, appearSeconds: 2, widthPx: 0.95 });
 /** Water-lining: close lines following the coast out to sea, as the old engraved maps drew it. */
 const waterPen = new PlotterLines({ ...defaultPlotterStyle, ink: '#6b8fac', inkHigh: '#6b8fac', pencil: '#a9bfd0', alpha: 0.4, indexAlpha: 0.4, fadeSeconds: 0, pen: false, appearSeconds: 2, widthPx: 0.8 });
@@ -152,17 +159,24 @@ const puffs = new Puffs(renderer.getPixelRatio());
 group.add(puffs.object);
 
 /**
- * Marks on the surface, each a fine ink ring laid flat on the ground: whole, dashed (so many
- * dashes round) or dotted, as a surveyor marks a chart.
+ * A mark on the map: drawn once on a small canvas, in white so it can be inked any colour, and
+ * set on the world as a sprite, so it stands upright however the world is turned, as the signs on
+ * a map do.
  */
-function ring(color: string, opacity: number, inner = 0.9, dashes = 0, fill = 0.55): THREE.Mesh {
-  const g = dashes
-    ? mergeGeometries(Array.from({ length: dashes }, (_, i) => new THREE.RingGeometry(inner, 1, 6, 1, (i / dashes) * Math.PI * 2, (fill / dashes) * Math.PI * 2)))
-    : new THREE.RingGeometry(inner, 1, 96);
-  const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color, transparent: true, opacity, side: THREE.DoubleSide, depthWrite: false }));
-  m.renderOrder = 5;
-  group.add(m);
-  return m;
+function mark(draw: (g: CanvasRenderingContext2D) => void, foot = 0.5): THREE.Sprite {
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 64;
+  const g = cv.getContext('2d')!;
+  g.strokeStyle = g.fillStyle = '#ffffff'; g.lineCap = 'round'; g.lineJoin = 'round';
+  draw(g);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false }));
+  sprite.center.set(0.5, foot);
+  sprite.renderOrder = 7;
+  sprite.visible = false;
+  group.add(sprite);
+  return sprite;
 }
 const INK = '#2e2118';
 /**
@@ -187,42 +201,79 @@ const cone = (() => {
   group.add(sprite);
   return sprite;
 })();
-/** A stone's ring and cross; a dotted ring where life wishes. */
-const stoneRing = ring(INK, 0.7, 0.95), wishRing = ring(INK, 0.6, 0.9, 40, 0.28);
-const stoneCross = new THREE.Mesh(
-  mergeGeometries([new THREE.PlaneGeometry(0.5, 0.035), new THREE.PlaneGeometry(0.035, 0.5)]),
-  new THREE.MeshBasicMaterial({ color: INK, transparent: true, opacity: 0.7, side: THREE.DoubleSide, depthWrite: false }),
-);
-stoneCross.renderOrder = 5;
-group.add(stoneCross);
+/** Where a stone will fall: a small star of six strokes, the old sign for a hazard, with its countdown written beside it. */
+const stoneMark = mark((g) => {
+  g.lineWidth = 3.4;
+  for (let i = 0; i < 3; i++) {
+    const a = (i / 3) * Math.PI;
+    g.beginPath(); g.moveTo(32 - 18 * Math.cos(a), 32 - 18 * Math.sin(a)); g.lineTo(32 + 18 * Math.cos(a), 32 + 18 * Math.sin(a)); g.stroke();
+  }
+});
+/** Where life wishes for a kind: that kind's own sign, as it will be drawn there, with the ground it wants written beside it. */
+const wishMarks = KINDS.map((k) => mark((g) => sign(g, k.sign, 32, 32, 16, '#ffffff')));
 
 /** Paper, fresh basalt, ash; and lava in the vermilion the geological surveys gave it, deeper where thick. */
 const PAPER = new THREE.Color('#ecdfc2'), BASALT = new THREE.Color('#9a8a76'), ASH = new THREE.Color('#b3ada2'), VERMILION = new THREE.Color('#b8563c'), DEEP_RED = new THREE.Color('#8f3b28');
 const SHALLOW = new THREE.Color('#d4e3ec'), DEEP = new THREE.Color('#b1c8d8');
-const c = new THREE.Color();
+const rgb = (c: THREE.Color) => [c.r, c.g, c.b];
+const [PA, BA, AS, VE, DR] = [PAPER, BASALT, ASH, VERMILION, DEEP_RED].map(rgb);
 
 function surface(v: number): number {
   return planet.rock[v] + planet.lava[v];
 }
 
 // The simulation's values, a vertex at a time, before they are carried onto the finer surface.
-const coarseHeight = new Float32Array(N), coarseLand = new Float32Array(N * 3), coarseSea = new Float32Array(N * 3);
-const fineLife = new Float32Array(FN), fineWear = new Float32Array(FN);
-function draw(): void {
+const coarseHeight = new Float32Array(N), coarseLand = new Float32Array(N * 3);
+/** The simulation's heights and colours, a vertex at a time, ready to be carried onto the finer surface. */
+function coarse(): void {
   for (let v = 0; v < N; v++) {
     const h = surface(v), r = 1 + RELIEF * Math.max(0, h);
     topo.positions[v * 3] = base[v * 3] * r; topo.positions[v * 3 + 1] = base[v * 3 + 1] * r; topo.positions[v * 3 + 2] = base[v * 3 + 2] * r;
     coarseHeight[v] = h;
     const lava = planet.lava[v];
     // The sea, paler over the shallows; the land, fresh basalt weathering to paper, ash grey;
-    // lava a flat vermilion wash, deeper where it lies thick.
-    c.copy(SHALLOW).lerp(DEEP, Math.min(1, Math.max(0, -h) / 0.3));
-    coarseSea[v * 3] = c.r; coarseSea[v * 3 + 1] = c.g; coarseSea[v * 3 + 2] = c.b;
-    c.copy(PAPER).lerp(BASALT, Math.exp(-planet.age[v] / 30) * 0.7).lerp(ASH, planet.ash[v] * 0.5);
-    if (lava > 0.002) c.lerp(VERMILION, Math.min(1, lava * 40)).lerp(DEEP_RED, Math.min(0.6, lava * 8));
-    coarseLand[v * 3] = c.r; coarseLand[v * 3 + 1] = c.g; coarseLand[v * 3 + 2] = c.b;
+    // lava a flat vermilion wash, deeper where it lies thick. (Plain arithmetic, not Colors: this
+    // is sixteen thousand vertices, many times a second.)
+    const v3 = v * 3;
+    const fresh = planet.age[v] < 200 ? Math.exp(-planet.age[v] / 30) * 0.7 : 0, ash = planet.ash[v] * 0.5;
+    const hot = lava > 0.002 ? Math.min(1, lava * 40) : 0, deep = lava > 0.002 ? Math.min(0.6, lava * 8) : 0;
+    for (let i = 0; i < 3; i++) {
+      let x = PA[i] + (BA[i] - PA[i]) * fresh;
+      x += (AS[i] - x) * ash;
+      x += (VE[i] - x) * hot;
+      x += (DR[i] - x) * deep;
+      coarseLand[v3 + i] = x;
+    }
   }
-  fine.carryDrawn(coarseHeight, coarseLand, coarseSea, fineHeight, landColour, seaColour);
+}
+
+/**
+ * Redraw the surface: worked out in its own worker (surface.worker.ts) and taken up when it comes
+ * back, so the world turns smoothly while the lava runs; only one is ever out at a time.
+ */
+/** In development, `?noworker` tries the page without workers, as a strict page would be. */
+const noWorkers = import.meta.env.DEV && location.search.includes('noworker');
+const shaper = offThread(() => { if (noWorkers) throw new Error('no workers'); return new SurfaceWorker(); }, handleSurface);
+shaper.post({ init: { parts: fine.parts, triangles: ftopo.triangles.slice(), basePositions: fbase.slice(), relief: RELIEF } });
+let shapeOut = false;
+shaper.onmessage = (data) => {
+  const d = data as { height: Float32Array; land: Float32Array; position: Float32Array; normal: Float32Array };
+  fineHeight.set(d.height); landColour.set(d.land); positions.set(d.position); normals.set(d.normal);
+  for (const name of ['position', 'normal', 'color', 'aH']) geometry.getAttribute(name).needsUpdate = true;
+  shapeOut = false;
+};
+function draw(): void {
+  if (shapeOut) return;
+  coarse();
+  shapeOut = true;
+  const height = coarseHeight.slice(), land = coarseLand.slice();
+  shaper.post({ shape: { height, land } }, [height.buffer, land.buffer]);
+}
+
+/** Redraw the surface here and now: at the start, on taking up a kept world, and for the kept chart. */
+function drawNow(): void {
+  coarse();
+  fine.carryDrawn(coarseHeight, coarseLand, fineHeight, landColour);
   const nm = ftopo.normals;
   for (let v = 0; v < FN; v++) {
     const r = 1 + RELIEF * Math.max(0, fineHeight[v]);
@@ -233,7 +284,7 @@ function draw(): void {
     nm[v * 3] = x; nm[v * 3 + 1] = y; nm[v * 3 + 2] = z;
   }
   smoothNormals();
-  for (const name of ['position', 'normal', 'color', 'aSea', 'aH']) geometry.getAttribute(name).needsUpdate = true;
+  for (const name of ['position', 'normal', 'color', 'aH']) geometry.getAttribute(name).needsUpdate = true;
 }
 
 /** The ground's normals, each the sum of its triangles' (weighted by their area), in plain arrays: three's own way is several times slower. */
@@ -260,7 +311,35 @@ function smoothNormals(): void {
 
 // ---------------------------------------------------------------- the pen, life and surf
 let lastLines = -1, lastQuiet = true, lastLife = -1;
+/**
+ * The lines and signs are drafted in a worker (drafting.ts), so the world turns smoothly while
+ * the contours are worked out: the page sends heights, and takes up the lines when they come.
+ * Only one of each is ever out at a time; if the world has changed again meanwhile, the next is
+ * asked for when the last comes back.
+ */
+const drafts = offThread(() => { if (noWorkers) throw new Error('no workers'); return new DraftsWorker(); }, handleDrafts);
+const nearestOf = Uint32Array.from({ length: FN }, (_, f) => fine.nearestCoarse(f));
+drafts.post({ init: { triangles: ftopo.triangles.slice(), basePositions: fbase.slice(), relief: RELIEF, parts: fine.parts, nearest: nearestOf } });
+let linesOut: { mode: RevealMode; from: THREE.Vector3 } | null = null, lifeOut = false;
+drafts.onmessage = (data) => {
+  const d = data as { lines?: { land: Packed; sea: Packed; water: Packed }; life?: { kinds: Float32Array[]; foam: Float32Array } };
+  if (d.lines && linesOut) {
+    // Taken up on the next frame that has room, not now: see `chores`.
+    const { mode, from } = linesOut, got = d.lines;
+    // A pen to a frame.
+    chores.push(() => landPen.setLines(unpack(got.land), mode, from), () => seaPen.setLines(unpack(got.sea), 'settle'), () => waterPen.setLines(unpack(got.water), 'settle'));
+    linesOut = null;
+  }
+  if (d.life) {
+    const got = d.life;
+    // A kind to a frame.
+    kindDots.forEach((s, k) => chores.push(() => s.set(got.kinds[k])));
+    chores.push(() => foam.set(got.foam));
+    lifeOut = false;
+  }
+};
 function redrawLines(now: number): void {
+  if (linesOut) return;
   const busy = planet.molten > 0.01 || planet.erupting;
   // While lava runs, new ground is pencilled; once it has cooled, the pen inks it. The sea's
   // slow wearing is simply redrawn, now and then, as a map is corrected.
@@ -269,93 +348,36 @@ function redrawLines(now: number): void {
   const mode: RevealMode = busy ? 'live' : lastQuiet ? 'settle' : 'ink';
   lastLines = now;
   lastQuiet = !busy;
-  const h = fineHeight, sea = new Uint8Array(FN), land = new Uint8Array(FN);
-  for (let v = 0; v < FN; v++) { if (h[v] < 0) sea[v] = 1; else land[v] = 1; }
-  landPen.setLines(rounded(extractContours(ftopo, h, { interval: 0.035, lift: 0.003, mask: sea })), mode, facingPoint());
-  seaPen.setLines(rounded(extractContours(ftopo, h, { interval: 0.07, lift: 0.002, mask: land })), 'settle');
-  // The water-lines: the sea near the coast, held between just below the surface and a little
-  // deeper, so its contours are close lines following the shore out.
-  const held = new Float32Array(FN);
-  for (let v = 0; v < FN; v++) held[v] = Math.min(-0.001, Math.max(-0.05, h[v]));
-  waterPen.setLines(rounded(extractContours(ftopo, held, { interval: 0.011, lift: 0.0015, mask: land })), 'settle');
+  linesOut = { mode, from: facingPoint() };
+  const heights = fineHeight.slice();
+  drafts.post({ lines: { id: now, heights } }, [heights.buffer]);
 }
 
-/** Scraps of line shorter than this are only the triangles showing, not the land: they're left out. */
-const SCRAP = 0.02;
-
-/**
- * Contours as a hand would draw them: each corner cut twice (Chaikin's rule, a quarter and three
- * quarters along every segment), so the little zigzags where a line crosses the triangles go, and
- * the scraps are dropped.
- */
-function rounded(lines: Polyline[]): Polyline[] {
-  const out: Polyline[] = [];
-  for (const line of lines) {
-    if (line.length < SCRAP) continue;
-    let p = line.points;
-    for (let pass = 0; pass < 2; pass++) p = chaikin(p, line.closed);
-    let length = 0;
-    const n = p.length / 3;
-    for (let i = 1; i < n + (line.closed ? 1 : 0); i++) {
-      const a = (i - 1) * 3, b = (i % n) * 3;
-      length += Math.hypot(p[b] - p[a], p[b + 1] - p[a + 1], p[b + 2] - p[a + 2]);
-    }
-    out.push({ ...line, points: p, length });
-  }
-  return out;
-}
-
-function chaikin(p: Float32Array, closed: boolean): Float32Array {
-  const n = p.length / 3;
-  if (n < 3) return p;
-  const segs = closed ? n : n - 1, out: number[] = [];
-  if (!closed) out.push(p[0], p[1], p[2]); // an open line keeps its ends where they are
-  for (let s = 0; s < segs; s++) {
-    const a = s * 3, b = ((s + 1) % n) * 3;
-    for (const t of [0.25, 0.75]) out.push(p[a] + (p[b] - p[a]) * t, p[a + 1] + (p[b + 1] - p[a + 1]) * t, p[a + 2] + (p[b + 2] - p[a + 2]) * t);
-  }
-  if (!closed) out.push(p[(n - 1) * 3], p[(n - 1) * 3 + 1], p[(n - 1) * 3 + 2]);
-  return Float32Array.from(out);
-}
-
-/**
- * Life as stipple in the ink of its kind, denser where there's more of it; and surf, white dots
- * on the water just off coasts the sea is wearing, thicker the harder it works.
- */
+const fineSigns = KINDS.map((k) => k.sign === 'dot');
+/** Life by its signs, and the breakers, drafted in the worker now and then. */
 function redrawLife(now: number): void {
-  if (now - lastLife < 1.2) return;
+  if (lifeOut || now - lastLife < 1.2) return;
   lastLife = now;
-  const byKind = KINDS.map(() => [[], [], [], []] as number[][]), surf: number[][] = [[], [], []];
-  const t = ftopo.triangles, P = ftopo.positions;
-  fine.carry(planet.life, fineLife);
-  fine.carry(planet.wear, fineWear);
-  const push = (into: number[], a: number, b: number, d: number, lift: number) => {
-    for (const v of [a, b, d]) into.push(P[v * 3] * lift, P[v * 3 + 1] * lift, P[v * 3 + 2] * lift);
-  };
-  for (let i = 0; i < t.length; i += 3) {
-    const a = t[i], b = t[i + 1], d = t[i + 2];
-    const l = Math.min(fineLife[a], fineLife[b], fineLife[d]);
-    if (l > 0.02) {
-      const kind = ecology.kind[fine.nearestCoarse(a)];
-      if (kind >= 0) push(byKind[kind][Math.min(3, Math.floor(l * 4))], a, b, d, 1.002);
-    }
-    const w = Math.max(fineWear[a], fineWear[b], fineWear[d]);
-    if (w > 0.0003 && Math.min(fineHeight[a], fineHeight[b], fineHeight[d]) < 0) push(surf[Math.min(2, Math.floor(w / 0.0012))], a, b, d, 1.0015);
-  }
-  // Signs are set sparsely, as a map sets them, closer where there's more; moss is a fine stipple.
-  kindDots.forEach((s, k) => s.set(byKind[k].flatMap((tris, lv) => stippleDots(tris, KINDS[k].sign === 'dot' ? 3000 + 7000 * lv : 220 + 420 * lv))));
-  foam.set(surf.flatMap((tris, lv) => stippleDots(tris, 900 + 1500 * lv)));
+  lifeOut = true;
+  // The simulation's own fields, small and coarse: the worker carries them onto the finer surface.
+  const heights = fineHeight.slice(), life = planet.life.slice(), wear = planet.wear.slice(), kind = ecology.kind.slice();
+  drafts.post({ life: { id: now, heights, life, wear, kind, fine: fineSigns } }, [heights.buffer, life.buffer, wear.buffer, kind.buffer]);
 }
 
-/** Lay a ring flat on the ground above a point of the planet, at a given size. */
-function place(m: THREE.Mesh, x: number, y: number, z: number, size: number): void {
-  const up = new THREE.Vector3(x, y, z).normalize();
-  const v = nearestAbove(up);
-  const r = Math.max(1, new THREE.Vector3(topo.positions[v * 3], topo.positions[v * 3 + 1], topo.positions[v * 3 + 2]).length());
-  m.position.copy(up).multiplyScalar(r + 0.006);
-  m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), up);
-  m.scale.setScalar(size);
+/**
+ * Work that has to happen on the page's own thread but needn't happen now (taking up the drafted
+ * lines, keeping the world): one piece a frame, and not on a frame that has already redrawn the
+ * surface, so no one frame carries two heavy things.
+ */
+const chores: (() => void)[] = [];
+let choreWaited = 0;
+function doChore(busyFrame: boolean, spent: number): void {
+  if (!chores.length) { choreWaited = 0; return; }
+  // And not if this frame's own work has already taken a good part of its time; though nothing
+  // waits more than a few frames, or the lines would lag behind the land.
+  if ((!busyFrame && spent < 5) || ++choreWaited > 4) { chores.shift()!(); choreWaited = 0; }
 }
+
 function nearestAbove(u: THREE.Vector3): number {
   let v = planet.plumeVertex;
   const d = (w: number) => (base[w * 3] - u.x) ** 2 + (base[w * 3 + 1] - u.y) ** 2 + (base[w * 3 + 2] - u.z) ** 2;
@@ -383,21 +405,25 @@ function drawMarks(now: number): void {
   cone.material.rotation = tremble;
   cone.scale.setScalar(0.055 * (dist / 3.2));
   const s = planet.impact;
-  stoneRing.visible = stoneCross.visible = !!s;
+  stoneMark.visible = !!s && !ending;
   if (s) {
-    place(stoneRing, ...at(s.vertex), VOLCANO.crater + 0.2 * (s.in / VOLCANO.impactWarning));
-    place(stoneCross, ...at(s.vertex), 0.08);
+    setMark(stoneMark, s.vertex, 0.04);
     // In the lava's red, if the plume is under it and will catch its heat.
-    const warm = planet.warmthAt(s.vertex) > 0.5 ? '#9a4230' : INK;
-    (stoneRing.material as THREE.MeshBasicMaterial).color.set(warm);
-    (stoneCross.material as THREE.MeshBasicMaterial).color.set(warm);
+    stoneMark.material.color.set(planet.warmthAt(s.vertex) > 0.5 ? '#9a4230' : INK);
   }
   const w = ecology.wish;
-  wishRing.visible = !!w;
-  if (w) {
-    (wishRing.material as THREE.MeshBasicMaterial).opacity = 0.5 + 0.15 * Math.sin(now * 1.2);
-    place(wishRing, ...at(w.vertex), ECOLOGY.wishReach);
-  }
+  wishMarks.forEach((m, i) => {
+    const on = !!w && !ending && KINDS[i].kind === w.kind;
+    m.visible = on;
+    if (on) { setMark(m, w!.vertex, 0.045); m.material.color.set(KINDS[i].ink); }
+  });
+}
+/** Set a mark on the ground at a vertex, a size in view, faded towards the rim and hidden round the back. */
+function setMark(m: THREE.Sprite, v: number, size: number): void {
+  m.position.set(topo.positions[v * 3], topo.positions[v * 3 + 1], topo.positions[v * 3 + 2]).multiplyScalar(1.004);
+  NORMAL.set(base[v * 3], base[v * 3 + 1], base[v * 3 + 2]).applyQuaternion(group.quaternion);
+  m.material.opacity = Math.max(0, Math.min(0.9, (NORMAL.dot(EYE.copy(camera.position).normalize()) - 0.15) / 0.25));
+  m.scale.setScalar(size * (dist / 3.2));
 }
 
 // ---------------------------------------------------------------- labels on the map
@@ -424,9 +450,9 @@ function drawLabels(): void {
   for (const el of labels.values()) el.dataset.seen = '';
   if (!ending?.shown) {
     const w = ecology.wish;
-    if (w) { const k = KINDS.find((x) => x.kind === w.kind)!; label('wish', `${k.name} ${/s$/.test(k.name) ? 'want' : 'wants'} ${k.wants}`, w.vertex, true, 48); }
+    if (w) { const k = KINDS.find((x) => x.kind === w.kind)!; label('wish', `${k.name} wanted: ${k.wants}`, w.vertex, true, 26); }
     const s = planet.impact;
-    if (s) label('stone', `a stone, in ${Math.ceil(s.in)}`, s.vertex, true, 22);
+    if (s) label('stone', `a stone falls here, in ${Math.ceil(s.in)}`, s.vertex, true, 22);
     const words = cue();
     if (words) label('cue', words.text, words.at, true, words.dy);
   }
@@ -825,7 +851,7 @@ async function resume(): Promise<boolean> {
   dist = w.page.dist; look();
   $('stage-name').textContent = ERAS[shownEra];
   Object.assign(tallied, planet.tally);
-  draw();
+  drawNow();
   lastLines = -1; redrawLines(1e6);
   return true;
 }
@@ -885,11 +911,14 @@ function pace(raw: number): void {
 // ---------------------------------------------------------------- the loop
 const INVERSE = new THREE.Quaternion(), GRAV = new THREE.Vector3();
 fit();
-draw();
+drawNow();
 redrawLines(0);
 const clock = new THREE.Clock();
 let seconds = 0, lastWords = 0, lastDraw = 0, lastIslands = 0, lastEcology = 0;
+/** In development, how long each frame's own work took (before drawing), to find what stutters. */
+const frameCost: number[] = [];
 renderer.setAnimationLoop(() => {
+  const began0 = performance.now();
   const raw = clock.getDelta(), dt = Math.min(raw, 1 / 20);
   seconds += dt;
   pace(raw);
@@ -907,7 +936,8 @@ renderer.setAnimationLoop(() => {
   if (begun && !ending?.shown) for (let k = 0; k < speed; k++) planet.step(dt);
   // The surface is redrawn often while lava runs, and now and then while only the slow forces work.
   const flowing = planet.erupting || planet.molten > 0.01;
-  if (seconds - lastDraw >= (flowing || speed > 1 ? 1 / 24 : 0.5)) { lastDraw = seconds; draw(); }
+  let heavy = false;
+  if (seconds - lastDraw >= (flowing || speed > 1 ? 1 / 20 : 0.5)) { lastDraw = seconds; draw(); heavy = true; }
   if (begun && seconds - lastEcology >= 1) { ecology.update((seconds - lastEcology) * speed); lastEcology = seconds; }
   if (begun && seconds - lastIslands >= 2) {
     lastIslands = seconds;
@@ -927,12 +957,14 @@ renderer.setAnimationLoop(() => {
   puffs.update(dt * speed);
   if (begun) breathe(dt);
   if (begun && seconds - lastWords > 0.5) { lastWords = seconds; words(); theEnd(); lessons(); }
-  if (begun && seconds - keptAt > 15) save();
+  if (begun && seconds - keptAt > 15) { keptAt = seconds; chores.push(save); }
+  doChore(heavy, performance.now() - began0);
   showNext();
+  if (import.meta.env.DEV) { frameCost.push(performance.now() - began0); if (frameCost.length > 600) frameCost.shift(); }
   renderer.render(scene, camera);
   drawLabels();
   drawEnding();
   turnedSince();
 });
 
-if (import.meta.env.DEV) (window as unknown as { volcano: unknown }).volcano = { planet, ecology, islands, rotate, draw, save, lines: () => { lastLines = -1; redrawLines(1e6); } };
+if (import.meta.env.DEV) (window as unknown as { volcano: unknown }).volcano = { planet, ecology, islands, rotate, draw, save, world, frameCost, lines: () => { lastLines = -1; redrawLines(1e6); }, life: () => { lastLife = -10; redrawLife(1e6); } };

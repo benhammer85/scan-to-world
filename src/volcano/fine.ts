@@ -19,6 +19,18 @@ export class FineSurface {
   private from: Uint32Array;
   private weights: Float32Array;
 
+  /** The carrying rules alone, to hand to a worker, which can make its own with `fromParts`. */
+  get parts(): { offsets: Uint32Array; from: Uint32Array; weights: Float32Array; vertexCount: number } {
+    return { offsets: this.offsets, from: this.from, weights: this.weights, vertexCount: this.fine.vertexCount };
+  }
+
+  /** A FineSurface from its carrying rules alone (see `parts`): enough to carry fields, with no mesh behind it. */
+  static fromParts(p: { offsets: Uint32Array; from: Uint32Array; weights: Float32Array; vertexCount: number }): FineSurface {
+    const f = Object.create(FineSurface.prototype) as FineSurface;
+    Object.assign(f, { offsets: p.offsets, from: p.from, weights: p.weights, fine: { vertexCount: p.vertexCount } });
+    return f;
+  }
+
   constructor(coarse: Topology, readonly fine: Topology) {
     const cp = coarse.basePositions, fp = fine.basePositions, n = fine.vertexCount;
     // The coarse vertices in a grid of cells, to find the nearest to each fine one quickly.
@@ -76,24 +88,22 @@ export class FineSurface {
   }
 
   /**
-   * Carry the drawn fields in one pass: a height and two colours a vertex, the colours packed
-   * three to a vertex. One pass over the weights rather than one a field, since this runs
-   * many times a second while lava flows.
+   * Carry the drawn fields in one pass: a height and a colour a vertex, the colour packed three to
+   * a vertex. One pass over the weights rather than one a field, since this runs many times a
+   * second while lava flows.
    */
-  carryDrawn(h: Float32Array, a: Float32Array, b: Float32Array, fh: Float32Array, fa: Float32Array, fb: Float32Array): void {
+  carryDrawn(h: ArrayLike<number>, a: ArrayLike<number>, fh: Float32Array, fa: Float32Array): void {
     const o = this.offsets, from = this.from, w = this.weights, n = this.fine.vertexCount;
     for (let f = 0; f < n; f++) {
-      let sh = 0, a0 = 0, a1 = 0, a2 = 0, b0 = 0, b1 = 0, b2 = 0;
+      let sh = 0, a0 = 0, a1 = 0, a2 = 0;
       for (let k = o[f], end = o[f + 1]; k < end; k++) {
         const v = from[k], x = w[k], v3 = v * 3;
         sh += h[v] * x;
         a0 += a[v3] * x; a1 += a[v3 + 1] * x; a2 += a[v3 + 2] * x;
-        b0 += b[v3] * x; b1 += b[v3 + 1] * x; b2 += b[v3 + 2] * x;
       }
       const f3 = f * 3;
       fh[f] = sh;
       fa[f3] = a0; fa[f3 + 1] = a1; fa[f3 + 2] = a2;
-      fb[f3] = b0; fb[f3 + 1] = b1; fb[f3 + 2] = b2;
     }
   }
 

@@ -55,13 +55,20 @@ In headless play-throughs, gentle flows alone kept 4 kinds, doing nothing kept 3
 
 **Reading it:** everything that matters is drawn on the world itself, as a surveyor's marks.
 * Nothing is a control or a gauge. The vent is the map's sign for a volcano, a small inked cone that always stands upright. The heat gathering beneath it rises as smoke: a wisp now and then while there's little, heavier as it builds, and a dark column once it would burst. Held too long, the cone trembles. Tipped, you see the lava pour. The heat left is told by the era.
-* A dotted ring where life wishes for a kind; a ring and cross closing in where a stone will fall.
+* Marks for what's coming, as a map marks places. Where life wishes for a kind, that kind's own sign stands there, with the ground it wants written beside it ("heath wanted: a high cone of ash"). Where a stone will fall, a small six-stroke star, with its countdown beside it ("a stone falls here, in 12"); it turns red if the heat is beneath it to catch it. Even the pen's nib is hidden, so nothing on the world looks like something to press.
 * While an idea is new, a few words are written on the world beside it ("hold it level", "now tip it", "heavy smoke: tip it now, for a burst", "the heat rises here", "turn it to the top to catch it"), changing with what you're doing. Once the idea has been tried, they go. Stones only start falling once they've been shown.
 * Off the world there's only the era at the top, as a map's title, and the key at the foot: the six kinds by their signs, inked once each is living.
 * Nothing is named: the map is the land's.
 * On phones that can, a burst is felt as a soft pulse, and a caldera as more. The camera eases out as the land spreads (a pinch takes over for a while), and the drawing gets less fine if the phone can't keep up.
 
 **Kept as it's played:** the world is saved quietly (in IndexedDB) every 15 seconds and whenever the page is hidden. Come back and the card says *Your world, as you left it*; touch it and you're where you were, and however you hold the phone then is level. `?seed=` starts that world fresh instead.
+
+**Smooth by design:** the heavy work never runs on the page's own thread.
+* Contours, water-lines and life's signs are drafted in one worker (`drafts.ts`), and the finer surface is carried, raised and given its normals in another (`surface.ts`). Their results come back packed into flat arrays and move between threads without being copied.
+* What comes back is taken up one piece a frame (one pen, one kind), never on a frame that has already redrawn the surface or used much of its time, and never more than a few frames late.
+* The simulation's slow forces run in halves a step apart, with life the step after, so no one step carries them all. The sea's colour is worked out in the shader from depth rather than uploaded.
+* In a headless run with lava flowing, the page's own work per frame went from a worst of 35 ms to 13 ms, with 95% of frames under 9 ms.
+* If a page can't start workers, the same work is done on the page, only less smoothly (`offthread.ts`; `?noworker` tries it in development).
 
 **What you see:** it keeps to the language of the old survey and geological maps, not light and effects.
 * Lava is laid on as a flat vermilion wash, the colour geological maps give it.
@@ -79,7 +86,7 @@ In headless play-throughs, gentle flows alone kept 4 kinds, doing nothing kept 3
 
 **Drawing:** the world is drawn on an icosphere of twice the simulation's detail, with values carried across by Loop subdivision (`fine.ts`). The coast's colour edge is chosen per pixel. Contours are rounded by Chaikin corner-cutting and drawn as joined, antialiased ribbons (`widthPx` in `PlotterLines`), at up to 3× pixel ratio. Add `?seed=` to the URL to see the same world again.
 
-Files: `sim.ts` (the planet), `ecology.ts` (kinds and wishes), `islands.ts` (finding islands), `fine.ts`, `puffs.ts`, `chart.ts`, `save.ts` (keeping the world), `main.ts`.
+Files: `sim.ts` (the planet), `ecology.ts` (kinds and wishes), `islands.ts` (finding islands), `fine.ts`, `puffs.ts`, `chart.ts`, `save.ts` (keeping the world), `drafting.ts` and `drafts.ts` (lines and signs, off the page's thread), `surface.ts`, `offthread.ts`, `main.ts`.
 
 Locally, run `npm run dev` and open `/volcano.html`. The simulation (`src/volcano/sim.ts`) has no drawing in it and is tested in `test/volcano.test.ts`.
 

@@ -9,38 +9,10 @@
  */
 import * as THREE from 'three';
 import { rimGlsl } from './rim';
+import { STIPPLE } from './stippleDots';
 
-export const STIPPLE = {
-  /** Dots per unit of area. */
-  density: 70000,
-  /** A dot's size, in pixels on a phone-sharp screen. */
-  size: 2.1,
-  /** Seconds a new dot takes to come in. */
-  appear: 6,
-};
-
-/** Dots over these triangles (xyz triples, three to a triangle). */
-export function stippleDots(tris: number[], density = STIPPLE.density): number[] {
-  const out: number[] = [];
-  for (let i = 0; i + 8 < tris.length; i += 9) {
-    const a = tris.slice(i, i + 3), b = tris.slice(i + 3, i + 6), c = tris.slice(i + 6, i + 9);
-    const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], v = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
-    const area = 0.5 * Math.hypot(u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]);
-    const seed = Math.round(a[0] * 7919 + a[1] * 104729 + a[2] * 1299709);
-    const want = area * density, n = Math.floor(want) + (rand(seed, 0) < want - Math.floor(want) ? 1 : 0);
-    for (let k = 1; k <= n; k++) {
-      let s = rand(seed, k * 2), t = rand(seed, k * 2 + 1);
-      if (s + t > 1) { s = 1 - s; t = 1 - t; }
-      out.push(a[0] + u[0] * s + v[0] * t, a[1] + u[1] * s + v[1] * t, a[2] + u[2] * s + v[2] * t);
-    }
-  }
-  return out;
-}
-
-function rand(seed: number, k: number): number {
-  const x = Math.sin(seed * 12.9898 + k * 78.233) * 43758.5453;
-  return x - Math.floor(x);
-}
+// Where the dots go is worked out apart from the drawing, so it can be done off the main thread.
+export { STIPPLE, stippleDots } from './stippleDots';
 
 /**
  * The mark each point is drawn as. A dot by default; the others are the conventional signs of
@@ -120,20 +92,21 @@ export class Stipple {
   }
 
   private clock = 0;
-  /** When each dot (by where it is) first came: it keeps that however often the dots are set again. */
-  private bornAt = new Map<string, number>();
+  /** When each dot (by where it is, as one number) first came: it keeps that however often the dots are set again. */
+  private bornAt = new Map<number, number>();
 
   update(dt: number): void {
     this.clock += dt;
     (this.object.material as THREE.ShaderMaterial).uniforms.uNow.value = this.clock;
   }
 
-  set(dots: number[]): void {
+  set(dots: ArrayLike<number>): void {
     const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(dots), 3));
-    const born = new Float32Array(dots.length / 3), next = new Map<string, number>();
+    g.setAttribute('position', new THREE.BufferAttribute(dots instanceof Float32Array ? dots : new Float32Array(dots), 3));
+    const born = new Float32Array(dots.length / 3), next = new Map<number, number>();
     for (let i = 0; i < born.length; i++) {
-      const key = `${Math.round(dots[i * 3] * 4096)},${Math.round(dots[i * 3 + 1] * 4096)},${Math.round(dots[i * 3 + 2] * 4096)}`;
+      // Where it is, to a 4096th, packed into one number (exact: well under 2^53), so no strings are made.
+      const key = ((Math.round(dots[i * 3] * 4096) + 16384) * 32768 + (Math.round(dots[i * 3 + 1] * 4096) + 16384)) * 32768 + (Math.round(dots[i * 3 + 2] * 4096) + 16384);
       const when = this.bornAt.get(key) ?? this.clock;
       next.set(key, when);
       born[i] = when;

@@ -131,7 +131,7 @@ export function drawFrame(g: CanvasRenderingContext2D, w: number, h: number, k: 
 }
 
 /** A kind's conventional sign, as the page draws it, at a size (half its width). */
-function sign(g: CanvasRenderingContext2D, name: string, x: number, y: number, r: number, ink: string): void {
+export function sign(g: CanvasRenderingContext2D, name: string, x: number, y: number, r: number, ink: string): void {
   g.strokeStyle = ink; g.fillStyle = ink; g.lineWidth = 2.2; g.lineCap = 'round';
   g.beginPath();
   if (name === 'dot') { g.arc(x, y, r * 0.3, 0, Math.PI * 2); g.fill(); return; }

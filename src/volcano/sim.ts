@@ -208,6 +208,9 @@ export class Planet {
   private slowIn = 0;
   private impactIn: number;
   private began = false;
+  private livingDue = false;
+  private slowHalf = false;
+  private slowDelta: Float32Array;
   private alive = false;
 
   constructor(private topo: Topology, start: number, seed = 1) {
@@ -223,6 +226,7 @@ export class Planet {
     this.sunk = new Float32Array(n);
     this.wear = new Float32Array(n);
     this.next = new Float32Array(n);
+    this.slowDelta = new Float32Array(n);
     this.firmness = new Float32Array(n);
     for (let v = 0; v < n; v++) {
       const x = p[v * 3], y = p[v * 3 + 1], z = p[v * 3 + 2];
@@ -342,8 +346,12 @@ export class Planet {
     this.flow(dt);
     this.cool(dt);
     for (let v = 0; v < this.age.length; v++) if (this.lava[v] < VOLCANO.thin) this.age[v] += dt;
+    // The slow forces every quarter second, and life the step after, so no one step carries both.
     this.slowIn -= dt;
-    if (this.slowIn <= 0) { this.slow(0.25); this.slowIn = 0.25; }
+    const half = this.rock.length >> 1;
+    if (this.slowHalf) { this.slowHalf = false; this.slow(0.25, half, this.rock.length); this.livingDue = true; }
+    else if (this.livingDue) { this.livingDue = false; this.living(0.25); }
+    else if (this.slowIn <= 0) { this.slow(0.25, 0, half); this.slowIn = 0.25; this.slowHalf = true; }
     this.stones(dt);
   }
 
@@ -555,12 +563,17 @@ export class Planet {
   // ------------------------------------------------------------------ the slow forces
 
   /** The planet's own slow work, every quarter second: warmth and sinking, the sea, the rain, slumping, and life. */
-  private slow(dt: number): void {
+  /**
+   * Done in two halves, a step apart (the vertices from `from` to `to`), so no one step carries
+   * all of it: each half adds what it would change to `slowDelta`, and the changes are made
+   * together once the second half is done, so neither half sees the other's.
+   */
+  private slow(dt: number, from: number, to: number): void {
     const t = this.topo, n = this.rock.length, p = t.basePositions, r = this.rock, q = this.plume;
-    const next = this.next;
-    next.set(r);
+    const next = this.slowDelta;
+    if (from === 0) next.fill(0);
     const burning = Math.min(1, this.heatLeft * 2);
-    for (let v = 0; v < n; v++) {
+    for (let v = from; v < to; v++) {
       const a = t.nbrOffsets[v], b = t.nbrOffsets[v + 1];
       const d = Math.hypot(p[v * 3] - q.x, p[v * 3 + 1] - q.y, p[v * 3 + 2] - q.z);
       const warm = Math.exp(-((d / VOLCANO.warmth) ** 2)) * burning;
@@ -594,8 +607,7 @@ export class Planet {
       // Reefs build up towards the light, but no further than the surface.
       if (this.life[v] > 0.2 && r[v] < -0.004 && r[v] > VOLCANO.reefDeep) next[v] += Math.min(-0.004 - r[v], VOLCANO.reef * dt * this.life[v]);
     }
-    r.set(next);
-    this.living(dt);
+    if (to === n) for (let v = 0; v < n; v++) r[v] += next[v];
   }
 
   /** How much life the ground at a vertex could hold, 0 to 1. */

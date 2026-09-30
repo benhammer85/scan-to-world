@@ -64,6 +64,8 @@ export interface PlotterStyle {
    * `setResolution` whenever the canvas changes size.
    */
   widthPx: number;
+  /** Whether the pen's nib (a dot and a faint ring) is shown where it's drawing. */
+  nib: boolean;
 }
 
 export const defaultPlotterStyle: PlotterStyle = {
@@ -82,6 +84,7 @@ export const defaultPlotterStyle: PlotterStyle = {
   pen: true,
   appearSeconds: 4,
   widthPx: 0,
+  nib: true,
 };
 
 /** A line faces the eye, for fading, if the ground under it looks at least this much towards it. */
@@ -520,8 +523,10 @@ export class PlotterLines {
       if (!this.bornAt.has(keys[li])) this.bornAt.set(keys[li], this.clock);
       const came = this.bornAt.get(keys[li])!;
       const m = Math.floor(n / 2) * 3;
+      // Copied value by value, not through subarrays: this runs for every point of every line, and
+      // a view made for each was most of what drawing the lines cost.
       const put = (v: number, src: number, at: number) => {
-        position.set(pts.subarray(src * 3, src * 3 + 3), v * 3);
+        position[v * 3] = pts[src * 3]; position[v * 3 + 1] = pts[src * 3 + 1]; position[v * 3 + 2] = pts[src * 3 + 2];
         along[v] = line.length > 0 ? at / line.length : 1;
         timing[v * 2] = start;
         timing[v * 2 + 1] = cost;
@@ -545,11 +550,14 @@ export class PlotterLines {
           for (let sd = 0; sd < 2; sd++) {
             const v = q * 2 + sd;
             put(v, i, d);
-            prev!.set(pts.subarray(before * 3, before * 3 + 3), v * 3);
-            next!.set(pts.subarray(after * 3, after * 3 + 3), v * 3);
+            prev![v * 3] = pts[before * 3]; prev![v * 3 + 1] = pts[before * 3 + 1]; prev![v * 3 + 2] = pts[before * 3 + 2];
+            next![v * 3] = pts[after * 3]; next![v * 3 + 1] = pts[after * 3 + 1]; next![v * 3 + 2] = pts[after * 3 + 2];
             side![v] = sd === 0 ? -1 : 1;
           }
-          if (st > 0) { const b = (q - 1) * 2; index!.set([b, b + 1, b + 2, b + 2, b + 1, b + 3], (o + st - 1) * 6); }
+          if (st > 0) {
+            const b = (q - 1) * 2, x = (o + st - 1) * 6;
+            index![x] = b; index![x + 1] = b + 1; index![x + 2] = b + 2; index![x + 3] = b + 2; index![x + 4] = b + 1; index![x + 5] = b + 3;
+          }
           q++;
         }
         o += segs;
@@ -618,7 +626,7 @@ export class PlotterLines {
     const run = this.runs[lo];
     const along = Math.min(1, Math.max(0, (drawn - run.start) / run.cost)) * run.length;
     pointAlong(run.points, run.closed, along, this.nib.position);
-    this.nib.visible = true;
+    this.nib.visible = this.style.nib;
     // Flat on the ground: the object is centred on its origin, so outward is up, near enough.
     const up = NIB_UP.copy(this.nib.position).normalize();
     this.nibRing.quaternion.setFromUnitVectors(NIB_FACE, up);
