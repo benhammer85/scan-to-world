@@ -93,12 +93,13 @@ export function draftLines(s: Surface, h: Float32Array): { land: Polyline[]; sea
 
 /**
  * Life's signs, and the breakers: for each kind, dots over the triangles where it lives, closer
- * where there's more of it (moss a fine stipple, the other signs set sparsely, as a map sets them);
+ * where there's more of it (moss a fine stipple, the other signs set sparsely, as a map sets them:
+ * `density` is each kind's dots per unit area at its thinnest, and what each step thicker adds);
  * and short strokes on the water off coasts the sea is wearing, thicker the harder it works.
  * `kind` is each vertex's kind (an index, or -1), and `fine` says which kinds are stippled finely.
  */
-export function draftLife(s: Surface, life: Float32Array, wear: Float32Array, h: Float32Array, kind: Int8Array, fine: boolean[]): { kinds: Float32Array[]; foam: Float32Array } {
-  const byKind = fine.map(() => [[], [], [], []] as number[][]), surf: number[][] = [[], [], []];
+export function draftLife(s: Surface, life: Float32Array, wear: Float32Array, h: Float32Array, kind: Int8Array, density: [number, number][]): { kinds: Float32Array[]; foam: Float32Array } {
+  const byKind = density.map(() => [[], [], [], []] as number[][]), surf: number[][] = [[], [], []];
   const t = s.triangles, P = s.positions;
   const push = (into: number[], a: number, b: number, d: number, lift: number) => {
     into.push(P[a * 3] * lift, P[a * 3 + 1] * lift, P[a * 3 + 2] * lift, P[b * 3] * lift, P[b * 3 + 1] * lift, P[b * 3 + 2] * lift, P[d * 3] * lift, P[d * 3 + 1] * lift, P[d * 3 + 2] * lift);
@@ -114,8 +115,8 @@ export function draftLife(s: Surface, life: Float32Array, wear: Float32Array, h:
     if (w > 0.0003 && Math.min(h[a], h[b], h[d]) < 0) push(surf[Math.min(2, Math.floor(w / 0.0012))], a, b, d, 1.0015);
   }
   return {
-    kinds: byKind.map((levels, k) => Float32Array.from(levels.flatMap((tris, lv) => stippleDots(tris, fine[k] ? 3000 + 7000 * lv : 220 + 420 * lv)))),
-    foam: Float32Array.from(surf.flatMap((tris, lv) => stippleDots(tris, 900 + 1500 * lv))),
+    kinds: byKind.map((levels, k) => Float32Array.from(levels.flatMap((tris, lv) => stippleDots(tris, density[k][0] + density[k][1] * lv, true)))),
+    foam: Float32Array.from(surf.flatMap((tris, lv) => stippleDots(tris, 900 + 1500 * lv, true))),
   };
 }
 

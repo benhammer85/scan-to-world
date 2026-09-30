@@ -67,7 +67,8 @@ export class Stipple {
           // A sign in a fine line, its distance from the line fading to nothing over a pixel.
           float R = vSize * 0.42, w = max(0.55, vSize * 0.07), d;
           #if SIGN == 1
-          d = abs(length(p) - R * 0.8);
+          w = max(0.8, vSize * 0.09); // a small circle needs a firmer line to be seen at all
+          d = abs(length(p) - R * 0.75);
           #elif SIGN == 2
           d = min(segment(p, vec2(-R, 0.0), vec2(R, 0.0)), segment(p, vec2(0.0, -R), vec2(0.0, R)));
           #elif SIGN == 3
@@ -100,13 +101,17 @@ export class Stipple {
     (this.object.material as THREE.ShaderMaterial).uniforms.uNow.value = this.clock;
   }
 
+  /** Know a dot by its direction from the middle rather than where it is, so it keeps its age as the ground rises and wears under it. */
+  byDirection = false;
+
   set(dots: ArrayLike<number>): void {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(dots instanceof Float32Array ? dots : new Float32Array(dots), 3));
     const born = new Float32Array(dots.length / 3), next = new Map<number, number>();
     for (let i = 0; i < born.length; i++) {
       // Where it is, to a 4096th, packed into one number (exact: well under 2^53), so no strings are made.
-      const key = ((Math.round(dots[i * 3] * 4096) + 16384) * 32768 + (Math.round(dots[i * 3 + 1] * 4096) + 16384)) * 32768 + (Math.round(dots[i * 3 + 2] * 4096) + 16384);
+      const l = this.byDirection ? Math.hypot(dots[i * 3], dots[i * 3 + 1], dots[i * 3 + 2]) || 1 : 1;
+      const key = ((Math.round(dots[i * 3] / l * 4096) + 16384) * 32768 + (Math.round(dots[i * 3 + 1] / l * 4096) + 16384)) * 32768 + (Math.round(dots[i * 3 + 2] / l * 4096) + 16384);
       const when = this.bornAt.get(key) ?? this.clock;
       next.set(key, when);
       born[i] = when;

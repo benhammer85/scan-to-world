@@ -19,8 +19,9 @@
       #legend span { display: inline-flex; align-items: center; gap: 4px; transition: opacity 1.5s; }
       #legend.new span { animation: drawn 2.4s ease-in-out 2; }
       @keyframes drawn { 50% { transform: translateY(-2px); } }
-      #event { position: fixed; top: 16%; left: 16px; right: 16px; text-align: center; font-size: 18px; font-style: italic; opacity: 0; pointer-events: none; transition: opacity 1.4s; }
-      #event.shown { opacity: 0.8; }
+      /* A quiet word now and then, at the foot above the key, never across the world. */
+      #event { position: fixed; bottom: calc(66px + env(safe-area-inset-bottom)); left: 16px; right: 16px; text-align: center; font-size: 14px; font-style: italic; opacity: 0; pointer-events: none; transition: opacity 2s; }
+      #event.shown { opacity: 0.6; }
       #labels { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
       #labels span { position: absolute; transform: translate(-50%, -50%); font-style: italic; font-size: 15px; letter-spacing: 0.22em; white-space: nowrap; }
       #labels span.small { font-size: 12px; letter-spacing: 0.06em; }
@@ -47,7 +48,7 @@
     <div id="legend" class="engraved"></div>
     <p id="again" class="engraved">turn the world right round to begin another</p>
     <button id="keep">keep the chart</button>
-    <div id="begin" class="engraved"><p class="first">A young world of water, and the heat beneath it, which will not last.</p><p class="then">Hold it as you would a globe. Tip it, and the heat pours out; hold it level, and the heat gathers.</p><p class="touch">touch to begin</p></div>
+    <div id="begin" class="engraved"><p class="first">A young world of water, and the heat beneath it, which will not last.</p><p class="then">Hold it as you would a globe. Held level, the heat gathers beneath the volcano, and its smoke thickens; tip it, and the heat pours out. Tip it when the smoke is heavy, and it bursts; wait too long, and it tears open.</p><p class="touch">touch to begin</p></div>
     <script type="module" src="/src/volcano/main.ts"></script>
   </body>
 </html>

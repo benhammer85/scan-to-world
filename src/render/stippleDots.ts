@@ -12,14 +12,19 @@ export const STIPPLE = {
   appear: 6,
 };
 
-/** Dots over these triangles (xyz triples, three to a triangle). */
-export function stippleDots(tris: number[], density = STIPPLE.density): number[] {
+/**
+ * Dots over these triangles (xyz triples, three to a triangle). Where they go is fixed by where
+ * each triangle is; `byDirection` fixes it by the triangle's direction from the middle instead, so
+ * on ground that rises and wears (a volcano's), the dots stay put rather than jumping about.
+ */
+export function stippleDots(tris: number[], density = STIPPLE.density, byDirection = false): number[] {
   const out: number[] = [];
   for (let i = 0; i + 8 < tris.length; i += 9) {
     const a = tris.slice(i, i + 3), b = tris.slice(i + 3, i + 6), c = tris.slice(i + 6, i + 9);
     const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], v = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
     const area = 0.5 * Math.hypot(u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]);
-    const seed = Math.round(a[0] * 7919 + a[1] * 104729 + a[2] * 1299709);
+    const l = byDirection ? Math.hypot(a[0], a[1], a[2]) || 1 : 1;
+    const seed = Math.round((a[0] * 7919 + a[1] * 104729 + a[2] * 1299709) / l * (byDirection ? 4 : 1));
     const want = area * density, n = Math.floor(want) + (rand(seed, 0) < want - Math.floor(want) ? 1 : 0);
     for (let k = 1; k <= n; k++) {
       let s = rand(seed, k * 2), t = rand(seed, k * 2 + 1);

@@ -14,7 +14,7 @@ let relief = 0.32;
 type Ask =
   | { init: { triangles: Uint32Array; basePositions: Float32Array; relief: number; parts: FineSurface['parts']; nearest: Uint32Array } }
   | { lines: { id: number; heights: Float32Array } }
-  | { life: { id: number; heights: Float32Array; life: Float32Array; wear: Float32Array; kind: Int8Array; fine: boolean[] } };
+  | { life: { id: number; heights: Float32Array; life: Float32Array; wear: Float32Array; kind: Int8Array; density: [number, number][] } };
 // (For life, `life`, `wear` and `kind` are the simulation's own, a value to each coarse vertex: they're carried onto the finer surface here.)
 
 /** Answer one ask (in the worker, or on the page if no worker could be started). */
@@ -40,7 +40,7 @@ export const handleDrafts: Handler = (message, post) => {
     fine!.carry(a.life, life);
     fine!.carry(a.wear, wear);
     for (let f = 0; f < n; f++) kind[f] = a.kind[nearest![f]];
-    const drafted = draftLife(surface, life, wear, a.heights, kind, a.fine);
+    const drafted = draftLife(surface, life, wear, a.heights, kind, a.density);
     post({ life: { id: a.id, ...drafted } }, [...drafted.kinds.map((k) => k.buffer as ArrayBuffer), drafted.foam.buffer as ArrayBuffer]);
   }
 };

@@ -152,7 +152,7 @@ export class Ecology {
     if (this.here(wish) >= ECOLOGY.wishNeeds * this.scale) { this.wishIn = 3; return; } // already there: ask for something else
     this.wish = wish;
     const k = KINDS.find((x) => x.kind === kind)!;
-    pl.tell(`Life wishes for ${k.name}: ${k.wants}, by its ring`);
+    pl.tell(`Life wishes for ${k.name}: ${k.wants}, where its sign stands`);
   }
 
   /** How many vertices of the wished-for kind live near the wish. */

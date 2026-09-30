@@ -154,7 +154,13 @@ group.add(seaPen.object, waterPen.object, landPen.object);
 /** Life by the sign of its kind; and breakers, short blue strokes, where the sea is wearing at a coast. */
 const kindDots = KINDS.map((k) => new Stipple(k.ink, k.sign, k.sign === 'dot' ? 2.1 : 6));
 const foam = new Stipple('#46708f', 'dash', 6);
-for (const s of [...kindDots, foam]) group.add(s.object);
+for (const s of [...kindDots, foam]) {
+  s.byDirection = true;
+  // Signs are printed on the map, over the ground, not cut by it where a slope rises past them
+  // (the far side of the world fades them away regardless).
+  (s.object.material as THREE.Material).depthTest = false;
+  group.add(s.object);
+}
 const puffs = new Puffs(renderer.getPixelRatio());
 group.add(puffs.object);
 
@@ -353,7 +359,12 @@ function redrawLines(now: number): void {
   drafts.post({ lines: { id: now, heights } }, [heights.buffer]);
 }
 
-const fineSigns = KINDS.map((k) => k.sign === 'dot');
+/**
+ * How closely each kind's sign is set (dots per unit area at its thinnest, and what each step
+ * thicker adds): moss a fine stipple; forest sparsely, a few small circles standing for a wood, as
+ * a map draws one; the others between.
+ */
+const signDensity = KINDS.map((k): [number, number] => (k.sign === 'dot' ? [3000, 7000] : k.kind === 'forest' ? [45, 85] : [220, 420]));
 /** Life by its signs, and the breakers, drafted in the worker now and then. */
 function redrawLife(now: number): void {
   if (lifeOut || now - lastLife < 1.2) return;
@@ -361,7 +372,7 @@ function redrawLife(now: number): void {
   lifeOut = true;
   // The simulation's own fields, small and coarse: the worker carries them onto the finer surface.
   const heights = fineHeight.slice(), life = planet.life.slice(), wear = planet.wear.slice(), kind = ecology.kind.slice();
-  drafts.post({ life: { id: now, heights, life, wear, kind, fine: fineSigns } }, [heights.buffer, life.buffer, wear.buffer, kind.buffer]);
+  drafts.post({ life: { id: now, heights, life, wear, kind, density: signDensity } }, [heights.buffer, life.buffer, wear.buffer, kind.buffer]);
 }
 
 /**
@@ -453,8 +464,6 @@ function drawLabels(): void {
     if (w) { const k = KINDS.find((x) => x.kind === w.kind)!; label('wish', `${k.name} wanted: ${k.wants}`, w.vertex, true, 26); }
     const s = planet.impact;
     if (s) label('stone', `a stone falls here, in ${Math.ceil(s.in)}`, s.vertex, true, 22);
-    const words = cue();
-    if (words) label('cue', words.text, words.at, true, words.dy);
   }
   for (const [key, el] of labels) if (!el.dataset.seen) { el.remove(); labels.delete(key); }
 }
@@ -517,10 +526,10 @@ function arrows(dt: number): void {
 
 // ---------------------------------------------------------------- cues, one idea at a time
 /**
- * Each idea is brought in by a few words written on the world beside the vent (or where the
- * idea is), and only while it's new: they change with what the player is doing, and go once
- * the idea has been tried, or has been up long enough. Stones only begin to fall once they've
- * been shown.
+ * The ideas come in one at a time, each once the one before has been tried or has had long
+ * enough, with nothing written on the world: the card the world begins from says what there is to
+ * know, and the world shows the rest. Stones only begin to fall once the rest has come in.
+ * (Each idea's words are kept here, but not drawn.)
  */
 const CUES: { ready: () => boolean; done: (since: number) => boolean; begin?: () => void; words: () => { text: string; at: number; dy: number } | null }[] = [
   {
@@ -566,9 +575,7 @@ function lessons(): void {
   planet.stonesFall = true;
   if (!embersSaid && planet.era === 'embers') { embersSaid = true; announce('The heat is nearly gone. What lives when it is out is what your world keeps'); }
 }
-function cue(): { text: string; at: number; dy: number } | null {
-  return lesson < CUES.length && lessonShown && !ending ? CUES[lesson].words() : null;
-}
+
 
 /** A soft pulse in the hand, where the phone can give one (not iPhones). */
 function feel(pattern: number | number[]): void {
@@ -576,6 +583,8 @@ function feel(pattern: number | number[]): void {
 }
 
 // ---------------------------------------------------------------- words, and the key
+/** What's worth saying: the turns in the world's story, not every happening in it. */
+const QUIET_WORDS = /^(Land breaks|Life begins in|The first|Moss takes|A wish kept|Held too long|The plume takes in|The fire is out|The heat is nearly)/;
 const ERAS: Record<Era, string> = { young: 'The young fire', burning: 'The long burning', cooling: 'The cooling', embers: 'The last embers', out: 'The fire is out' };
 let shownEra: Era = 'young';
 const eraFrom: { name: string; from: number }[] = [{ name: ERAS.young, from: 0 }];
@@ -613,7 +622,8 @@ function words(): void {
   const era = planet.era;
   if (era !== shownEra && !ending) { shownEra = era; $('stage-name').textContent = ERAS[era]; eraFrom.push({ name: ERAS[era], from: planet.seconds }); }
   for (const text of planet.news.splice(0)) {
-    if (!ending) announce(text);
+    // Only the few things worth a word are said, quietly, at the foot of the page.
+    if (!ending && QUIET_WORDS.test(text)) announce(text);
     if (/wish kept|takes in|Land breaks/.test(text)) feel(12);
     else if (/The stone falls/.test(text)) feel(30);
   }
@@ -967,4 +977,4 @@ renderer.setAnimationLoop(() => {
   turnedSince();
 });
 
-if (import.meta.env.DEV) (window as unknown as { volcano: unknown }).volcano = { planet, ecology, islands, rotate, draw, save, world, frameCost, lines: () => { lastLines = -1; redrawLines(1e6); }, life: () => { lastLife = -10; redrawLife(1e6); } };
+if (import.meta.env.DEV) (window as unknown as { volcano: unknown }).volcano = { planet, ecology, islands, rotate, draw, save, world, frameCost, kindDots, lines: () => { lastLines = -1; redrawLines(1e6); }, life: () => { lastLife = -10; redrawLife(1e6); } };
