@@ -11,10 +11,15 @@
  *   III Mars: no drift, so the heat stays in one place, as it did under the great Martian
  *       volcanoes, and gravity weak enough for slopes to stand steep; thin air, and dust storms
  *       that scour the heights, soft ash most. Raise the great mountain to its height.
+ *   V   Io: a moon kneaded by its giant planet, so its heat comes in tides. With no air, a burst
+ *       at the height of the tide throws a great ring of sulphur. Raise great plumes, each on
+ *       fresh ground: the question here is when, not only where.
+ *   VI  A young Earth, with no moon yet: its cone holds the pressure down, the taller the more,
+ *       and the biggest bursts throw rock clear into orbit, where it gathers into a moon.
  */
 import type { Rules } from './sim';
 
-export type WorldId = 'ocean' | 'moon' | 'mars' | 'ice';
+export type WorldId = 'ocean' | 'moon' | 'mars' | 'ice' | 'io' | 'young';
 
 export interface Palette {
   /** The ground: bare old rock, fresh basalt, ash, lava as it runs (and where it lies thick), and, for worlds that keep a mark of it, rock that lava has flooded. */
@@ -45,11 +50,15 @@ export interface World {
   /** Its second aim, for the card: one that pulls against the first (see second.ts). */
   second: string;
   palette: Palette;
-  goal: 'ring' | 'basins' | 'height' | 'cover';
+  goal: 'ring' | 'basins' | 'height' | 'cover' | 'plumes' | 'orbit';
   /** For a world whose aim is height: how high, in km, and how many km a unit of the world's height stands for. */
   height?: { target: number; kmPerUnit: number };
   /** For a world whose aim is to make its surface new: the share of it. */
   cover?: number;
+  /** For a world whose aim is great plumes: how many. */
+  plumes?: number;
+  /** For a world whose aim is a moon: how much rock it takes, thrown into orbit. */
+  orbit?: number;
   /** How far apart its contours are, in height (0.035 unless it says). */
   contour?: number;
 }
@@ -137,6 +146,53 @@ export const WORLDS: World[] = [
     goal: 'cover',
     cover: 0.35,
     contour: 0.07,
+  },
+  {
+    id: 'io',
+    numeral: 'V',
+    title: 'Io',
+    first: 'Io: a moon kneaded by the giant planet it circles.',
+    then: 'Its heat comes in tides: slow, then fast, then slow again. At high tide the smoke thickens fast, and a burst throws far further: burst at the height of it, and the plume throws a great ring of sulphur. At low tide a burst only fizzles, so move the heat then, outside the dotted rings. Raise 8 great plumes, each on fresh ground.',
+    second: 'One great plume as wide as it can be, or many?',
+    rules: {
+      terrain: 'io', basins: 0, craters: 0, floor: 0.05, rough: 0.02,
+      waves: 0, rain: 0, sink: 0, swell: 0, life: false,
+      flow: 12, channel: 2, coolLand: 0.15,
+      drift: 0, rises: 0.03, heat: 520, rising: 1.2, steady: true, tide: 0.9, tidePeriod: 50, tideThrow: 0.7,
+      ashShare: 0.8, ashRing: 2.0, great: 18, plumesApart: 0.5,
+      impactEvery: [0, 0],
+    },
+    palette: {
+      // Sulphur yellow, red rings where the plumes fall, fresh lava dark.
+      paper: '#ece0a6', basalt: '#a8875a', ash: '#c4603a', lava: '#b8563c', deepLava: '#8f3b28',
+      shallow: '#d4e3ec', deep: '#b1c8d8',
+      landInk: '#7a5a22', landInkHigh: '#55390f', pencil: '#c8b478', seaInk: '#5b82a3',
+    },
+    goal: 'plumes',
+    plumes: 8,
+  },
+  {
+    id: 'young',
+    numeral: 'VI',
+    title: 'A young Earth',
+    first: 'A young Earth, hot, and with no moon yet.',
+    then: 'Here the cone holds the pressure down: the taller it stands, the more it can hold, and the more a burst throws. Build it up, then hold the world level as long as you dare and tip it: the rock that flies clear goes into orbit. Held too long, the cone blows apart and throws nothing. Throw up enough rock to make a moon.',
+    second: 'How big a moon? Bigger bursts throw more, but risk the cone.',
+    rules: {
+      terrain: 'young', basins: 0, craters: 25, floor: 0.05, rough: 0.02,
+      waves: 0, rain: 0, sink: 0, swell: 0, life: false,
+      talus: 2.2, flow: 9, channel: 2, coolLand: 0.2,
+      drift: 0, rises: 0, heat: 420, rising: 1.0, steady: true,
+      cap: 12, lid: 15, orbitShare: 0.6,
+      impactEvery: [45, 75], impactWarning: 14, impactHeat: 6,
+    },
+    palette: {
+      paper: '#ddd3c2', basalt: '#8f8377', ash: '#9a9088', lava: '#b8563c', deepLava: '#8f3b28',
+      shallow: '#d4e3ec', deep: '#b1c8d8',
+      landInk: '#4e3f33', landInkHigh: '#33271d', pencil: '#b8aa96', seaInk: '#5b82a3',
+    },
+    goal: 'orbit',
+    orbit: 100,
   },
 ];
 

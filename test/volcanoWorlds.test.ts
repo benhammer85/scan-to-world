@@ -16,13 +16,15 @@ const run = (pl: Planet, seconds: number) => { for (let t = 0; t < seconds; t +=
 
 describe('the worlds', () => {
   it('come one after another, and each has its own aim', () => {
-    expect(WORLDS.map((w) => w.id)).toEqual(['ocean', 'moon', 'mars', 'ice']);
+    expect(WORLDS.map((w) => w.id)).toEqual(['ocean', 'moon', 'mars', 'ice', 'io', 'young']);
     expect(worldOf('moon').goal).toBe('basins');
     expect(worldOf('nowhere').id).toBe('ocean');
     expect(nextWorld(worldOf('ocean'))!.id).toBe('moon');
     expect(nextWorld(worldOf('moon'))!.id).toBe('mars');
     expect(nextWorld(worldOf('mars'))!.id).toBe('ice');
-    expect(nextWorld(worldOf('ice'))).toBe(null);
+    expect(nextWorld(worldOf('ice'))!.id).toBe('io');
+    expect(nextWorld(worldOf('io'))!.id).toBe('young');
+    expect(nextWorld(worldOf('young'))).toBe(null);
   });
 });
 
@@ -159,5 +161,77 @@ describe('atolls', () => {
     expect(mean(middle)).toBeLessThan(-0.01);
     expect(Math.max(...ring)).toBeGreaterThan(-0.002);
     expect(Math.max(...ring)).toBeGreaterThan(mean(middle) + 0.02);
+  });
+});
+
+describe('Io', () => {
+  it('has its heat come in tides: fast at high tide, slow at low', () => {
+    const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('io').rules);
+    pl.stonesFall = false;
+    const gained = (seconds: number) => { const a = pl.reserve; run(pl, seconds); return a - pl.reserve; };
+    const P = pl.k.tidePeriod;
+    const rising = gained(P / 2); // the tide's high half
+    const falling = gained(P / 2); // its low half
+    expect(rising).toBeGreaterThan(falling * 3);
+  });
+
+  it('throws a great plume\'s sulphur in a ring, not heaped round the vent', () => {
+    const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('io').rules);
+    pl.pressure = 20;
+    expect(pl.erupt()).toBe('burst');
+    const v0 = pl.plumeVertex, at = (d: number) => {
+      let s = 0, c = 0;
+      for (let v = 0; v < topo.vertexCount; v++) {
+        const dd = Math.hypot(p[v * 3] - p[v0 * 3], p[v * 3 + 1] - p[v0 * 3 + 1], p[v * 3 + 2] - p[v0 * 3 + 2]);
+        if (Math.abs(dd - d) < 0.03) { s += pl.ash[v]; c++; }
+      }
+      return s / c;
+    };
+    const reach = pl.plumes[0].reach;
+    expect(at(reach)).toBeGreaterThan(at(0.05) * 3);
+  });
+
+  it('counts a great plume only on fresh ground', () => {
+    const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('io').rules);
+    pl.pressure = 20; pl.erupt();
+    expect(pl.plumes.length).toBe(1);
+    pl.pressure = 20; pl.erupt(); // the same place
+    expect(pl.plumes.length).toBe(1);
+    pl.pressure = 8; pl.erupt(); // too small to be great
+    expect(pl.plumes.length).toBe(1);
+  });
+
+  it('throws further at high tide: there, less pressure makes a great plume', () => {
+    const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('io').rules);
+    pl.seconds = pl.k.tidePeriod / 4; // high tide
+    pl.pressure = 12; pl.erupt();
+    expect(pl.plumes.length).toBe(1);
+    const low = new Planet(topo, nearest(0, 0, 1), 3, worldOf('io').rules);
+    low.seconds = (pl.k.tidePeriod * 3) / 4; // low tide
+    low.pressure = 23; low.erupt();
+    expect(low.plumes.length).toBe(0);
+  });
+});
+
+describe('a young Earth', () => {
+  it('holds more pressure under a taller cone', () => {
+    const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('young').rules);
+    const before = pl.capNow;
+    const t = topo, v = pl.plumeVertex;
+    pl.rock[v] += 0.3;
+    for (let k = t.nbrOffsets[v]; k < t.nbrOffsets[v + 1]; k++) pl.rock[t.nbrList[k]] += 0.3;
+    expect(pl.capNow).toBeGreaterThan(before + 4);
+  });
+
+  it('throws the biggest bursts\' rock into orbit, and a cone blown apart throws none', () => {
+    const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('young').rules);
+    pl.pressure = 6; pl.erupt();
+    expect(pl.orbit).toBe(0); // a flow throws nothing
+    pl.pressure = 11; pl.erupt();
+    const one = pl.orbit;
+    expect(one).toBeGreaterThan(0);
+    pl.pressure = pl.capNow + 1; pl.stonesFall = false; pl.step(1 / 20); // held too long
+    expect(pl.tally.calderas).toBe(1);
+    expect(pl.orbit).toBe(one);
   });
 });

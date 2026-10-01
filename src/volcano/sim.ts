@@ -51,6 +51,14 @@ export const VOLCANO = {
   rising: 1.4,
   /** Whether the heat rises evenly, at `rising` a second until it's gone, rather than fast at first and slowing. */
   steady: false,
+  /**
+   * Tidal heat, on a moon kneaded by its giant planet: the heat rises faster and slower with the
+   * tide, by this share either way, round once every `tidePeriod` seconds. 0: no tide.
+   */
+  tide: 0,
+  tidePeriod: 50,
+  /** And a burst throws this much further at high tide, and as much less at low: as if this share more (or less) of it. */
+  tideThrow: 0,
   /** Pressure bursts out on its own at this much; above `explosive`, an eruption is a burst rather than a flow. */
   cap: 24,
   explosive: 7,
@@ -69,6 +77,25 @@ export const VOLCANO = {
   /** A burst throws this share of itself up as ash, falling within `ashReach` of the vent; the rest wells out as lava. */
   ashShare: 0.65,
   ashReach: 0.1,
+  /**
+   * Where there's no air to hold it, a burst's ash flies out and falls in a ring this many times
+   * its reach from the vent, as a great plume's does, and further the bigger the burst; 0 heaps it
+   * round the vent.
+   */
+  ashRing: 0,
+  /**
+   * A burst at least this big is a great plume, and counted, if it rises no nearer than
+   * `plumesApart` (radians) to an earlier one: fresh ground. 0: none are counted.
+   */
+  great: 0,
+  plumesApart: 0.5,
+  /**
+   * A cone holds its pressure down: the pressure that bursts out on its own rises by this much for
+   * each unit the ground round the vent stands above the floor. 0: `cap` alone.
+   */
+  lid: 0,
+  /** Of a burst bigger than `explosive`, this share of what's over is thrown clear of the world, into orbit. */
+  orbitShare: 0,
   /** ...kills life out to this far, and dusts the ground out to `ashDusts`, making it rich for a long while. */
   ashKills: 0.13,
   ashDusts: 0.32,
@@ -164,7 +191,7 @@ export const VOLCANO = {
    * What the world is like at the start: 'ocean', one sea over an even floor; or 'moon', airless
    * highland scarred by `basins` great old impact basins, and a scatter of smaller craters.
    */
-  terrain: 'ocean' as 'ocean' | 'moon' | 'mars' | 'ice',
+  terrain: 'ocean' as 'ocean' | 'moon' | 'mars' | 'ice' | 'io' | 'young',
   basins: 0,
   /** Smaller craters scattered over the ground, on a world that starts scarred. */
   craters: 40,
@@ -238,6 +265,10 @@ export class Planet {
   readonly tally = { flows: 0, bursts: 0, calderas: 0, stones: 0, caught: 0 };
   /** How hard the sea wore at each vertex, at the last reckoning (per second): where the surf is. */
   readonly wear: Float32Array;
+  /** The great plumes counted so far: where, and how far their rings reached (radians). */
+  readonly plumes: { x: number; y: number; z: number; reach: number }[] = [];
+  /** Rock thrown clear of the world, into orbit, so far. */
+  orbit = 0;
   /** Whether stones fall at all: off until the player has been shown them. */
   stonesFall = true;
   seconds = 0;
@@ -331,7 +362,7 @@ export class Planet {
     }
     for (let i = 0; i < this.k.craters; i++) bowl(point(), 0.03 + this.rand() * 0.06, 0.05);
     // A world without a sea keeps even its deepest craters dry.
-    if (this.k.terrain === 'mars' || this.k.terrain === 'ice') for (let v = 0; v < n; v++) this.rock[v] = Math.max(0.004, this.rock[v]);
+    if (this.k.terrain !== 'ocean' && this.k.terrain !== 'moon') for (let v = 0; v < n; v++) this.rock[v] = Math.max(0.004, this.rock[v]);
   }
 
   /** Which way the crust carries the heat, along the ground at the vent (a unit vector). */
@@ -378,6 +409,29 @@ export class Planet {
     return s;
   }
 
+  /** The tide now, from -1 (low) to 1 (high): it begins rising. */
+  get tideNow(): number {
+    return this.k.tide > 0 ? Math.sin((this.seconds / this.k.tidePeriod) * Math.PI * 2) : 0;
+  }
+
+  /** How high the ground round the vent stands above the floor: the cone holding the pressure down. */
+  get cone(): number {
+    const t = this.topo, v = this.plumeVertex;
+    let s = this.rock[v], c = 1;
+    for (let k = t.nbrOffsets[v]; k < t.nbrOffsets[v + 1]; k++) { s += this.rock[t.nbrList[k]]; c++; }
+    return Math.max(0, s / c - this.k.floor);
+  }
+
+  /** How hard a burst of this much would throw now: more at high tide, less at low, on a tidal moon. */
+  throwOf(volume: number): number {
+    return volume * (1 + this.k.tideThrow * this.tideNow);
+  }
+
+  /** The pressure that bursts out on its own: more under a tall cone, on a world where the cone holds it. */
+  get capNow(): number {
+    return this.k.cap + (this.k.lid > 0 ? this.k.lid * this.cone : 0);
+  }
+
   /** Whether the pressure is enough that letting it out now would be a burst. */
   get bursting(): boolean {
     return this.pressure >= this.k.explosive;
@@ -399,9 +453,20 @@ export class Planet {
     }
     // A burst: most of it thrown up as ash that falls round the vent, the rest welling out.
     // Torn open, it throws its ash far and wide rather than piling it on the summit.
-    this.fallOfAsh(v, volume * this.k.ashShare * s, blast ? 3 : 1);
+    // Where it can, the biggest throw some clear of the world altogether, into orbit.
+    let left = volume;
+    if (!blast && this.k.orbitShare > 0 && volume > this.k.explosive) {
+      const thrown = (volume - this.k.explosive) * this.k.orbitShare;
+      this.orbit += thrown;
+      left -= thrown;
+    }
+    // Where there's no air, the bigger the burst, the further its ash flies; and on a tidal moon,
+    // further at high tide.
+    const strength = this.throwOf(volume), far = this.k.ashRing > 0 ? Math.sqrt(strength / this.k.explosive) : 1;
+    this.fallOfAsh(v, left * this.k.ashShare * s, (blast ? 3 : 1) * far);
     if (!blast) this.tally.bursts++;
-    const lava = volume * (1 - this.k.ashShare) * s;
+    if (!blast && this.k.great > 0 && strength >= this.k.great) this.greatPlume(this.k.ashReach * this.k.ashRing * far);
+    const lava = left * (1 - this.k.ashShare) * s;
     this.eruptions.push({ vertex: v, flank: v, left: lava, rate: lava / this.k.pour });
     return 'burst';
   }
@@ -441,10 +506,11 @@ export class Planet {
     this.seconds += dt;
     // The heat rises out of its store: fast at first, slower as the planet cools, and then it is gone.
     // (Or, on a world whose heat rises evenly, at one pace until it's gone.)
-    const rise = Math.min(this.reserve, this.k.rising * (this.k.steady ? 1 : Math.sqrt(Math.max(0, this.reserve) / this.k.heat)) * dt + 1e-4 * dt);
+    // (And on a tidal moon, faster at high tide and slower at low.)
+    const rise = Math.min(this.reserve, this.k.rising * (this.k.steady ? 1 : Math.sqrt(Math.max(0, this.reserve) / this.k.heat)) * (1 + this.k.tide * this.tideNow) * dt + 1e-4 * dt);
     this.reserve -= rise;
     this.pressure += rise;
-    if (this.pressure >= this.k.cap) { this.collapse(); this.erupt(true); this.tally.calderas++; this.tell('Held too long: the mountain blew apart'); }
+    if (this.pressure >= this.capNow) { this.collapse(); this.erupt(true); this.tally.calderas++; this.tell('Held too long: the mountain blew apart'); }
     // The store is spent: whatever pressure is left comes out by itself, the last of the fire.
     if (this.reserve < 0.01 && this.pressure >= this.k.least && !this.erupting) { this.erupt(); this.tell('The last of the heat escapes'); }
     if (this.reserve < 0.01 && this.pressure < this.k.least) this.pressure = 0;
@@ -636,7 +702,15 @@ export class Planet {
     return v;
   }
 
-  /** Ash falls round a vent, thickest nearest: a cone of soft ground, and death further out. */
+  /** A great plume has risen from the vent: counted if it's on fresh ground, far enough from the others. */
+  private greatPlume(reach: number): void {
+    const q = this.plume, apart = Math.cos(this.k.plumesApart);
+    if (this.plumes.some((o) => o.x * q.x + o.y * q.y + o.z * q.z > apart)) { this.tell('A great plume, but too near an earlier one'); return; }
+    this.plumes.push({ x: q.x, y: q.y, z: q.z, reach });
+    this.tell(`A great plume: ${this.plumes.length}`);
+  }
+
+  /** Ash falls round a vent, thickest nearest: a cone of soft ground, and death further out. Or, where there's no air, in a ring. */
   private fallOfAsh(at: number, volume: number, wide: number): void {
     const p = this.topo.basePositions, r = this.k.ashReach * wide, n = this.rock.length;
     const w = this.next;
@@ -645,7 +719,8 @@ export class Planet {
       const d = Math.hypot(p[v * 3] - p[at * 3], p[v * 3 + 1] - p[at * 3 + 1], p[v * 3 + 2] - p[at * 3 + 2]);
       if (d < this.k.ashKills * wide) this.life[v] *= (d / (this.k.ashKills * wide)) ** 2;
       if (d < this.k.ashDusts * wide) this.rich[v] = Math.max(this.rich[v], 1 - (d / (this.k.ashDusts * wide)) ** 2);
-      w[v] = d < r * 3 ? Math.exp(-((d / r) ** 2)) : 0;
+      const ring = this.k.ashRing;
+      w[v] = ring > 0 ? (Math.abs(d - r * ring) < r ? Math.exp(-(((d - r * ring) / (r * 0.3)) ** 2)) : 0) : d < r * 3 ? Math.exp(-((d / r) ** 2)) : 0;
       sum += w[v];
     }
     for (let v = 0; v < n; v++) {
@@ -912,7 +987,7 @@ export class Planet {
       if (this.impact.in <= 0) { this.strike(this.impact.vertex); this.impact = null; this.tell('The stone falls'); }
       return;
     }
-    if (this.over || !this.stonesFall) return;
+    if (this.over || !this.stonesFall || this.k.impactEvery[1] <= 0) return;
     this.impactIn -= dt * this.heatLeft;
     if (this.impactIn > 0) return;
     this.impactIn = this.between(this.k.impactEvery);

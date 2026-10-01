@@ -12,6 +12,10 @@
  *                   shield lasts.
  *   An ice moon     make the ice new, and in one great sheet: new ice everywhere covers most, one
  *                   sheet asks you to stay.
+ *   Io              raise the great plumes, and one as wide as it can be: the widest needs the
+ *                   pressure held deep into the tide, which costs plumes, and risks the cone.
+ *   A young Earth   make a moon, as big as it can be: bigger bursts throw more, but held too long
+ *                   the cone blows apart and throws nothing.
  */
 import type { Topology } from '../mesh/topology';
 import type { Planet } from './sim';
@@ -21,6 +25,8 @@ import type { World } from './worlds';
 export const ATOLL_ISLAND = 30;
 /** Mars's radius, for its base's width in km; and the height (km) its base is measured at. */
 const MARS_KM = 3390, BASE_AT_KM = 5;
+/** Io's radius, for its plumes' width in km; and our Moon's width, for a moon made of as much rock as the aim asks. */
+const IO_KM = 1822, MOON_KM = 3474;
 
 export interface Second { value: number; words: string }
 
@@ -30,6 +36,8 @@ export function secondWords(goal: World['goal'], value: number): string {
     case 'basins': return `${value}% kept in the basins`;
     case 'height': return `a base ${value} km wide`;
     case 'cover': return `the largest sheet ${value}%`;
+    case 'plumes': return `the widest plume ${value.toLocaleString('en')} km across`;
+    case 'orbit': return value > 0 ? `a moon ${value.toLocaleString('en')} km across` : 'no moon';
   }
 }
 
@@ -53,6 +61,13 @@ export function measureSecond(world: World, pl: Planet, topo: Topology, islands:
     // The area it stands on, as a round cap of the same area, and that cap's width.
     const area = (c / n) * 4 * Math.PI, angle = Math.acos(Math.max(-1, 1 - area / (2 * Math.PI)));
     value = Math.round((2 * angle * MARS_KM) / 10) * 10;
+  } else if (world.goal === 'plumes') {
+    // The widest ring a counted plume threw: its reach (radians) either side, in km.
+    value = Math.round((Math.max(0, ...pl.plumes.map((q) => q.reach)) * 2 * IO_KM) / 10) * 10;
+  } else if (world.goal === 'orbit') {
+    // As much rock as the aim asks makes a moon as wide as ours; more, a wider one, by the cube root.
+    const aim = world.orbit ?? 1;
+    value = pl.orbit >= aim ? Math.round((MOON_KM * Math.cbrt(pl.orbit / aim)) / 10) * 10 : 0;
   } else {
     // The largest connected sheet of new ice (or frost), as a share of the surface.
     const covered = (v: number) => pl.age[v] < 1e5 || pl.ash[v] > 0.15, seen = new Uint8Array(n);

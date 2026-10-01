@@ -24,12 +24,14 @@ export class Stipple {
    * @param vary for living things: each sign drawn its own way, as a hand draws, by where it stands:
    *   one of the sign's shapes, a little larger or smaller, leaning a little, some mirrored, and
    *   its colour somewhere between `ink` and `ink2`, lighter or darker. Otherwise every mark alike.
+   * @param rim whether the dots thin towards the rim of the world, as the print on a globe does; off
+   *   for dots off the world, in the sky round it.
    */
-  constructor(ink: string, sign: Sign = 'dot', size: number = STIPPLE.size, vary: { ink2?: string } | null = null) {
+  constructor(ink: string, sign: Sign = 'dot', size: number = STIPPLE.size, vary: { ink2?: string } | null = null, rim = true) {
     const material = new THREE.ShaderMaterial({
       transparent: true,
       depthWrite: false,
-      defines: { DOT: sign === 'dot' ? 1 : 0, MIRROR: MIRRORS[sign] ? 1 : 0, VARY: vary ? 1 : 0 },
+      defines: { DOT: sign === 'dot' ? 1 : 0, MIRROR: MIRRORS[sign] ? 1 : 0, VARY: vary ? 1 : 0, RIM: rim ? 1 : 0 },
       uniforms: { uInk: { value: new THREE.Color(ink) }, uInk2: { value: new THREE.Color(vary?.ink2 ?? ink) }, uSize: { value: size * Math.min(2, window.devicePixelRatio || 1) }, uNow: { value: 0 }, uAppear: { value: STIPPLE.appear }, uLinger: { value: 1 } },
       vertexShader: /* glsl */ `
         uniform float uSize;
@@ -61,7 +63,7 @@ export class Stipple {
           vSize = gl_PointSize;
           gl_PointSize += 1.0; // room for the soft edge
           // A new dot comes in slowly, as light does when a place grows: never all at once.
-          vRim = rimFade(position, v) * smoothstep(0.0, uAppear, uNow - aBorn);
+          vRim = (RIM == 1 ? rimFade(position, v) : 1.0) * smoothstep(0.0, uAppear, uNow - aBorn);
           // And one that's gone fades away as slowly, rather than vanishing.
           if (aGone >= 0.0) vRim *= 1.0 - smoothstep(0.0, uLinger, uNow - aGone);
         }`,
