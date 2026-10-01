@@ -14,6 +14,8 @@
  *                   sheet asks you to stay.
  *   Io              raise the great plumes, and one as wide as it can be: the widest needs the
  *                   pressure held deep into the tide, which costs plumes, and risks the cone.
+ *   Enceladus       fill the giant's ring, and frost the moon itself white: every burst aimed at
+ *                   the ring is frost the moon doesn't get.
  *   A young Earth   make a moon, as big as it can be: bigger bursts throw more, but held too long
  *                   the cone blows apart and throws nothing.
  */
@@ -36,6 +38,7 @@ export function secondWords(goal: World['goal'], value: number): string {
     case 'basins': return `${value}% kept in the basins`;
     case 'height': return `a base ${value} km wide`;
     case 'cover': return `the largest sheet ${value}%`;
+    case 'feed': return `${value}% of the moon frosted new`;
     case 'plumes': return `the widest plume ${value.toLocaleString('en')} km across`;
     case 'orbit': return value > 0 ? `a moon ${value.toLocaleString('en')} km across` : 'no moon';
   }
@@ -64,6 +67,8 @@ export function measureSecond(world: World, pl: Planet, topo: Topology, islands:
   } else if (world.goal === 'plumes') {
     // The widest ring a counted plume threw: its reach (radians) either side, in km.
     value = Math.round((Math.max(0, ...pl.plumes.map((q) => q.reach)) * 2 * IO_KM) / 10) * 10;
+  } else if (world.goal === 'feed') {
+    value = Math.round(pl.covered * 100);
   } else if (world.goal === 'orbit') {
     // As much rock as the aim asks makes a moon as wide as ours; more, a wider one, by the cube root.
     const aim = world.orbit ?? 1;

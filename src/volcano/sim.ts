@@ -96,6 +96,14 @@ export const VOLCANO = {
   lid: 0,
   /** Of a burst bigger than `explosive`, this share of what's over is thrown clear of the world, into orbit. */
   orbitShare: 0,
+  /**
+   * A small moon feeding its giant planet's ring, as Enceladus feeds Saturn's: a burst thrown
+   * towards the giant (the world tipped its way, within `ringAim` radians) sends this share of
+   * itself into the ring, and the ring thins away at `ringThins` a second. 0: no ring.
+   */
+  ringShare: 0,
+  ringAim: 0.7,
+  ringThins: 0,
   /** ...kills life out to this far, and dusts the ground out to `ashDusts`, making it rich for a long while. */
   ashKills: 0.13,
   ashDusts: 0.32,
@@ -267,8 +275,10 @@ export class Planet {
   readonly wear: Float32Array;
   /** The great plumes counted so far: where, and how far their rings reached (radians). */
   readonly plumes: { x: number; y: number; z: number; reach: number }[] = [];
-  /** Rock thrown clear of the world, into orbit, so far. */
+  /** Rock thrown clear of the world, into orbit, so far; or, round a giant, what its ring holds now. */
   orbit = 0;
+  /** Which way the giant planet is, in the planet's frame (a unit vector), on a world that has one in its sky. */
+  giant: { x: number; y: number; z: number } | null = null;
   /** Whether stones fall at all: off until the player has been shown them. */
   stonesFall = true;
   seconds = 0;
@@ -422,6 +432,23 @@ export class Planet {
     return Math.max(0, s / c - this.k.floor);
   }
 
+  /**
+   * Whether the world is tipped towards the giant, so a burst now would fly its way: the way the
+   * vent leans from uppermost, against the way the giant is, both along the ground.
+   */
+  get towardGiant(): boolean {
+    const g = this.gravity, s = this.giant;
+    if (!g || !s) return false;
+    const p = this.topo.basePositions, v = this.plumeVertex, n = { x: p[v * 3], y: p[v * 3 + 1], z: p[v * 3 + 2] };
+    const up = unit({ x: -g.x, y: -g.y, z: -g.z }), along = (a: { x: number; y: number; z: number }) => {
+      const d = a.x * up.x + a.y * up.y + a.z * up.z;
+      return { x: a.x - d * up.x, y: a.y - d * up.y, z: a.z - d * up.z };
+    };
+    const h = along(n), w = along(s), hl = Math.hypot(h.x, h.y, h.z), wl = Math.hypot(w.x, w.y, w.z);
+    if (hl < 0.05 || wl < 1e-6) return false;
+    return (h.x * w.x + h.y * w.y + h.z * w.z) / (hl * wl) > Math.cos(this.k.ringAim);
+  }
+
   /** How hard a burst of this much would throw now: more at high tide, less at low, on a tidal moon. */
   throwOf(volume: number): number {
     return volume * (1 + this.k.tideThrow * this.tideNow);
@@ -455,6 +482,12 @@ export class Planet {
     // Torn open, it throws its ash far and wide rather than piling it on the summit.
     // Where it can, the biggest throw some clear of the world altogether, into orbit.
     let left = volume;
+    if (!blast && this.k.ringShare > 0 && this.towardGiant) {
+      const fed = volume * this.k.ringShare;
+      this.orbit += fed;
+      left -= fed;
+      this.tell('The plume reaches the ring');
+    }
     if (!blast && this.k.orbitShare > 0 && volume > this.k.explosive) {
       const thrown = (volume - this.k.explosive) * this.k.orbitShare;
       this.orbit += thrown;
@@ -515,6 +548,8 @@ export class Planet {
     if (this.reserve < 0.01 && this.pressure >= this.k.least && !this.erupting) { this.erupt(); this.tell('The last of the heat escapes'); }
     if (this.reserve < 0.01 && this.pressure < this.k.least) this.pressure = 0;
     if (this.gravity) this.tipped(dt);
+    // A giant's ring thins away, unless it's fed.
+    if (this.k.ringThins > 0) this.orbit -= this.orbit * this.k.ringThins * dt;
     this.movePlume(dt);
     this.pour(dt);
     this.flow(dt);

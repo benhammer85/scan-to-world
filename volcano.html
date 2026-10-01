@@ -35,6 +35,16 @@
       #begin .fresh { font-size: 12px; font-style: italic; opacity: 0.4; margin-top: 10px; cursor: pointer; padding: 6px; }
       #begin .atlas-link { font-size: 12px; font-style: italic; opacity: 0.5; margin-top: 6px; cursor: pointer; padding: 6px; }
       /* The atlas: every chart kept, as pages to leaf through; one opened fills the page. */
+      /* The solar system's chart, over the card: its worlds round the star, to choose the next. */
+      #system { position: fixed; inset: 0; z-index: 10; display: none; overflow-y: auto; background: #f4efe4; padding: calc(20px + env(safe-area-inset-top)) 16px 40px; box-sizing: border-box; touch-action: pan-y; }
+      #system.open { display: block; }
+      #system .head { display: flex; justify-content: space-between; align-items: baseline; margin: 0 4px 6px; }
+      #system h2 { margin: 0; font-weight: normal; font-style: italic; font-size: 22px; letter-spacing: 0.04em; }
+      #system .close { font: italic 14px "Iowan Old Style", Palatino, Georgia, serif; color: #2e2118; background: none; border: none; opacity: 0.6; padding: 6px; cursor: pointer; }
+      #system .about { margin: 0 4px 10px; font-size: 13px; font-style: italic; opacity: 0.7; line-height: 1.45; }
+      #system .foot { text-align: center; font-size: 14px; font-style: italic; margin-top: 8px; }
+      #system .foot .again { opacity: 0.55; font-size: 13px; cursor: pointer; padding: 8px; }
+      #begin .system-link { font-size: 13px; font-style: italic; opacity: 0.6; margin-top: 10px; cursor: pointer; padding: 6px; }
       #atlas { position: fixed; inset: 0; z-index: 10; display: none; overflow-y: auto; background: #f4efe4; padding: calc(20px + env(safe-area-inset-top)) 16px 40px; box-sizing: border-box; touch-action: pan-y; }
       #atlas.open { display: block; }
       #atlas .head { display: flex; justify-content: space-between; align-items: baseline; margin: 0 4px 18px; }
@@ -69,6 +79,7 @@
     <button id="keep">keep the chart</button>
     <button id="worlds" aria-label="the worlds"></button>
     <div id="atlas" class="engraved"><div class="head"><h2>The atlas</h2><button class="close">back</button></div><div class="pages"></div><div class="view"><img alt=""></div></div>
+    <div id="system" class="engraved"><div class="head"><h2>A solar system</h2><button class="close">back</button></div><p class="about"></p><div class="plate"></div><div class="foot"></div></div>
     <div id="begin" class="engraved"><p class="world"></p><p class="first"></p><p class="then"></p><p class="touch">touch to begin</p><p class="worlds"></p></div>
     <script type="module" src="/src/volcano/main.ts"></script>
   </body>

@@ -16,14 +16,15 @@ const run = (pl: Planet, seconds: number) => { for (let t = 0; t < seconds; t +=
 
 describe('the worlds', () => {
   it('come one after another, and each has its own aim', () => {
-    expect(WORLDS.map((w) => w.id)).toEqual(['ocean', 'moon', 'mars', 'ice', 'io', 'young']);
+    expect(WORLDS.map((w) => w.id)).toEqual(['ocean', 'moon', 'mars', 'ice', 'io', 'enceladus', 'young']);
     expect(worldOf('moon').goal).toBe('basins');
     expect(worldOf('nowhere').id).toBe('ocean');
     expect(nextWorld(worldOf('ocean'))!.id).toBe('moon');
     expect(nextWorld(worldOf('moon'))!.id).toBe('mars');
     expect(nextWorld(worldOf('mars'))!.id).toBe('ice');
     expect(nextWorld(worldOf('ice'))!.id).toBe('io');
-    expect(nextWorld(worldOf('io'))!.id).toBe('young');
+    expect(nextWorld(worldOf('io'))!.id).toBe('enceladus');
+    expect(nextWorld(worldOf('enceladus'))!.id).toBe('young');
     expect(nextWorld(worldOf('young'))).toBe(null);
   });
 });
@@ -233,5 +234,35 @@ describe('a young Earth', () => {
     pl.pressure = pl.capNow + 1; pl.stonesFall = false; pl.step(1 / 20); // held too long
     expect(pl.tally.calderas).toBe(1);
     expect(pl.orbit).toBe(one);
+  });
+});
+
+describe('Enceladus', () => {
+  // Tipped as a hand would, the vent's side of the world rolling `towards` (along the ground).
+  const tipTo = (pl: Planet, towards: { x: number; y: number; z: number }) => {
+    const v = pl.plumeVertex, n = { x: p[v * 3], y: p[v * 3 + 1], z: p[v * 3 + 2] }, s = 0.7;
+    pl.gravity = { x: -n.x * (1 - s * 0.5) + towards.x * s, y: -n.y * (1 - s * 0.5) + towards.y * s, z: -n.z * (1 - s * 0.5) + towards.z * s };
+  };
+  it('feeds the giant\'s ring with a burst tipped its way, and not one tipped away', () => {
+    const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('enceladus').rules);
+    pl.stonesFall = false;
+    pl.giant = { x: 1, y: 0, z: 0 };
+    pl.pressure = 10; tipTo(pl, { x: 1, y: 0, z: 0 }); pl.step(1 / 20);
+    const fed = pl.orbit;
+    expect(fed).toBeGreaterThan(5);
+    run(pl, 3);
+    pl.gravity = { x: 0, y: 0, z: -1 }; run(pl, 1); // level again
+    pl.pressure = 10; tipTo(pl, { x: -1, y: 0, z: 0 }); pl.step(1 / 20);
+    expect(pl.tally.bursts).toBe(2);
+    expect(pl.orbit).toBeLessThanOrEqual(fed);
+  });
+
+  it('lets the ring thin away unless it\'s fed', () => {
+    const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('enceladus').rules);
+    pl.stonesFall = false;
+    pl.orbit = 100;
+    run(pl, 60);
+    expect(pl.orbit).toBeLessThan(90);
+    expect(pl.orbit).toBeGreaterThan(70);
   });
 });

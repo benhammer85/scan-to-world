@@ -49,6 +49,8 @@ import { snapshotOf, restoreInto, keep, recall, forget, keepGround, recallGround
 import { worldOf, nextWorld, WORLDS } from './worlds';
 import { Chain, CHAIN } from './chain';
 import { measureSecond, secondWords, type Second } from './second';
+import { loadSystem, saveSystem, worldFor, recordPlayed, madeCount } from './system';
+import { openSystem, closeSystem } from './systemChart';
 
 const $ = (id: string) => document.getElementById(id)!;
 const stage = $('stage');
@@ -111,8 +113,17 @@ let seed = wanted || 1 + Math.floor(Math.random() * 1e6);
  * Which world: the one asked for (?world=), or the one being played, or the first. Each has its
  * own rules, aim and colours (worlds.ts).
  */
-const WORLD = worldOf(new URLSearchParams(location.search).get('world') ?? remembered('volcano.world'));
-remember('volcano.world', WORLD.id);
+const ASKED = new URLSearchParams(location.search);
+/**
+ * Or one of the worlds of a solar system being played as a run (?run=, its place in the system):
+ * its kind's world, with its twist and whatever the last world made gives it (see system.ts).
+ */
+const SYSTEM = loadSystem(), RUN = (() => {
+  const i = Number(ASKED.get('run') ?? NaN);
+  return SYSTEM && Number.isInteger(i) && SYSTEM.bodies[i] && !SYSTEM.bodies[i].made ? i : null;
+})();
+const WORLD = SYSTEM && RUN !== null ? worldFor(SYSTEM, RUN) : worldOf(ASKED.get('world') ?? remembered('volcano.world'));
+if (RUN === null) remember('volcano.world', WORLD.id);
 const P = WORLD.palette, LIFE = WORLD.rules.life !== false, ICE = WORLD.rules.terrain === 'ice';
 /** On Io, the plumes' sulphur is drawn as the flood mark is elsewhere: in a clean-edged band, as a geological map draws a unit. */
 const SULPHUR = (WORLD.rules.ashRing ?? 0) > 0;
@@ -128,7 +139,8 @@ function remember(key: string, value: string): void {
  * ocean's old islands sunk to seamounts and ringed by atolls in the long age after their fire; and
  * the new fire starts somewhere new.
  */
-const GROUND = wanted ? null : recallGround(WORLD.id, N);
+// (A world of a solar system is new ground: it's a world of its own, not this kind's own world.)
+const GROUND = wanted || RUN !== null ? null : recallGround(WORLD.id, N);
 const FIRES = GROUND?.fires ?? 0;
 const START = (() => {
   if (!GROUND) return nearest(0.1, 0.15, 0.98);
@@ -668,6 +680,59 @@ if (WORLD.goal === 'orbit') {
   orbitRing.quaternion.setFromAxisAngle(new THREE.Vector3(0, 0, 1), 0.28).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), 1.22));
   scene.add(orbitRing);
 }
+/**
+ * In Enceladus's sky, the ringed giant: an engraved disc behind the world, upper left, and
+ * its ring round it in dots, inked as far as the ring is full and fading back as it thins. Fixed in
+ * the sky, as the moon's ring is on a young Earth, so "towards the giant" is always the same way.
+ */
+// (In the clear band above the world and below the title, far off, so it stays clear of the world as the view breathes.)
+const giant = new THREE.Group(), GIANT_AT = new THREE.Vector3(-0.95, 2.6, -4.8), GIANT_R = 0.36, GIANT_RING = 0.78, GIANT_DOTS = 72;
+const ringInk = new Stipple(P.landInkHigh, 'dot', 4.2, null, false), ringPencil = new Stipple('#' + new THREE.Color(P.pencil).lerp(new THREE.Color(P.landInk), 0.6).getHexString(), 'dot', 2.8, null, false);
+const ringTilt = new THREE.Group();
+if (WORLD.goal === 'feed') {
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 256;
+  const g = cv.getContext('2d')!;
+  g.fillStyle = '#e9dcc0'; g.strokeStyle = P.landInkHigh; g.lineWidth = 3;
+  g.beginPath(); g.arc(128, 128, 122, 0, Math.PI * 2); g.fill();
+  // Its belts, as fine engraved bands, and its night side hatched.
+  g.save(); g.beginPath(); g.arc(128, 128, 121, 0, Math.PI * 2); g.clip();
+  g.lineWidth = 1.6; g.globalAlpha = 0.45;
+  for (const y of [72, 82, 108, 116, 146, 172, 186]) { g.beginPath(); g.moveTo(0, y); g.bezierCurveTo(80, y + 7, 176, y + 7, 256, y); g.stroke(); }
+  g.globalAlpha = 0.3; g.lineWidth = 1.4;
+  for (let x = 170; x < 330; x += 9) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x - 70, 256); g.stroke(); }
+  g.restore();
+  g.globalAlpha = 1; g.lineWidth = 4;
+  g.beginPath(); g.arc(128, 128, 122, 0, Math.PI * 2); g.stroke();
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  // (Its clear corners discarded rather than drawn, so they don't hide the ring behind them.)
+  const disc = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, alphaTest: 0.5 }));
+  disc.scale.setScalar(GIANT_R * 2);
+  disc.renderOrder = 1;
+  giant.add(disc);
+  for (const s of [ringInk, ringPencil]) { s.linger = 4; ringTilt.add(s.object); }
+  ringTilt.rotation.set(0.62, 0, 0.3);
+  giant.add(ringTilt);
+  giant.position.copy(GIANT_AT);
+  scene.add(giant);
+}
+let ringShown = -1;
+/** The giant's ring, inked round as far as it's full: it fills as it's fed, and thins away dot by dot. */
+function feeding(dt: number): void {
+  ringInk.update(dt);
+  ringPencil.update(dt);
+  const inked = Math.round(GIANT_DOTS * Math.min(1, planet.orbit / ORBIT));
+  if (inked === ringShown) return;
+  ringShown = inked;
+  const ink: number[] = [], pencil: number[] = [];
+  for (let i = 0; i < GIANT_DOTS; i++) {
+    const a = (i / GIANT_DOTS) * Math.PI * 2, x = GIANT_RING * Math.cos(a), z = GIANT_RING * Math.sin(a);
+    (i < inked ? ink : pencil).push(x, 0, z);
+  }
+  ringInk.set(ink);
+  ringPencil.set(pencil);
+}
 let orbitShown = -1;
 /** The ring turns slowly; it's inked as far as the rock thrown up goes, and in the long age the rock gathers into the moon. */
 function orbiting(dt: number): void {
@@ -698,14 +763,14 @@ function orbiting(dt: number): void {
 }
 const HEIGHT = WORLD.height ?? { target: 0, kmPerUnit: 40 };
 const COVER = Math.round((WORLD.cover ?? 0) * 100), PLUMES = WORLD.plumes ?? 0, ORBIT = WORLD.orbit ?? 0;
-let aimDone = 0, aimOf = WORLD.goal === 'ring' ? CHAIN.stretches : WORLD.goal === 'height' ? HEIGHT.target : WORLD.goal === 'cover' ? COVER : WORLD.goal === 'plumes' ? PLUMES : WORLD.goal === 'orbit' ? 100 : planet.basins.length, lastAim = -10;
+let aimDone = 0, aimOf = WORLD.goal === 'ring' ? CHAIN.stretches : WORLD.goal === 'height' ? HEIGHT.target : WORLD.goal === 'cover' ? COVER : WORLD.goal === 'plumes' ? PLUMES : WORLD.goal === 'orbit' || WORLD.goal === 'feed' ? 100 : planet.basins.length, lastAim = -10;
 /** How much of the aim is done now, reckoned afresh. */
 function reckonAim(): void {
   if (chain) { aimDone = chain.update(planet, topo); aimOf = CHAIN.stretches; }
   else if (WORLD.goal === 'height') { aimDone = Math.max(0, planet.summit * HEIGHT.kmPerUnit); aimOf = HEIGHT.target; }
   else if (WORLD.goal === 'cover') { aimDone = planet.covered * 100; aimOf = COVER; }
   else if (WORLD.goal === 'plumes') { aimDone = planet.plumes.length; aimOf = PLUMES; }
-  else if (WORLD.goal === 'orbit') { aimDone = (100 * planet.orbit) / ORBIT; aimOf = 100; }
+  else if (WORLD.goal === 'orbit' || WORLD.goal === 'feed') { aimDone = (100 * planet.orbit) / ORBIT; aimOf = 100; }
   else { aimDone = planet.basins.filter((b) => planet.flooded(b) >= FLOODED_ENOUGH).length; aimOf = planet.basins.length; }
 }
 const won = () => aimOf > 0 && aimDone >= aimOf;
@@ -716,12 +781,13 @@ const AIM_WORDS = WORLD.goal === 'ring' ? 'Keep building islands as the heat tra
   : WORLD.goal === 'cover' ? `Make ${COVER}% of the old ice new`
   : WORLD.goal === 'plumes' ? `Raise ${PLUMES} great plumes at high tide, each outside the dotted rings`
   : WORLD.goal === 'orbit' ? 'Throw up enough rock to make a moon'
+  : WORLD.goal === 'feed' ? 'Fill the giant\'s ring: tip each burst towards the giant'
   : `Raise the mountain ${HEIGHT.target} km high`;
 /** Say the aim now and then, and what's been gained each time something is. */
 function tellAim(now: number): void {
   if (planet.over || ending) return;
   if (now - toldAimAt > 180) { toldAimAt = now; announce(AIM_WORDS); }
-  if (WORLD.goal === 'height' || WORLD.goal === 'cover' || WORLD.goal === 'orbit') return;
+  if (WORLD.goal === 'height' || WORLD.goal === 'cover' || WORLD.goal === 'orbit' || WORLD.goal === 'feed') return;
   const done = Math.round(aimDone);
   if (done > toldDone && done < aimOf) {
     toldAimAt = now;
@@ -759,6 +825,14 @@ function drawAim(now: number): void {
     // The moon to be: its ring of dots round the world, inked as the rock reaches it (see `orbiting`).
     const step = Math.floor(aimDone / 10) * 10;
     if (begun && step > toldHeight && step < aimOf) { toldHeight = step; toldAimAt = now; announce(`${step}% of a moon in orbit`); }
+    return;
+  }
+  if (WORLD.goal === 'feed') {
+    // The giant's ring, inked as far as it's full (see `feeding`); told at the foot as it fills, by
+    // the quarter. (It thins, so a quarter can be told again once it's fallen back and been regained.)
+    const step = Math.floor(aimDone / 25) * 25;
+    if (begun && step > toldHeight && step < aimOf) { toldAimAt = now; announce(`The ring is ${step}% full`); }
+    toldHeight = step;
     return;
   }
   if (WORLD.goal === 'height' || WORLD.goal === 'cover') {
@@ -865,7 +939,7 @@ function arrows(dt: number): void {
 const CUES: { ready: () => boolean; say?: string; begin?: () => void; done: (since: number) => boolean }[] = [
   { ready: () => true, say: 'Hold the world level, and the heat gathers under the smoke', done: () => planet.pressure > planet.k.least * 2 },
   { ready: () => !planet.pouring, say: 'Tip it, and the lava pours out', done: (s) => planet.tally.flows + planet.tally.bursts > 0 || s > 40 },
-  { ready: () => planet.pressure > planet.k.explosive * 0.9 && !planet.pouring, say: 'The smoke is heavy: tip it now, and it erupts', done: (s) => planet.tally.bursts > 0 || s > 40 },
+  { ready: () => planet.pressure > planet.k.explosive * 0.9 && !planet.pouring, say: WORLD.goal === 'feed' ? 'The smoke is heavy: tip the world towards the giant now' : 'The smoke is heavy: tip it now, and it erupts', done: (s) => planet.tally.bursts > 0 || s > 40 },
   ...(WORLD.rules.rises ? [{ ready: () => true, say: 'Turn somewhere else to the top, and the heat creeps there', done: (s: number) => s > 25 }] : []),
   ...(LIFE ? [{ ready: () => ecology.held.length > 0, say: 'Six kinds of life, each needing its own ground', begin: () => { $('legend').classList.add('new'); }, done: (s: number) => ecology.kept > 0 || s > 60 }] : []),
   ...(WORLD.goal === 'plumes' ? [
@@ -875,6 +949,9 @@ const CUES: { ready: () => boolean; say?: string; begin?: () => void; done: (sin
   ...(WORLD.goal === 'orbit' ? [
     { ready: () => planet.tally.bursts > 0, say: 'The taller the cone, the more it holds, and the more a burst throws up', done: (s: number) => s > 25 },
     { ready: () => planet.pressure > planet.capNow * 0.8, say: 'The smoke is at its heaviest: the cone can hold little more', done: (s: number) => s > 12 },
+  ] : []),
+  ...(WORLD.goal === 'feed' ? [
+    { ready: () => planet.tally.bursts > 0, say: 'The ring thins away unless it\'s fed: keep it fed', done: (s: number) => s > 20 },
   ] : []),
   ...(WORLD.rules.impactEvery?.[1] === 0 ? [] : [
     { ready: () => true, begin: () => { planet.stonesFall = true; }, done: () => planet.impact !== null || planet.tally.stones > 0 },
@@ -908,7 +985,7 @@ function feel(pattern: number | number[]): void {
 
 // ---------------------------------------------------------------- words, and the key
 /** What's worth saying: the turns in the world's story, not every happening in it. */
-const QUIET_WORDS = /^(A great plume, but too near|Wanted where|A stone is coming|Land breaks|Life begins in|The first|Moss grows|Wish met|Held too long|Stone caught|The fire is out|The heat is nearly|A dust storm|The storm passes)/;
+const QUIET_WORDS = /^(The plume reaches the ring|A great plume, but too near|Wanted where|A stone is coming|Land breaks|Life begins in|The first|Moss grows|Wish met|Held too long|Stone caught|The fire is out|The heat is nearly|A dust storm|The storm passes)/;
 const ERAS: Record<Era, string> = { young: 'A young fire', burning: 'Burning strong', cooling: 'Cooling', embers: 'Last embers', out: 'The fire is out' };
 let shownEra: Era = 'young';
 const eraFrom: { name: string; from: number }[] = [{ name: ERAS.young, from: 0 }];
@@ -1011,8 +1088,15 @@ const PLUME = new THREE.Vector3(), SWING = new THREE.Quaternion();
 let second: Second | null = null;
 const BEST_KEY = `volcano.best.${WORLD.id}`;
 const bestSoFar = (): number | null => { const b = remembered(BEST_KEY); return b === null ? null : Number(b); };
+const RUN_TAG = SYSTEM && RUN !== null ? `${SYSTEM.seed}:${RUN}` : undefined;
 function measureTheSecond(): void {
   second = measureSecond(WORLD, planet, topo, islands.list);
+  // A world of a solar system: what it made is kept in the system, and passed on to the next.
+  if (RUN !== null) {
+    const sys = loadSystem();
+    if (sys && sys.seed === SYSTEM?.seed && sys.bodies[RUN] && !sys.bodies[RUN].made) saveSystem(recordPlayed(sys, RUN, { met: !!ending?.won, second: second.value, words: second.words }));
+    return; // (a world of a system is its own, with its own twist: no best kept for its kind)
+  }
   const best = bestSoFar();
   if (best === null || second.value > best) {
     remember(BEST_KEY, String(second.value));
@@ -1031,6 +1115,7 @@ const GOAL_WORDS: Record<typeof WORLD.goal, { age: (met: boolean) => string; don
   height: { age: () => 'Time passes, and the storms go on', done: `Done: the mountain reaches ${HEIGHT.target} km`, title: ['The great mountain', 'Not high enough yet'], got: () => `${Math.round(aimDone)} of ${aimOf} km high` },
   cover: { age: () => 'Time passes, and the new ice greys', done: `Done: ${COVER}% of the ice made new`, title: ['New ice', 'Not enough new ice'], got: () => `${Math.round(aimDone)}% of the ice new, of ${aimOf}%` },
   plumes: { age: () => 'Time passes, and the sulphur settles', done: `Done: ${PLUMES} great plumes`, title: ['Great plumes', 'Not enough great plumes'], got: () => `${aimDone} of ${aimOf} great plumes` },
+  feed: { age: () => 'Time passes, and the ring slowly thins', done: 'Done: the ring is full', title: ['The ring is full', 'The ring is not full'], got: () => `the ring ${Math.min(100, Math.round(aimDone))}% full` },
   orbit: { age: (met) => (met ? 'Time passes, and the ring of rock gathers into a moon' : 'Time passes, and the rock in orbit falls back'), done: 'Done: enough rock in orbit for a moon', title: ['A moon is made', 'No moon yet'], got: () => `${Math.min(100, Math.round(aimDone))}% of a moon in orbit` },
 };
 const AGE_WORDS = (met: boolean) => GOAL_WORDS[WORLD.goal].age(met);
@@ -1065,7 +1150,7 @@ function theEnd(): void {
     // What this fire left is the ground the next one on this world rises through.
     let marked: Uint8Array | null = null;
     if (FL) { marked = new Uint8Array(N); for (let v = 0; v < N; v++) marked[v] = planet.age[v] < 1e5 || (MARKED?.[v] ?? 0) ? 1 : 0; }
-    keepGround(WORLD.id, { rock: planet.rock.slice(), fires: FIRES + 1, marked });
+    if (RUN === null) keepGround(WORLD.id, { rock: planet.rock.slice(), fires: FIRES + 1, marked });
     $('stage-name').textContent = ending.info.title;
     $('worlds').style.display = 'none'; // (the chart has its own title there)
     void forget(); // the world is finished: nothing to come back to
@@ -1125,7 +1210,7 @@ function drawEnding(): void {
   }
   if (progress >= 1) {
     const next = ending.won ? nextWorld(WORLD) : null;
-    $('again').textContent = next ? `touch to go on to ${next.title.replace(/^An? /, 'an ').replace(/^The /, 'the ')}` : ending.won ? 'touch to start again' : 'touch to try again';
+    $('again').textContent = RUN !== null ? 'touch to go back to the solar system' : next ? `touch to go on to ${next.title.replace(/^An? /, 'an ').replace(/^The /, 'the ')}` : ending.won ? 'touch to start again' : 'touch to try again';
     $('again').classList.add('shown');
     intoTheAtlas();
     // The chart can be kept as a picture where the page may hand over a file: not inside a frame (as a hosted preview), which can't.
@@ -1166,6 +1251,8 @@ function turnedSince(): void {
 function anew(): void {
   void forget();
   $('begin').classList.remove('gone');
+  // A world of a solar system: back to the system's chart, to choose the next.
+  if (RUN !== null) { setTimeout(() => { location.search = '?system'; }, 900); return; }
   const q = new URLSearchParams(location.search);
   q.delete('seed');
   // Met, on to the next world, if there is one; otherwise this world again.
@@ -1250,6 +1337,8 @@ function drawLevel(): void {
 /** Everything the world is, as it's kept: the planet, its life, its islands, and where the page had got to. */
 interface Kept {
   world: string;
+  /** For a world of a solar system: which system (its seed) and which of its worlds. */
+  run?: string;
   way: { a: { x: number; y: number; z: number }; b: { x: number; y: number; z: number } } | null;
   seed: number;
   planet: Record<string, unknown>;
@@ -1260,6 +1349,7 @@ interface Kept {
 function world(): Kept {
   return {
     world: WORLD.id,
+    run: RUN_TAG,
     way: chain ? { a: chain.a, b: chain.b } : null,
     seed,
     planet: snapshotOf(planet, ['topo', 'next', 'firmness', 'scale', 'news']),
@@ -1281,7 +1371,7 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 async function resume(): Promise<boolean> {
   if (wanted) return false;
   const w = await recall<Kept>();
-  if (!w || !w.planet || (w.world ?? 'ocean') !== WORLD.id) return false;
+  if (!w || !w.planet || (w.world ?? 'ocean') !== WORLD.id || w.run !== RUN_TAG) return false;
   if (w.way && chain) chain = new Chain(w.way.a, w.way.b);
   seed = w.seed;
   restoreInto(planet, w.planet, ['plume', 'tally', 'drift', 'wear']);
@@ -1307,7 +1397,8 @@ let begun = false;
 ($('begin').querySelector('.world') as HTMLElement).textContent = `${WORLD.numeral} · ${WORLD.title}`;
 ($('begin').querySelector('.first') as HTMLElement).textContent = WORLD.first;
 // The worlds, along the card's foot, as an atlas lists its plates: touch another to go to it.
-for (const w of WORLDS) {
+// (Not for a world of a solar system: it's reached from the system's chart.)
+if (RUN === null) for (const w of WORLDS) {
   const b = document.createElement('span');
   b.textContent = w.numeral;
   b.title = w.title;
@@ -1323,7 +1414,7 @@ for (const w of WORLDS) {
 ($('begin').querySelector('.then') as HTMLElement).textContent = WORLD.then + ' ' + WORLD.second + (FIRES ? ` The ground your last ${FIRES === 1 ? 'fire' : `${FIRES} fires`} left is still here, and this fire starts somewhere new.` : '');
 // The best there has been at the second aim on this world, under the card's words.
 {
-  const best = bestSoFar();
+  const best = RUN === null ? bestSoFar() : null;
   if (best !== null) {
     const el = document.createElement('p');
     el.className = 'best';
@@ -1331,6 +1422,18 @@ for (const w of WORLDS) {
     $('begin').querySelector('.then')!.after(el);
   }
 }
+// The solar system, from the card: its worlds played as a run, in whatever order (see system.ts).
+{
+  const link = document.createElement('p');
+  link.className = 'system-link';
+  link.textContent = SYSTEM ? `your solar system · ${madeCount(SYSTEM)} of ${SYSTEM.bodies.length} worlds made` : 'a solar system: worlds played as one run';
+  link.addEventListener('pointerdown', (e) => { e.stopPropagation(); openSystem(); });
+  $('begin').appendChild(link);
+}
+$('system').addEventListener('pointerdown', (e) => e.stopPropagation());
+$('system').querySelector('.close')!.addEventListener('click', () => closeSystem());
+// Back from a world of the system (?system): straight to its chart.
+if (ASKED.has('system')) openSystem();
 // The atlas, from the card: every chart kept so far, newest first, to leaf through.
 void pages().then((all) => {
   if (!all.length) return;
@@ -1394,7 +1497,7 @@ function breathe(dt: number): void {
     let least = 1;
     for (let v = 0; v < N; v += 3) if (planet.rock[v] > 0) least = Math.min(least, base[v * 3] * q.x + base[v * 3 + 1] * q.y + base[v * 3 + 2] * q.z);
     // (Further back on a young Earth, to leave room for the moon's ring round it.)
-    reachDist = THREE.MathUtils.clamp(3.4 + 2 * Math.acos(least), 3.4, 4.8) * (WORLD.goal === 'orbit' ? 1.3 : 1);
+    reachDist = THREE.MathUtils.clamp(3.4 + 2 * Math.acos(least), 3.4, 4.8) * (WORLD.goal === 'orbit' ? 1.3 : WORLD.goal === 'feed' ? 1.15 : 1);
   }
   // At the end, the world steps back and up the page, leaving the foot for the chart.
   const want = ending?.shown ? farthest * 0.92 : reachDist, wantLift = ending?.shown ? 0.09 : 0;
@@ -1418,7 +1521,7 @@ function pace(raw: number): void {
 }
 
 // ---------------------------------------------------------------- the loop
-const INVERSE = new THREE.Quaternion(), GRAV = new THREE.Vector3(), SLIDE = new THREE.Quaternion();
+const INVERSE = new THREE.Quaternion(), GRAV = new THREE.Vector3(), SLIDE = new THREE.Quaternion(), GIANT_DIR = new THREE.Vector3();
 fit();
 drawNow();
 redrawLines(0);
@@ -1438,6 +1541,8 @@ renderer.setAnimationLoop(() => {
   INVERSE.copy(group.quaternion).invert();
   GRAV.copy(held).normalize().applyQuaternion(INVERSE);
   planet.gravity = { x: GRAV.x, y: GRAV.y, z: GRAV.z };
+  // And which way the giant is, on a world that has one in its sky.
+  if (WORLD.goal === 'feed') { const s = GIANT_DIR.copy(GIANT_AT).normalize().applyQuaternion(INVERSE); planet.giant = { x: s.x, y: s.y, z: s.z }; }
   drawLevel();
   // Once the fire is out, the long age runs quickly, in small steps so the sea's work stays as it would be.
   const speed = ending && !ending.shown && (!ending.won || seconds - wonAt() > 4) ? AGE_SPEED : 1;
@@ -1480,6 +1585,7 @@ renderer.setAnimationLoop(() => {
   aimPencil.update(dt);
   aimNext.update(dt);
   if (WORLD.goal === 'orbit') orbiting(dt);
+  if (WORLD.goal === 'feed') feeding(dt);
   if (WORLD.goal === 'height' || WORLD.goal === 'cover') {
     // The ring follows the heat, eased, so it glides as the heat creeps.
     gaugeAt.lerp(new THREE.Vector3(planet.plume.x, planet.plume.y, planet.plume.z), 1 - Math.exp(-dt / 1.5)).normalize();
