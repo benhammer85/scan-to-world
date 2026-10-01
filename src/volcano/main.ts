@@ -12,13 +12,14 @@
  * world as gravity would take it; tipped when it's full, it bursts. Level is
  * however you were holding the phone when you began.
  *
- * Nothing on the world is a control or a gauge; what it's doing shows as itself:
+ * Nothing on the world is a control; what it's doing shows as itself:
  *   the vent has no mark of its own: the heat gathering beneath it rises as
  *     smoke, a wisp while there's little, heavier as it builds, a dark column
  *     once it would burst;
  *   tipped, the lava is seen to pour;
  *   a few of a kind's signs pencilled where life wishes for it, and a small
  *     star where a stone will fall.
+ * Only the aim is marked, in small dots as a chart marks a route, inked as it's met.
  * No words are written on the world: what's new is told in a quiet line at the foot.
  * Off the world there is only the era, as a map's title, and at the foot the
  * key: the six kinds of life by their signs, inked once each is living. The
@@ -592,16 +593,26 @@ function setMark(m: THREE.Sprite, v: number, size: number): void {
  * a boundary, in small dots: pale where it's still to do, inked where it's done.
  *   An ocean world: the way the crust carries the heat, round the world, in stretches; a stretch
  *     is held while something lives on or by it. Ringed when every stretch is held at once.
- *   The Moon: each great basin's edge, inked once its floor is flooded.
- *   Mars: nothing on the map; the mountain's height is told at the foot as it rises.
+ *   The Moon: each great basin's edge, inked round as its floor floods, like a gauge.
+ *   Mars and the ice moon: a ring round the heat, inked round as the mountain rises (or the new
+ *     ice spreads) towards the aim; and how far along is told at the foot now and then.
  */
 let chain = WORLD.goal === 'ring' ? new Chain(planet.plume, planet.driftDirection) : null;
 const FLOODED_ENOUGH = 0.7;
 // Small dots, as a chart marks a route or a boundary: pale where it's still to do, inked where it's done.
-const aimInk = new Stipple(P.landInkHigh, 'dot', 2.1), aimPencil = new Stipple('#' + new THREE.Color(P.pencil).lerp(new THREE.Color(P.landInk), 0.6).getHexString(), 'dot', 1.8);
+const aimInk = new Stipple(P.landInkHigh, 'dot', 2.5), aimPencil = new Stipple('#' + new THREE.Color(P.pencil).lerp(new THREE.Color(P.landInk), 0.6).getHexString(), 'dot', 1.6);
 /** On the ocean world, the stretch the heat is on and the next, still to do, a little stronger: where to build now. */
 const aimNext = new Stipple(P.landInk, 'dot', 2.3);
-for (const s of [aimInk, aimPencil, aimNext]) { s.byDirection = true; (s.object.material as THREE.Material).depthTest = false; group.add(s.object); }
+/**
+ * On Mars and the ice moon, a ring of the same dots round the heat, drawn once about the pole and
+ * turned to follow the heat smoothly, so it glides with it rather than stepping.
+ */
+const gauge = new THREE.Group(), gaugeInk = new Stipple(P.landInkHigh, 'dot', 2.5), gaugePencil = new Stipple('#' + new THREE.Color(P.pencil).lerp(new THREE.Color(P.landInk), 0.6).getHexString(), 'dot', 1.6);
+const gaugeAt = new THREE.Vector3(planet.plume.x, planet.plume.y, planet.plume.z).normalize();
+for (const s of [aimInk, aimPencil, aimNext, gaugeInk, gaugePencil]) { s.byDirection = true; s.linger = 1.5; (s.object.material as THREE.Material).depthTest = false; }
+for (const s of [aimInk, aimPencil, aimNext]) group.add(s.object);
+gauge.add(gaugeInk.object, gaugePencil.object);
+group.add(gauge);
 const HEIGHT = WORLD.height ?? { target: 0, kmPerUnit: 40 };
 const COVER = Math.round((WORLD.cover ?? 0) * 100);
 let aimDone = 0, aimOf = WORLD.goal === 'ring' ? CHAIN.stretches : WORLD.goal === 'height' ? HEIGHT.target : WORLD.goal === 'cover' ? COVER : planet.basins.length, lastAim = -10;
@@ -646,9 +657,23 @@ function drawAim(now: number): void {
   if (begun) tellAim(now);
   const inked: number[] = [], pencilled: number[] = [], next: number[] = [];
   if (WORLD.goal === 'height' || WORLD.goal === 'cover') {
-    // No mark on the world: how far along is told at the foot, every two km (or every 5%).
+    // How far along is told at the foot, every two km (or every 5%).
     const by = WORLD.goal === 'height' ? 2 : 5, step = Math.floor(aimDone / by) * by;
     if (begun && step > toldHeight && step < aimOf) { toldHeight = step; toldAimAt = now; announce(WORLD.goal === 'height' ? `The mountain is ${step} of ${aimOf} km high` : `${step}% of the ice made new, of ${aimOf}%`); }
+    // And the ring round the heat, inked round as far as the aim is met.
+    const R = WORLD.goal === 'height' ? 0.32 : 0.3, around = Math.max(24, Math.round((Math.PI * 2 * Math.sin(R)) / 0.045));
+    const filled = Math.round(around * Math.min(1, aimDone / aimOf)), ink: number[] = [], pencil: number[] = [];
+    const q = new THREE.Vector3();
+    for (let i = 0; i < around; i++) {
+      const a = Math.PI / 2 - (i / around) * Math.PI * 2;
+      q.set(Math.sin(R) * Math.cos(a), Math.sin(R) * Math.sin(a), Math.cos(R));
+      // Lifted to the ground beneath where the ring now lies.
+      const v = nearestAbove(q.clone().applyQuaternion(gauge.quaternion));
+      const r = Math.max(1, Math.hypot(topo.positions[v * 3], topo.positions[v * 3 + 1], topo.positions[v * 3 + 2])) + 0.003;
+      (i < filled ? ink : pencil).push(q.x * r, q.y * r, q.z * r);
+    }
+    gaugeInk.set(ink);
+    gaugePencil.set(pencil);
     return;
   }
   if (chain) {
@@ -662,13 +687,15 @@ function drawAim(now: number): void {
       const u = new THREE.Vector3().crossVectors(c, Math.abs(c.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0)).normalize();
       const w = new THREE.Vector3().crossVectors(c, u);
       const r = b.r * 0.8, pts = [];
-      const around = Math.max(24, Math.round((Math.PI * 2 * Math.sin(r)) / 0.066));
+      const around = Math.max(24, Math.round((Math.PI * 2 * Math.sin(r)) / 0.045));
       for (let i = 0; i < around; i++) {
         const a = (i / around) * Math.PI * 2;
         pts.push(c.clone().multiplyScalar(Math.cos(r)).addScaledVector(u, Math.sin(r) * Math.cos(a)).addScaledVector(w, Math.sin(r) * Math.sin(a)));
       }
-      const done = planet.flooded(b) >= FLOODED_ENOUGH;
-      onGround(pts, done ? inked : pencilled);
+      // Inked round as the floor floods, like a gauge: whole once it's flooded enough.
+      const filled = Math.round(pts.length * Math.min(1, planet.flooded(b) / FLOODED_ENOUGH));
+      onGround(pts.slice(0, filled), inked);
+      onGround(pts.slice(filled), pencilled);
     }
   }
   aimInk.set(inked);
@@ -1323,6 +1350,13 @@ renderer.setAnimationLoop(() => {
   aimInk.update(dt);
   aimPencil.update(dt);
   aimNext.update(dt);
+  if (WORLD.goal === 'height' || WORLD.goal === 'cover') {
+    // The ring follows the heat, eased, so it glides as the heat creeps.
+    gaugeAt.lerp(new THREE.Vector3(planet.plume.x, planet.plume.y, planet.plume.z), 1 - Math.exp(-dt / 1.5)).normalize();
+    gauge.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), gaugeAt);
+    gaugeInk.update(dt);
+    gaugePencil.update(dt);
+  }
   for (const s of [...kindDots, foam]) s.update(dt);
   puffs.update(dt * speed);
   if (begun) breathe(dt);
