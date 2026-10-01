@@ -113,7 +113,7 @@ let seed = wanted || 1 + Math.floor(Math.random() * 1e6);
  */
 const WORLD = worldOf(new URLSearchParams(location.search).get('world') ?? remembered('volcano.world'));
 remember('volcano.world', WORLD.id);
-const P = WORLD.palette, LIFE = WORLD.rules.life !== false;
+const P = WORLD.palette, LIFE = WORLD.rules.life !== false, ICE = WORLD.rules.terrain === 'ice';
 function remembered(key: string): string | null {
   try { return localStorage.getItem(key); } catch { return null; }
 }
@@ -193,8 +193,9 @@ material.onBeforeCompile = (shader) => {
   shader.uniforms.uFloodStrength = floodStrength;
   shader.uniforms.uTime = lavaClock;
   shader.uniforms.uPx = pxRatio;
-  shader.uniforms.uHot = { value: new THREE.Color('#e9853a') };
-  shader.uniforms.uCrust = { value: new THREE.Color('#2b2420') };
+  // (On the ice moon the lava is water: its shimmer is light on it, not heat, and it doesn't crust black.)
+  shader.uniforms.uHot = { value: new THREE.Color(ICE ? '#b9dbe8' : '#e9853a') };
+  shader.uniforms.uCrust = { value: new THREE.Color(ICE ? P.deepLava : '#2b2420') };
   shader.uniforms.uLava = { value: VERMILION };
   shader.uniforms.uDeepLava = { value: DEEP_RED };
   shader.uniforms.uShallow = { value: SHALLOW };
@@ -216,14 +217,14 @@ material.onBeforeCompile = (shader) => {
       float pool = noise3(vDir * 30.0);
       vec3 land = vColor.rgb * (0.98 + 0.04 * pool);
       // Where lava has lain (the Moon's seas, the ice moon's new ice), and where it lies now, each
-      // with an edge a pixel wide wherever its amount crosses a threshold: a clean edge, as a wash
+      // with an edge about a pixel wide wherever its amount crosses a threshold: a clean edge, as a wash
       // laid with a brush has, not the soft, stepped smear of colour carried vertex to vertex.
-      float fl = vMarks.x, fw = max(fwidth(fl) * 1.5, 0.05);
+      float fl = vMarks.x, fw = max(fwidth(fl), 1e-4);
       land = mix(land, uFlooded, smoothstep(0.5 - fw, 0.5 + fw, fl) * uFloodStrength);
-      float lv = vMarks.y, lw = max(fwidth(lv) * 1.5, 0.05), on = smoothstep(0.5 - lw, 0.5 + lw, lv);
+      float lv = vMarks.y, lw = max(fwidth(lv), 1e-4), on = smoothstep(0.5 - lw, 0.5 + lw, lv);
       // Lava just set: black, with a clean edge, weathering back into the ground's own colour as it
       // cools, over a minute or two.
-      float here = vMarks.w, hw = max(fwidth(here) * 1.5, 0.05);
+      float here = vMarks.w, hw = max(fwidth(here), 1e-4);
       float black = here > 0.01 ? vMarks.z / here : 0.0;
       land = mix(land, uCrust, smoothstep(0.5 - hw, 0.5 + hw, here) * (1.0 - on) * clamp(black, 0.0, 1.0) * 0.8);
       // Lava still running: deeper where thick, hottest at its front, never quite still (a slow
@@ -235,7 +236,7 @@ material.onBeforeCompile = (shader) => {
         float shimmer = 0.5 * noise3(d1 + vec3(0.0, uTime * 0.1, uTime * 0.06)) + 0.5 * noise3(d2 - vec3(uTime * 0.07, 0.0, uTime * 0.05));
         molten = mix(molten, uHot, smoothstep(0.45, 0.8, shimmer) * 0.3);
         // Its edges chill first: dark at the rim, glowing within.
-        molten = mix(molten, uCrust, (1.0 - smoothstep(0.5, 0.9, lv)) * 0.7);
+        molten = mix(molten, uCrust, (1.0 - smoothstep(0.5, 0.75, lv)) * 0.7);
         land = mix(land, molten, on);
       }
       diffuseColor.rgb *= mix(sea, land, smoothstep(-edge, edge, vH));`);
@@ -351,7 +352,9 @@ function surface(v: number): number {
 }
 
 // The simulation's values, a vertex at a time, before they are carried onto the finer surface.
-const coarseHeight = new Float32Array(N), coarseLand = new Float32Array(N * 3), coarseMarks = new Float32Array(N * 4), markEase = new Float32Array(N);
+/** How many times the marks are eased toward their neighbours. */
+const MARK_EASING = 8;
+const coarseHeight = new Float32Array(N), coarseLand = new Float32Array(N * 3), coarseMarks = new Float32Array(N * 4), markEase = new Float32Array(N), eased = new Float32Array(N * 4);
 /** The simulation's heights and colours, a vertex at a time, ready to be carried onto the finer surface. */
 function coarse(): void {
   // How far the wash eases this time: by the seconds since last, over a second or two.
@@ -376,7 +379,8 @@ function coarse(): void {
     // Lava just set: black, weathering back into the ground's colour over a minute or two. Carried as
     // where it lies (1 or 0) and that times how black it still is, so the shader can divide the one
     // by the other and have the blackness even right up to a clean edge.
-    const set = lava <= 0.00005 && planet.age[v] < 240 ? 1 : 0;
+    // (Not on the ice moon: water freezes white, into the new ice the flood mark already draws.)
+    const set = !ICE && lava <= 0.00005 && planet.age[v] < 240 ? 1 : 0;
     coarseMarks[v * 4 + 3] = set;
     coarseMarks[v * 4 + 2] = set * Math.exp(-planet.age[v] / 45);
     const kind = LIFE ? ecology.kind[v] : -1, wash = kind >= 0 ? WASH[kind] : null, washBy = wash ? WASH_STRENGTH * Math.min(1, planet.life[v]) * (1 - hot) : 0;
@@ -392,21 +396,30 @@ function coarse(): void {
       coarseLand[v3 + i] = x;
     }
   }
-  // Each mark's amount eased toward its neighbours', twice, so the edge the shader draws where it
-  // crosses a half is a curve, not the simulation's triangles stepping.
-  const o = topo.nbrOffsets, l = topo.nbrList;
-  for (let c = FL ? 0 : 1; c < 4; c++) {
-    let any = false;
-    for (let v = 0; v < N && !any; v++) if (coarseMarks[v * 4 + c] > 0) any = true;
-    if (any) for (let pass = 0; pass < 3; pass++) {
+  // Each mark's amount eased toward its neighbours', again and again, so the edge the shader draws
+  // where it crosses a half is a smooth curve, not the simulation's triangles stepping in teeth.
+  // Running lava is first widened by half a step, so a stream a vertex wide still shows once eased.
+  const o = topo.nbrOffsets, l = topo.nbrList, M = coarseMarks;
+  let running = false;
+  for (let v = 0; v < N && !running; v++) if (M[v * 4 + 1] > 0) running = true;
+  if (running) {
     for (let v = 0; v < N; v++) {
-      let sum = 0;
-      for (let k = o[v]; k < o[v + 1]; k++) sum += coarseMarks[l[k] * 4 + c];
-      markEase[v] = coarseMarks[v * 4 + c] * 0.4 + (sum / Math.max(1, o[v + 1] - o[v])) * 0.6;
+      markEase[v] = M[v * 4 + 1];
+      if (markEase[v] === 0) for (let k = o[v]; k < o[v + 1]; k++) if (M[l[k] * 4 + 1] >= 1) { markEase[v] = 0.5; break; }
     }
-    for (let v = 0; v < N; v++) coarseMarks[v * 4 + c] = markEase[v];
-    }
+    for (let v = 0; v < N; v++) M[v * 4 + 1] = markEase[v];
   }
+  for (let pass = 0; pass < MARK_EASING; pass++) {
+    for (let v = 0; v < N; v++) {
+      let s0 = 0, s1 = 0, s2 = 0, s3 = 0;
+      for (let k = o[v]; k < o[v + 1]; k++) { const w = l[k] * 4; s0 += M[w]; s1 += M[w + 1]; s2 += M[w + 2]; s3 += M[w + 3]; }
+      const by = 0.6 / Math.max(1, o[v + 1] - o[v]), v4 = v * 4;
+      eased[v4] = M[v4] * 0.4 + s0 * by; eased[v4 + 1] = M[v4 + 1] * 0.4 + s1 * by;
+      eased[v4 + 2] = M[v4 + 2] * 0.4 + s2 * by; eased[v4 + 3] = M[v4 + 3] * 0.4 + s3 * by;
+    }
+    M.set(eased);
+  }
+  if (!FL) for (let v = 0; v < N; v++) M[v * 4] = 0;
 }
 
 /**
