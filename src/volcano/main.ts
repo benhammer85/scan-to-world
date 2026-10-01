@@ -217,28 +217,24 @@ material.onBeforeCompile = (shader) => {
       // Where lava has lain (the Moon's seas, the ice moon's new ice), and where it lies now, each
       // with an edge a pixel wide wherever its amount crosses a threshold: a clean edge, as a wash
       // laid with a brush has, not the soft, stepped smear of colour carried vertex to vertex.
-      float fl = vMarks.x, fw = max(fwidth(fl), 1e-4) * 0.7;
+      float fl = vMarks.x, fw = max(fwidth(fl) * 1.5, 0.05);
       land = mix(land, uFlooded, smoothstep(0.5 - fw, 0.5 + fw, fl) * uFloodStrength);
-      float lv = vMarks.y, lw = max(fwidth(lv), 1e-4) * 0.7, on = smoothstep(0.03 - lw, 0.03 + lw, lv);
+      float lv = vMarks.y, lw = max(fwidth(lv) * 1.5, 0.05), on = smoothstep(0.5 - lw, 0.5 + lw, lv);
       // Lava just set: black, with a clean edge, weathering back into the ground's own colour as it
       // cools, over a minute or two.
-      float here = vMarks.w, hw = max(fwidth(here), 1e-4) * 0.7;
+      float here = vMarks.w, hw = max(fwidth(here) * 1.5, 0.05);
       float black = here > 0.01 ? vMarks.z / here : 0.0;
       land = mix(land, uCrust, smoothstep(0.5 - hw, 0.5 + hw, here) * (1.0 - on) * clamp(black, 0.0, 1.0) * 0.8);
       // Lava still running: deeper where thick, hottest at its front, never quite still (a slow
       // shimmer drifting through it), and fine lines creeping downhill in it, the way it flows.
       if (on > 0.0) {
-        vec3 molten = mix(uLava, uDeepLava, clamp((lv - 0.03) * 0.8, 0.0, 0.6));
-        float shimmer = noise3(vDir * 26.0 + vec3(0.0, uTime * 0.12, uTime * 0.07));
-        molten = mix(molten, uHot, clamp((shimmer - 0.45) * 0.9, 0.0, 0.35));
+        vec3 molten = mix(uLava, uDeepLava, 0.3);
+        // (Two layers, turned against each other, so no grid of the noise shows.)
+        vec3 d1 = vDir * 17.0, d2 = vec3(vDir.y + vDir.z, vDir.z - vDir.x, vDir.x + vDir.y) * 23.0;
+        float shimmer = 0.5 * noise3(d1 + vec3(0.0, uTime * 0.1, uTime * 0.06)) + 0.5 * noise3(d2 - vec3(uTime * 0.07, 0.0, uTime * 0.05));
+        molten = mix(molten, uHot, smoothstep(0.45, 0.8, shimmer) * 0.3);
         // Its edges chill first: dark at the rim, glowing within.
-        molten = mix(molten, uCrust, (1.0 - smoothstep(0.03, 0.14, lv)) * 0.75);
-        vec2 slope = vec2(dFdx(vH), dFdy(vH));
-        float steep = length(slope);
-        if (steep > 1e-7) {
-          float along = dot(gl_FragCoord.xy / uPx, slope / steep) * 0.22 + uTime * 1.1;
-          molten = mix(molten, uDeepLava, smoothstep(0.9, 1.0, sin(along)) * 0.16);
-        }
+        molten = mix(molten, uCrust, (1.0 - smoothstep(0.5, 0.9, lv)) * 0.7);
         land = mix(land, molten, on);
       }
       diffuseColor.rgb *= mix(sea, land, smoothstep(-edge, edge, vH));`);
@@ -375,11 +371,11 @@ function coarse(): void {
     // Where a world keeps the mark of it (the Moon's seas), ground lava has lain on stays dark: this
     // fire's fully, an earlier one's a little faded. And the lava itself, by how thick it lies.
     coarseMarks[v * 4] = FL && planet.age[v] < 1e5 ? 1 : 0;
-    coarseMarks[v * 4 + 1] = lava > 0.0005 ? Math.min(1, lava * 8 + 0.03) : 0;
+    coarseMarks[v * 4 + 1] = lava > 0.00005 ? 1 : 0; // (where lava lies at all, however thin: eased below into a shape with a clean, round edge)
     // Lava just set: black, weathering back into the ground's colour over a minute or two. Carried as
     // where it lies (1 or 0) and that times how black it still is, so the shader can divide the one
     // by the other and have the blackness even right up to a clean edge.
-    const set = lava <= 0.0005 && planet.age[v] < 240 ? 1 : 0;
+    const set = lava <= 0.00005 && planet.age[v] < 240 ? 1 : 0;
     coarseMarks[v * 4 + 3] = set;
     coarseMarks[v * 4 + 2] = set * Math.exp(-planet.age[v] / 45);
     const kind = LIFE ? ecology.kind[v] : -1, wash = kind >= 0 ? WASH[kind] : null, washBy = wash ? WASH_STRENGTH * Math.min(1, planet.life[v]) * (1 - hot) : 0;
@@ -395,16 +391,20 @@ function coarse(): void {
       coarseLand[v3 + i] = x;
     }
   }
-  // The flooded ground's amount eased toward its neighbours', twice, so the edge the shader draws
-  // where it crosses a half is a curve, not the simulation's triangles.
-  if (FL) for (let pass = 0; pass < 2; pass++) {
-    const o = topo.nbrOffsets, l = topo.nbrList;
+  // Each mark's amount eased toward its neighbours', twice, so the edge the shader draws where it
+  // crosses a half is a curve, not the simulation's triangles stepping.
+  const o = topo.nbrOffsets, l = topo.nbrList;
+  for (let c = FL ? 0 : 1; c < 4; c++) {
+    let any = false;
+    for (let v = 0; v < N && !any; v++) if (coarseMarks[v * 4 + c] > 0) any = true;
+    if (any) for (let pass = 0; pass < 3; pass++) {
     for (let v = 0; v < N; v++) {
       let sum = 0;
-      for (let k = o[v]; k < o[v + 1]; k++) sum += coarseMarks[l[k] * 4];
-      markEase[v] = coarseMarks[v * 4] * 0.4 + (sum / Math.max(1, o[v + 1] - o[v])) * 0.6;
+      for (let k = o[v]; k < o[v + 1]; k++) sum += coarseMarks[l[k] * 4 + c];
+      markEase[v] = coarseMarks[v * 4 + c] * 0.4 + (sum / Math.max(1, o[v + 1] - o[v])) * 0.6;
     }
-    for (let v = 0; v < N; v++) coarseMarks[v * 4] = markEase[v];
+    for (let v = 0; v < N; v++) coarseMarks[v * 4 + c] = markEase[v];
+    }
   }
 }
 

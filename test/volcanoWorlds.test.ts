@@ -60,7 +60,7 @@ describe('the Moon', () => {
 
   it('is dry highland scarred by great basins, with no life', () => {
     const pl = moon();
-    expect(pl.basins.length).toBe(5);
+    expect(pl.basins.length).toBe(4);
     expect(Math.min(...pl.rock)).toBeGreaterThan(0); // no sea anywhere
     run(pl, 120);
     expect(pl.lifeShare()).toBe(0);

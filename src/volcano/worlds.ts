@@ -75,13 +75,13 @@ export const WORLDS: World[] = [
     numeral: 'II',
     title: 'The Moon',
     first: 'The Moon: old, airless, and nearly cold.',
-    then: 'Lava here runs like water and fills low ground. The heat rises to whatever you turn to the top; tip the world to pour. Flood each dotted basin before the heat runs out.',
+    then: 'Lava here runs like water and fills low ground. Turn a dotted basin to the top and wait: the heat creeps under it, and the smoke rises there. Then tip gently to pour until it\'s full, and turn the next one up. Flood all four before the heat runs out.',
     second: 'Lava spilled outside a basin is wasted: the neater the seas, the better.',
     rules: {
-      terrain: 'moon', basins: 5, floor: 0.22, rough: 0.02,
+      terrain: 'moon', basins: 4, floor: 0.22, rough: 0.02,
       waves: 0, rain: 0, sink: 0, swell: 0, life: false,
       flow: 16, channel: 1, coolLand: 0.06,
-      drift: 0, rises: 0.02, heat: 400, rising: 1.48,
+      drift: 0, rises: 0.035, heat: 400, rising: 1.48,
       impactEvery: [12, 22], impactWarning: 12, crater: 0.08, craterDepth: 0.05, impactHeat: 4, ageCraters: 0.12,
     },
     palette: {
