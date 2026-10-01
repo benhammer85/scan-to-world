@@ -154,7 +154,7 @@ const geometry = new THREE.BufferGeometry();
 const positions = new Float32Array(FN * 3);
 const landColour = new Float32Array(FN * 3), fineHeight = new Float32Array(FN);
 /** Where lava lies (how thick) and where it has lain (this fire's, or an earlier one's): amounts, so their edges are drawn crisp in each pixel. */
-const fineMarks = new Float32Array(FN * 3), prevMarks = new Float32Array(FN * 3);
+const fineMarks = new Float32Array(FN * 4), prevMarks = new Float32Array(FN * 4);
 geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
 geometry.setAttribute('color', new THREE.BufferAttribute(landColour, 3));
 geometry.setAttribute('aH', new THREE.BufferAttribute(fineHeight, 1));
@@ -166,8 +166,8 @@ const prevPositions = new Float32Array(FN * 3), prevColour = new Float32Array(FN
 geometry.setAttribute('aPrevPos', new THREE.BufferAttribute(prevPositions, 3));
 geometry.setAttribute('aPrevColour', new THREE.BufferAttribute(prevColour, 3));
 geometry.setAttribute('aPrevH', new THREE.BufferAttribute(prevHeight, 1));
-geometry.setAttribute('aMarks', new THREE.BufferAttribute(fineMarks, 3));
-geometry.setAttribute('aPrevMarks', new THREE.BufferAttribute(prevMarks, 3));
+geometry.setAttribute('aMarks', new THREE.BufferAttribute(fineMarks, 4));
+geometry.setAttribute('aPrevMarks', new THREE.BufferAttribute(prevMarks, 4));
 geometry.setIndex(new THREE.BufferAttribute(ftopo.triangles, 1));
 const blend = { value: 1 }, blendFrom = { at: 0, span: 0.5 };
 /** How strongly ground lava has lain on is marked: less, as the ice moon's new ice greys in its long age. */
@@ -183,7 +183,7 @@ const lavaClock = { value: 0 }, pxRatio = { value: 1 };
 const material = new THREE.MeshLambertMaterial({ vertexColors: true, dithering: true });
 material.onBeforeCompile = (shader) => {
   shader.vertexShader = shader.vertexShader
-    .replace('void main() {', 'attribute float aH;\nattribute float aPrevH;\nattribute vec3 aPrevPos;\nattribute vec3 aPrevColour;\nattribute vec3 aMarks;\nattribute vec3 aPrevMarks;\nuniform float uBlend;\nvarying float vH;\nvarying vec3 vMarks;\nvarying vec3 vDir;\nvoid main() {')
+    .replace('void main() {', 'attribute float aH;\nattribute float aPrevH;\nattribute vec3 aPrevPos;\nattribute vec3 aPrevColour;\nattribute vec4 aMarks;\nattribute vec4 aPrevMarks;\nuniform float uBlend;\nvarying float vH;\nvarying vec4 vMarks;\nvarying vec3 vDir;\nvoid main() {')
     .replace('#include <color_vertex>', '#include <color_vertex>\n  vColor.rgb = mix(aPrevColour, color.rgb, uBlend);\n  vH = mix(aPrevH, aH, uBlend);\n  vMarks = mix(aPrevMarks, aMarks, uBlend);\n  vDir = normalize(position);')
     .replace('#include <begin_vertex>', 'vec3 transformed = mix(aPrevPos, position, uBlend);');
   shader.uniforms.uBlend = blend;
@@ -193,33 +193,18 @@ material.onBeforeCompile = (shader) => {
   shader.uniforms.uTime = lavaClock;
   shader.uniforms.uPx = pxRatio;
   shader.uniforms.uHot = { value: new THREE.Color('#e9853a') };
-  shader.uniforms.uCrust = { value: new THREE.Color('#4a3a31') };
+  shader.uniforms.uCrust = { value: new THREE.Color('#2b2420') };
   shader.uniforms.uLava = { value: VERMILION };
   shader.uniforms.uDeepLava = { value: DEEP_RED };
   shader.uniforms.uShallow = { value: SHALLOW };
   shader.uniforms.uDeep = { value: DEEP };
   shader.fragmentShader = shader.fragmentShader
-    .replace('void main() {', `uniform vec3 uShallow;\nuniform vec3 uDeep;\nuniform vec3 uFlooded;\nuniform float uFloodStrength;\nuniform vec3 uLava;\nuniform vec3 uDeepLava;\nuniform vec3 uHot;\nuniform vec3 uCrust;\nuniform float uTime;\nuniform float uPx;\nvarying float vH;\nvarying vec3 vMarks;\nvarying vec3 vDir;
+    .replace('void main() {', `uniform vec3 uShallow;\nuniform vec3 uDeep;\nuniform vec3 uFlooded;\nuniform float uFloodStrength;\nuniform vec3 uLava;\nuniform vec3 uDeepLava;\nuniform vec3 uHot;\nuniform vec3 uCrust;\nuniform float uTime;\nuniform float uPx;\nvarying float vH;\nvarying vec4 vMarks;\nvarying vec3 vDir;
       float hash3(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
       float noise3(vec3 p) {
         vec3 i = floor(p), f = fract(p), s = f * f * (3.0 - 2.0 * f);
         return mix(mix(mix(hash3(i), hash3(i + vec3(1, 0, 0)), s.x), mix(hash3(i + vec3(0, 1, 0)), hash3(i + vec3(1, 1, 0)), s.x), s.y),
                    mix(mix(hash3(i + vec3(0, 0, 1)), hash3(i + vec3(1, 0, 1)), s.x), mix(hash3(i + vec3(0, 1, 1)), hash3(i + vec3(1, 1, 1)), s.x), s.y), s.z);
-      }
-      vec3 hash33(vec3 p) {
-        p = vec3(dot(p, vec3(127.1, 311.7, 74.7)), dot(p, vec3(269.5, 183.3, 246.1)), dot(p, vec3(113.5, 271.9, 124.6)));
-        return fract(sin(p) * 43758.5453);
-      }
-      // How far from the nearest crack in a cooling crust: the gap between the two nearest cells' distances.
-      float cracks(vec3 p) {
-        vec3 i = floor(p), f = fract(p);
-        float d1 = 8.0, d2 = 8.0;
-        for (int x = -1; x <= 1; x++) for (int y = -1; y <= 1; y++) for (int z = -1; z <= 1; z++) {
-          vec3 g = vec3(float(x), float(y), float(z)), r = g + hash33(i + g) - f;
-          float d = dot(r, r);
-          if (d < d1) { d2 = d1; d1 = d; } else if (d < d2) d2 = d;
-        }
-        return sqrt(d2) - sqrt(d1);
       }
       void main() {`)
     .replace('#include <color_fragment>', `
@@ -235,22 +220,19 @@ material.onBeforeCompile = (shader) => {
       float fl = vMarks.x, fw = max(fwidth(fl), 1e-4) * 0.7;
       land = mix(land, uFlooded, smoothstep(0.5 - fw, 0.5 + fw, fl) * uFloodStrength);
       float lv = vMarks.y, lw = max(fwidth(lv), 1e-4) * 0.7, on = smoothstep(0.03 - lw, 0.03 + lw, lv);
-      // Lava just set: a dark crust, with the heat still glowing through its cracks, fading as it cools.
-      float cool = vMarks.z * (1.0 - on);
-      if (cool > 0.01) {
-        float c = cracks(vDir * 48.0), cw = max(fwidth(c), 1e-4);
-        float crack = 1.0 - smoothstep(0.0, cw * 1.2 + 0.015, c);
-        float cfw = max(fwidth(cool), 1e-4) * 0.7;
-        land = mix(land, uCrust, smoothstep(0.12 - cfw, 0.12 + cfw, cool) * 0.28);
-        land = mix(land, mix(uDeepLava, uHot, cool * cool), crack * smoothstep(0.25, 0.8, cool) * 0.85);
-      }
+      // Lava just set: black, with a clean edge, weathering back into the ground's own colour as it
+      // cools, over a minute or two.
+      float here = vMarks.w, hw = max(fwidth(here), 1e-4) * 0.7;
+      float black = here > 0.01 ? vMarks.z / here : 0.0;
+      land = mix(land, uCrust, smoothstep(0.5 - hw, 0.5 + hw, here) * (1.0 - on) * clamp(black, 0.0, 1.0) * 0.8);
       // Lava still running: deeper where thick, hottest at its front, never quite still (a slow
       // shimmer drifting through it), and fine lines creeping downhill in it, the way it flows.
       if (on > 0.0) {
         vec3 molten = mix(uLava, uDeepLava, clamp((lv - 0.03) * 0.8, 0.0, 0.6));
         float shimmer = noise3(vDir * 26.0 + vec3(0.0, uTime * 0.12, uTime * 0.07));
         molten = mix(molten, uHot, clamp((shimmer - 0.45) * 0.9, 0.0, 0.35));
-        molten = mix(molten, uHot, (1.0 - smoothstep(0.03, 0.12, lv)) * 0.55);
+        // Its edges chill first: dark at the rim, glowing within.
+        molten = mix(molten, uCrust, (1.0 - smoothstep(0.03, 0.14, lv)) * 0.75);
         vec2 slope = vec2(dFdx(vH), dFdy(vH));
         float steep = length(slope);
         if (steep > 1e-7) {
@@ -372,7 +354,7 @@ function surface(v: number): number {
 }
 
 // The simulation's values, a vertex at a time, before they are carried onto the finer surface.
-const coarseHeight = new Float32Array(N), coarseLand = new Float32Array(N * 3), coarseMarks = new Float32Array(N * 3), markEase = new Float32Array(N);
+const coarseHeight = new Float32Array(N), coarseLand = new Float32Array(N * 3), coarseMarks = new Float32Array(N * 4), markEase = new Float32Array(N);
 /** The simulation's heights and colours, a vertex at a time, ready to be carried onto the finer surface. */
 function coarse(): void {
   // How far the wash eases this time: by the seconds since last, over a second or two.
@@ -392,10 +374,14 @@ function coarse(): void {
     const hot = lava > 0.002 ? Math.min(1, lava * 40) : 0;
     // Where a world keeps the mark of it (the Moon's seas), ground lava has lain on stays dark: this
     // fire's fully, an earlier one's a little faded. And the lava itself, by how thick it lies.
-    coarseMarks[v * 3] = FL && planet.age[v] < 1e5 ? 1 : 0;
-    coarseMarks[v * 3 + 1] = lava > 0.0005 ? Math.min(1, lava * 8 + 0.03) : 0;
-    // Lava just set, still hot under its crust: glowing through cracks, fading over a minute or two.
-    coarseMarks[v * 3 + 2] = lava <= 0.0005 && planet.age[v] < 80 ? Math.exp(-planet.age[v] / 16) : 0;
+    coarseMarks[v * 4] = FL && planet.age[v] < 1e5 ? 1 : 0;
+    coarseMarks[v * 4 + 1] = lava > 0.0005 ? Math.min(1, lava * 8 + 0.03) : 0;
+    // Lava just set: black, weathering back into the ground's colour over a minute or two. Carried as
+    // where it lies (1 or 0) and that times how black it still is, so the shader can divide the one
+    // by the other and have the blackness even right up to a clean edge.
+    const set = lava <= 0.0005 && planet.age[v] < 240 ? 1 : 0;
+    coarseMarks[v * 4 + 3] = set;
+    coarseMarks[v * 4 + 2] = set * Math.exp(-planet.age[v] / 45);
     const kind = LIFE ? ecology.kind[v] : -1, wash = kind >= 0 ? WASH[kind] : null, washBy = wash ? WASH_STRENGTH * Math.min(1, planet.life[v]) * (1 - hot) : 0;
     washWeight[v] += (washBy - washWeight[v]) * ease;
     for (let i = 0; i < 3; i++) {
@@ -415,10 +401,10 @@ function coarse(): void {
     const o = topo.nbrOffsets, l = topo.nbrList;
     for (let v = 0; v < N; v++) {
       let sum = 0;
-      for (let k = o[v]; k < o[v + 1]; k++) sum += coarseMarks[l[k] * 3];
-      markEase[v] = coarseMarks[v * 3] * 0.4 + (sum / Math.max(1, o[v + 1] - o[v])) * 0.6;
+      for (let k = o[v]; k < o[v + 1]; k++) sum += coarseMarks[l[k] * 4];
+      markEase[v] = coarseMarks[v * 4] * 0.4 + (sum / Math.max(1, o[v + 1] - o[v])) * 0.6;
     }
-    for (let v = 0; v < N; v++) coarseMarks[v * 3] = markEase[v];
+    for (let v = 0; v < N; v++) coarseMarks[v * 4] = markEase[v];
   }
 }
 
@@ -456,7 +442,7 @@ function draw(): void {
 function drawNow(): void {
   coarse();
   fine.carryDrawn(coarseHeight, coarseLand, fineHeight, landColour);
-  fine.carry(coarseMarks, fineMarks, 3);
+  fine.carry(coarseMarks, fineMarks, 4);
   const nm = ftopo.normals;
   for (let v = 0; v < FN; v++) {
     const r = 1 + RELIEF * Math.max(0, fineHeight[v]);

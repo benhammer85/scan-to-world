@@ -46,7 +46,7 @@ export const handleSurface: Handler = (message, post) => {
     normal[i] /= l; normal[i + 1] /= l; normal[i + 2] /= l;
   }
   // Where lava lies and where it has lain, carried as amounts, not colours: the shader draws their edges crisply.
-  const marks = new Float32Array(n * 3);
-  fine.carry(ask.shape.marks, marks, 3);
+  const marks = new Float32Array(n * 4);
+  fine.carry(ask.shape.marks, marks, 4);
   post({ height, land, position, normal, marks }, [height.buffer, land.buffer, position.buffer, normal.buffer, marks.buffer]);
 };
