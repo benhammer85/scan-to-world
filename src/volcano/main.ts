@@ -231,7 +231,9 @@ material.onBeforeCompile = (shader) => {
     .replace('#include <begin_vertex>', 'vec3 transformed = mix(aPrevPos, position, uBlend);');
   shader.uniforms.uBlend = blend;
   // The sea's colour is only its depth, so it's worked out here rather than sent: paler over the shallows.
-  shader.uniforms.uFlooded = { value: FLOODED ?? (SULPHUR ? ASH : PAPER) };
+  // (Drawn as a print, Io's sulphur is a lighter wash, with no dark rim, so it tints the ground rather than banding it.)
+  shader.uniforms.uFlooded = { value: FLOODED ?? (SULPHUR ? (LOOK ? ASH.clone().lerp(PAPER, 0.5) : ASH) : PAPER) };
+  shader.uniforms.uFloodRim = { value: SULPHUR && LOOK ? 0 : 1 };
   shader.uniforms.uFloodStrength = floodStrength;
   shader.uniforms.uTime = lavaClock;
   shader.uniforms.uPx = pxRatio;

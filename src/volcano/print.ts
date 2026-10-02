@@ -27,7 +27,7 @@ export const LOOKS: { id: string; look: Look; words: string }[] = [
 /** Declared before the shader's main(); uses its hash3, noise3 and uPx. */
 export const PRINT_FUNCTIONS = /* glsl */ `
   varying vec3 vS;
-  uniform float uFloodDots;
+  uniform float uFloodDots, uFloodRim;
   // Craters, as the charts draw them (see 'Craters' below): each one's middle and width, how long since it was dug, and the light in the world's own frame.
   uniform vec4 uCrater[64];
   uniform float uCraterAge[64];
@@ -117,6 +117,9 @@ export function printFragment(look: Look, sea: boolean): string {
       // The land: life's washes and ash, as their tint over the land's paper; and loose ochre over parts of it, never all.
       // Life's washes (and ash, and fresh rock) come as a soft tint; laid as a hand-coloured map lays them,
       // each is an even wash with a ragged edge, a darker rim and grain, wherever it's more than a trace.
+      // How squarely the ground faces us: washes (and, below, lines) thin away at the world's rim, so
+      // nothing piles up there into a band.
+      float faceOn = clamp(dot(normalize(vS), normalize(vViewPosition)), 0.0, 1.0), washEdge = smoothstep(0.04, 0.35, faceOn);
       vec3 dt = clamp(1.0 - vColor.rgb / max(uLandPaper, vec3(0.01)), 0.0, 1.0);
       float ds = max(dt.r, max(dt.g, dt.b)), lr = ds / (0.05 + 0.05 * b1) + 0.3 * (b3 - 0.5), lrw = max(fwidth(lr), 1e-4);
       float inL = smoothstep(1.0 - lrw, 1.0 + lrw, lr), rimL = exp(-max(0.0, lr - 1.0) / 0.5) * 0.7;
@@ -131,9 +134,9 @@ export function printFragment(look: Look, sea: boolean): string {
       // sulphur): a wash of its own, with a ragged edge and a rim where it pooled.
       float flr = vMarks.x + 0.12 * (b3 - 0.5) + 0.08 * (b2 - 0.5), flw = max(fwidth(flr), 1e-4);
       float inF = smoothstep(0.5 - flw, 0.5 + flw, flr), rimF = exp(-max(0.0, (flr - 0.5) / flw) / (3.0 * uPx));
-      landCol = mix(landCol, uFlooded * (1.0 - 0.12 * rimF), uFloodStrength * inF * clamp(0.72 + 0.35 * (b2 - 0.5) + 0.25 * rimF, 0.0, 1.0));
+      landCol = mix(landCol, uFlooded * (1.0 - 0.12 * rimF * uFloodRim), washEdge * uFloodStrength * inF * clamp(0.72 + 0.35 * (b2 - 0.5) + 0.25 * rimF * uFloodRim, 0.0, 1.0));
       float floodDark = inF * uFloodStrength * uFloodDots; // (the Moon's dark seas are stippled darker, as lunar charts draw them)
-      landCol *= 1.0 - aO * (1.0 - vec3(0.77, 0.63, 0.36));
+      landCol *= 1.0 - aO * washEdge * (1.0 - vec3(0.77, 0.63, 0.36));
       col = mix(col, landCol * mix(vec3(1.0), col / paper, inSea), onLand);
 
       // Lava's marks.
@@ -153,7 +156,7 @@ export function printFragment(look: Look, sea: boolean): string {
       // Craters, as lunar charts draw them: a crescent of dots on the inside wall nearest the light (it's
       // in shadow), the far wall bare (it's lit), the floor lightly dotted, a rim line thick on the side
       // away from the light and thin towards it, and round a fresh one a spray of dots, in rays, that fades.
-      float crDark = 0.0, litWall = 0.0, rimInk = 0.0;
+      float crDark = 0.0, litWall = 0.0;
       for (int i = 0; i < 64; i++) {
         if (i >= uCraterCount) break;
         vec4 c = uCrater[i];
@@ -165,8 +168,10 @@ export function printFragment(look: Look, sea: boolean): string {
         float wall = smoothstep(0.3, 0.9, q) * (1.0 - smoothstep(0.96, 1.04, q));
         crDark += wall * smoothstep(-0.15, 0.65, side) * (0.75 + 0.3 * b3) + (1.0 - smoothstep(0.45, 0.75, q)) * 0.06;
         litWall = max(litWall, wall * smoothstep(0.05, -0.55, side));
-        float rimW = (0.3 + 1.0 * smoothstep(0.35, -0.85, side)) * uPx * (0.85 + 0.3 * b3);
-        rimInk = max(rimInk, (1.0 - smoothstep(rimW - 0.5, rimW + 0.5, abs(d - c.w) / px)) * smoothstep(0.08, 0.2, noise3(vDir * 30.0 + float(i))));
+        // The rim, in stipple rather than a line: a band of close dots just outside the wall, heavier on
+        // the side away from the light, as the charts dot a crater's lip.
+        float band = 1.0 - smoothstep(0.0, 0.16, abs(q - 1.06));
+        crDark += band * (0.55 + 0.9 * smoothstep(0.35, -0.85, side)) * edgeOn;
         float fresh = exp(-uCraterAge[i] / 120.0);
         if (fresh > 0.02 && q > 1.05) {
           vec3 u2 = cross(c.xyz, lt);
@@ -178,13 +183,12 @@ export function printFragment(look: Look, sea: boolean): string {
       float darkL = ${sea ? 'exp(-hl / 0.005) * 0.9 + exp(-hl / 0.02) * 0.3 + ' : ''}relief + ${sea ? '0.02' : '0.06 + smoothstep(0.35, -0.25, dot(S, L)) * 0.22'} + floodDark; // (a dry world is shaded round, away from the light, as an engraved globe is)
       ${look === 2 ? 'darkL += 0.45 * sin(black * 3.14159) * setOn; // the dried wash giving way to stipple' : ''}
       darkL = darkL * (1.0 - 0.85 * litWall) + crDark;
-      ${look === 1 ? 'darkL += 0.4 * pow(black, 1.2) * setOn * (1.0 - smoothstep(0.5 - lw, 0.5 + lw, lv)); // set rock: a little stipple under its engraved lines' : ''}
+      ${look === 1 ? 'darkL += 0.18 * pow(black, 1.2) * setOn * (1.0 - smoothstep(0.5 - lw, 0.5 + lw, lv)); // set rock: a little stipple under its engraved lines' : ''}
       float dark = mix(limb + exp(-max(-vH, 0.0) / 0.03) * 0.14, darkL + limb, onLand); // (and a little over the shallows, so what rises under the sea shows)
       if (dark > 0.035) col = mix(col, ink, stipple(vDir, 300.0, dark, 0.45 * uPx, px) * 0.92);
       // The graticule, over the open sea.
       col = mix(col, ink, edgeOn * graticule(vDir, px) * ${sea ? '(1.0 - onLand) * (1.0 - 0.5 * aSea) * 0.5' : '0.22'});
 
-      col = mix(col, ink, rimInk * onLand * 0.85 * edgeOn);
 
       ${look === 1 ? ENGRAVE : WATER}
 
@@ -206,13 +210,17 @@ const ENGRAVE = /* glsl */ `
       float heat = smoothstep(0.55, 1.8, lv) * (0.6 + 0.4 * smoothstep(0.3, 0.75, b1 * 0.6 + b2 * 0.4));
       float taper = smoothstep(0.5, 0.62, lv);
       float lnRun = max(engrave(along, fwA, heat, taper), engrave(swirl + uTime * 0.3, fwS, heat, taper) * (1.0 - smoothstep(0.004, 0.02, fwA)));
-      float lnSet = engrave(swirl, fwS, 0.3 * black, 1.0);
+      // (Set, it's hatched as an engraver shades rock: short parallel strokes on the slant, few of them, fixed to the ground.)
+      float hatch = dot(vDir, normalize(vec3(0.62, 0.78, 0.1))) * 520.0, fwH = fwidth(hatch);
+      float lnSet = engrave(hatch, fwH, 0.15 * black, 1.0);
       col *= mix(vec3(1.0), vec3(1.0, 0.88, 0.78), 0.55 * onL);
       col = mix(col, mix(uBlockDeep, uBlock, smoothstep(0.25, 0.8, heat)), lnRun * onL * 0.95);
       // Set: lines frozen where they stopped, in black; weathering breaks them into dashes, then dots, then nothing.
       float hs = setOn * (1.0 - onL);
-      float dash = smoothstep(0.0, 0.1, noise3(vDir * 70.0 + vec3(floor(swirl + 0.5) * 1.9)) - (1.0 - black) * 0.95);
-      col = mix(col, ink, hs * step(0.02, black) * lnSet * dash * 0.9);
+      // Short strokes, sparse, fewer as it weathers until none are left.
+      float strokes = smoothstep(0.0, 0.08, noise3(vDir * vec3(140.0, 40.0, 140.0) + vec3(floor(hatch + 0.5) * 1.7)) - 0.62 + 0.3 * black);
+      col *= mix(vec3(1.0), vec3(0.86, 0.84, 0.81), hs * black * 0.7 * washEdge);
+      col = mix(col, ink, hs * step(0.02, black) * lnSet * strokes * 0.75 * edgeOn);
       // Its edge: one fine line.
       col = mix(col, uBlockDeep, (1.0 - smoothstep(0.45 * uPx - 0.5, 0.45 * uPx + 0.5, abs(lv - 0.5) / lw)) * step(0.5 - 2.0 * lw, lv) * 0.9);`;
 
