@@ -51,6 +51,7 @@ import { Chain, CHAIN } from './chain';
 import { measureSecond, secondWords, type Second } from './second';
 import { loadSystem, saveSystem, worldFor, recordPlayed, madeCount } from './system';
 import { openSystem, closeSystem } from './systemChart';
+import { Streaks, type Field } from './streaks';
 import { LOOKS, PRINT_FUNCTIONS, LAMP_PRINT_FUNCTIONS, LAMP_PRINT, printFragment, type Look } from './print';
 
 const $ = (id: string) => document.getElementById(id)!;
@@ -82,6 +83,7 @@ function fit(): void {
   look();
   camera.updateProjectionMatrix();
   for (const pen of pens) pen.setResolution(w, h, renderer.getPixelRatio());
+  halfScreen.value.set((w * renderer.getPixelRatio()) / 2, (h * renderer.getPixelRatio()) / 2);
   sizeFrame(w, h);
 }
 /** How far the world is lifted up the page (a share of its height): at the end, to leave the foot for the chart. */
@@ -95,6 +97,8 @@ function look(): void {
   camera.updateProjectionMatrix();
 }
 const pens: PlotterLines[] = [];
+/** Half the drawing's size in device pixels (for lines a set number of pixels wide). */
+const halfScreen = { value: new THREE.Vector2(1, 1) };
 addEventListener('resize', fit);
 new ResizeObserver(fit).observe(stage);
 
@@ -138,6 +142,7 @@ if (RUN === null) remember('volcano.world', WORLD.id);
  */
 const LOOK_ID = ASKED.get('look') ?? remembered('volcano.look') ?? 'wood';
 const LOOK: Look = LOOKS.find((l) => l.id === LOOK_ID)?.look ?? 1;
+const SEA = WORLD.rules.terrain === 'ocean';
 const P = WORLD.palette, LIFE = WORLD.rules.life !== false, ICE = WORLD.rules.terrain === 'ice';
 /** On Io, the plumes' sulphur is drawn as the flood mark is elsewhere: in a clean-edged band, as a geological map draws a unit. */
 const SULPHUR = (WORLD.rules.ashRing ?? 0) > 0;
@@ -184,6 +189,8 @@ const positions = new Float32Array(FN * 3);
 const landColour = new Float32Array(FN * 3), fineHeight = new Float32Array(FN);
 /** Where lava lies (how thick) and where it has lain (this fire's, or an earlier one's): amounts, so their edges are drawn crisp in each pixel. */
 const fineMarks = new Float32Array(FN * 4), prevMarks = new Float32Array(FN * 4);
+/** How the lava is moving, carried to the finer surface: its streaks run along it. */
+const fineFlow = new Float32Array(FN * 3), prevFlow = new Float32Array(FN * 3);
 geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
 geometry.setAttribute('color', new THREE.BufferAttribute(landColour, 3));
 geometry.setAttribute('aH', new THREE.BufferAttribute(fineHeight, 1));
@@ -197,6 +204,8 @@ geometry.setAttribute('aPrevColour', new THREE.BufferAttribute(prevColour, 3));
 geometry.setAttribute('aPrevH', new THREE.BufferAttribute(prevHeight, 1));
 geometry.setAttribute('aMarks', new THREE.BufferAttribute(fineMarks, 4));
 geometry.setAttribute('aPrevMarks', new THREE.BufferAttribute(prevMarks, 4));
+geometry.setAttribute('aFlow', new THREE.BufferAttribute(fineFlow, 3));
+geometry.setAttribute('aPrevFlow', new THREE.BufferAttribute(prevFlow, 3));
 geometry.setIndex(new THREE.BufferAttribute(ftopo.triangles, 1));
 const blend = { value: 1 }, blendFrom = { at: 0, span: 0.5 };
 /** How strongly ground lava has lain on is marked: less, as the ice moon's new ice greys in its long age. */
@@ -209,11 +218,21 @@ const lavaClock = { value: 0 }, pxRatio = { value: 1 };
  * their own colour carried across the surface, and where the height crosses the sea the one gives
  * way to the other in the space of a pixel, so the coast is a clean edge, not a smear.
  */
+/** The craters for the print's shader (the latest 64 of them), and the light in the world's own frame, so a crater's shadow falls the right way however it's turned. */
+const CRATERS = 64, craterAt = Array.from({ length: CRATERS }, () => new THREE.Vector4()), craterAge = new Float32Array(CRATERS), craterCount = { value: 0 };
+const LIGHT_VIEW = new THREE.Vector3(-0.55, 0.6, 0.6).normalize(), lightObj = new THREE.Vector3(), unturn = new THREE.Quaternion();
+function cratering(): void {
+  const all = planet.craters, from = Math.max(0, all.length - CRATERS);
+  for (let i = from; i < all.length; i++) { const c = all[i]; craterAt[i - from].set(c.x, c.y, c.z, c.r); craterAge[i - from] = planet.seconds - c.born; }
+  craterCount.value = all.length - from;
+  // (The camera looks straight down at the world, unturned, so its frame is the scene's.)
+  lightObj.copy(LIGHT_VIEW).applyQuaternion(unturn.copy(group.quaternion).invert());
+}
 const material = new THREE.MeshLambertMaterial({ vertexColors: true, dithering: true });
 material.onBeforeCompile = (shader) => {
   shader.vertexShader = shader.vertexShader
-    .replace('void main() {', 'attribute float aH;\nattribute float aPrevH;\nattribute vec3 aPrevPos;\nattribute vec3 aPrevColour;\nattribute vec4 aMarks;\nattribute vec4 aPrevMarks;\nuniform float uBlend;\nvarying float vH;\nvarying vec4 vMarks;\nvarying vec3 vDir;\nvarying vec3 vN;\nvarying vec3 vS;\nvoid main() {')
-    .replace('#include <color_vertex>', '#include <color_vertex>\n  vColor.rgb = mix(aPrevColour, color.rgb, uBlend);\n  vH = mix(aPrevH, aH, uBlend);\n  vMarks = mix(aPrevMarks, aMarks, uBlend);\n  vDir = normalize(position);\n  vN = normalize(normalMatrix * normal);\n  vS = normalize(normalMatrix * normalize(position));')
+    .replace('void main() {', 'attribute float aH;\nattribute float aPrevH;\nattribute vec3 aPrevPos;\nattribute vec3 aPrevColour;\nattribute vec4 aMarks;\nattribute vec4 aPrevMarks;\nattribute vec3 aFlow;\nattribute vec3 aPrevFlow;\nvarying vec3 vFlow;\nuniform float uBlend;\nvarying float vH;\nvarying vec4 vMarks;\nvarying vec3 vDir;\nvarying vec3 vN;\nvarying vec3 vS;\nvoid main() {')
+    .replace('#include <color_vertex>', '#include <color_vertex>\n  vColor.rgb = mix(aPrevColour, color.rgb, uBlend);\n  vH = mix(aPrevH, aH, uBlend);\n  vMarks = mix(aPrevMarks, aMarks, uBlend);\n  vDir = normalize(position);\n  vN = normalize(normalMatrix * normal);\n  vS = normalize(normalMatrix * normalize(position));\n  vFlow = mix(aPrevFlow, aFlow, uBlend);')
     .replace('#include <begin_vertex>', 'vec3 transformed = mix(aPrevPos, position, uBlend);');
   shader.uniforms.uBlend = blend;
   // The sea's colour is only its depth, so it's worked out here rather than sent: paler over the shallows.
@@ -230,6 +249,10 @@ material.onBeforeCompile = (shader) => {
   shader.uniforms.uDeep = { value: DEEP };
   shader.uniforms.uLandPaper = { value: PAPER };
   shader.uniforms.uFloodDots = { value: WORLD.id === 'moon' ? 0.35 : 0 };
+  shader.uniforms.uCrater = { value: craterAt };
+  shader.uniforms.uCraterAge = { value: craterAge };
+  shader.uniforms.uCraterCount = craterCount;
+  shader.uniforms.uLightObj = { value: lightObj };
   // The woodblock's colours: vermilion, deeper at the edge, hot orange at the core (as working values, not hex: as first seen and liked);
   // on the ice moons, where the lava is water, its blues.
   shader.uniforms.uBlock = { value: ICE ? new THREE.Color(P.lava) : new THREE.Color(0.85, 0.24, 0.12) };
@@ -293,11 +316,23 @@ for (const pen of [...landPens, ...seaPens]) { pen.width = 2; pens.push(pen); gr
 let frontPen = 0, fadeFrom = -1;
 const CROSS_FADE = 1.2;
 landPens[1].opacity = seaPens[1].opacity = 0;
+/** Whether a contour is a small loop lying wholly inside a crater (drawn as a print, the crater is drawn as itself instead). */
+function inCrater(l: Polyline): boolean {
+  if (!l.closed) return false;
+  const p = l.points;
+  return planet.craters.some((c) => {
+    for (let i = 0; i < p.length; i += 3) {
+      const r = Math.hypot(p[i], p[i + 1], p[i + 2]) || 1;
+      if (Math.hypot(p[i] / r - c.x, p[i + 1] / r - c.y, p[i + 2] / r - c.z) > c.r * 1.3) return false;
+    }
+    return true;
+  });
+}
 /** Put new lines in the set not showing, and begin fading it in. */
 function newLines(land: Polyline[], sea: Polyline[]): void {
   if (fadeFrom >= 0) finishFade();
   const back = 1 - frontPen;
-  landPens[back].setLines(land, 'settle');
+  landPens[back].setLines(LOOK ? land.filter((l) => !inCrater(l)) : land, 'settle');
   // (Drawn as a print, the sea's contours are left out, but on the deep ocean, where they show what's rising beneath.)
   seaPens[back].setLines(LOOK && WORLD.id !== 'deep' ? [] : sea, 'settle');
   fadeFrom = performance.now() / 1000;
@@ -484,12 +519,12 @@ const shaper = offThread(() => { if (noWorkers) throw new Error('no workers'); r
 shaper.post({ init: { parts: fine.parts, triangles: ftopo.triangles.slice(), basePositions: fbase.slice(), relief: RELIEF } });
 let shapeOut = false;
 shaper.onmessage = (data) => {
-  const d = data as { height: Float32Array; land: Float32Array; position: Float32Array; normal: Float32Array; marks: Float32Array };
+  const d = data as { height: Float32Array; land: Float32Array; position: Float32Array; normal: Float32Array; marks: Float32Array; flow: Float32Array };
   // What was being drawn becomes where the new one eases in from, over about as long as it took to come.
-  prevHeight.set(fineHeight); prevColour.set(landColour); prevPositions.set(positions); prevMarks.set(fineMarks);
-  fineMarks.set(d.marks);
+  prevHeight.set(fineHeight); prevColour.set(landColour); prevPositions.set(positions); prevMarks.set(fineMarks); prevFlow.set(fineFlow);
+  fineMarks.set(d.marks); fineFlow.set(d.flow);
   fineHeight.set(d.height); landColour.set(d.land); positions.set(d.position); normals.set(d.normal);
-  for (const name of ['position', 'normal', 'color', 'aH', 'aPrevPos', 'aPrevColour', 'aPrevH', 'aMarks', 'aPrevMarks']) geometry.getAttribute(name).needsUpdate = true;
+  for (const name of ['position', 'normal', 'color', 'aH', 'aPrevPos', 'aPrevColour', 'aPrevH', 'aMarks', 'aPrevMarks', 'aFlow', 'aPrevFlow']) geometry.getAttribute(name).needsUpdate = true;
   const now = performance.now() / 1000;
   blendFrom.span = Math.min(0.8, Math.max(0.05, now - blendFrom.at));
   blendFrom.at = now;
@@ -500,8 +535,8 @@ function draw(): void {
   if (shapeOut) return;
   coarse();
   shapeOut = true;
-  const height = coarseHeight.slice(), land = coarseLand.slice(), marks = coarseMarks.slice();
-  shaper.post({ shape: { height, land, marks } }, [height.buffer, land.buffer, marks.buffer]);
+  const height = coarseHeight.slice(), land = coarseLand.slice(), marks = coarseMarks.slice(), flow = planet.current.slice();
+  shaper.post({ shape: { height, land, marks, flow } }, [height.buffer, land.buffer, marks.buffer, flow.buffer]);
 }
 
 /** Redraw the surface here and now: at the start, on taking up a kept world, and for the kept chart. */
@@ -556,7 +591,7 @@ let lastLines = -1, lastLife = -1;
  */
 const drafts = offThread(() => { if (noWorkers) throw new Error('no workers'); return new DraftsWorker(); }, handleDrafts);
 const nearestOf = Uint32Array.from({ length: FN }, (_, f) => fine.nearestCoarse(f));
-drafts.post({ init: { triangles: ftopo.triangles.slice(), basePositions: fbase.slice(), relief: RELIEF, parts: fine.parts, nearest: nearestOf, interval: WORLD.contour ?? 0.035 } });
+drafts.post({ init: { triangles: ftopo.triangles.slice(), basePositions: fbase.slice(), relief: RELIEF, parts: fine.parts, nearest: nearestOf, interval: (WORLD.contour ?? 0.035) * (LOOK ? 1.6 : 1) } }); // (drawn as a print, the stipple shows the slopes: the contours are set wider, so they don't crowd)
 let linesOut = false, lifeOut = false;
 drafts.onmessage = (data) => {
   const d = data as { lines?: { land: Packed; sea: Packed }; life?: { kinds: Float32Array[]; foam: Float32Array } };
@@ -672,14 +707,16 @@ function setMark(m: THREE.Sprite, v: number, size: number): void {
 let chain = WORLD.goal === 'ring' ? new Chain(planet.plume, planet.driftDirection) : null;
 const FLOODED_ENOUGH = 0.7;
 // Small dots, as a chart marks a route or a boundary: pale where it's still to do, inked where it's done.
-const aimInk = new Stipple(P.landInkHigh, 'dot', 2.5), aimPencil = new Stipple('#' + new THREE.Color(P.pencil).lerp(new THREE.Color(P.landInk), 0.6).getHexString(), 'dot', 1.6);
+// (Drawn as a print, the aim's dots are a little bolder and darker, to stand clear of the stipple.)
+const AIM_INK = LOOK ? '#2b1d14' : P.landInkHigh, AIM_BIG = LOOK ? 1.3 : 1;
+const aimInk = new Stipple(AIM_INK, 'dot', 2.5 * AIM_BIG), aimPencil = new Stipple('#' + new THREE.Color(P.pencil).lerp(new THREE.Color(P.landInk), LOOK ? 0.8 : 0.6).getHexString(), 'dot', 1.6 * AIM_BIG);
 /** On the ocean world, the stretch the heat is on and the next, still to do, a little stronger: where to build now. */
-const aimNext = new Stipple(P.landInk, 'dot', 2.3);
+const aimNext = new Stipple(LOOK ? AIM_INK : P.landInk, 'dot', 2.3 * AIM_BIG);
 /**
  * On Mars and the ice moon, a ring of the same dots round the heat, drawn once about the pole and
  * turned to follow the heat smoothly, so it glides with it rather than stepping.
  */
-const gauge = new THREE.Group(), gaugeInk = new Stipple(P.landInkHigh, 'dot', 2.5), gaugePencil = new Stipple('#' + new THREE.Color(P.pencil).lerp(new THREE.Color(P.landInk), 0.6).getHexString(), 'dot', 1.6);
+const gauge = new THREE.Group(), gaugeInk = new Stipple(AIM_INK, 'dot', 2.5 * AIM_BIG), gaugePencil = new Stipple('#' + new THREE.Color(P.pencil).lerp(new THREE.Color(P.landInk), LOOK ? 0.8 : 0.6).getHexString(), 'dot', 1.6 * AIM_BIG);
 const gaugeAt = new THREE.Vector3(planet.plume.x, planet.plume.y, planet.plume.z).normalize();
 for (const s of [aimInk, aimPencil, aimNext, gaugeInk, gaugePencil]) { s.byDirection = true; s.linger = 1.5; (s.object.material as THREE.Material).depthTest = false; }
 for (const s of [aimInk, aimPencil, aimNext]) group.add(s.object);
@@ -827,6 +864,77 @@ if (LAMP) {
   }));
   shell.renderOrder = 2;
   group.add(shell);
+}
+/**
+ * The woodblock's streaks (see streaks.ts): particles carried by the running lava (or, on the lava
+ * lamp, by each blob as it floats or sinks), their trails cut into the block as paper.
+ */
+const streaks = LOOK === 1 ? new Streaks(LAMP ? 260 : 650, new THREE.Color(0.957, 0.937, 0.89), pxRatio, halfScreen) : null;
+if (streaks) group.add(streaks.object);
+/** The vertex nearest a point, walking from one near it. */
+function walkTo(x: number, y: number, z: number, from: number): number {
+  let v = from;
+  const d = (w: number) => (base[w * 3] - x) ** 2 + (base[w * 3 + 1] - y) ** 2 + (base[w * 3 + 2] - z) ** 2;
+  for (let moves = 0; moves < 60; moves++) {
+    let best = v;
+    for (let k = topo.nbrOffsets[v]; k < topo.nbrOffsets[v + 1]; k++) if (d(topo.nbrList[k]) < d(best)) best = topo.nbrList[k];
+    if (best === v) break;
+    v = best;
+  }
+  return v;
+}
+const lavaField: Field = {
+  at(x, y, z, hint) {
+    const v = walkTo(x, y, z, hint), c = planet.current;
+    const alive = planet.lava[v] > LAVA_WHOLE * 0.25 && (!SEA || surface(v) > 0);
+    // (The sim's figure is how fast lava is handed on, which is quicker than the lava itself moves: carried at a little over half of it, the streaks keep to the flow.)
+    const k = 0.6;
+    return { vx: c[v * 3] * k, vy: c[v * 3 + 1] * k, vz: c[v * 3 + 2] * k, lift: 1 + RELIEF * Math.max(0, drawnHeight[v]) + 0.008, alive, hint: v };
+  },
+};
+/** On the lava lamp: inside a blob, carried the way it's going (up if it's hot, down if it's cold), as the sim moves it. */
+const blobField: Field = {
+  at(x, y, z, hint) {
+    const g = planet.gravity, q = planet.plume, up = g ? { x: -g.x, y: -g.y, z: -g.z } : q, ul = Math.hypot(up.x, up.y, up.z) || 1;
+    for (const b of planet.blobs) {
+      if (Math.acos(Math.min(1, x * b.x + y * b.y + z * b.z)) > blobRadius(b.area) * 0.9) continue;
+      const s = b.heat > 0.45 ? 1 : -1, tx = (s * up.x) / ul, ty = (s * up.y) / ul, tz = (s * up.z) / ul, d = tx * x + ty * y + tz * z;
+      const speed = (planet.k.blobSpeed * Math.sqrt(Math.abs(b.heat - 0.45) / 0.55)) / Math.sqrt(Math.sqrt(b.area / 4)) * 1.6 + 0.012;
+      const l = Math.hypot(tx - d * x, ty - d * y, tz - d * z) || 1;
+      return { vx: ((tx - d * x) / l) * speed, vy: ((ty - d * y) / l) * speed, vz: ((tz - d * z) / l) * speed, lift: 1 + RELIEF * 0.08 + 0.004, alive: b.heat > 0.15, hint };
+    }
+    return { vx: 0, vy: 0, vz: 0, lift: 1, alive: false, hint };
+  },
+};
+/** Where running lava lies, looked for now and then, for new streaks to start. */
+let lavaSpots: number[] = [], spotsAt = -1;
+function streaming(dt: number): void {
+  if (!streaks) return;
+  const now = performance.now() / 1000;
+  if (LAMP) {
+    const bs = planet.blobs.filter((b) => b.heat > 0.15);
+    const area = bs.reduce((t, b) => t + blobRadius(b.area) ** 2, 0);
+    streaks.update(dt, blobField, () => {
+      if (!bs.length) return null;
+      const b = bs[Math.floor(Math.random() * bs.length)], r = blobRadius(b.area) * 0.8 * Math.sqrt(Math.random()), a = Math.random() * Math.PI * 2;
+      const t1 = new THREE.Vector3(b.x, b.y, b.z).cross(Math.abs(b.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0)).normalize(), t2 = new THREE.Vector3(b.x, b.y, b.z).cross(t1);
+      const p = new THREE.Vector3(b.x, b.y, b.z).addScaledVector(t1, Math.cos(a) * r).addScaledVector(t2, Math.sin(a) * r).normalize();
+      return { x: p.x, y: p.y, z: p.z, hint: 0 };
+    }, Math.min(200, Math.round(area * 0.6e5)));
+    return;
+  }
+  if (now - spotsAt > 0.3) {
+    spotsAt = now;
+    lavaSpots = [];
+    const c = planet.current;
+    for (let v = 0; v < N; v++) if (planet.lava[v] > LAVA_WHOLE * 0.5 && (!SEA || surface(v) > 0) && Math.hypot(c[v * 3], c[v * 3 + 1], c[v * 3 + 2]) > 0.01) lavaSpots.push(v);
+  }
+  streaks.update(dt, lavaField, () => {
+    if (!lavaSpots.length) return null;
+    const v = lavaSpots[Math.floor(Math.random() * lavaSpots.length)], j = 0.012;
+    const x = base[v * 3] + (Math.random() - 0.5) * j, y = base[v * 3 + 1] + (Math.random() - 0.5) * j, z = base[v * 3 + 2] + (Math.random() - 0.5) * j, r = Math.hypot(x, y, z);
+    return { x: x / r, y: y / r, z: z / r, hint: v };
+  }, Math.min(500, Math.round(lavaSpots.length * 1.4)));
 }
 /** Each frame: the blobs, the bud at the heat, and the pool on the far shore, into the shell's uniforms. */
 function lamping(): void {
@@ -1587,7 +1695,7 @@ function world(): Kept {
     free: FREE,
     way: chain ? { a: chain.a, b: chain.b } : null,
     seed,
-    planet: snapshotOf(planet, ['topo', 'next', 'firmness', 'scale', 'news']),
+    planet: snapshotOf(planet, ['topo', 'next', 'firmness', 'scale', 'news', 'current', 'moving']),
     ecology: snapshotOf(ecology, ['pl', 'topo', 'scale']),
     islands: snapshotOf(islands, ['topo', 'scale']),
     page: { lesson, embersSaid, shownEra, eraFrom: eraFrom.slice(), turn: group.quaternion.toArray() as number[], dist },
@@ -1646,7 +1754,9 @@ if (RUN === null) for (const w of WORLDS) {
   });
   $('begin').querySelector('.worlds')!.appendChild(b);
 }
-($('begin').querySelector('.then') as HTMLElement).textContent = WORLD.then + ' ' + WORLD.second + (FIRES ? ` The ground your last ${FIRES === 1 ? 'fire' : `${FIRES} fires`} left is still here, and this fire starts somewhere new.` : '');
+// The card says little: a mood, one true thing about the world, and what to do and what it does. Play teaches the rest.
+($('begin').querySelector('.then') as HTMLElement).textContent = WORLD.then;
+($('begin').querySelector('.second') as HTMLElement).textContent = WORLD.second;
 // The best there has been at the second aim on this world, under the card's words.
 {
   const best = RUN === null ? bestSoFar() : null;
@@ -1654,14 +1764,14 @@ if (RUN === null) for (const w of WORLDS) {
     const el = document.createElement('p');
     el.className = 'best';
     el.textContent = `best so far: ${secondWords(WORLD.goal, best)}`;
-    $('begin').querySelector('.then')!.after(el);
+    $('begin').querySelector('.second')!.after(el);
   }
 }
 // The solar system, from the card: its worlds played as a run, in whatever order (see system.ts).
 {
   const link = document.createElement('p');
   link.className = 'system-link';
-  link.textContent = SYSTEM ? `your solar system · ${madeCount(SYSTEM)} of ${SYSTEM.bodies.length} worlds made` : 'a solar system: worlds played as one run';
+  link.textContent = SYSTEM ? `voyage · ${madeCount(SYSTEM)} of ${SYSTEM.bodies.length} worlds made` : 'voyage — a run of worlds, one after another';
   link.addEventListener('pointerdown', (e) => { e.stopPropagation(); openSystem(); });
   $('begin').appendChild(link);
 }
@@ -1669,7 +1779,7 @@ if (RUN === null) for (const w of WORLDS) {
 if (RUN === null) {
   const link = document.createElement('p');
   link.className = 'free';
-  link.textContent = FREE ? 'play against the clock instead' : 'free play: the heat never runs out';
+  link.textContent = FREE ? 'keep time — the fire burns out' : 'wander — the fire never cools';
   link.addEventListener('pointerdown', (e) => {
     e.stopPropagation();
     const q = new URLSearchParams(location.search);
@@ -1684,7 +1794,7 @@ if (RUN === null) {
 {
   const row = document.createElement('p');
   row.className = 'look';
-  row.append('drawn with ');
+  row.append('ink: ');
   LOOKS.forEach((l, i) => {
     if (i) row.append(' · ');
     const b = document.createElement('span');
@@ -1701,7 +1811,6 @@ if (RUN === null) {
   });
   $('begin').appendChild(row);
 }
-if (FREE) ($('begin').querySelector('.then') as HTMLElement).textContent = `Free play: the heat never runs out, and nothing ends until you end it, at the top. ${WORLD.then}`;
 // The end of a fire in free play: when you choose.
 $('finish').addEventListener('pointerdown', (e) => e.stopPropagation());
 $('finish').addEventListener('click', () => { planet.end(); $('finish').classList.remove('shown'); });
@@ -1714,7 +1823,7 @@ void pages().then((all) => {
   if (!all.length) return;
   const link = document.createElement('p');
   link.className = 'atlas-link';
-  link.textContent = `the atlas · ${all.length} ${all.length === 1 ? 'chart' : 'charts'}`;
+  link.textContent = `the atlas · ${all.length} ${all.length === 1 ? 'plate' : 'plates'}`;
   link.addEventListener('pointerdown', (e) => { e.stopPropagation(); openAtlas(all); });
   $('begin').appendChild(link);
 });
@@ -1854,6 +1963,7 @@ renderer.setAnimationLoop(() => {
   blend.value = Math.min(1, (performance.now() / 1000 - blendFrom.at) / blendFrom.span);
   lavaClock.value = seconds;
   pxRatio.value = renderer.getPixelRatio();
+  if (LOOK) cratering();
   if (WORLD.goal === 'cover' && ending) floodStrength.value = 0.85 * (1 - 0.5 * Math.min(1, (planet.seconds - ending.from) / LONG_AGE));
   crossFade();
   drawMarks();
@@ -1865,6 +1975,7 @@ renderer.setAnimationLoop(() => {
   aimNext.update(dt);
   if (WORLD.goal === 'orbit') orbiting(dt);
   if (LAMP) lamping();
+  if (streaks) streaming(dt);
   if (SUNS) sunning();
   if (WORLD.goal === 'feed') feeding(dt);
   if (WORLD.goal === 'height' || WORLD.goal === 'cover' || WORLD.goal === 'round' || WORLD.goal === 'land') {
@@ -1887,4 +1998,4 @@ renderer.setAnimationLoop(() => {
   turnedSince();
 });
 
-if (import.meta.env.DEV) (window as unknown as { volcano: unknown }).volcano = { planet, group, base, puffs, ecology, islands, rotate, draw, save, world, frameCost, kindDots, chain: () => chain, aim: () => aimInk, lines: () => { lastLines = -1; redrawLines(1e6); }, life: () => { lastLife = -10; redrawLife(1e6); } };
+if (import.meta.env.DEV) (window as unknown as { volcano: unknown }).volcano = { planet, group, base, streaks, renderer, scene, camera, lavaSpots: () => lavaSpots, puffs, ecology, islands, rotate, draw, save, world, frameCost, kindDots, chain: () => chain, aim: () => aimInk, lines: () => { lastLines = -1; redrawLines(1e6); }, life: () => { lastLife = -10; redrawLife(1e6); } };

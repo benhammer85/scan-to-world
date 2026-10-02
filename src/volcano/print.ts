@@ -17,15 +17,20 @@
  */
 export type Look = 0 | 1 | 2;
 export const LOOKS: { id: string; look: Look; words: string }[] = [
-  { id: 'wood', look: 1, words: 'woodblock lava' },
-  { id: 'water', look: 2, words: 'watercolour lava' },
-  { id: 'plain', look: 0, words: 'as before' },
+  { id: 'wood', look: 1, words: 'woodblock' },
+  { id: 'water', look: 2, words: 'watercolour' },
+  { id: 'plain', look: 0, words: 'last used' },
 ];
 
 /** Declared before the shader's main(); uses its hash3, noise3 and uPx. */
 export const PRINT_FUNCTIONS = /* glsl */ `
   varying vec3 vS;
   uniform float uFloodDots;
+  // Craters, as the charts draw them (see 'Craters' below): each one's middle and width, how long since it was dug, and the light in the world's own frame.
+  uniform vec4 uCrater[64];
+  uniform float uCraterAge[64];
+  uniform int uCraterCount;
+  uniform vec3 uLightObj;
   uniform vec3 uBlock, uBlockDeep, uBlockHot; // the woodblock's colours: vermilion, or on the ice moons, water's blues
   vec3 hash33(vec3 p) {
     p = vec3(dot(p, vec3(127.1, 311.7, 74.7)), dot(p, vec3(269.5, 183.3, 246.1)), dot(p, vec3(113.5, 271.9, 124.6)));
@@ -48,16 +53,19 @@ export const PRINT_FUNCTIONS = /* glsl */ `
       float lq = length(q);
       if (abs(lq - D) > 0.5) continue;
       q *= D / lq;
-      float rr = r * (0.8 + 0.45 * h.y);
+      float rr = r * (0.6 + 0.8 * h.y * h.y + 0.25 * h.z);
       float th = 0.04 + h.x * 0.96, on = smoothstep(th - 0.03, th + 0.03, dark);
       cov = max(cov, on * (1.0 - smoothstep(rr - 0.5 * ps, rr + 0.5 * ps, length(p - q))));
     }
     return mix(cov, clamp(dark * 1.6 * r * r, 0.0, 0.6), smoothstep(0.35, 0.7, ps));
   }
-  // Two lattices, turned against each other and of different sizes, so no grid shows however dense.
+  // Three lattices, turned against each other and of different sizes, each carrying a share of the
+  // darkness, which is capped short of every dot: so however dark, no lattice ever fills and shows as a grid.
   float stipple(vec3 dir, float D, float dark, float rPx) {
+    float k = min(dark, 1.6) * 0.42;
     vec3 d2 = vec3(dir.y * 0.8 + dir.z * 0.6, dir.z * 0.8 - dir.y * 0.6, dir.x).yzx;
-    return max(lattice(dir * D, D, dark * 0.6, rPx, 0.0), lattice(d2 * (D * 1.29), D * 1.29, dark * 0.6, rPx, 31.0));
+    vec3 d3 = vec3(dir.z * 0.36 - dir.x * 0.93, dir.x * 0.36 + dir.z * 0.93, dir.y).zxy;
+    return max(max(lattice(dir * D, D, k, rPx, 0.0), lattice(d2 * (D * 1.29), D * 1.29, k, rPx, 31.0)), lattice(d3 * (D * 1.13), D * 1.13, k, rPx, 57.0));
   }
   // Round halftone dots on the same kind of lattice, each rCells across (in cells): rock breaking up.
   float halftone(vec3 dir, float D, float rCells) {
@@ -151,12 +159,41 @@ export function printFragment(look: Look, sea: boolean): string {
       float limb = exp(-clamp(dot(S, V), 0.0, 1.0) * 22.0) * 0.35;
       float hl = max(vH, 0.0);
       float relief = max(0.0, dot(S, L) - dot(Nn, L)) * ${sea ? '2.2' : '3.6'};
+      // Craters, as lunar charts draw them: a crescent of dots on the inside wall nearest the light (it's
+      // in shadow), the far wall bare (it's lit), the floor lightly dotted, a rim line thick on the side
+      // away from the light and thin towards it, and round a fresh one a spray of dots, in rays, that fades.
+      float crDark = 0.0, litWall = 0.0, rimInk = 0.0;
+      for (int i = 0; i < 64; i++) {
+        if (i >= uCraterCount) break;
+        vec4 c = uCrater[i];
+        float d = length(vDir - c.xyz), q = d / c.w;
+        if (q > 2.4) continue;
+        vec3 t = vDir - c.xyz; t -= dot(t, c.xyz) * c.xyz; t /= max(length(t), 1e-6);
+        vec3 lt = uLightObj - dot(uLightObj, c.xyz) * c.xyz; lt /= max(length(lt), 1e-4);
+        float side = dot(t, lt) * smoothstep(0.0, 0.25, q); // +1 on the side towards the light (and nothing at the very middle)
+        float wall = smoothstep(0.3, 0.9, q) * (1.0 - smoothstep(0.96, 1.04, q));
+        crDark += wall * smoothstep(-0.15, 0.65, side) * (0.75 + 0.3 * b3) + (1.0 - smoothstep(0.45, 0.75, q)) * 0.06;
+        litWall = max(litWall, wall * smoothstep(0.05, -0.55, side));
+        float rimW = (0.3 + 1.0 * smoothstep(0.35, -0.85, side)) * uPx * (0.85 + 0.3 * b3);
+        rimInk = max(rimInk, (1.0 - smoothstep(rimW - 0.5, rimW + 0.5, abs(d - c.w) / px)) * smoothstep(0.08, 0.2, noise3(vDir * 30.0 + float(i))));
+        float fresh = exp(-uCraterAge[i] / 120.0);
+        if (fresh > 0.02 && q > 1.05) {
+          vec3 u2 = cross(c.xyz, lt);
+          float ang = atan(dot(t, u2), dot(t, lt));
+          float ray = smoothstep(0.5, 0.8, noise3(vec3(cos(ang) * 3.0, sin(ang) * 3.0, float(i) * 5.0)));
+          crDark += fresh * (0.25 + 0.6 * ray) * exp(-(q - 1.05) / 0.45) * 0.55;
+        }
+      }
       float darkL = ${sea ? 'exp(-hl / 0.005) * 0.9 + exp(-hl / 0.02) * 0.3 + ' : ''}relief + ${sea ? '0.02' : '0.06 + smoothstep(0.35, -0.25, dot(S, L)) * 0.22'} + floodDark; // (a dry world is shaded round, away from the light, as an engraved globe is)
       ${look === 2 ? 'darkL += 0.45 * sin(black * 3.14159) * setOn; // the dried wash giving way to stipple' : ''}
+      darkL = darkL * (1.0 - 0.85 * litWall) + crDark;
+      ${look === 1 ? 'darkL += 1.7 * pow(black, 1.1) * setOn * (1.0 - smoothstep(0.5 - lw, 0.5 + lw, lv)); // set rock: black in close stipple, thinning as it weathers' : ''}
       float dark = mix(limb + exp(-max(-vH, 0.0) / 0.03) * 0.14, darkL + limb, onLand); // (and a little over the shallows, so what rises under the sea shows)
       if (dark > 0.035) col = mix(col, ink, stipple(vDir, 300.0, dark, 0.45 * uPx) * 0.92);
       // The graticule, over the open sea.
       col = mix(col, ink, graticule(vDir, px) * ${sea ? '(1.0 - onLand) * (1.0 - 0.5 * aSea) * 0.5' : '0.22'});
+
+      col = mix(col, ink, rimInk * onLand * 0.85);
 
       ${look === 1 ? WOOD : WATER}
 
@@ -171,25 +208,20 @@ const WOOD = /* glsl */ `
       float lvR = lv + (dFdx(lv) * 1.6 - dFdy(lv) * 1.1) * uPx + 0.05 * (noise3(vDir * 45.0) - 0.5);
       float onR = smoothstep(0.5 - lw, 0.5 + lw, lvR);
       float hs = setOn * (1.0 - onR);
-      if (hs > 0.0 && black > 0.02) {
-        col = mix(col, ink, hs * halftone(vDir, 320.0, 0.6 * pow(black, 0.6)) * 0.88);
-      }
+      // (Set rock's darkness is added to the stipple's, above: dense, random dots that thin as it weathers.)
       // Running: the colour block, printed a little off its outline.
       if (onR > 0.0) {
         float inPx = (lvR - 0.5) / lw;
         // Vermilion, deeper at the edge, and hot orange only in the core of a broad flow.
-        float core = smoothstep(14.0, 70.0, inPx / uPx) * (0.5 + 0.9 * (b2 - 0.5));
+        // (Not by how far in from the edge: that's measured a triangle at a time, and showed the triangles.)
+        float core = smoothstep(0.85, 1.0, lv) * smoothstep(0.4, 0.75, b1 * 0.6 + b2 * 0.4);
         vec3 lc = mix(uBlockDeep, uBlock, smoothstep(0.0, 4.0, inPx / uPx));
         lc = mix(lc, uBlockHot, clamp(core, 0.0, 0.55));
         // Ink squeezed darker at the edge, and the wood's grain in the flat.
         lc *= 1.0 - 0.2 * exp(-max(inPx, 0.0) / (2.5 * uPx));
         lc *= 0.93 + 0.07 * (0.5 + 0.5 * sin(dot(vDir, vec3(0.2, 1.0, 0.3)) * 900.0 + noise3(vDir * 10.0) * 16.0));
-        // The cuts: across the flow (along its level lines, drifting downhill), and following its edge.
-        // (Along the level lines of a smooth field fixed to the ground, not of the height: the height is
-        // drawn a triangle at a time, and its level lines would show the triangles.)
-        float swirl = (noise3(vDir * 9.0) * 0.7 + noise3(vDir * 23.0 + 5.0) * 0.3) * 30.0;
-        float cut = max(gouges(swirl - uTime * 0.3, smoothstep(0.52, 0.7, lv)), gouges(lv * 4.0, 1.0) * step(0.6, lv));
-        lc = mix(lc, paper, cut);
+        // (The cuts are the streaks, as a wind map draws the wind: see streaks.ts, drawn over this as the lava carries them.)
+        float cut = 0.0;
         float speck = step(0.86, noise3(vDir * 260.0) * 0.6 + hash3(floor(vDir * 520.0)) * 0.4);
         col = mix(col, lc, onR * (1.0 - speck * 0.7 * (1.0 - cut)));
       }
@@ -243,9 +275,6 @@ export const LAMP_PRINT = /* glsl */ `
         col = mix(col, vec3(0.95, 0.55, 0.17), smoothstep(2.0, 5.0, f) * heat * 0.6);
         float inPx = (f - 0.88) / w;
         col *= 1.0 - 0.2 * exp(-max(inPx, 0.0) / (2.5 * uPx));
-        float swirl = (noise3(vDir * 9.0) * 0.7 + noise3(vDir * 23.0 + 5.0) * 0.3) * 30.0;
-        float cut = gouges(swirl - uTime * 0.3 * heat, smoothstep(0.0, 4.0 * uPx, inPx));
-        col = mix(col, paper, cut);
         float kw = (0.45 + 1.2 * noise3(vDir * 22.0 + 4.0)) * uPx;
         col = mix(col, ink, (1.0 - smoothstep(kw - 0.6, kw + 0.6, abs(inPx))) * 0.92);
         gl_FragColor = vec4(col, a * (0.85 + 0.12 * smoothstep(0.0, 0.4, heat)));`;

@@ -34,7 +34,8 @@
       #begin p { margin: 0; text-align: center; }
       #begin .world { font-size: 13px; letter-spacing: 0.18em; opacity: 0.55; font-variant: small-caps; }
       #begin .first { font-size: 22px; font-style: italic; max-width: 20em; line-height: 1.4; padding: 0 24px; }
-      #begin .then { font-size: 14px; opacity: 0.6; max-width: 22em; line-height: 1.5; padding: 0 24px; }
+      #begin .second { margin-top: -12px; }
+      #begin .second, #begin .then { text-wrap: pretty; font-size: 14px; opacity: 0.6; max-width: 22em; line-height: 1.5; padding: 0 24px; }
       #begin .worlds { display: flex; flex-wrap: wrap; justify-content: center; max-width: min(100%, 30em); padding: 0 12px; box-sizing: border-box; gap: 0 10px; font-size: 13px; letter-spacing: 0.12em; margin-top: 26px; }
       #begin .worlds span { opacity: 0.35; padding: 8px 6px; cursor: pointer; }
       #begin .worlds span.here { opacity: 0.75; border-bottom: 1px solid currentColor; cursor: default; }
@@ -89,12 +90,12 @@
     <div id="event" class="engraved"></div>
     <div id="legend" class="engraved"></div>
     <p id="again" class="engraved">touch to start again</p>
-    <button id="keep">keep the chart</button>
+    <button id="keep">keep the plate</button>
     <button id="finish">end the fire</button>
     <button id="worlds" aria-label="the worlds"></button>
     <div id="atlas" class="engraved"><div class="head"><h2>The atlas</h2><button class="close">back</button></div><div class="pages"></div><div class="view"><img alt=""></div></div>
     <div id="system" class="engraved"><div class="head"><h2>A solar system</h2><button class="close">back</button></div><p class="about"></p><div class="plate"></div><div class="foot"></div></div>
-    <div id="begin" class="engraved"><p class="world"></p><p class="first"></p><p class="then"></p><p class="touch">touch to begin</p><p class="worlds"></p></div>
+    <div id="begin" class="engraved"><p class="world"></p><p class="first"></p><p class="then"></p><p class="second"></p><p class="touch">touch to begin</p><p class="worlds"></p></div>
     <script type="module" src="/src/volcano/main.ts"></script>
   </body>
 </html>

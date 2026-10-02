@@ -358,6 +358,12 @@ export class Planet {
 
   private eruptions: Eruption[] = [];
   private next: Float32Array;
+  /**
+   * How the lava is moving at each vertex (x, y, z in the world's frame, in units a second), eased
+   * over half a second or so: for drawing it as a wind map draws the wind. Nothing reads it but the page.
+   */
+  readonly current: Float32Array;
+  private moving: Float32Array;
   private firmness: Float32Array;
   private drift: { x: number; y: number; z: number };
   private scale: number;
@@ -393,6 +399,8 @@ export class Planet {
     this.sunk = new Float32Array(n);
     this.wear = new Float32Array(n);
     this.next = new Float32Array(n);
+    this.current = new Float32Array(n * 3);
+    this.moving = new Float32Array(n * 3);
     this.slowDelta = new Float32Array(n);
     this.firmness = new Float32Array(n);
     for (let v = 0; v < n; v++) {
@@ -503,9 +511,15 @@ export class Planet {
    * by where they are and how wide, for a world whose aim is to flood them.
    */
   readonly basins: { x: number; y: number; z: number; r: number }[] = [];
+  /**
+   * Every bowl dug in this world's ground (basins, craters, stones' craters): where, how wide, and
+   * when (in `seconds`; the first ones long before the fire). For drawing them as a chart does.
+   */
+  readonly craters: { x: number; y: number; z: number; r: number; born: number }[] = [];
   /** A crater: a bowl `r` across and `depth` deep about a point, with a raised rim. */
   private bowl(c: { x: number; y: number; z: number }, r: number, depth: number): void {
     const p = this.topo.basePositions, n = this.rock.length;
+    this.craters.push({ x: c.x, y: c.y, z: c.z, r, born: -1e4 });
     for (let v = 0; v < n; v++) {
       const d = Math.hypot(p[v * 3] - c.x, p[v * 3 + 1] - c.y, p[v * 3 + 2] - c.z) / r;
       if (d > 1.6) continue;
@@ -937,6 +951,7 @@ export class Planet {
   /** A stone from the sky, at a vertex: a crater with a raised rim, and death round it. Its heat joins yours. */
   strike(at: number): void {
     const p = this.topo.basePositions, r = this.k.crater;
+    this.craters.push({ x: p[at * 3], y: p[at * 3 + 1], z: p[at * 3 + 2], r, born: this.seconds });
     for (let v = 0; v < this.rock.length; v++) {
       const d = Math.hypot(p[v * 3] - p[at * 3], p[v * 3 + 1] - p[at * 3 + 1], p[v * 3 + 2] - p[at * 3 + 2]);
       if (d > r * 2.5) continue;
@@ -1088,6 +1103,8 @@ export class Planet {
     const t = this.topo, n = this.rock.length, next = this.next, p = t.basePositions;
     const G = this.gravity, R = this.k.relief;
     next.set(this.lava);
+    const mv = this.moving;
+    mv.fill(0);
     for (let v = 0; v < n; v++) {
       const l = this.lava[v];
       if (l < this.k.thin) continue;
@@ -1113,12 +1130,22 @@ export class Planet {
       // flow's thick core pushes its thin margin ahead of it in blunt, rounded lobes.
       const lv = l * Math.sqrt(l), out = Math.min(l * 0.5, this.k.flow * dt * sum * lv / (lv + VISCOUS_15));
       next[v] -= out;
+      let mx = 0, my = 0, mz = 0;
       for (let q = a; q < b; q++) {
         const w = t.nbrList[q], d = drop(w);
-        if (d > 0) next[w] += (out * Math.pow(d, this.k.channel)) / weights;
+        if (d > 0) {
+          const share = (out * Math.pow(d, this.k.channel)) / weights;
+          next[w] += share;
+          mx += share * (p[w * 3] - p[v * 3]); my += share * (p[w * 3 + 1] - p[v * 3 + 1]); mz += share * (p[w * 3 + 2] - p[v * 3 + 2]);
+        }
       }
+      // (The share of this vertex's lava that left, times how far it went, a second.)
+      const per = 1 / (l * Math.max(dt, 1e-4));
+      mv[v * 3] = mx * per; mv[v * 3 + 1] = my * per; mv[v * 3 + 2] = mz * per;
     }
     this.lava.set(next);
+    const ease = 1 - Math.exp(-dt / 0.5), cur = this.current;
+    for (let i = 0; i < cur.length; i++) cur[i] += (mv[i] - cur[i]) * ease;
   }
 
   /** Lava cools into rock: slowly on land, fast where it meets the sea. A real covering clears the ground. */
