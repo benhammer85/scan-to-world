@@ -34,7 +34,7 @@ import type { Polyline } from '../terrain/contours';
 import { GestureRecognizer } from '../interact/gestures';
 import { Stipple } from '../render/stipple';
 import { signSvg } from '../render/signs';
-import { Planet, VOLCANO, type Era } from './sim';
+import { Planet, VOLCANO, blobRadius, type Era } from './sim';
 import { FineSurface } from './fine';
 import { Ecology, KINDS } from './ecology';
 import { Islands } from './islands';
@@ -744,6 +744,62 @@ function feeding(dt: number): void {
   ringInk.set(ink);
   ringPencil.set(pencil);
 }
+/**
+ * The lava lamp's blobs: drawn on a shell just over the glass as metaballs, each blob's pull
+ * falling away with distance and summed, the edge where the sum is one. So two blobs near each
+ * other neck and join as the wax in a lamp does, with a clean edge a pixel wide. Hot, a blob glows
+ * orange with a paler heart; cooling, it deepens to red; its edge a shade darker. The bud at the
+ * heat, and the pool on the far shore, are drawn as blobs too.
+ */
+const BLOBS = 26, LAMP = !!WORLD.rules.lamp;
+const blobAt = Array.from({ length: BLOBS }, () => new THREE.Vector4()), blobHeat = new Float32Array(BLOBS);
+const blobCount = { value: 0 };
+if (LAMP) {
+  const shell = new THREE.Mesh(new THREE.SphereGeometry(1 + RELIEF * 0.08, 160, 120), new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    uniforms: { uBlob: { value: blobAt }, uHeat: { value: blobHeat }, uCount: blobCount, uHot: { value: new THREE.Color(P.lava) }, uCool: { value: new THREE.Color(P.deepLava) }, uHeart: { value: new THREE.Color('#f6c27a') } },
+    vertexShader: /* glsl */ `
+      varying vec3 vDir;
+      void main() { vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+    fragmentShader: /* glsl */ `
+      uniform vec4 uBlob[${BLOBS}];
+      uniform float uHeat[${BLOBS}];
+      uniform int uCount;
+      uniform vec3 uHot, uCool, uHeart;
+      varying vec3 vDir;
+      void main() {
+        float f = 0.0, hs = 0.0;
+        for (int i = 0; i < ${BLOBS}; i++) {
+          if (i >= uCount) break;
+          float r = uBlob[i].w, d = acos(clamp(dot(vDir, uBlob[i].xyz), -1.0, 1.0));
+          // Its pull: one at its edge, falling away beyond it, and nothing far off (so blobs don't swell each other from afar).
+          float k = max(0.0, r * r / (d * d + 1e-6) - 0.12);
+          f += k;
+          hs += uHeat[i] * k;
+        }
+        float heat = f > 0.0 ? hs / f : 0.0, w = max(fwidth(f), 1e-4), a = smoothstep(0.88 - w, 0.88 + w, f);
+        if (a <= 0.0) discard;
+        vec3 col = mix(uCool, uHot, smoothstep(0.2, 0.9, heat));
+        col = mix(col, uHeart, smoothstep(1.6, 5.0, f) * heat * 0.6);
+        col = mix(col * 0.78, col, smoothstep(0.88, 1.5, f));
+        gl_FragColor = vec4(col, a * (0.45 + 0.55 * smoothstep(0.0, 0.4, heat)));
+        #include <colorspace_fragment>
+      }`,
+  }));
+  shell.renderOrder = 2;
+  group.add(shell);
+}
+/** Each frame: the blobs, the bud at the heat, and the pool on the far shore, into the shell's uniforms. */
+function lamping(): void {
+  let n = 0;
+  const put = (x: number, y: number, z: number, area: number, heat: number) => { if (n < BLOBS && area > 0.05) { blobAt[n].set(x, y, z, blobRadius(area)); blobHeat[n] = heat; n++; } };
+  const q = planet.plume, s = planet.shore;
+  if (s && planet.pooled > 0) put(s.x, s.y, s.z, Math.min(planet.pooled, (s.r * 0.9 / blobRadius(1)) ** 2), 0.75);
+  if (!planet.over) put(q.x, q.y, q.z, planet.pressure, 1);
+  for (const b of planet.blobs) put(b.x, b.y, b.z, b.area, Math.max(0, b.heat));
+  blobCount.value = n;
+}
 let orbitShown = -1;
 /** The ring turns slowly; it's inked as far as the rock thrown up goes, and in the long age the rock gathers into the moon. */
 function orbiting(dt: number): void {
@@ -773,8 +829,8 @@ function orbiting(dt: number): void {
   }
 }
 const HEIGHT = WORLD.height ?? { target: 0, kmPerUnit: 40 };
-const ROUND = Math.round((WORLD.round ?? 0) * 100), COVER = Math.round((WORLD.cover ?? 0) * 100), PLUMES = WORLD.plumes ?? 0, ORBIT = WORLD.orbit ?? 0;
-let aimDone = 0, aimOf = WORLD.goal === 'ring' ? CHAIN.stretches : WORLD.goal === 'height' ? HEIGHT.target : WORLD.goal === 'cover' ? COVER : WORLD.goal === 'round' ? ROUND : WORLD.goal === 'plumes' ? PLUMES : WORLD.goal === 'orbit' || WORLD.goal === 'feed' ? 100 : planet.basins.length, lastAim = -10;
+const POOL = WORLD.pool ?? 0, ROUND = Math.round((WORLD.round ?? 0) * 100), COVER = Math.round((WORLD.cover ?? 0) * 100), PLUMES = WORLD.plumes ?? 0, ORBIT = WORLD.orbit ?? 0;
+let aimDone = 0, aimOf = WORLD.goal === 'ring' ? CHAIN.stretches : WORLD.goal === 'height' ? HEIGHT.target : WORLD.goal === 'cover' ? COVER : WORLD.goal === 'round' ? ROUND : WORLD.goal === 'ridge' ? Planet.RIDGE_STRETCHES : WORLD.goal === 'lamp' ? 100 : WORLD.goal === 'plumes' ? PLUMES : WORLD.goal === 'orbit' || WORLD.goal === 'feed' ? 100 : planet.basins.length, lastAim = -10;
 /** How much of the aim is done now, reckoned afresh. */
 function reckonAim(): void {
   if (chain) { aimDone = chain.update(planet, topo); aimOf = CHAIN.stretches; }
@@ -782,6 +838,8 @@ function reckonAim(): void {
   else if (WORLD.goal === 'cover') { aimDone = planet.covered * 100; aimOf = COVER; }
   else if (WORLD.goal === 'plumes') { aimDone = planet.plumes.length; aimOf = PLUMES; }
   else if (WORLD.goal === 'round') { aimDone = planet.roundness * 100; aimOf = ROUND; }
+  else if (WORLD.goal === 'ridge') { aimDone = planet.ridgeRaise().filter((r) => r >= planet.k.ridge).length; aimOf = Planet.RIDGE_STRETCHES; }
+  else if (WORLD.goal === 'lamp') { aimDone = (100 * planet.pooled) / POOL; aimOf = 100; }
   else if (WORLD.goal === 'orbit' || WORLD.goal === 'feed') { aimDone = (100 * planet.orbit) / ORBIT; aimOf = 100; }
   else { aimDone = planet.basins.filter((b) => planet.flooded(b) >= FLOODED_ENOUGH).length; aimOf = planet.basins.length; }
 }
@@ -791,6 +849,8 @@ let toldHeight = 0, toldDone = 0, toldAimAt = -1e9;
 const AIM_WORDS = WORLD.goal === 'ring' ? 'Keep building islands as the heat travels the dotted line. A gap breaks the chain'
   : WORLD.goal === 'basins' ? 'Flood each dotted basin with lava'
   : WORLD.goal === 'cover' ? `Make ${COVER}% of the old ice new`
+  : WORLD.goal === 'ridge' ? 'Raise a ridge all the way round the dotted equator'
+  : WORLD.goal === 'lamp' ? 'Bring warm blobs to the dotted shore on the far side'
   : WORLD.goal === 'round' ? `Fill the hollows until the asteroid is ${ROUND}% rounder`
   : WORLD.goal === 'plumes' ? `Raise ${PLUMES} great plumes at high tide, each outside the dotted rings`
   : WORLD.goal === 'orbit' ? 'Throw up enough rock to make a moon'
@@ -800,11 +860,11 @@ const AIM_WORDS = WORLD.goal === 'ring' ? 'Keep building islands as the heat tra
 function tellAim(now: number): void {
   if (planet.over || ending) return;
   if (now - toldAimAt > 180) { toldAimAt = now; announce(AIM_WORDS); }
-  if (WORLD.goal === 'height' || WORLD.goal === 'cover' || WORLD.goal === 'round' || WORLD.goal === 'orbit' || WORLD.goal === 'feed') return;
+  if (WORLD.goal === 'height' || WORLD.goal === 'cover' || WORLD.goal === 'round' || WORLD.goal === 'orbit' || WORLD.goal === 'feed' || WORLD.goal === 'lamp') return;
   const done = Math.round(aimDone);
   if (done > toldDone && done < aimOf) {
     toldAimAt = now;
-    announce(WORLD.goal === 'ring' ? `${done} of ${aimOf} stretches living` : WORLD.goal === 'plumes' ? `${done} of ${aimOf} great plumes` : `${done} of ${aimOf} basins flooded`);
+    announce(WORLD.goal === 'ring' ? `${done} of ${aimOf} stretches living` : WORLD.goal === 'ridge' ? `${done} of ${aimOf} stretches raised` : WORLD.goal === 'plumes' ? `${done} of ${aimOf} great plumes` : `${done} of ${aimOf} basins flooded`);
   }
   toldDone = done;
 }
@@ -838,6 +898,17 @@ function drawAim(now: number): void {
     // The moon to be: its ring of dots round the world, inked as the rock reaches it (see `orbiting`).
     const step = Math.floor(aimDone / 10) * 10;
     if (begun && step > toldHeight && step < aimOf) { toldHeight = step; toldAimAt = now; announce(`${step}% of a moon in orbit`); }
+    return;
+  }
+  if (WORLD.goal === 'lamp' && planet.shore) {
+    // The far shore, in dots, inked round as it fills; told at the foot by the quarter.
+    const step = Math.floor(aimDone / 25) * 25;
+    if (begun && step > toldHeight && step < aimOf) { toldHeight = step; toldAimAt = now; announce(`The far shore is ${step}% full`); }
+    const pts = circleAt(planet.shore, planet.shore.r), filled = Math.round(pts.length * Math.min(1, aimDone / aimOf)), ink: number[] = [], pencil: number[] = [];
+    onGround(pts.slice(0, filled), ink);
+    onGround(pts.slice(filled), pencil);
+    aimInk.set(ink);
+    aimPencil.set(pencil);
     return;
   }
   if (WORLD.goal === 'feed') {
@@ -883,6 +954,14 @@ function drawAim(now: number): void {
     // The route in small dots round the world: pale across what's still to do, inked where held.
     const per = 6, pts = chain.points(per), here = Math.floor(chain.where(planet.plume).round * CHAIN.stretches);
     chain.held.forEach((h, i) => onGround(pts.slice(i * per, (i + 1) * per), h ? inked : (i - here + CHAIN.stretches) % CHAIN.stretches <= 1 ? next : pencilled));
+  } else if (WORLD.goal === 'ridge') {
+    // The equator, in dots, round the spin's axis: a stretch inked once it's raised into ridge.
+    const raise = planet.ridgeRaise(), per = 8, n = Planet.RIDGE_STRETCHES;
+    for (let k = 0; k < n; k++) {
+      const pts = [];
+      for (let i = 0; i < per; i++) { const a = ((k + i / per) / n) * Math.PI * 2; pts.push({ x: Math.cos(a), y: 0, z: Math.sin(a) }); }
+      onGround(pts, raise[k] >= planet.k.ridge ? inked : pencilled);
+    }
   } else if (WORLD.goal === 'plumes') {
     // Round each great plume counted, the ground it has taken: another must rise outside it. The
     // one the heat is inside now, if any, doubled: a plume here wouldn't count.
@@ -961,9 +1040,11 @@ function arrows(dt: number): void {
  * and never over what the world is saying itself. Then nothing more, but the aim now and then.
  */
 const CUES: { ready: () => boolean; say?: string; begin?: () => void; done: (since: number) => boolean }[] = [
-  { ready: () => true, say: 'Hold the world level, and the heat gathers under the smoke', done: () => planet.pressure > planet.k.least * 2 },
-  { ready: () => !planet.pouring, say: 'Tip it, and the lava pours out', done: (s) => planet.tally.flows + planet.tally.bursts > 0 || s > 40 },
-  { ready: () => planet.pressure > planet.k.explosive * 0.9 && !planet.pouring, say: WORLD.goal === 'feed' ? 'The smoke is heavy: tip the world towards the giant now' : 'The smoke is heavy: tip it now, and it erupts', done: (s) => planet.tally.bursts > 0 || s > 40 },
+  { ready: () => true, say: LAMP ? 'Hold the world level, and a glowing blob buds and grows' : 'Hold the world level, and the heat gathers under the smoke', done: () => planet.pressure > planet.k.least * 2 },
+  { ready: () => !planet.pouring, say: LAMP ? 'Tip it, and the blob lets go, and floats to the top' : 'Tip it, and the lava pours out', done: (s) => planet.tally.flows + planet.tally.bursts > 0 || s > 40 },
+  ...(LAMP ? [{ ready: () => planet.blobs.length > 0, say: 'Turn the far shore to the top, and the warm blobs float there', done: (s: number) => s > 25 }] : []),
+  ...(WORLD.goal === 'ridge' ? [{ ready: () => planet.tally.flows + planet.tally.bursts > 0, say: 'Wherever it comes out, the spin flings the lava to the equator', done: (s: number) => s > 25 }] : []),
+  { ready: () => !LAMP && planet.pressure > planet.k.explosive * 0.9 && !planet.pouring, say: WORLD.goal === 'feed' ? 'The smoke is heavy: tip the world towards the giant now' : 'The smoke is heavy: tip it now, and it erupts', done: (s) => planet.tally.bursts > 0 || s > 40 },
   ...(WORLD.rules.rises ? [{ ready: () => true, say: 'Turn somewhere else to the top, and the heat creeps there', done: (s: number) => s > 25 }] : []),
   ...(LIFE ? [{ ready: () => ecology.held.length > 0, say: 'Six kinds of life, each needing its own ground', begin: () => { $('legend').classList.add('new'); }, done: (s: number) => ecology.kept > 0 || s > 60 }] : []),
   ...(WORLD.goal === 'plumes' ? [
@@ -1094,7 +1175,7 @@ function effects(dt: number): void {
   // (And on Io, the dark column is for a burst that would be a great plume, which the tide decides as much as the pressure.)
   const share = Math.min(1, planet.pressure / planet.capNow), brink = planet.pressure > planet.capNow * 0.85;
   const full = planet.k.great > 0 ? planet.throwOf(planet.pressure) >= planet.k.great : planet.bursting;
-  if (!planet.over && !planet.pouring && planet.pressure > 0.5 && smokeIn <= 0) {
+  if (!LAMP && !planet.over && !planet.pouring && planet.pressure > 0.5 && smokeIn <= 0) {
     smokeIn = brink ? 0.08 : full ? 0.15 : 0.5 - 0.3 * Math.min(1, planet.pressure / VOLCANO.explosive);
     // A few dots at a time, so the plume is a soft stipple, fuller as the heat gathers.
     for (let i = 0, k = full ? 6 : 3; i < k; i++) puffs.add('smoke', p[v0 * 3], p[v0 * 3 + 1], p[v0 * 3 + 2], full ? 1.4 + share : 0.5 + share, Math.random, up);
@@ -1142,6 +1223,8 @@ const GOAL_WORDS: Record<typeof WORLD.goal, { age: (met: boolean) => string; don
   height: { age: () => 'Time passes, and the storms go on', done: `Done: the mountain reaches ${HEIGHT.target} km`, title: ['The great mountain', 'Not high enough yet'], got: () => `${Math.round(aimDone)} of ${aimOf} km high` },
   cover: { age: () => 'Time passes, and the new ice greys', done: `Done: ${COVER}% of the ice made new`, title: ['New ice', 'Not enough new ice'], got: () => `${Math.round(aimDone)}% of the ice new, of ${aimOf}%` },
   plumes: { age: () => 'Time passes, and the sulphur settles', done: `Done: ${PLUMES} great plumes`, title: ['Great plumes', 'Not enough great plumes'], got: () => `${aimDone} of ${aimOf} great plumes` },
+  ridge: { age: () => 'Time passes, and small stones still fall', done: 'Done: a ridge all the way round', title: ['Ringed with a ridge', 'Not yet ringed'], got: () => `${aimDone} of ${aimOf} stretches raised` },
+  lamp: { age: () => 'Time passes, and the blobs sink into the deep', done: 'Done: the far shore is full', title: ['The far shore filled', 'The far shore not filled'], got: () => `the far shore ${Math.min(100, Math.round(aimDone))}% full` },
   round: { age: () => 'Time passes, and small stones still fall', done: `Done: the asteroid is ${ROUND}% rounder`, title: ['A rounder world', 'Not round enough yet'], got: () => `${Math.round(aimDone)}% rounder, of ${aimOf}%` },
   feed: { age: () => 'Time passes, and the ring slowly thins', done: 'Done: the ring is full', title: ['The ring is full', 'The ring is not full'], got: () => `the ring ${Math.min(100, Math.round(aimDone))}% full` },
   orbit: { age: (met) => (met ? 'Time passes, and the ring of rock gathers into a moon' : 'Time passes, and the rock in orbit falls back'), done: 'Done: enough rock in orbit for a moon', title: ['A moon is made', 'No moon yet'], got: () => `${Math.min(100, Math.round(aimDone))}% of a moon in orbit` },
@@ -1640,6 +1723,7 @@ renderer.setAnimationLoop(() => {
   aimPencil.update(dt);
   aimNext.update(dt);
   if (WORLD.goal === 'orbit') orbiting(dt);
+  if (LAMP) lamping();
   if (WORLD.goal === 'feed') feeding(dt);
   if (WORLD.goal === 'height' || WORLD.goal === 'cover' || WORLD.goal === 'round') {
     // The ring follows the heat, eased, so it glides as the heat creeps.

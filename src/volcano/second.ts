@@ -16,6 +16,10 @@
  *                   pressure held deep into the tide, which costs plumes, and risks the cone.
  *   An asteroid     round it, and keep the lava in its hollows: pouring fast, or bursting, spills
  *                   it over the lumps, which rounds it less and leaves it messier.
+ *   A spinning world  ring its equator with a ridge, and raise it high: spreading thin finishes
+ *                   the ring fastest, a tall ridge asks you to stay.
+ *   A lava lamp     fill the far shore, and in as great a blob as can be: a great blob lasts the
+ *                   journey, but takes long to gather, and the heat runs on meanwhile.
  *   Enceladus       fill the giant's ring, and frost the moon itself white: every burst aimed at
  *                   the ring is frost the moon doesn't get.
  *   A young Earth   make a moon, as big as it can be: bigger bursts throw more, but held too long
@@ -41,6 +45,8 @@ export function secondWords(goal: World['goal'], value: number): string {
     case 'height': return `a base ${value} km wide`;
     case 'cover': return `the largest sheet ${value}%`;
     case 'round': return `${value}% of the lava kept in the hollows`;
+    case 'ridge': return `a ridge ${value} km high`;
+    case 'lamp': return `${value}% of the pool brought in one blob`;
     case 'feed': return `${value}% of the moon frosted new`;
     case 'plumes': return `the widest plume ${value.toLocaleString('en')} km across`;
     case 'orbit': return value > 0 ? `a moon ${value.toLocaleString('en')} km across` : 'no moon';
@@ -80,6 +86,12 @@ export function measureSecond(world: World, pl: Planet, topo: Topology, islands:
       if (pl.start[v] < mean) low++;
     }
     value = all ? Math.round((100 * low) / all) : 0;
+  } else if (world.goal === 'ridge') {
+    // How high the ridge stands, on average round the whole equator, in km.
+    const raise = pl.ridgeRaise();
+    value = Math.round((raise.reduce((a, b) => a + b, 0) / raise.length) * (world.height?.kmPerUnit ?? 40) * 10) / 10;
+  } else if (world.goal === 'lamp') {
+    value = pl.pooled > 0 ? Math.round((100 * pl.pooledBiggest) / pl.pooled) : 0;
   } else if (world.goal === 'feed') {
     value = Math.round(pl.covered * 100);
   } else if (world.goal === 'orbit') {

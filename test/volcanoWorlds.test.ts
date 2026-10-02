@@ -16,7 +16,7 @@ const run = (pl: Planet, seconds: number) => { for (let t = 0; t < seconds; t +=
 
 describe('the worlds', () => {
   it('come one after another, and each has its own aim', () => {
-    expect(WORLDS.map((w) => w.id)).toEqual(['ocean', 'moon', 'mars', 'ice', 'io', 'enceladus', 'asteroid', 'young']);
+    expect(WORLDS.map((w) => w.id)).toEqual(['ocean', 'moon', 'mars', 'ice', 'io', 'enceladus', 'asteroid', 'spin', 'lamp', 'young']);
     expect(worldOf('moon').goal).toBe('basins');
     expect(worldOf('nowhere').id).toBe('ocean');
     expect(nextWorld(worldOf('ocean'))!.id).toBe('moon');
@@ -25,7 +25,9 @@ describe('the worlds', () => {
     expect(nextWorld(worldOf('ice'))!.id).toBe('io');
     expect(nextWorld(worldOf('io'))!.id).toBe('enceladus');
     expect(nextWorld(worldOf('enceladus'))!.id).toBe('asteroid');
-    expect(nextWorld(worldOf('asteroid'))!.id).toBe('young');
+    expect(nextWorld(worldOf('asteroid'))!.id).toBe('spin');
+    expect(nextWorld(worldOf('spin'))!.id).toBe('lamp');
+    expect(nextWorld(worldOf('lamp'))!.id).toBe('young');
     expect(nextWorld(worldOf('young'))).toBe(null);
   });
 });
@@ -306,5 +308,66 @@ describe('free play', () => {
     pl.end();
     for (let t = 0; t < 60; t += 1 / 20) pl.step(1 / 20);
     expect(pl.over).toBe(true);
+  });
+});
+
+describe('a spinning world', () => {
+  it('flings its lava towards the equator', () => {
+    // The same pour, a little north of the equator, with the spin and without: where the lava ends up.
+    const lat = (spin: number) => {
+      const pl = new Planet(topo, nearest(0, 0.35, 0.94), 3, { ...worldOf('spin').rules, spin });
+      pl.stonesFall = false;
+      pl.gravity = { x: 0, y: -0.35, z: -0.94 };
+      pl.pressure = 6; pl.erupt();
+      for (let t = 0; t < 15; t += 1 / 20) pl.step(1 / 20);
+      let sum = 0, weight = 0;
+      for (let v = 0; v < pl.rock.length; v++) { const add = pl.rock[v] - pl.start[v]; if (add > 0.0005) { sum += add * p[v * 3 + 1]; weight += add; } }
+      return sum / weight;
+    };
+    expect(lat(worldOf('spin').rules.spin!)).toBeLessThan(lat(0) - 0.01);
+  });
+
+  it('counts a stretch of the equator as ridge once it is raised enough', () => {
+    const pl = new Planet(topo, nearest(1, 0, 0), 3, worldOf('spin').rules);
+    expect(pl.ridgeRaise().filter((r) => r >= pl.k.ridge).length).toBe(0);
+    for (let v = 0; v < pl.rock.length; v++) if (Math.abs(p[v * 3 + 1]) < 0.12 && p[v * 3] > 0.9) pl.rock[v] += 0.3;
+    expect(pl.ridgeRaise().filter((r) => r >= pl.k.ridge).length).toBeGreaterThan(0);
+  });
+});
+
+describe('the lava-lamp world', () => {
+  const make = () => {
+    const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('lamp').rules);
+    pl.gravity = { x: 0, y: 0, z: -1 }; // the heat uppermost: level
+    return pl;
+  };
+  it('grows a bud while level, and lets it go as a blob when tipped', () => {
+    const pl = make();
+    run(pl, 6);
+    expect(pl.blobs.length).toBe(0);
+    expect(pl.pressure).toBeGreaterThan(4);
+    pl.gravity = { x: 0.5, y: 0, z: -0.87 };
+    pl.step(1 / 20);
+    expect(pl.blobs.length).toBe(1);
+    expect(pl.pressure).toBe(0);
+  });
+
+  it('floats a hot blob to whatever is uppermost, and runs two hot ones together', () => {
+    const pl = make();
+    pl.blobs.push({ x: 0.6, y: 0, z: 0.8, area: 8, heat: 1 }, { x: 0.62, y: 0.03, z: 0.78, area: 6, heat: 1 });
+    pl.gravity = { x: -1, y: 0, z: 0 }; // +x uppermost
+    run(pl, 3);
+    expect(pl.blobs.length).toBe(1);
+    expect(pl.blobs[0].area).toBeCloseTo(14);
+    expect(pl.blobs[0].x).toBeGreaterThan(0.6);
+  });
+
+  it('lets a cold blob sink away, and pools a warm one that reaches the far shore', () => {
+    const pl = make();
+    const s = pl.shore!;
+    pl.blobs.push({ x: s.x, y: s.y, z: s.z, area: 10, heat: 0.8 }, { x: 0, y: 1, z: 0, area: 3, heat: 0.01 });
+    run(pl, 1);
+    expect(pl.pooled).toBeCloseTo(10);
+    expect(pl.blobs.length).toBe(0);
   });
 });

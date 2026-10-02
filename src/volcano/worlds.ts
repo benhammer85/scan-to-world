@@ -18,12 +18,16 @@
  *       thins away unless it's fed. Tip each burst towards the giant: the question is which way.
  *   VII A lumpy asteroid, not yet pulled round: fill its hollows with lava until it's a little
  *       round world, as Vesta began to be. The question is where not to put it.
- *   VIII A young Earth, with no moon yet: its cone holds the pressure down, the taller the more,
+ *   VIII A world spinning so fast it bulges, as Haumea does: lava is flung to its equator, and the
+ *       aim is a ridge all the way round it, as Iapetus has.
+ *   IX  A lava-lamp world: hot rock lighter than the deep, rising in blobs that float to whatever is
+ *       uppermost, cool, merge and sink. Carry them, merged big enough to last, to the far shore.
+ *   X   A young Earth, with no moon yet: its cone holds the pressure down, the taller the more,
  *       and the biggest bursts throw rock clear into orbit, where it gathers into a moon.
  */
 import type { Rules } from './sim';
 
-export type WorldId = 'ocean' | 'moon' | 'mars' | 'ice' | 'io' | 'enceladus' | 'asteroid' | 'young';
+export type WorldId = 'ocean' | 'moon' | 'mars' | 'ice' | 'io' | 'enceladus' | 'asteroid' | 'spin' | 'lamp' | 'young';
 
 export interface Palette {
   /** The ground: bare old rock, fresh basalt, ash, lava as it runs (and where it lies thick), and, for worlds that keep a mark of it, rock that lava has flooded. */
@@ -54,7 +58,7 @@ export interface World {
   /** Its second aim, for the card: one that pulls against the first (see second.ts). */
   second: string;
   palette: Palette;
-  goal: 'ring' | 'basins' | 'height' | 'cover' | 'plumes' | 'feed' | 'round' | 'orbit';
+  goal: 'ring' | 'basins' | 'height' | 'cover' | 'plumes' | 'feed' | 'round' | 'ridge' | 'lamp' | 'orbit';
   /** What kind of world it is, without its name: for a world of this kind round another star (see system.ts). */
   kind: string;
   /** For a world whose aim is height: how high, in km, and how many km a unit of the world's height stands for. */
@@ -63,6 +67,8 @@ export interface World {
   cover?: number;
   /** For a world whose aim is to be round: how much of its first spread from round must go. */
   round?: number;
+  /** For the lava lamp: how much must pool on the far shore. */
+  pool?: number;
   /** For a world whose aim is great plumes: how many. */
   plumes?: number;
   /** For a world whose aim is a moon: how much rock it takes, thrown into orbit; or, feeding a giant's ring, how much the ring must hold at once. */
@@ -236,9 +242,57 @@ export const WORLDS: World[] = [
     contour: 0.05,
   },
   {
+    id: 'spin',
+    kind: 'A spinning world',
+    numeral: 'VIII',
+    title: 'A spinning world',
+    first: 'A world spinning so fast it bulges at its middle.',
+    then: 'Its spin flings lava towards the equator, whatever the slope: wherever it comes out, it runs to the dotted line round its middle. Raise a ridge all the way round, all 16 stretches of it. The heat creeps to whatever you turn to the top.',
+    second: 'Finish the ridge fast, or raise it high?',
+    rules: {
+      terrain: 'spin', basins: 0, craters: 25, floor: 0.05, rough: 0.015, bulge: 0.08, spin: 2.5, ridge: 0.115,
+      waves: 0, rain: 0, sink: 0, swell: 0, life: false,
+      flow: 10, channel: 2, coolLand: 0.12,
+      drift: 0, rises: 0.04, heat: 520, rising: 1.2, steady: true,
+      impactEvery: [55, 95], impactWarning: 14, impactHeat: 5,
+    },
+    palette: {
+      // Pale slate, as of a world of ice and rock; fresh lava grey.
+      paper: '#d9dce0', basalt: '#9ea4ad', ash: '#c4c8ce', lava: '#b8563c', deepLava: '#8f3b28',
+      shallow: '#d4e3ec', deep: '#b1c8d8',
+      landInk: '#4a5260', landInkHigh: '#2f3642', pencil: '#aab1bc', seaInk: '#5b82a3',
+    },
+    goal: 'ridge',
+    height: { target: 0, kmPerUnit: 40 },
+  },
+  {
+    id: 'lamp',
+    kind: 'A lava-lamp world',
+    numeral: 'IX',
+    title: 'A lava-lamp world',
+    first: 'A world of glass, where hot rock is lighter than the deep.',
+    then: 'Nothing flows here. Held level, a glowing blob buds at the heat and grows; tip the world and it lets go. Hot, a blob floats to whatever you turn to the top, and cools as it goes; cold, it sinks back, and near the heat it warms again. Big blobs last longer but move slower, and two hot blobs that touch run together. Bring blobs, still warm, to the dotted shore on the far side, and fill it. Held too long, a bud bursts into small blobs.',
+    second: 'Many small blobs, or one great one?',
+    rules: {
+      terrain: 'glass', basins: 0, craters: 0, floor: 0.05, rough: 0.004,
+      waves: 0, rain: 0, sink: 0, swell: 0, life: false,
+      lamp: true, blobSpeed: 0.07, blobHot: 45,
+      drift: 0, rises: 0, heat: 400, rising: 1.0, steady: true,
+      impactEvery: [0, 0],
+    },
+    palette: {
+      // Lilac glass; the blobs glowing orange, deepening to red as they cool.
+      paper: '#ddd6e3', basalt: '#ddd6e3', ash: '#ddd6e3', lava: '#ea7a3a', deepLava: '#9c3a2a',
+      shallow: '#d4e3ec', deep: '#b1c8d8',
+      landInk: '#5a4f6b', landInkHigh: '#3e3450', pencil: '#b9afc7', seaInk: '#5b82a3',
+    },
+    goal: 'lamp',
+    pool: 140,
+  },
+  {
     id: 'young',
     kind: 'A young world',
-    numeral: 'VIII',
+    numeral: 'X',
     title: 'A young Earth',
     first: 'A young Earth, hot, and with no moon yet.',
     then: 'Here the cone holds the pressure down: the taller it stands, the more it can hold, and the more a burst throws. Build it up, then hold the world level as long as you dare and tip it: the rock that flies clear goes into orbit. Held too long, the cone blows apart and throws nothing. Throw up enough rock to make a moon.',

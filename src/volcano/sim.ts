@@ -201,7 +201,7 @@ export const VOLCANO = {
    * What the world is like at the start: 'ocean', one sea over an even floor; or 'moon', airless
    * highland scarred by `basins` great old impact basins, and a scatter of smaller craters.
    */
-  terrain: 'ocean' as 'ocean' | 'moon' | 'mars' | 'ice' | 'io' | 'young' | 'asteroid',
+  terrain: 'ocean' as 'ocean' | 'moon' | 'mars' | 'ice' | 'io' | 'young' | 'asteroid' | 'spin' | 'glass',
   /** On a lumpy asteroid: how far its ground rises and falls from round, in broad lumps (and one great crater). */
   lumps: 0,
   /**
@@ -210,6 +210,25 @@ export const VOLCANO = {
    * hollows, and the hand only nudges it.
    */
   selfGravity: 0,
+  /**
+   * A world spinning so fast it bulges (as Haumea does): lava is flung towards its equator this
+   * strongly, whatever the ground's slope, and the equator stands this much higher to begin with.
+   * The spin's axis is the planet's y. 0: no spin.
+   */
+  spin: 0,
+  bulge: 0,
+  /** On a spinning world: how high (above where it began) the ground along the equator must be raised for a stretch of it to count as ridge. */
+  ridge: 0,
+  /**
+   * The lava-lamp world: hot rock lighter than the glassy deep. Nothing flows; the heat buds off
+   * glowing blobs (see `Blob`) that float to whatever is uppermost while hot, cool as they go (the
+   * bigger, the slower they cool and the slower they move), merge when two hot ones touch, and sink
+   * back into the deep once cold. Blobs that reach the far shore (`shore`) pool there.
+   */
+  lamp: false,
+  /** A small blob's speed (radians a second), and how long (seconds) it stays hot. */
+  blobSpeed: 0.05,
+  blobHot: 30,
   /** Free play: the heat never runs out, and the fire goes on until it's ended (see `end`). */
   endless: false,
   basins: 0,
@@ -239,6 +258,15 @@ export type Rules = typeof VOLCANO;
 export type Era = 'young' | 'burning' | 'cooling' | 'embers' | 'out';
 
 interface Eruption { vertex: number; flank: number; left: number; rate: number }
+
+/**
+ * A blob of hot rock on the lava-lamp world: where it is (a unit vector), how much of it, and how
+ * hot (1 to 0). (The blob still budding at the vent is the pressure itself: held level it grows,
+ * and tipped it lets go.)
+ */
+export interface Blob { x: number; y: number; z: number; area: number; heat: number }
+/** A blob's radius, in radians across the world, from how much of it there is. */
+export const blobRadius = (area: number): number => 0.035 * Math.sqrt(area);
 
 export interface Impact { vertex: number; in: number }
 
@@ -291,6 +319,11 @@ export class Planet {
   orbit = 0;
   /** Which way the giant planet is, in the planet's frame (a unit vector), on a world that has one in its sky. */
   giant: { x: number; y: number; z: number } | null = null;
+  /** On the lava-lamp world: the blobs, the far shore they're to be brought to, how much has pooled there, and the biggest that came. */
+  readonly blobs: Blob[] = [];
+  shore: { x: number; y: number; z: number; r: number } | null = null;
+  pooled = 0;
+  pooledBiggest = 0;
   /** Whether stones fall at all: off until the player has been shown them. */
   stonesFall = true;
   seconds = 0;
@@ -352,6 +385,12 @@ export class Planet {
     if (this.k.terrain !== 'ocean') this.scar();
     if (this.k.stormEvery[1] > 0) this.stormIn = this.between(this.k.stormEvery);
     this.start = this.rock.slice();
+    // The lava lamp's far shore: two radians round the world from where the heat is, some way.
+    if (this.k.lamp) {
+      const q = this.plume, a = this.rand() * Math.PI * 2, t1 = unit(cross(q, Math.abs(q.y) < 0.9 ? { x: 0, y: 1, z: 0 } : { x: 1, y: 0, z: 0 })), t2 = cross(q, t1);
+      const d = { x: t1.x * Math.cos(a) + t2.x * Math.sin(a), y: t1.y * Math.cos(a) + t2.y * Math.sin(a), z: t1.z * Math.cos(a) + t2.z * Math.sin(a) }, far = 2.0;
+      this.shore = { ...unit({ x: q.x * Math.cos(far) + d.x * Math.sin(far), y: q.y * Math.cos(far) + d.y * Math.sin(far), z: q.z * Math.cos(far) + d.z * Math.sin(far) }), r: 0.3 };
+    }
   }
 
   /** The ground as this fire found it: what roundness is measured against, and where its hollows were. */
@@ -377,6 +416,22 @@ export class Planet {
     let m = 0;
     for (let v = 0; v < this.start.length; v++) m += this.start[v];
     return m / this.start.length;
+  }
+
+  /** On a spinning world: the equator in stretches, round the axis, and whether each is raised enough to be ridge. */
+  static readonly RIDGE_STRETCHES = 16;
+  static readonly RIDGE_BAND = 0.12;
+  ridgeRaise(): number[] {
+    const p = this.topo.basePositions, n = Planet.RIDGE_STRETCHES, sum = new Array(n).fill(0), count = new Array(n).fill(0);
+    for (let v = 0; v < this.rock.length; v++) {
+      if (Math.abs(p[v * 3 + 1]) > Planet.RIDGE_BAND) continue;
+      let a = Math.atan2(p[v * 3 + 2], p[v * 3]) / (Math.PI * 2);
+      if (a < 0) a += 1;
+      const k = Math.min(n - 1, Math.floor(a * n));
+      sum[k] += this.rock[v] - this.start[v];
+      count[k]++;
+    }
+    return sum.map((x, k) => (count[k] ? x / count[k] : 0));
   }
 
   /** In free play, end the fire when you choose: what heat is left is let go, and the long age begins. */
@@ -429,6 +484,8 @@ export class Planet {
       }
       bowl(unit({ x: -this.plume.x, y: -this.plume.y + 0.4, z: -this.plume.z }), 0.75, this.k.lumps * 1.2);
     }
+    // Spun fast, the world bulges at its equator.
+    if (this.k.bulge > 0) { const p = this.topo.basePositions; for (let v = 0; v < n; v++) this.rock[v] += this.k.bulge * (1 - p[v * 3 + 1] ** 2); }
     if (this.k.terrain !== 'ocean' && this.k.terrain !== 'moon') for (let v = 0; v < n; v++) this.rock[v] = Math.max(0.004, this.rock[v]);
   }
 
@@ -529,6 +586,14 @@ export class Planet {
     const volume = this.pressure;
     if (volume < this.k.least) return null;
     this.pressure = 0;
+    // The lava lamp: the bud lets go as one blob; held too long, it bursts into small ones, which cool before they get far.
+    if (this.k.lamp) {
+      const q = this.plume;
+      if (blast) { this.scatter(volume); return 'burst'; }
+      this.tally.flows++;
+      this.blobs.push({ x: q.x, y: q.y, z: q.z, area: volume, heat: 1 });
+      return 'flow';
+    }
     const v = this.plumeVertex, s = this.scale;
     if (volume < this.k.explosive) {
       this.tally.flows++;
@@ -573,6 +638,12 @@ export class Planet {
   /** Held like a globe: level, the pressure builds; tipped, it pours, and tipped when full, it bursts. */
   private tipped(dt: number): void {
     const tip = this.tip;
+    // The lava lamp: tipped, the bud lets go (once each time the world is tipped); held level, it grows.
+    if (this.k.lamp) {
+      if (!this.pouring && tip >= this.k.tipPour) { this.pouring = true; this.erupt(); }
+      else if (this.pouring && tip < this.k.tipPour * 0.7) this.pouring = false;
+      return;
+    }
     if (!this.pouring && tip >= this.k.tipPour) {
       this.pouring = true;
       if (this.pressure >= this.k.explosive) { this.erupt(); return; }
@@ -585,6 +656,64 @@ export class Planet {
     this.pressure -= amount;
     const v = this.plumeVertex, a = amount * this.scale;
     this.eruptions.push({ vertex: v, flank: v, left: a, rate: a / dt });
+  }
+
+  // ------------------------------------------------------------------ the lava lamp
+
+  /** A burst: the heat flung out as a ring of small blobs round the vent. */
+  private scatter(volume: number): void {
+    const q = this.plume, t1 = unit(cross(q, Math.abs(q.y) < 0.9 ? { x: 0, y: 1, z: 0 } : { x: 1, y: 0, z: 0 })), t2 = cross(q, t1), k = 6;
+    for (let i = 0; i < k; i++) {
+      const a = (i / k) * Math.PI * 2 + this.rand(), o = 0.14;
+      this.blobs.push({ ...unit({ x: q.x + (t1.x * Math.cos(a) + t2.x * Math.sin(a)) * o, y: q.y + (t1.y * Math.cos(a) + t2.y * Math.sin(a)) * o, z: q.z + (t1.z * Math.cos(a) + t2.z * Math.sin(a)) * o }), area: volume / k, heat: 1 });
+    }
+  }
+
+  /** The blobs float, cool, merge, sink, and reach the far shore. */
+  private lampStep(dt: number): void {
+    const g = this.gravity, q = this.plume, up = g ? unit({ x: -g.x, y: -g.y, z: -g.z }) : { ...q };
+    const angle = (a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }) => Math.acos(Math.max(-1, Math.min(1, a.x * b.x + a.y * b.y + a.z * b.z)));
+    for (const b of this.blobs) {
+      // Hot, it floats up; cold, it sinks: the way the world is held. Big blobs are slower, and cool slower.
+      const size = Math.sqrt(Math.sqrt(b.area / 4)), towards = b.heat > 0.45 ? up : { x: -up.x, y: -up.y, z: -up.z };
+      const speed = (this.k.blobSpeed * Math.sqrt(Math.abs(b.heat - 0.45) / 0.55)) / size, far = angle(b, towards);
+      if (far > 1e-3) {
+        const d = b.x * towards.x + b.y * towards.y + b.z * towards.z, tx = towards.x - d * b.x, ty = towards.y - d * b.y, tz = towards.z - d * b.z, tl = Math.hypot(tx, ty, tz) || 1, step = Math.min(far, speed * dt);
+        Object.assign(b, unit({ x: b.x + (tx / tl) * step, y: b.y + (ty / tl) * step, z: b.z + (tz / tl) * step }));
+      }
+      // It cools as it goes; near the heat, it warms again.
+      b.heat -= dt / (this.k.blobHot * Math.sqrt(b.area / 4));
+      if (angle(b, q) < this.k.warmth) b.heat = Math.min(1, b.heat + dt * 0.25);
+    }
+    // Two hot blobs that touch run together.
+    for (let i = 0; i < this.blobs.length; i++) {
+      for (let j = i + 1; j < this.blobs.length; j++) {
+        const a = this.blobs[i], b = this.blobs[j];
+        if (a.heat < 0.5 || b.heat < 0.5 || angle(a, b) > (blobRadius(a.area) + blobRadius(b.area)) * 0.8) continue;
+        const area = a.area + b.area;
+        Object.assign(a, unit({ x: a.x * a.area + b.x * b.area, y: a.y * a.area + b.y * b.area, z: a.z * a.area + b.z * b.area }));
+        a.heat = (a.heat * a.area + b.heat * b.area) / area;
+        a.area = area;
+        this.blobs.splice(j, 1);
+        j--;
+      }
+    }
+    // The far shore: a blob that reaches it still warm pools there. A cold one sinks into the deep and is gone.
+    for (let i = this.blobs.length - 1; i >= 0; i--) {
+      const b = this.blobs[i];
+      if (this.shore && b.heat > 0.2 && angle(b, this.shore) < this.shore.r) {
+        this.pooled += b.area;
+        this.pooledBiggest = Math.max(this.pooledBiggest, b.area);
+        this.blobs.splice(i, 1);
+        this.tell('A blob reaches the far shore');
+      } else if (b.heat <= 0) this.blobs.splice(i, 1);
+    }
+    // (No more than the lamp can draw: the coldest small ones go first.)
+    while (this.blobs.length > 23) {
+      let worst = 0;
+      for (let i = 1; i < this.blobs.length; i++) if (this.blobs[i].heat * this.blobs[i].area < this.blobs[worst].heat * this.blobs[worst].area) worst = i;
+      this.blobs.splice(worst, 1);
+    }
   }
 
   /** Call the heat towards a point on the world (a unit vector); it creeps there beneath the crust. */
@@ -600,11 +729,17 @@ export class Planet {
     const rise = Math.min(this.reserve, this.k.rising * (this.k.steady ? 1 : Math.sqrt(Math.max(0, this.reserve) / this.k.heat)) * (1 + this.k.tide * this.tideNow) * dt + 1e-4 * dt);
     if (!this.k.endless) this.reserve -= rise; // (in free play, the store never empties)
     this.pressure += rise;
-    if (this.pressure >= this.capNow) { this.collapse(); this.erupt(true); this.tally.calderas++; this.tell('Held too long: the mountain blew apart'); }
+    if (this.pressure >= this.capNow) {
+      if (!this.k.lamp) this.collapse();
+      this.erupt(true);
+      this.tally.calderas++;
+      this.tell(this.k.lamp ? 'Held too long: the blob burst apart' : 'Held too long: the mountain blew apart');
+    }
     // The store is spent: whatever pressure is left comes out by itself, the last of the fire.
     if (this.reserve < 0.01 && this.pressure >= this.k.least && !this.erupting) { this.erupt(); this.tell('The last of the heat escapes'); }
     if (this.reserve < 0.01 && this.pressure < this.k.least) this.pressure = 0;
     if (this.gravity) this.tipped(dt);
+    if (this.k.lamp) this.lampStep(dt);
     // A giant's ring thins away, unless it's fed.
     if (this.k.ringThins > 0) this.orbit -= this.orbit * this.k.ringThins * dt;
     this.movePlume(dt);
@@ -861,7 +996,9 @@ export class Planet {
           return ((p[w * 3] * kw - p[v * 3] * kv) * G.x + (p[w * 3 + 1] * kw - p[v * 3 + 1] * kv) * G.y + (p[w * 3 + 2] * kw - p[v * 3 + 2] * kv) * G.z) / R;
         }
         : own;
-      const drop = selfG > 0 && G ? (w: number) => selfG * own(w) + (1 - selfG) * held(w) : held;
+      const base = selfG > 0 && G ? (w: number) => selfG * own(w) + (1 - selfG) * held(w) : held, spin = this.k.spin;
+      // Spun fast, lava is flung outwards from the axis: towards the equator, as much as down.
+      const drop = spin > 0 ? (w: number) => base(w) + spin * (p[v * 3 + 1] ** 2 - p[w * 3 + 1] ** 2) : base;
       let sum = 0, weights = 0;
       for (let q = a; q < b; q++) { const d = drop(t.nbrList[q]); if (d > 0) { sum += d; weights += Math.pow(d, this.k.channel); } }
       if (sum <= 0) continue;
