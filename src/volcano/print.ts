@@ -34,17 +34,21 @@ export const PRINT_FUNCTIONS = /* glsl */ `
   uniform int uCraterCount;
   uniform vec3 uLightObj;
   uniform vec3 uBlock, uBlockDeep, uBlockHot; // the woodblock's colours: vermilion, or on the ice moons, water's blues
+  // (Hashed without sin: phones' GPUs work sin out roughly for large numbers, which turns "random"
+  // into regular patterns.)
   vec3 hash33(vec3 p) {
-    p = vec3(dot(p, vec3(127.1, 311.7, 74.7)), dot(p, vec3(269.5, 183.3, 246.1)), dot(p, vec3(113.5, 271.9, 124.6)));
-    return fract(sin(p) * 43758.5453);
+    p = fract(p * vec3(0.1031, 0.1030, 0.0973));
+    p += dot(p, p.yxz + 33.33);
+    return fract((p.xxy + p.yxx) * p.zyx);
   }
   // A dot for each cell of a lattice lying on the world's shell (D cells to its radius), each moved
   // a little off its cell's middle; for each pixel, the dots of the eight cells round it. Each dot
   // is drawn once the darkness wanted here passes its own threshold, at rPx pixels across (dots
   // keep their size on the screen as you zoom; how closely they're set is fixed to the ground).
   // Seen from far, where they'd crowd into moire, they give way to their own average tone.
-  float lattice(vec3 p, float D, float dark, float rPx, float salt) {
-    float ps = max(length(dFdx(p)), length(dFdy(p)));
+  // (ps, the size of a pixel in cells, is worked out by the caller, before any branch: how a value
+  // changes from pixel to pixel is undefined inside one, and on phones it came out as garbage.)
+  float lattice(vec3 p, float D, float dark, float rPx, float salt, float ps) {
     float r = rPx * ps, cov = 0.0;
     vec3 i0 = floor(p - 0.5);
     for (int k = 0; k < 8; k++) {
@@ -63,29 +67,12 @@ export const PRINT_FUNCTIONS = /* glsl */ `
   }
   // Three lattices, turned against each other and of different sizes, each carrying a share of the
   // darkness, which is capped short of every dot: so however dark, no lattice ever fills and shows as a grid.
-  float stipple(vec3 dir, float D, float dark, float rPx) {
+  // (px: a pixel's width on the world.)
+  float stipple(vec3 dir, float D, float dark, float rPx, float px) {
     float k = min(dark, 1.6) * 0.42;
     vec3 d2 = vec3(dir.y * 0.8 + dir.z * 0.6, dir.z * 0.8 - dir.y * 0.6, dir.x).yzx;
     vec3 d3 = vec3(dir.z * 0.36 - dir.x * 0.93, dir.x * 0.36 + dir.z * 0.93, dir.y).zxy;
-    return max(max(lattice(dir * D, D, k, rPx, 0.0), lattice(d2 * (D * 1.29), D * 1.29, k, rPx, 31.0)), lattice(d3 * (D * 1.13), D * 1.13, k, rPx, 57.0));
-  }
-  // Round halftone dots on the same kind of lattice, each rCells across (in cells): rock breaking up.
-  float halftone(vec3 dir, float D, float rCells) {
-    vec3 p = dir * D;
-    float ps = max(length(dFdx(p)), length(dFdy(p))), cov = 0.0;
-    vec3 i0 = floor(p - 0.5);
-    for (int k = 0; k < 8; k++) {
-      float fk = float(k);
-      vec3 c = i0 + vec3(mod(fk, 2.0), mod(floor(fk / 2.0), 2.0), floor(fk / 4.0));
-      vec3 h = hash33(c + 17.0);
-      vec3 q = c + 0.5 + (h - 0.5) * 0.3;
-      float lq = length(q);
-      if (abs(lq - D) > 0.5) continue;
-      q *= D / lq;
-      float rr = rCells * (0.75 + 0.5 * h.z);
-      cov = max(cov, 1.0 - smoothstep(rr - 0.5 * ps, rr + 0.5 * ps, length(p - q)));
-    }
-    return cov;
+    return max(max(lattice(dir * D, D, k, rPx, 0.0, px * D), lattice(d2 * (D * 1.29), D * 1.29, k, rPx, 31.0, px * D * 1.29)), lattice(d3 * (D * 1.13), D * 1.13, k, rPx, 57.0, px * D * 1.13));
   }
   // The graticule: dotted parallels every 15 degrees and meridians every 20, the dots fixed to the world.
   float graticule(vec3 dir, float pxW) {
@@ -100,21 +87,13 @@ export const PRINT_FUNCTIONS = /* glsl */ `
     return g;
   }
   // Engraved lines: along the level lines of a phase, each as wide as the heat makes it (swelling as an
-  // engraver's line does), tapering at the edge; none where they'd crowd into a smear.
-  float engrave(float phase, float heat, float taper) {
-    float fw = max(fwidth(phase), 1e-5), k = floor(phase + 0.5);
-    float w = (0.3 + 1.4 * heat) * uPx * 0.62 * taper * (0.85 + 0.3 * noise3(vDir * 40.0 + vec3(k)));
+  // engraver's line does), tapering at the edge; none where they'd crowd into a smear, or where the
+  // phase stands still. (fw, how fast the phase changes from pixel to pixel, is worked out before any branch.)
+  float engrave(float phase, float fw, float heat, float taper) {
+    fw = max(fw, 1e-5);
+    float k = floor(phase + 0.5);
+    float w = (0.4 + 1.5 * heat) * uPx * 0.62 * taper * (0.85 + 0.3 * noise3(vDir * 40.0 + vec3(k)));
     return (1.0 - smoothstep(w - 0.5, w + 0.5, abs(phase - k) / fw)) * (1.0 - smoothstep(0.12, 0.3, fw)) * smoothstep(0.004, 0.02, fw);
-  }
-  // Gouges: the cuts lie along the level lines of a phase, each line broken into strokes of its own
-  // width that taper as it nears the block's edge; none where the lines would crowd into a smear.
-  float gouges(float phase, float taper) {
-    float fw = max(fwidth(phase), 1e-5), k = floor(phase + 0.5);
-    float dpx = abs(phase - k) / fw;
-    float w = (0.35 + 1.1 * noise3(vDir * 38.0 + vec3(k * 1.37))) * uPx * taper;
-    float stroke = smoothstep(0.24, 0.36, noise3(vDir * 60.0 + vec3(k * 2.1, 0.0, k)));
-    // (Nor where the phase stands still, as it does where lava lies whole: there every pixel is "on" a line.)
-    return (1.0 - smoothstep(w - 0.5, w + 0.5, dpx)) * stroke * (1.0 - smoothstep(0.12, 0.3, fw)) * smoothstep(0.004, 0.02, fw);
   }
 `;
 
@@ -201,7 +180,7 @@ export function printFragment(look: Look, sea: boolean): string {
       darkL = darkL * (1.0 - 0.85 * litWall) + crDark;
       ${look === 1 ? 'darkL += 0.4 * pow(black, 1.2) * setOn * (1.0 - smoothstep(0.5 - lw, 0.5 + lw, lv)); // set rock: a little stipple under its engraved lines' : ''}
       float dark = mix(limb + exp(-max(-vH, 0.0) / 0.03) * 0.14, darkL + limb, onLand); // (and a little over the shallows, so what rises under the sea shows)
-      if (dark > 0.035) col = mix(col, ink, stipple(vDir, 300.0, dark, 0.45 * uPx) * 0.92);
+      if (dark > 0.035) col = mix(col, ink, stipple(vDir, 300.0, dark, 0.45 * uPx, px) * 0.92);
       // The graticule, over the open sea.
       col = mix(col, ink, edgeOn * graticule(vDir, px) * ${sea ? '(1.0 - onLand) * (1.0 - 0.5 * aSea) * 0.5' : '0.22'});
 
@@ -217,25 +196,23 @@ export function printFragment(look: Look, sea: boolean): string {
 
 const ENGRAVE = /* glsl */ `
       // Engraved, as an old atlas's plates were. Running lava has no fill, only a breath of warmth: its
-      // lines, in red-brown ink, swell where it's hot and thin to hairlines at its edge, and drift as it
-      // runs (along the level lines of a smooth field fixed to the ground, not of the height, whose level
-      // lines would show its triangles).
+      // lines, in red-brown ink, follow the flow's own shape, running along it parallel to its edges
+      // (the level lines of how deep it lies), swell where it's hot and thin to hairlines at its edge,
+      // and drift outward as it spreads. Where it lies so deep its depth hardly changes, they follow a
+      // smooth field fixed to the ground instead.
       float onL = smoothstep(0.5 - lw, 0.5 + lw, lv);
-      float swirl = (noise3(vDir * 9.0) * 0.7 + noise3(vDir * 23.0 + 5.0) * 0.3) * 30.0;
-      float heat = smoothstep(0.5, 1.0, lv) * (0.55 + 0.45 * smoothstep(0.3, 0.75, b1 * 0.6 + b2 * 0.4));
-      if (onL > 0.0) {
-        col *= mix(vec3(1.0), vec3(1.0, 0.88, 0.78), 0.55 * onL);
-        float ln = engrave(swirl - uTime * 0.3, heat, smoothstep(0.5, 0.62, lv));
-        col = mix(col, mix(uBlockDeep, uBlock, smoothstep(0.25, 0.8, heat)), ln * onL * 0.95);
-      }
-      // Set: the same lines, frozen where they stopped, in black; weathering breaks them into dashes,
-      // then dots, then nothing.
+      float swirl = (noise3(vDir * 9.0) * 0.7 + noise3(vDir * 23.0 + 5.0) * 0.3) * 30.0, fwS = fwidth(swirl);
+      float along = lv * 9.0 + 0.4 * noise3(vDir * 15.0) + uTime * 0.5, fwA = fwidth(along);
+      float heat = smoothstep(0.55, 1.8, lv) * (0.6 + 0.4 * smoothstep(0.3, 0.75, b1 * 0.6 + b2 * 0.4));
+      float taper = smoothstep(0.5, 0.62, lv);
+      float lnRun = max(engrave(along, fwA, heat, taper), engrave(swirl + uTime * 0.3, fwS, heat, taper) * (1.0 - smoothstep(0.004, 0.02, fwA)));
+      float lnSet = engrave(swirl, fwS, 0.3 * black, 1.0);
+      col *= mix(vec3(1.0), vec3(1.0, 0.88, 0.78), 0.55 * onL);
+      col = mix(col, mix(uBlockDeep, uBlock, smoothstep(0.25, 0.8, heat)), lnRun * onL * 0.95);
+      // Set: lines frozen where they stopped, in black; weathering breaks them into dashes, then dots, then nothing.
       float hs = setOn * (1.0 - onL);
-      if (hs > 0.0 && black > 0.02) {
-        float k = floor(swirl + 0.5);
-        float dash = smoothstep(0.0, 0.1, noise3(vDir * 70.0 + vec3(k * 1.9)) - (1.0 - black) * 0.95);
-        col = mix(col, ink, hs * engrave(swirl, 0.3 * black, 1.0) * dash * 0.9);
-      }
+      float dash = smoothstep(0.0, 0.1, noise3(vDir * 70.0 + vec3(floor(swirl + 0.5) * 1.9)) - (1.0 - black) * 0.95);
+      col = mix(col, ink, hs * step(0.02, black) * lnSet * dash * 0.9);
       // Its edge: one fine line.
       col = mix(col, uBlockDeep, (1.0 - smoothstep(0.45 * uPx - 0.5, 0.45 * uPx + 0.5, abs(lv - 0.5) / lw)) * step(0.5 - 2.0 * lw, lv) * 0.9);`;
 
@@ -261,7 +238,7 @@ const WATER = /* glsl */ `
 
 /** The lava lamp's blobs, as woodblock prints too: a flat block, hot orange at a hot heart, cut with gouges, in a black outline. */
 export const LAMP_PRINT_FUNCTIONS = /* glsl */ `
-  float hash3(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
+  float hash3(vec3 p) { p = fract(p * 0.1031); p += dot(p, p.zyx + 31.32); return fract((p.x + p.y) * p.z); }
   float noise3(vec3 p) {
     vec3 i = floor(p), f = fract(p), s = f * f * (3.0 - 2.0 * f);
     return mix(mix(mix(hash3(i), hash3(i + vec3(1, 0, 0)), s.x), mix(hash3(i + vec3(0, 1, 0)), hash3(i + vec3(1, 1, 0)), s.x), s.y),

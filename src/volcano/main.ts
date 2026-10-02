@@ -256,7 +256,8 @@ material.onBeforeCompile = (shader) => {
   shader.uniforms.uBlockHot = { value: ICE ? new THREE.Color('#b9dbe8') : new THREE.Color(0.95, 0.55, 0.17) };
   shader.fragmentShader = shader.fragmentShader
     .replace('void main() {', `uniform vec3 uShallow;\nuniform vec3 uDeep;\nuniform vec3 uFlooded;\nuniform float uFloodStrength;\nuniform vec3 uLava;\nuniform vec3 uDeepLava;\nuniform vec3 uHot;\nuniform vec3 uCrust;\nuniform float uTime;\nuniform float uPx;\nuniform vec3 uLandPaper;\nvarying float vH;\nvarying vec4 vMarks;\nvarying vec3 vDir;\nvarying vec3 vN;
-      float hash3(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
+      // (Without sin, which phones' GPUs work out roughly for large numbers, turning noise into patterns.)
+      float hash3(vec3 p) { p = fract(p * 0.1031); p += dot(p, p.zyx + 31.32); return fract((p.x + p.y) * p.z); }
       float noise3(vec3 p) {
         vec3 i = floor(p), f = fract(p), s = f * f * (3.0 - 2.0 * f);
         return mix(mix(mix(hash3(i), hash3(i + vec3(1, 0, 0)), s.x), mix(hash3(i + vec3(0, 1, 0)), hash3(i + vec3(1, 1, 0)), s.x), s.y),
@@ -464,7 +465,10 @@ function coarse(): void {
     // Where lava lies, by how deep: whole where it's a little deep, thinning to nothing at its
     // margins. So its edge falls between the vertices, wherever its depth says, and slides
     // smoothly as it spreads, as a liquid's does, rather than stepping from vertex to vertex.
-    coarseMarks[v * 4 + 1] = lava > 0.00002 ? Math.min(1, Math.sqrt(lava / LAVA_WHOLE)) : 0;
+    // (Beyond whole, rising on gently, to 2.2: drawn as an engraving, its lines follow the level lines of
+    // how deep it lies, well inside its edge. Gently, so the edge, at a half, is as smooth as ever.)
+    const deep = lava > 0.00002 ? Math.sqrt(lava / LAVA_WHOLE) : 0;
+    coarseMarks[v * 4 + 1] = Math.min(1, deep) + 0.3 * Math.min(4, Math.max(0, deep - 1));
     // Lava just set: black, weathering back into the ground's colour over a minute or two. Carried as
     // where it lies (1 or 0) and that times how black it still is, so the shader can divide the one
     // by the other and have the blackness even right up to a clean edge.
