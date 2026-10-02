@@ -299,6 +299,10 @@ export class Planet {
   plumeVertex = 0;
   /** Where you have called the heat to, if anywhere. */
   target: { x: number; y: number; z: number } | null = null;
+  /** Whether the heat was called somewhere by touch: it goes there, whatever is uppermost, until it arrives. */
+  called = false;
+  /** Whether the vent is held shut (a finger pressed on the world): nothing pours, however the world is tipped, and the pressure builds. */
+  clamped = false;
 
   /** Heat still in store, and gathered as pressure ready to come out. */
   reserve: number;
@@ -638,6 +642,8 @@ export class Planet {
   /** Held like a globe: level, the pressure builds; tipped, it pours, and tipped when full, it bursts. */
   private tipped(dt: number): void {
     const tip = this.tip;
+    // Held shut, nothing pours: the world can be turned and tipped to aim, and the pressure builds.
+    if (this.clamped) { this.pouring = tip >= this.k.tipPour; return; }
     // The lava lamp: tipped, the bud lets go (once each time the world is tipped); held level, it grows.
     if (this.k.lamp) {
       if (!this.pouring && tip >= this.k.tipPour) { this.pouring = true; this.erupt(); }
@@ -716,9 +722,17 @@ export class Planet {
     }
   }
 
+  /** The finger lifts from the vent held shut: whatever has built comes out at once, a flow or, if it's heavy, a burst. */
+  unclamp(): void {
+    if (!this.clamped) return;
+    this.clamped = false;
+    this.erupt();
+  }
+
   /** Call the heat towards a point on the world (a unit vector); it creeps there beneath the crust. */
   callTo(x: number, y: number, z: number): void {
     this.target = unit({ x, y, z });
+    this.called = true;
   }
 
   step(dt: number): void {
@@ -874,7 +888,7 @@ export class Planet {
     const q = this.plume;
     // Held like a globe, the heat rises towards whatever is uppermost, slowly.
     const g = this.gravity;
-    if (g && this.k.rises > 0) this.target = unit({ x: -g.x, y: -g.y, z: -g.z });
+    if (g && this.k.rises > 0 && !this.called) this.target = unit({ x: -g.x, y: -g.y, z: -g.z });
     // On its own, slowly one way; towards where it's called, faster, until it gets there.
     // (Once the fire is out there is nothing to carry: the world is still, for its long age.)
     const drift = this.over ? 0 : this.k.drift;
@@ -883,8 +897,8 @@ export class Planet {
       const t = this.target, along = t.x * q.x + t.y * q.y + t.z * q.z;
       const tx = t.x - along * q.x, ty = t.y - along * q.y, tz = t.z - along * q.z, tl = Math.hypot(tx, ty, tz);
       const angle = Math.acos(Math.min(1, along));
-      if (angle < 0.01 || tl < 1e-6) this.target = null;
-      else { const sp = Math.min(g ? this.k.rises : this.k.creep, angle / dt); mx += (tx / tl) * sp; my += (ty / tl) * sp; mz += (tz / tl) * sp; }
+      if (angle < 0.01 || tl < 1e-6) { this.target = null; this.called = false; }
+      else { const sp = Math.min(this.called ? Math.max(this.k.rises, 0.04) : g ? this.k.rises : this.k.creep, angle / dt); mx += (tx / tl) * sp; my += (ty / tl) * sp; mz += (tz / tl) * sp; }
     }
     const moved = unit({ x: q.x + mx * dt, y: q.y + my * dt, z: q.z + mz * dt });
     // The drift stays across the plume as it goes round the world.

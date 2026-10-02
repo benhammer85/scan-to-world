@@ -598,6 +598,10 @@ function nearestAbove(u: THREE.Vector3): number {
 const at = (v: number) => [base[v * 3], base[v * 3 + 1], base[v * 3 + 2]] as const;
 
 function drawMarks(): void {
+  // Where the heat was called by a tap, till it gets there.
+  const t = planet.called ? planet.target : null;
+  callMark.visible = !!t && !ending;
+  if (t) { setMark(callMark, nearestAbove(new THREE.Vector3(t.x, t.y, t.z)), 0.035); callMark.material.color.set(INK); }
   const s = planet.impact;
   stoneMark.visible = !!s && !ending;
   if (s) {
@@ -996,23 +1000,54 @@ function rotate(ax: number, ay: number): void {
   turn.setFromAxisAngle(axis.set(1, 0, 0), ay); group.quaternion.premultiply(turn);
 }
 const finger = { x: 0, y: 0 };
+/** Where on the world (in its own frame, a unit vector) a point on the screen falls, if it falls on the world at all. */
+const ray = new THREE.Raycaster(), NDC = new THREE.Vector2();
+function onWorld(x: number, y: number): THREE.Vector3 | null {
+  const r = stage.getBoundingClientRect();
+  NDC.set(((x - r.left) / r.width) * 2 - 1, -((y - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(NDC, camera);
+  const hit = ray.intersectObject(mesh, false)[0];
+  return hit ? hit.point.clone().applyQuaternion(INVERSE.copy(group.quaternion).invert()).normalize() : null;
+}
+/** Where the heat has been called to, by a tap: a small pencilled ring, until it gets there. */
+const callMark = mark((g) => { g.lineWidth = 3; g.setLineDash([4, 4]); g.beginPath(); g.arc(32, 32, 20, 0, Math.PI * 2); g.stroke(); });
+/** Whether a finger is holding the vent shut. */
+let holding = false;
+function holdShut(): void {
+  if (!begun || ending || planet.over) return;
+  holding = planet.clamped = true;
+  feel(15);
+}
+function letGo(): void {
+  if (!holding) return;
+  holding = false;
+  planet.unclamp();
+}
 
 const gestures = new GestureRecognizer(
   {
-    tap() { /* a tap does nothing: it's all in how you hold the world */ },
+    // A tap on the world, where the heat can move: it creeps to the place touched.
+    tap(x, y) {
+      if (!begun || ending || planet.over || planet.k.rises <= 0) return;
+      const at = onWorld(x, y);
+      if (at) planet.callTo(at.x, at.y, at.z);
+    },
     spin(dx, dy) { spin.set(0, 0); rotate(dx * 0.006, dy * 0.006); },
     fling(vx, vy) { spin.set(vx * 0.006, vy * 0.006); },
     zoom(f) { dist /= f; look(); zoomedAt = seconds; },
     // Two fingers turning turn the world about the line of sight, so it can be spun any way at all.
     twist(a) { turn.setFromAxisAngle(axis.set(0, 0, 1), -a); group.quaternion.premultiply(turn); },
-    grab() { /* nothing to take hold of */ },
-    press() { /* nor to press */ },
-    pull() { /* nor to pull */ },
-    release() { /* nor to let go */ },
+    // A finger resting on the world holds the vent shut: the pressure builds, however the world is
+    // tipped, and the world can still be turned by dragging, to aim. Lifted, it lets it all out.
+    grab() { holdShut(); },
+    press() { /* (the pressure builds of itself) */ },
+    pull() { /* (dragging while held turns the world: see heldMove) */ },
+    heldMove(dx, dy) { rotate(dx * 0.006, dy * 0.006); },
+    release() { letGo(); },
     drawer() { /* none */ },
   },
-  // Nothing on the world is taken hold of, so a finger on it spins it at once, however long it rests first.
-  () => false,
+  // A finger that rests on the world takes hold of it (to hold the vent shut); one that moves at once spins it.
+  (x, y) => begun && !ending && onWorld(x, y) !== null,
 );
 stage.addEventListener('pointerdown', (e) => {
   stage.setPointerCapture(e.pointerId);
@@ -1024,8 +1059,8 @@ for (const type of ['pointerup', 'pointercancel'] as const) stage.addEventListen
 stage.addEventListener('wheel', (e) => { e.preventDefault(); gestures.wheel(e.deltaY); }, { passive: false });
 /** On a keyboard, the arrows tip the world, a little at a time, as a hand would. */
 const keys = new Set<string>();
-addEventListener('keydown', (e) => { if (e.key.startsWith('Arrow')) { keys.add(e.key); e.preventDefault(); } });
-addEventListener('keyup', (e) => keys.delete(e.key));
+addEventListener('keydown', (e) => { if (e.key.startsWith('Arrow')) { keys.add(e.key); e.preventDefault(); } if (e.key === ' ' && !e.repeat) { e.preventDefault(); holdShut(); } });
+addEventListener('keyup', (e) => { keys.delete(e.key); if (e.key === ' ') letGo(); });
 function arrows(dt: number): void {
   const k = 1.1 * dt;
   if (keys.has('ArrowLeft')) rotate(-k, 0);
@@ -1042,6 +1077,9 @@ function arrows(dt: number): void {
 const CUES: { ready: () => boolean; say?: string; begin?: () => void; done: (since: number) => boolean }[] = [
   { ready: () => true, say: LAMP ? 'Hold the world level, and a glowing blob buds and grows' : 'Hold the world level, and the heat gathers under the smoke', done: () => planet.pressure > planet.k.least * 2 },
   { ready: () => !planet.pouring, say: LAMP ? 'Tip it, and the blob lets go, and floats to the top' : 'Tip it, and the lava pours out', done: (s) => planet.tally.flows + planet.tally.bursts > 0 || s > 40 },
+  // The touch, once the tilt is known: a finger held on the world holds the heat in; lifted, it lets it out.
+  { ready: () => !planet.pouring && planet.pressure > planet.k.least, say: LAMP ? 'Or press and hold the world to hold the blob, and lift to let it go' : 'Or press and hold the world to hold the heat in, and lift to let it out', done: (s: number) => s > 12 },
+  ...(WORLD.rules.rises ? [{ ready: () => true, say: 'Or tap a place, and the heat creeps there', done: (s: number) => s > 15 }] : []),
   ...(LAMP ? [{ ready: () => planet.blobs.length > 0, say: 'Turn the far shore to the top, and the warm blobs float there', done: (s: number) => s > 25 }] : []),
   ...(WORLD.goal === 'ridge' ? [{ ready: () => planet.tally.flows + planet.tally.bursts > 0, say: 'Wherever it comes out, the spin flings the lava to the equator', done: (s: number) => s > 25 }] : []),
   { ready: () => !LAMP && planet.pressure > planet.k.explosive * 0.9 && !planet.pouring, say: WORLD.goal === 'feed' ? 'The smoke is heavy: tip the world towards the giant now' : 'The smoke is heavy: tip it now, and it erupts', done: (s) => planet.tally.bursts > 0 || s > 40 },

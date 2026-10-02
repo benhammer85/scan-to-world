@@ -34,6 +34,8 @@ export interface GestureSink {
   pull(pixels: number): void;
   /** The finger let go of the ground. */
   release(): void;
+  /** Holding, and the finger moved: pixels since the last call (for a sink that turns things while held). */
+  heldMove?(dx: number, dy: number): void;
   drawer(): void;
 }
 
@@ -111,6 +113,8 @@ export class GestureRecognizer {
         break;
       case 'holding':
       case 'pulling': {
+        this.sink.heldMove?.(x - this.last.x, y - this.last.y);
+        this.last = { x, y, t };
         const d = Math.hypot(x - this.start.x, y - this.start.y);
         if (this.phase === 'holding' && d > GESTURE.slop) this.phase = 'pulling';
         if (this.phase === 'pulling') this.sink.pull(d);
