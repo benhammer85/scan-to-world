@@ -122,7 +122,14 @@ const SYSTEM = loadSystem(), RUN = (() => {
   const i = Number(ASKED.get('run') ?? NaN);
   return SYSTEM && Number.isInteger(i) && SYSTEM.bodies[i] && !SYSTEM.bodies[i].made ? i : null;
 })();
-const WORLD = SYSTEM && RUN !== null ? worldFor(SYSTEM, RUN) : worldOf(ASKED.get('world') ?? remembered('volcano.world'));
+/**
+ * Free play (?free): the same world with no clock. The heat never runs out and the aim, met, doesn't
+ * end the fire: it goes on until it's ended (the quiet "end the fire" at the top), and then the long
+ * age and the chart come as ever. (Not for a world of a solar system, which is played against the clock.)
+ */
+const FREE = ASKED.has('free') && !ASKED.has('run');
+const CHOSEN = SYSTEM && RUN !== null ? worldFor(SYSTEM, RUN) : worldOf(ASKED.get('world') ?? remembered('volcano.world'));
+const WORLD = FREE ? { ...CHOSEN, rules: { ...CHOSEN.rules, endless: true } } : CHOSEN;
 if (RUN === null) remember('volcano.world', WORLD.id);
 const P = WORLD.palette, LIFE = WORLD.rules.life !== false, ICE = WORLD.rules.terrain === 'ice';
 /** On Io, the plumes' sulphur is drawn as the flood mark is elsewhere: in a clean-edged band, as a geological map draws a unit. */
@@ -766,14 +773,15 @@ function orbiting(dt: number): void {
   }
 }
 const HEIGHT = WORLD.height ?? { target: 0, kmPerUnit: 40 };
-const COVER = Math.round((WORLD.cover ?? 0) * 100), PLUMES = WORLD.plumes ?? 0, ORBIT = WORLD.orbit ?? 0;
-let aimDone = 0, aimOf = WORLD.goal === 'ring' ? CHAIN.stretches : WORLD.goal === 'height' ? HEIGHT.target : WORLD.goal === 'cover' ? COVER : WORLD.goal === 'plumes' ? PLUMES : WORLD.goal === 'orbit' || WORLD.goal === 'feed' ? 100 : planet.basins.length, lastAim = -10;
+const ROUND = Math.round((WORLD.round ?? 0) * 100), COVER = Math.round((WORLD.cover ?? 0) * 100), PLUMES = WORLD.plumes ?? 0, ORBIT = WORLD.orbit ?? 0;
+let aimDone = 0, aimOf = WORLD.goal === 'ring' ? CHAIN.stretches : WORLD.goal === 'height' ? HEIGHT.target : WORLD.goal === 'cover' ? COVER : WORLD.goal === 'round' ? ROUND : WORLD.goal === 'plumes' ? PLUMES : WORLD.goal === 'orbit' || WORLD.goal === 'feed' ? 100 : planet.basins.length, lastAim = -10;
 /** How much of the aim is done now, reckoned afresh. */
 function reckonAim(): void {
   if (chain) { aimDone = chain.update(planet, topo); aimOf = CHAIN.stretches; }
   else if (WORLD.goal === 'height') { aimDone = Math.max(0, planet.summit * HEIGHT.kmPerUnit); aimOf = HEIGHT.target; }
   else if (WORLD.goal === 'cover') { aimDone = planet.covered * 100; aimOf = COVER; }
   else if (WORLD.goal === 'plumes') { aimDone = planet.plumes.length; aimOf = PLUMES; }
+  else if (WORLD.goal === 'round') { aimDone = planet.roundness * 100; aimOf = ROUND; }
   else if (WORLD.goal === 'orbit' || WORLD.goal === 'feed') { aimDone = (100 * planet.orbit) / ORBIT; aimOf = 100; }
   else { aimDone = planet.basins.filter((b) => planet.flooded(b) >= FLOODED_ENOUGH).length; aimOf = planet.basins.length; }
 }
@@ -783,6 +791,7 @@ let toldHeight = 0, toldDone = 0, toldAimAt = -1e9;
 const AIM_WORDS = WORLD.goal === 'ring' ? 'Keep building islands as the heat travels the dotted line. A gap breaks the chain'
   : WORLD.goal === 'basins' ? 'Flood each dotted basin with lava'
   : WORLD.goal === 'cover' ? `Make ${COVER}% of the old ice new`
+  : WORLD.goal === 'round' ? `Fill the hollows until the asteroid is ${ROUND}% rounder`
   : WORLD.goal === 'plumes' ? `Raise ${PLUMES} great plumes at high tide, each outside the dotted rings`
   : WORLD.goal === 'orbit' ? 'Throw up enough rock to make a moon'
   : WORLD.goal === 'feed' ? 'Fill the giant\'s ring: tip each burst towards the giant'
@@ -791,7 +800,7 @@ const AIM_WORDS = WORLD.goal === 'ring' ? 'Keep building islands as the heat tra
 function tellAim(now: number): void {
   if (planet.over || ending) return;
   if (now - toldAimAt > 180) { toldAimAt = now; announce(AIM_WORDS); }
-  if (WORLD.goal === 'height' || WORLD.goal === 'cover' || WORLD.goal === 'orbit' || WORLD.goal === 'feed') return;
+  if (WORLD.goal === 'height' || WORLD.goal === 'cover' || WORLD.goal === 'round' || WORLD.goal === 'orbit' || WORLD.goal === 'feed') return;
   const done = Math.round(aimDone);
   if (done > toldDone && done < aimOf) {
     toldAimAt = now;
@@ -839,10 +848,21 @@ function drawAim(now: number): void {
     toldHeight = step;
     return;
   }
-  if (WORLD.goal === 'height' || WORLD.goal === 'cover') {
-    // How far along is told at the foot, every two km (or every 5%).
-    const by = WORLD.goal === 'height' ? 2 : 5, step = Math.floor(aimDone / by) * by;
-    if (begun && step > toldHeight && step < aimOf) { toldHeight = step; toldAimAt = now; announce(WORLD.goal === 'height' ? `The mountain is ${step} of ${aimOf} km high` : `${step}% of the ice made new, of ${aimOf}%`); }
+  if (WORLD.goal === 'height' || WORLD.goal === 'cover' || WORLD.goal === 'round') {
+    // How far along is told at the foot, every two km (or every 5%, or 10%).
+    const by = WORLD.goal === 'height' ? 2 : WORLD.goal === 'round' ? 10 : 5, step = Math.floor(aimDone / by) * by;
+    if (begun && step > toldHeight && step < aimOf) { toldHeight = step; toldAimAt = now; announce(WORLD.goal === 'height' ? `The mountain is ${step} of ${aimOf} km high` : WORLD.goal === 'round' ? `${step}% rounder, of ${aimOf}%` : `${step}% of the ice made new, of ${aimOf}%`); }
+    // On the asteroid, its deepest hollows stippled in pencil, as old charts stippled a depression:
+    // where lava is wanted. They fade as they fill.
+    if (WORLD.goal === 'round') {
+      const h = (v: number) => planet.rock[v] + planet.lava[v];
+      let m = 0;
+      for (let v = 0; v < N; v++) m += h(v);
+      m /= N;
+      const deep = m - planet.spreadOf(h) * 0.9, dots: number[] = [];
+      for (let v = 0; v < N; v += 7) if (h(v) < deep) { const r = 1 + RELIEF * Math.max(0, h(v)) + 0.003; dots.push(base[v * 3] * r, base[v * 3 + 1] * r, base[v * 3 + 2] * r); }
+      aimPencil.set(dots);
+    }
     // And the ring round the heat, inked round as far as the aim is met.
     const R = WORLD.goal === 'height' ? 0.32 : 0.3, around = Math.max(24, Math.round((Math.PI * 2 * Math.sin(R)) / 0.045));
     const filled = Math.round(around * Math.min(1, aimDone / aimOf)), ink: number[] = [], pencil: number[] = [];
@@ -991,6 +1011,8 @@ function feel(pattern: number | number[]): void {
 /** What's worth saying: the turns in the world's story, not every happening in it. */
 const QUIET_WORDS = /^(The plume reaches the ring|A great plume, but too near|Wanted where|A stone is coming|Land breaks|Life begins in|The first|Moss grows|Wish met|Held too long|Stone caught|The fire is out|The heat is nearly|A dust storm|The storm passes)/;
 const ERAS: Record<Era, string> = { young: 'A young fire', burning: 'Burning strong', cooling: 'Cooling', embers: 'Last embers', out: 'The fire is out' };
+// (In free play the heat never runs low, so the title says what kind of play it is.)
+if (FREE) { ERAS.young = 'Free play'; $('stage-name').textContent = ERAS.young; }
 let shownEra: Era = 'young';
 const eraFrom: { name: string; from: number }[] = [{ name: ERAS.young, from: 0 }];
 const queue: string[] = [];
@@ -1096,6 +1118,7 @@ const RUN_TAG = SYSTEM && RUN !== null ? `${SYSTEM.seed}:${RUN}` : undefined;
 function measureTheSecond(): void {
   second = measureSecond(WORLD, planet, topo, islands.list);
   // A world of a solar system: what it made is kept in the system, and passed on to the next.
+  if (FREE) return; // (free play keeps no best: it has no clock to be best against)
   if (RUN !== null) {
     const sys = loadSystem();
     if (sys && sys.seed === SYSTEM?.seed && sys.bodies[RUN] && !sys.bodies[RUN].made) saveSystem(recordPlayed(sys, RUN, { met: !!ending?.won, second: second.value, words: second.words }));
@@ -1119,6 +1142,7 @@ const GOAL_WORDS: Record<typeof WORLD.goal, { age: (met: boolean) => string; don
   height: { age: () => 'Time passes, and the storms go on', done: `Done: the mountain reaches ${HEIGHT.target} km`, title: ['The great mountain', 'Not high enough yet'], got: () => `${Math.round(aimDone)} of ${aimOf} km high` },
   cover: { age: () => 'Time passes, and the new ice greys', done: `Done: ${COVER}% of the ice made new`, title: ['New ice', 'Not enough new ice'], got: () => `${Math.round(aimDone)}% of the ice new, of ${aimOf}%` },
   plumes: { age: () => 'Time passes, and the sulphur settles', done: `Done: ${PLUMES} great plumes`, title: ['Great plumes', 'Not enough great plumes'], got: () => `${aimDone} of ${aimOf} great plumes` },
+  round: { age: () => 'Time passes, and small stones still fall', done: `Done: the asteroid is ${ROUND}% rounder`, title: ['A rounder world', 'Not round enough yet'], got: () => `${Math.round(aimDone)}% rounder, of ${aimOf}%` },
   feed: { age: () => 'Time passes, and the ring slowly thins', done: 'Done: the ring is full', title: ['The ring is full', 'The ring is not full'], got: () => `the ring ${Math.min(100, Math.round(aimDone))}% full` },
   orbit: { age: (met) => (met ? 'Time passes, and the ring of rock gathers into a moon' : 'Time passes, and the rock in orbit falls back'), done: 'Done: enough rock in orbit for a moon', title: ['A moon is made', 'No moon yet'], got: () => `${Math.min(100, Math.round(aimDone))}% of a moon in orbit` },
 };
@@ -1126,9 +1150,12 @@ const AGE_WORDS = (met: boolean) => GOAL_WORDS[WORLD.goal].age(met);
 let ending: { from: number; shown: boolean; at: number; info: ChartInfo | null; turned: number; won: boolean } | null = null;
 let wonSeen = -1;
 const wonAt = () => (wonSeen < 0 ? (wonSeen = seconds) : wonSeen);
+let metInFreePlay = false;
 function theEnd(): void {
+  // In free play, the aim met is said, and the fire goes on.
+  if (FREE && !ending && begun && won() && !metInFreePlay) { metInFreePlay = true; announce(`${GOAL_WORDS[WORLD.goal].done}. Play on as long as you like`); feel([30, 50, 30]); }
   // Done: the aim met, while the fire still burns; or not, and the fire out.
-  if (!ending && begun && won()) {
+  if (!ending && begun && won() && !FREE) {
     ending = { from: planet.seconds, shown: false, at: 0, info: null, turned: 0, won: true };
     queue.length = 0;
     announce(GOAL_WORDS[WORLD.goal].done);
@@ -1139,10 +1166,11 @@ function theEnd(): void {
     announce(AGE_WORDS(true));
   }
   if (!ending && planet.over) {
-    ending = { from: planet.seconds, shown: false, at: 0, info: null, turned: 0, won: false };
+    ending = { from: planet.seconds, shown: false, at: 0, info: null, turned: 0, won: FREE && won() };
+    $('finish').classList.remove('shown');
     $('stage-name').textContent = ERAS.out;
     queue.length = 0;
-    announce(`The fire is out. ${AGE_WORDS(false)}`);
+    announce(`The fire is out. ${AGE_WORDS(ending.won)}`);
     measureTheSecond();
   }
   // Met, the chart comes a few moments later; not, after a long age has worn at what was made.
@@ -1343,6 +1371,8 @@ interface Kept {
   world: string;
   /** For a world of a solar system: which system (its seed) and which of its worlds. */
   run?: string;
+  /** Whether it was being played free, with no clock. */
+  free?: boolean;
   way: { a: { x: number; y: number; z: number }; b: { x: number; y: number; z: number } } | null;
   seed: number;
   planet: Record<string, unknown>;
@@ -1354,6 +1384,7 @@ function world(): Kept {
   return {
     world: WORLD.id,
     run: RUN_TAG,
+    free: FREE,
     way: chain ? { a: chain.a, b: chain.b } : null,
     seed,
     planet: snapshotOf(planet, ['topo', 'next', 'firmness', 'scale', 'news']),
@@ -1375,7 +1406,7 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 async function resume(): Promise<boolean> {
   if (wanted) return false;
   const w = await recall<Kept>();
-  if (!w || !w.planet || (w.world ?? 'ocean') !== WORLD.id || w.run !== RUN_TAG) return false;
+  if (!w || !w.planet || (w.world ?? 'ocean') !== WORLD.id || w.run !== RUN_TAG || !!w.free !== FREE) return false;
   if (w.way && chain) chain = new Chain(w.way.a, w.way.b);
   seed = w.seed;
   restoreInto(planet, w.planet, ['plume', 'tally', 'drift', 'wear']);
@@ -1434,6 +1465,25 @@ if (RUN === null) for (const w of WORLDS) {
   link.addEventListener('pointerdown', (e) => { e.stopPropagation(); openSystem(); });
   $('begin').appendChild(link);
 }
+// Free play, from the card: this world with no clock; or, in free play, back to the world against the clock.
+if (RUN === null) {
+  const link = document.createElement('p');
+  link.className = 'free';
+  link.textContent = FREE ? 'play against the clock instead' : 'free play: the heat never runs out';
+  link.addEventListener('pointerdown', (e) => {
+    e.stopPropagation();
+    const q = new URLSearchParams(location.search);
+    q.delete('seed');
+    q.set('world', WORLD.id);
+    if (FREE) q.delete('free'); else q.set('free', '');
+    location.search = q.toString().replace(/free=(&|$)/, 'free$1');
+  });
+  $('begin').appendChild(link);
+}
+if (FREE) ($('begin').querySelector('.then') as HTMLElement).textContent = `Free play: the heat never runs out, and nothing ends until you end it, at the top. ${WORLD.then}`;
+// The end of a fire in free play: when you choose.
+$('finish').addEventListener('pointerdown', (e) => e.stopPropagation());
+$('finish').addEventListener('click', () => { planet.end(); $('finish').classList.remove('shown'); });
 $('system').addEventListener('pointerdown', (e) => e.stopPropagation());
 $('system').querySelector('.close')!.addEventListener('click', () => closeSystem());
 // Back from a world of the system (?system): straight to its chart.
@@ -1479,6 +1529,7 @@ $('begin').addEventListener('pointerdown', () => {
   begun = true;
   askForTilt();
   $('begin').classList.add('gone');
+  if (FREE) $('finish').classList.add('shown');
 });
 void resume().then((back) => {
   if (!back) return;
@@ -1590,7 +1641,7 @@ renderer.setAnimationLoop(() => {
   aimNext.update(dt);
   if (WORLD.goal === 'orbit') orbiting(dt);
   if (WORLD.goal === 'feed') feeding(dt);
-  if (WORLD.goal === 'height' || WORLD.goal === 'cover') {
+  if (WORLD.goal === 'height' || WORLD.goal === 'cover' || WORLD.goal === 'round') {
     // The ring follows the heat, eased, so it glides as the heat creeps.
     gaugeAt.lerp(new THREE.Vector3(planet.plume.x, planet.plume.y, planet.plume.z), 1 - Math.exp(-dt / 1.5)).normalize();
     gauge.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), gaugeAt);

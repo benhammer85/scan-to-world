@@ -16,12 +16,14 @@
  *       fresh ground: the question here is when, not only where.
  *   VI  Enceladus: a small ice moon of a ringed giant, its plumes feeding the giant's ring, which
  *       thins away unless it's fed. Tip each burst towards the giant: the question is which way.
- *   VII A young Earth, with no moon yet: its cone holds the pressure down, the taller the more,
+ *   VII A lumpy asteroid, not yet pulled round: fill its hollows with lava until it's a little
+ *       round world, as Vesta began to be. The question is where not to put it.
+ *   VIII A young Earth, with no moon yet: its cone holds the pressure down, the taller the more,
  *       and the biggest bursts throw rock clear into orbit, where it gathers into a moon.
  */
 import type { Rules } from './sim';
 
-export type WorldId = 'ocean' | 'moon' | 'mars' | 'ice' | 'io' | 'enceladus' | 'young';
+export type WorldId = 'ocean' | 'moon' | 'mars' | 'ice' | 'io' | 'enceladus' | 'asteroid' | 'young';
 
 export interface Palette {
   /** The ground: bare old rock, fresh basalt, ash, lava as it runs (and where it lies thick), and, for worlds that keep a mark of it, rock that lava has flooded. */
@@ -52,13 +54,15 @@ export interface World {
   /** Its second aim, for the card: one that pulls against the first (see second.ts). */
   second: string;
   palette: Palette;
-  goal: 'ring' | 'basins' | 'height' | 'cover' | 'plumes' | 'feed' | 'orbit';
+  goal: 'ring' | 'basins' | 'height' | 'cover' | 'plumes' | 'feed' | 'round' | 'orbit';
   /** What kind of world it is, without its name: for a world of this kind round another star (see system.ts). */
   kind: string;
   /** For a world whose aim is height: how high, in km, and how many km a unit of the world's height stands for. */
   height?: { target: number; kmPerUnit: number };
   /** For a world whose aim is to make its surface new: the share of it. */
   cover?: number;
+  /** For a world whose aim is to be round: how much of its first spread from round must go. */
+  round?: number;
   /** For a world whose aim is great plumes: how many. */
   plumes?: number;
   /** For a world whose aim is a moon: how much rock it takes, thrown into orbit; or, feeding a giant's ring, how much the ring must hold at once. */
@@ -207,9 +211,34 @@ export const WORLDS: World[] = [
     contour: 0.07,
   },
   {
+    id: 'asteroid',
+    kind: 'A lumpy asteroid',
+    numeral: 'VII',
+    title: 'A lumpy asteroid',
+    first: 'A lumpy asteroid, with a little heat inside it.',
+    then: 'On so small a world, lava runs to its own low places, wherever it comes out. Turn a hollow to the top and wait: the heat creeps under it. Then tip gently to pour, and fill it. The deepest hollows are stippled. Fill them until the asteroid is 45% rounder. A burst piles rock where you are.',
+    second: 'Keep the lava in the hollows: the neater, the better.',
+    rules: {
+      terrain: 'asteroid', basins: 0, craters: 25, floor: 0.3, rough: 0.015, lumps: 0.15, selfGravity: 1,
+      waves: 0, rain: 0, sink: 0, swell: 0, life: false,
+      flow: 14, channel: 1, coolLand: 0.08,
+      drift: 0, rises: 0.045, heat: 800, rising: 1.8, steady: true,
+      impactEvery: [55, 95], impactWarning: 14, impactHeat: 4, ageCraters: 0.06,
+    },
+    palette: {
+      // Dark old rock, a little brown; fresh lava paler basalt.
+      paper: '#d3cbbd', basalt: '#a49a8c', ash: '#c2baae', lava: '#b8563c', deepLava: '#8f3b28',
+      shallow: '#d4e3ec', deep: '#b1c8d8',
+      landInk: '#4f463c', landInkHigh: '#342c24', pencil: '#b2a796', seaInk: '#5b82a3',
+    },
+    goal: 'round',
+    round: 0.45,
+    contour: 0.05,
+  },
+  {
     id: 'young',
     kind: 'A young world',
-    numeral: 'VII',
+    numeral: 'VIII',
     title: 'A young Earth',
     first: 'A young Earth, hot, and with no moon yet.',
     then: 'Here the cone holds the pressure down: the taller it stands, the more it can hold, and the more a burst throws. Build it up, then hold the world level as long as you dare and tip it: the rock that flies clear goes into orbit. Held too long, the cone blows apart and throws nothing. Throw up enough rock to make a moon.',

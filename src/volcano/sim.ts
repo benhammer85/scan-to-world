@@ -201,7 +201,17 @@ export const VOLCANO = {
    * What the world is like at the start: 'ocean', one sea over an even floor; or 'moon', airless
    * highland scarred by `basins` great old impact basins, and a scatter of smaller craters.
    */
-  terrain: 'ocean' as 'ocean' | 'moon' | 'mars' | 'ice' | 'io' | 'young',
+  terrain: 'ocean' as 'ocean' | 'moon' | 'mars' | 'ice' | 'io' | 'young' | 'asteroid',
+  /** On a lumpy asteroid: how far its ground rises and falls from round, in broad lumps (and one great crater). */
+  lumps: 0,
+  /**
+   * How much the world's own gravity, rather than how it's held, decides which way lava runs, 0 to
+   * 1: on a body as small as an asteroid, down is towards its own middle, so lava finds its own
+   * hollows, and the hand only nudges it.
+   */
+  selfGravity: 0,
+  /** Free play: the heat never runs out, and the fire goes on until it's ended (see `end`). */
+  endless: false,
   basins: 0,
   /** Smaller craters scattered over the ground, on a world that starts scarred. */
   craters: 40,
@@ -341,6 +351,39 @@ export class Planet {
     if (ground && ground.length === n) this.rock.set(ground);
     if (this.k.terrain !== 'ocean') this.scar();
     if (this.k.stormEvery[1] > 0) this.stormIn = this.between(this.k.stormEvery);
+    this.start = this.rock.slice();
+  }
+
+  /** The ground as this fire found it: what roundness is measured against, and where its hollows were. */
+  readonly start: Float32Array;
+  private startSpread = -1;
+  /** How far the ground (and lava on it) strays from round: the spread of its heights about their mean. */
+  spreadOf(h: (v: number) => number): number {
+    const n = this.rock.length;
+    let m = 0;
+    for (let v = 0; v < n; v++) m += h(v);
+    m /= n;
+    let d = 0;
+    for (let v = 0; v < n; v++) d += (h(v) - m) ** 2;
+    return Math.sqrt(d / n);
+  }
+  /** How much rounder the world is than it was, 0 to 1: how much of its first spread from round is gone. */
+  get roundness(): number {
+    if (this.startSpread < 0) this.startSpread = this.spreadOf((v) => this.start[v]);
+    return this.startSpread > 0 ? Math.max(0, 1 - this.spreadOf((v) => this.rock[v] + this.lava[v]) / this.startSpread) : 0;
+  }
+  /** The mean height of the ground as it was found: below it, a hollow. */
+  get startMean(): number {
+    let m = 0;
+    for (let v = 0; v < this.start.length; v++) m += this.start[v];
+    return m / this.start.length;
+  }
+
+  /** In free play, end the fire when you choose: what heat is left is let go, and the long age begins. */
+  end(): void {
+    this.k.endless = false;
+    this.reserve = 0;
+    this.pressure = 0;
   }
 
   /**
@@ -374,6 +417,18 @@ export class Planet {
     }
     for (let i = 0; i < this.k.craters; i++) bowl(point(), 0.03 + this.rand() * 0.06, 0.05);
     // A world without a sea keeps even its deepest craters dry.
+    // A lumpy asteroid: broad lumps and hollows, as a rubble of rock not yet pulled round, and one
+    // great crater gouged out of it, as Vesta's south pole was.
+    if (this.k.terrain === 'asteroid' && this.k.lumps > 0) {
+      const p = this.topo.basePositions, waves = Array.from({ length: 6 }, (_, i) => ({ d: point(), f: 1.2 + i * 0.55 + this.rand() * 0.6, ph: this.rand() * Math.PI * 2, a: 1 / (1 + i * 0.5) }));
+      const sum = waves.reduce((t, w) => t + w.a, 0);
+      for (let v = 0; v < n; v++) {
+        let h = 0;
+        for (const w of waves) h += w.a * Math.sin(w.f * (p[v * 3] * w.d.x + p[v * 3 + 1] * w.d.y + p[v * 3 + 2] * w.d.z) * Math.PI + w.ph);
+        this.rock[v] += (this.k.lumps * 1.6 * h) / sum;
+      }
+      bowl(unit({ x: -this.plume.x, y: -this.plume.y + 0.4, z: -this.plume.z }), 0.75, this.k.lumps * 1.2);
+    }
     if (this.k.terrain !== 'ocean' && this.k.terrain !== 'moon') for (let v = 0; v < n; v++) this.rock[v] = Math.max(0.004, this.rock[v]);
   }
 
@@ -543,7 +598,7 @@ export class Planet {
     // (Or, on a world whose heat rises evenly, at one pace until it's gone.)
     // (And on a tidal moon, faster at high tide and slower at low.)
     const rise = Math.min(this.reserve, this.k.rising * (this.k.steady ? 1 : Math.sqrt(Math.max(0, this.reserve) / this.k.heat)) * (1 + this.k.tide * this.tideNow) * dt + 1e-4 * dt);
-    this.reserve -= rise;
+    if (!this.k.endless) this.reserve -= rise; // (in free play, the store never empties)
     this.pressure += rise;
     if (this.pressure >= this.capNow) { this.collapse(); this.erupt(true); this.tally.calderas++; this.tell('Held too long: the mountain blew apart'); }
     // The store is spent: whatever pressure is left comes out by itself, the last of the fire.
@@ -796,7 +851,8 @@ export class Planet {
       const l = this.lava[v];
       if (l < this.k.thin) continue;
       const s = this.rock[v] + l, a = t.nbrOffsets[v], b = t.nbrOffsets[v + 1];
-      const drop = G
+      const own = (w: number) => s - (this.rock[w] + this.lava[w]), selfG = this.k.selfGravity;
+      const held = G
         // Held like a globe: how far down the neighbour is along gravity, the ground raised as it
         // is drawn, counted back into the ground's own heights. Near the top the relief is all of
         // it; further round, the curve of the world pulls the lava down its side.
@@ -804,7 +860,8 @@ export class Planet {
           const sw = this.rock[w] + this.lava[w], kv = 1 + R * s, kw = 1 + R * sw;
           return ((p[w * 3] * kw - p[v * 3] * kv) * G.x + (p[w * 3 + 1] * kw - p[v * 3 + 1] * kv) * G.y + (p[w * 3 + 2] * kw - p[v * 3 + 2] * kv) * G.z) / R;
         }
-        : (w: number) => s - (this.rock[w] + this.lava[w]);
+        : own;
+      const drop = selfG > 0 && G ? (w: number) => selfG * own(w) + (1 - selfG) * held(w) : held;
       let sum = 0, weights = 0;
       for (let q = a; q < b; q++) { const d = drop(t.nbrList[q]); if (d > 0) { sum += d; weights += Math.pow(d, this.k.channel); } }
       if (sum <= 0) continue;

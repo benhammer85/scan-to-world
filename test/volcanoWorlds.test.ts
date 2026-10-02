@@ -16,7 +16,7 @@ const run = (pl: Planet, seconds: number) => { for (let t = 0; t < seconds; t +=
 
 describe('the worlds', () => {
   it('come one after another, and each has its own aim', () => {
-    expect(WORLDS.map((w) => w.id)).toEqual(['ocean', 'moon', 'mars', 'ice', 'io', 'enceladus', 'young']);
+    expect(WORLDS.map((w) => w.id)).toEqual(['ocean', 'moon', 'mars', 'ice', 'io', 'enceladus', 'asteroid', 'young']);
     expect(worldOf('moon').goal).toBe('basins');
     expect(worldOf('nowhere').id).toBe('ocean');
     expect(nextWorld(worldOf('ocean'))!.id).toBe('moon');
@@ -24,7 +24,8 @@ describe('the worlds', () => {
     expect(nextWorld(worldOf('mars'))!.id).toBe('ice');
     expect(nextWorld(worldOf('ice'))!.id).toBe('io');
     expect(nextWorld(worldOf('io'))!.id).toBe('enceladus');
-    expect(nextWorld(worldOf('enceladus'))!.id).toBe('young');
+    expect(nextWorld(worldOf('enceladus'))!.id).toBe('asteroid');
+    expect(nextWorld(worldOf('asteroid'))!.id).toBe('young');
     expect(nextWorld(worldOf('young'))).toBe(null);
   });
 });
@@ -264,5 +265,46 @@ describe('Enceladus', () => {
     run(pl, 60);
     expect(pl.orbit).toBeLessThan(90);
     expect(pl.orbit).toBeGreaterThan(70);
+  });
+});
+
+describe('a lumpy asteroid', () => {
+  it('begins lumpy, and grows rounder as its hollows fill', () => {
+    const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('asteroid').rules);
+    expect(pl.spreadOf((v) => pl.start[v])).toBeGreaterThan(0.05);
+    expect(pl.roundness).toBe(0);
+    // Fill every hollow a little: lava laid where the ground is below its mean.
+    const mean = pl.startMean;
+    for (let v = 0; v < pl.rock.length; v++) if (pl.rock[v] < mean) pl.rock[v] += (mean - pl.rock[v]) * 0.5;
+    expect(pl.roundness).toBeGreaterThan(0.15);
+  });
+
+  it('runs its lava by its own slopes, the way it is held only nudging it', () => {
+    // The same pour, the world tipped hard towards +x: how far towards +x the lava ends up.
+    const lean = (selfGravity: number) => {
+      const pl = new Planet(topo, nearest(0, 0, 1), 3, { ...worldOf('asteroid').rules, selfGravity });
+      pl.stonesFall = false;
+      pl.gravity = { x: Math.sin(0.7), y: 0, z: -Math.cos(0.7) };
+      pl.lava[pl.plumeVertex] += 0.05;
+      for (let t = 0; t < 5; t += 1 / 20) pl.step(1 / 20);
+      let sum = 0, weight = 0;
+      for (let v = 0; v < pl.rock.length; v++) { const add = pl.rock[v] + pl.lava[v] - pl.start[v]; if (add > 0.0005) { sum += add * p[v * 3]; weight += add; } }
+      return sum / weight - p[pl.plumeVertex * 3];
+    };
+    expect(Math.abs(lean(1))).toBeLessThan(Math.abs(lean(0)) * 0.6);
+  });
+});
+
+describe('free play', () => {
+  it('never runs out of heat until it\'s ended', () => {
+    const pl = new Planet(topo, nearest(0, 0, 1), 3, { ...worldOf('mars').rules, endless: true, heat: 20 });
+    pl.stonesFall = false;
+    pl.gravity = { x: 0, y: 0, z: -1 };
+    for (let t = 0; t < 120; t += 1 / 20) { pl.step(1 / 20); if (pl.pressure > 5) pl.erupt(); }
+    expect(pl.over).toBe(false);
+    expect(pl.heatLeft).toBeGreaterThan(0.9);
+    pl.end();
+    for (let t = 0; t < 60; t += 1 / 20) pl.step(1 / 20);
+    expect(pl.over).toBe(true);
   });
 });

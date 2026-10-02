@@ -63,6 +63,10 @@
       /* After the chart: a word on beginning again, and a way to keep it. */
       #again { position: fixed; top: calc(96px + env(safe-area-inset-top)); left: 0; right: 0; text-align: center; font-size: 12px; font-style: italic; opacity: 0; pointer-events: none; transition: opacity 2s; margin: 0; }
       #again.shown { opacity: 0.55; }
+      /* In free play, a quiet way to end the fire when you choose, where the chart's keep will be. */
+      #finish { position: fixed; top: calc(22px + env(safe-area-inset-top)); right: 24px; font: italic 12px "Iowan Old Style", Palatino, Georgia, serif; color: #2e2118; background: none; border: none; opacity: 0; pointer-events: none; transition: opacity 2s; cursor: pointer; padding: 4px; }
+      #finish.shown { opacity: 0.4; pointer-events: auto; }
+      #begin .free { font-size: 13px; font-style: italic; opacity: 0.6; margin-top: 10px; cursor: pointer; padding: 6px; }
       #keep { position: fixed; top: calc(22px + env(safe-area-inset-top)); right: 24px; font: italic 12px "Iowan Old Style", Palatino, Georgia, serif; color: #2e2118; background: none; border: none; opacity: 0; pointer-events: none; transition: opacity 2s; cursor: pointer; padding: 4px; }
       #keep.shown { opacity: 0.5; pointer-events: auto; }
       /* The worlds, in a corner off the world: back to the card that lists them. */
@@ -77,6 +81,7 @@
     <div id="legend" class="engraved"></div>
     <p id="again" class="engraved">touch to start again</p>
     <button id="keep">keep the chart</button>
+    <button id="finish">end the fire</button>
     <button id="worlds" aria-label="the worlds"></button>
     <div id="atlas" class="engraved"><div class="head"><h2>The atlas</h2><button class="close">back</button></div><div class="pages"></div><div class="view"><img alt=""></div></div>
     <div id="system" class="engraved"><div class="head"><h2>A solar system</h2><button class="close">back</button></div><p class="about"></p><div class="plate"></div><div class="foot"></div></div>

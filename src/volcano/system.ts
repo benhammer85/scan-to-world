@@ -64,6 +64,7 @@ export const twistOf = (id: string): Twist => TWISTS.find((t) => t.id === id) ??
  * given to that world at all: see each twist's `not`.)
  */
 export const BALANCE: Partial<Record<WorldId, Record<string, number>>> = {
+  asteroid: { hot: 1.13, cold: 1.2, tidal: 1.1 },
   ice: { cold: 0.79, hot: 1.17 },
   io: { cold: 0.81, thin: 0.88 },
   mars: { thick: 0.86, thin: 1.11 },
@@ -79,7 +80,7 @@ export function twisted(world: WorldId, twistId: string): Partial<Rules> {
   return rules;
 }
 /** From the star outwards: the kinds of world in the order a system would have them, warmest first. */
-const WARMTH: WorldId[] = ['young', 'ocean', 'mars', 'io', 'moon', 'ice', 'enceladus'];
+const WARMTH: WorldId[] = ['young', 'ocean', 'mars', 'asteroid', 'io', 'moon', 'ice', 'enceladus'];
 
 export interface Made { met: boolean; second: number; words: string }
 export interface Body {
@@ -105,7 +106,7 @@ export interface System {
 }
 
 /** A good showing at each second aim: as good as this gives the most warmth (see `giftOf`). */
-const GOOD: Record<World['goal'], number> = { ring: 3, basins: 85, height: 700, cover: 30, plumes: 1400, feed: 15, orbit: 3474 };
+const GOOD: Record<World['goal'], number> = { round: 80, ring: 3, basins: 85, height: 700, cover: 30, plumes: 1400, feed: 15, orbit: 3474 };
 /** The most warmth a world passes on: this share more heat. */
 export const MOST_WARMTH = 0.15;
 const STARS = ['a yellow star', 'an orange star', 'a pale white star', 'a small red star'];
