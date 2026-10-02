@@ -57,7 +57,7 @@ export const PRINT_FUNCTIONS = /* glsl */ `
       float th = 0.04 + h.x * 0.96, on = smoothstep(th - 0.03, th + 0.03, dark);
       cov = max(cov, on * (1.0 - smoothstep(rr - 0.5 * ps, rr + 0.5 * ps, length(p - q))));
     }
-    return mix(cov, clamp(dark * 1.6 * r * r, 0.0, 0.6), smoothstep(0.35, 0.7, ps));
+    return mix(cov, clamp(dark * 1.2 * r * r, 0.0, 0.3), smoothstep(0.35, 0.7, ps));
   }
   // Three lattices, turned against each other and of different sizes, each carrying a share of the
   // darkness, which is capped short of every dot: so however dark, no lattice ever fills and shows as a grid.
@@ -157,6 +157,9 @@ export function printFragment(look: Look, sea: boolean): string {
       // and at the world's edge to round it.
       vec3 V = normalize(vViewPosition), Nn = normalize(vN), S = normalize(vS), L = normalize(vec3(-0.55, 0.6, 0.6));
       float limb = exp(-clamp(dot(S, V), 0.0, 1.0) * 22.0) * 0.35;
+      // Lines fade out as the ground turns edge-on at the world's rim, so it ends softly, never in an
+      // inked outline (seen edge-on, the height crosses the sea everywhere, and the coast line would ring the world).
+      float edgeOn = smoothstep(0.06, 0.3, clamp(dot(S, V), 0.0, 1.0));
       float hl = max(vH, 0.0);
       float relief = max(0.0, dot(S, L) - dot(Nn, L)) * ${sea ? '2.2' : '3.6'};
       // Craters, as lunar charts draw them: a crescent of dots on the inside wall nearest the light (it's
@@ -191,15 +194,15 @@ export function printFragment(look: Look, sea: boolean): string {
       float dark = mix(limb + exp(-max(-vH, 0.0) / 0.03) * 0.14, darkL + limb, onLand); // (and a little over the shallows, so what rises under the sea shows)
       if (dark > 0.035) col = mix(col, ink, stipple(vDir, 300.0, dark, 0.45 * uPx) * 0.92);
       // The graticule, over the open sea.
-      col = mix(col, ink, graticule(vDir, px) * ${sea ? '(1.0 - onLand) * (1.0 - 0.5 * aSea) * 0.5' : '0.22'});
+      col = mix(col, ink, edgeOn * graticule(vDir, px) * ${sea ? '(1.0 - onLand) * (1.0 - 0.5 * aSea) * 0.5' : '0.22'});
 
-      col = mix(col, ink, rimInk * onLand * 0.85);
+      col = mix(col, ink, rimInk * onLand * 0.85 * edgeOn);
 
       ${look === 1 ? WOOD : WATER}
 
       ${sea ? `// The coast: one crisp line.
       float coastPx = abs(vH) / max(fwidth(vH), 1e-6);
-      col = mix(col, ink, (1.0 - smoothstep(0.55 * uPx - 0.5, 0.55 * uPx + 0.5, coastPx)) * 0.95);` : ''}
+      col = mix(col, ink, (1.0 - smoothstep(0.55 * uPx - 0.5, 0.55 * uPx + 0.5, coastPx)) * 0.95 * edgeOn);` : ''}
       diffuseColor.rgb *= col;`;
 }
 
