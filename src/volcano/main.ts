@@ -366,9 +366,11 @@ function surface(v: number): number {
 }
 
 // The simulation's values, a vertex at a time, before they are carried onto the finer surface.
+/** Lava this deep (or deeper) is drawn whole; thinner, it thins towards its edge (see `coarse`). */
+const LAVA_WHOLE = 0.003;
 /** How many times the marks are eased toward their neighbours. */
 const MARK_EASING = 8;
-const coarseHeight = new Float32Array(N), coarseLand = new Float32Array(N * 3), coarseMarks = new Float32Array(N * 4), markEase = new Float32Array(N), eased = new Float32Array(N * 4);
+const coarseHeight = new Float32Array(N), coarseLand = new Float32Array(N * 3), coarseMarks = new Float32Array(N * 4), eased = new Float32Array(N * 4);
 /** The simulation's heights and colours, a vertex at a time, ready to be carried onto the finer surface. */
 function coarse(): void {
   // How far the wash eases this time: by the seconds since last, over a second or two.
@@ -389,12 +391,16 @@ function coarse(): void {
     // Where a world keeps the mark of it (the Moon's seas), ground lava has lain on stays dark: this
     // fire's fully, an earlier one's a little faded. And the lava itself, by how thick it lies.
     coarseMarks[v * 4] = FL ? (planet.age[v] < 1e5 ? 1 : 0) : SULPHUR && planet.ash[v] > 0.6 ? 1 : 0;
-    coarseMarks[v * 4 + 1] = lava > 0.00005 ? 1 : 0; // (where lava lies at all, however thin: eased below into a shape with a clean, round edge)
+    // Where lava lies, by how deep: whole where it's a little deep, thinning to nothing at its
+    // margins. So its edge falls between the vertices, wherever its depth says, and slides
+    // smoothly as it spreads, as a liquid's does, rather than stepping from vertex to vertex.
+    coarseMarks[v * 4 + 1] = lava > 0.00002 ? Math.min(1, Math.sqrt(lava / LAVA_WHOLE)) : 0;
     // Lava just set: black, weathering back into the ground's colour over a minute or two. Carried as
     // where it lies (1 or 0) and that times how black it still is, so the shader can divide the one
     // by the other and have the blackness even right up to a clean edge.
     // (Not on the ice moon: water freezes white, into the new ice the flood mark already draws.)
-    const set = !ICE && lava <= 0.00005 && planet.age[v] < 240 ? 1 : 0;
+    // (Lava too thin to be drawn running is drawn set: a thin margin chills first.)
+    const set = !ICE && lava <= LAVA_WHOLE / 4 && planet.age[v] < 240 ? 1 : 0;
     coarseMarks[v * 4 + 3] = set;
     coarseMarks[v * 4 + 2] = set * Math.exp(-planet.age[v] / 45);
     const kind = LIFE ? ecology.kind[v] : -1, wash = kind >= 0 ? WASH[kind] : null, washBy = wash ? WASH_STRENGTH * Math.min(1, planet.life[v]) * (1 - hot) : 0;
@@ -412,23 +418,16 @@ function coarse(): void {
   }
   // Each mark's amount eased toward its neighbours', again and again, so the edge the shader draws
   // where it crosses a half is a smooth curve, not the simulation's triangles stepping in teeth.
-  // Running lava is first widened by half a step, so a stream a vertex wide still shows once eased.
+  // Running lava, already carried by its depth (so its edge falls between the vertices), is eased
+  // a few times fewer, so a narrow stream still shows.
   const o = topo.nbrOffsets, l = topo.nbrList, M = coarseMarks;
-  let running = false;
-  for (let v = 0; v < N && !running; v++) if (M[v * 4 + 1] > 0) running = true;
-  if (running) {
-    for (let v = 0; v < N; v++) {
-      markEase[v] = M[v * 4 + 1];
-      if (markEase[v] === 0) for (let k = o[v]; k < o[v + 1]; k++) if (M[l[k] * 4 + 1] >= 1) { markEase[v] = 0.5; break; }
-    }
-    for (let v = 0; v < N; v++) M[v * 4 + 1] = markEase[v];
-  }
   for (let pass = 0; pass < MARK_EASING; pass++) {
+    const lavaToo = pass < MARK_EASING * 0.75;
     for (let v = 0; v < N; v++) {
       let s0 = 0, s1 = 0, s2 = 0, s3 = 0;
       for (let k = o[v]; k < o[v + 1]; k++) { const w = l[k] * 4; s0 += M[w]; s1 += M[w + 1]; s2 += M[w + 2]; s3 += M[w + 3]; }
       const by = 0.6 / Math.max(1, o[v + 1] - o[v]), v4 = v * 4;
-      eased[v4] = M[v4] * 0.4 + s0 * by; eased[v4 + 1] = M[v4 + 1] * 0.4 + s1 * by;
+      eased[v4] = M[v4] * 0.4 + s0 * by; eased[v4 + 1] = lavaToo ? M[v4 + 1] * 0.4 + s1 * by : M[v4 + 1];
       eased[v4 + 2] = M[v4 + 2] * 0.4 + s2 * by; eased[v4 + 3] = M[v4 + 3] * 0.4 + s3 * by;
     }
     M.set(eased);
@@ -719,9 +718,14 @@ if (WORLD.goal === 'feed') {
 }
 let ringShown = -1;
 /** The giant's ring, inked round as far as it's full: it fills as it's fed, and thins away dot by dot. */
+const RING_PALE = new THREE.Color('#' + new THREE.Color(P.pencil).lerp(new THREE.Color(P.landInk), 0.6).getHexString()), RING_AIMED = new THREE.Color(P.landInk);
+let aimedFor = 0;
 function feeding(dt: number): void {
   ringInk.update(dt);
   ringPencil.update(dt);
+  // While the world is tipped the giant's way, its ring's empty dots darken, softly: a burst now would reach it.
+  aimedFor += ((planet.towardGiant && !planet.over ? 1 : 0) - aimedFor) * Math.min(1, dt * 5);
+  ((ringPencil.object.material as THREE.ShaderMaterial).uniforms.uInk.value as THREE.Color).copy(RING_PALE).lerp(RING_AIMED, aimedFor);
   const inked = Math.round(GIANT_DOTS * Math.min(1, planet.orbit / ORBIT));
   if (inked === ringShown) return;
   ringShown = inked;

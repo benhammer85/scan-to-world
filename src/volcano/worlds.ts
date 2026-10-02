@@ -186,7 +186,7 @@ export const WORLDS: World[] = [
     numeral: 'VI',
     title: 'Enceladus',
     first: 'Enceladus: a small ice moon of a ringed giant.',
-    then: 'Its plumes feed the giant\'s ring, and the ring thins away unless it\'s fed. When the smoke is heavy, tip the world towards the giant: the burst flies into the ring. Tipped any other way, it falls back as frost. Fill the ring.',
+    then: 'Its plumes feed the giant\'s ring, and the ring thins away unless it\'s fed. When the smoke is heavy, tip the world towards the giant, at the top left: its ring darkens when you\'re aimed right, and the burst flies into it. Tipped any other way, it falls back as frost. Fill the ring.',
     second: 'Feed the ring, or frost the moon white?',
     rules: {
       terrain: 'ice', basins: 0, craters: 30, floor: 0.05, rough: 0.012,
@@ -203,7 +203,7 @@ export const WORLDS: World[] = [
       landInk: '#56707e', landInkHigh: '#38525f', pencil: '#b3c0c7', seaInk: '#5b82a3',
     },
     goal: 'feed',
-    orbit: 120,
+    orbit: 100,
     contour: 0.07,
   },
   {

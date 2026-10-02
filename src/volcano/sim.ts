@@ -36,6 +36,8 @@
 import type { Topology } from '../mesh/topology';
 
 const REFERENCE = 16002; // an icosphere of detail 40
+/** The depth about which lava runs freely: much thinner, and it hardly moves (see `flow`). */
+const VISCOUS = 0.0138, VISCOUS_15 = VISCOUS * Math.sqrt(VISCOUS);
 
 export const VOLCANO = {
   /** The seafloor at the start: even, with only a fine roughness, so flows branch rather than following the mesh. */
@@ -806,7 +808,10 @@ export class Planet {
       let sum = 0, weights = 0;
       for (let q = a; q < b; q++) { const d = drop(t.nbrList[q]); if (d > 0) { sum += d; weights += Math.pow(d, this.k.channel); } }
       if (sum <= 0) continue;
-      const out = Math.min(l * 0.5, this.k.flow * dt * sum * l / (l + 0.02));
+      // Viscous, as lava is: it runs fast where it lies deep and hardly at all where it's thin (its
+      // flux rising as its depth to the power two and a half, nearly as a Bingham fluid's does down a slope), so a
+      // flow's thick core pushes its thin margin ahead of it in blunt, rounded lobes.
+      const lv = l * Math.sqrt(l), out = Math.min(l * 0.5, this.k.flow * dt * sum * lv / (lv + VISCOUS_15));
       next[v] -= out;
       for (let q = a; q < b; q++) {
         const w = t.nbrList[q], d = drop(w);

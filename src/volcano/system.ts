@@ -34,25 +34,50 @@ export const TWISTS: Twist[] = [
   { id: 'none', name: 'as it is', words: '', rules: () => ({}) },
   {
     id: 'restless', name: 'a restless sky', words: 'Stones fall twice as often.',
-    rules: (r) => ({ impactEvery: [r.impactEvery[0] / 2, r.impactEvery[1] / 2] as [number, number] }), not: ['io'],
+    rules: (r) => ({ impactEvery: [r.impactEvery[0] / 2, r.impactEvery[1] / 2] as [number, number] }), not: ['io', 'enceladus'],
+  },
+  // (The pace of the heat, not how much: a quicker fire or a slower one, the same heat in all.
+  // Not on the ocean world, whose heat travels the route at the crust's pace.)
+  {
+    id: 'hot', name: 'a quick fire', words: 'The heat comes a quarter faster, and held too long it bursts out sooner.',
+    rules: (r) => ({ rising: r.rising * 1.25, cap: r.cap * 0.8 }), not: ['ocean', 'io'],
   },
   {
-    id: 'hot', name: 'young and hot', words: 'More heat, but held too long it bursts out sooner.',
-    rules: (r) => ({ heat: r.heat * 1.15, cap: r.cap * 0.8 }),
+    id: 'cold', name: 'a slow fire', words: 'The heat comes slowly, over a longer fire.',
+    rules: (r) => ({ rising: r.rising * 0.8 }), not: ['ocean', 'enceladus'],
   },
-  {
-    id: 'cold', name: 'old and cold', words: 'Less heat, and a smaller aim.',
-    rules: (r) => ({ heat: r.heat * 0.85 }), aim: 0.85, not: ['ocean', 'moon', 'io', 'enceladus'],
-  },
-  { id: 'thin', name: 'thin lava', words: 'Lava runs far.', rules: (r) => ({ flow: r.flow * 1.5 }) },
-  { id: 'thick', name: 'thick lava', words: 'Lava piles up near the vent.', rules: (r) => ({ flow: r.flow * 0.6 }), not: ['moon'] },
+  // (How lava runs and sets: thin, it runs far and sets late; thick, it piles up and sets soon.)
+  { id: 'thin', name: 'thin lava', words: 'Lava runs far and thin before it sets.', rules: (r) => ({ flow: r.flow * 1.6, coolLand: r.coolLand * 0.6 }) },
+  { id: 'thick', name: 'thick lava', words: 'Lava piles up near the vent and sets soon.', rules: (r) => ({ flow: r.flow * 0.5, coolLand: r.coolLand * 1.8 }), not: ['moon', 'enceladus'] },
   {
     id: 'tidal', name: 'a near neighbour', words: 'Its tides make the heat come and go, and bursts throw further at high tide.',
-    rules: () => ({ tide: 0.6, tidePeriod: 60, tideThrow: 0.4 }), not: ['io'],
+    rules: () => ({ tide: 0.6, tidePeriod: 60, tideThrow: 0.4 }), not: ['io', 'ocean', 'enceladus'],
   },
 ];
 export const twistOf = (id: string): Twist => TWISTS.find((t) => t.id === id) ?? TWISTS[0];
 
+/**
+ * Where a twist made a world easier or harder than it is without one, its heat is set back so it
+ * isn't: measured with bots that play each world well (a skilled player's win, as a share of the
+ * fire, brought back within about 0.08 of the world's own), and kept here. (Twists that would have
+ * needed more than heat to set right, as a quick fire on Io, which leaves too few tides, aren't
+ * given to that world at all: see each twist's `not`.)
+ */
+export const BALANCE: Partial<Record<WorldId, Record<string, number>>> = {
+  ice: { cold: 0.79, hot: 1.17 },
+  io: { cold: 0.81, thin: 0.88 },
+  mars: { thick: 0.86, thin: 1.11 },
+  young: { cold: 0.88 },
+};
+
+/** A kind of world's rules with a twist: its own, the twist's, and the heat set back where the twist would unbalance it. */
+export function twisted(world: WorldId, twistId: string): Partial<Rules> {
+  const base = worldOf(world), own: Rules = { ...VOLCANO, ...base.rules };
+  const rules: Partial<Rules> = { ...base.rules, ...twistOf(twistId).rules(own) };
+  const by = BALANCE[world]?.[twistId];
+  if (by) rules.heat = (rules.heat ?? own.heat) * by;
+  return rules;
+}
 /** From the star outwards: the kinds of world in the order a system would have them, warmest first. */
 const WARMTH: WorldId[] = ['young', 'ocean', 'mars', 'io', 'moon', 'ice', 'enceladus'];
 
@@ -137,8 +162,7 @@ function numeral(n: number): string {
  */
 export function worldFor(sys: System, i: number): World {
   const b = sys.bodies[i], base = worldOf(b.world), twist = twistOf(b.twist);
-  const own: Rules = { ...VOLCANO, ...base.rules };
-  const rules: Partial<Rules> = { ...base.rules, ...twist.rules(own) };
+  const rules = twisted(b.world, b.twist);
   const gift = sys.gift, words: string[] = [];
   if (twist.words) words.push(`${twist.name[0].toUpperCase()}${twist.name.slice(1)}: ${twist.words[0].toLowerCase()}${twist.words.slice(1)}`);
   if (gift) {
