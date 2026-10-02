@@ -16,7 +16,7 @@ const run = (pl: Planet, seconds: number) => { for (let t = 0; t < seconds; t +=
 
 describe('the worlds', () => {
   it('come one after another, and each has its own aim', () => {
-    expect(WORLDS.map((w) => w.id)).toEqual(['ocean', 'moon', 'mars', 'ice', 'io', 'enceladus', 'asteroid', 'spin', 'lamp', 'young']);
+    expect(WORLDS.map((w) => w.id)).toEqual(['ocean', 'moon', 'mars', 'ice', 'io', 'enceladus', 'asteroid', 'spin', 'lamp', 'suns', 'deep', 'young']);
     expect(worldOf('moon').goal).toBe('basins');
     expect(worldOf('nowhere').id).toBe('ocean');
     expect(nextWorld(worldOf('ocean'))!.id).toBe('moon');
@@ -27,7 +27,9 @@ describe('the worlds', () => {
     expect(nextWorld(worldOf('enceladus'))!.id).toBe('asteroid');
     expect(nextWorld(worldOf('asteroid'))!.id).toBe('spin');
     expect(nextWorld(worldOf('spin'))!.id).toBe('lamp');
-    expect(nextWorld(worldOf('lamp'))!.id).toBe('young');
+    expect(nextWorld(worldOf('lamp'))!.id).toBe('suns');
+    expect(nextWorld(worldOf('suns'))!.id).toBe('deep');
+    expect(nextWorld(worldOf('deep'))!.id).toBe('young');
     expect(nextWorld(worldOf('young'))).toBe(null);
   });
 });
@@ -369,5 +371,38 @@ describe('the lava-lamp world', () => {
     run(pl, 1);
     expect(pl.pooled).toBeCloseTo(10);
     expect(pl.blobs.length).toBe(0);
+  });
+});
+
+describe('a world of three suns', () => {
+  it('turns chaotic now and then, as a sun swings close, and stable again', () => {
+    const pl = new Planet(topo, nearest(0, 0, 1), 7, worldOf('suns').rules);
+    pl.stonesFall = false;
+    pl.gravity = { x: 0, y: 0, z: -1 };
+    let chaotic = 0, flips = 0, was = false;
+    for (let t = 0; t < 400; t += 1 / 10) { pl.step(1 / 10); if (pl.pressure > 5) pl.erupt(); if (pl.chaotic) chaotic += 0.1; if (pl.chaotic !== was) flips++; was = pl.chaotic; }
+    expect(chaotic).toBeGreaterThan(20);
+    expect(chaotic).toBeLessThan(300);
+    expect(flips).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('a deep ocean world', () => {
+  it('runs lava further through a tube of its own fresh crust than over old floor', () => {
+    // The same flow poured down the same way: once over the cold floor, once just after another.
+    const reach = (second: boolean) => {
+      const pl = new Planet(topo, nearest(0, 0, 1), 3, { ...worldOf('deep').rules, bankFar: 0 });
+      pl.stonesFall = false;
+      pl.gravity = { x: Math.sin(0.5), y: 0, z: -Math.cos(0.5) };
+      const pour = () => { pl.pressure = 6; pl.erupt(); for (let t = 0; t < 10; t += 1 / 20) pl.step(1 / 20); };
+      if (second) pour();
+      const before = Float32Array.from(pl.rock);
+      pour();
+      let far = 0;
+      const q = pl.plume;
+      for (let v = 0; v < pl.rock.length; v++) if (pl.rock[v] - before[v] > 0.002) far = Math.max(far, Math.acos(Math.min(1, p[v * 3] * q.x + p[v * 3 + 1] * q.y + p[v * 3 + 2] * q.z)));
+      return far;
+    };
+    expect(reach(true)).toBeGreaterThan(reach(false));
   });
 });

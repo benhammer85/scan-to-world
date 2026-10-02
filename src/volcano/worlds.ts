@@ -22,12 +22,17 @@
  *       aim is a ridge all the way round it, as Iapetus has.
  *   IX  A lava-lamp world: hot rock lighter than the deep, rising in blobs that float to whatever is
  *       uppermost, cool, merge and sink. Carry them, merged big enough to last, to the far shore.
- *   X   A young Earth, with no moon yet: its cone holds the pressure down, the taller the more,
+ *   X   A world of three suns, whose wandering makes stable eras and chaotic ones, as the three
+ *       bodies of the problem do: the heat floods in when a sun swings close, and so do the tides.
+ *       Have land standing when the fire ends.
+ *   XI  A deep ocean world: lava cools fast in the cold deep, but in a tube of its own fresh crust
+ *       it runs far. Build out to the shallow bank and raise an island there.
+ *   XII A young Earth, with no moon yet: its cone holds the pressure down, the taller the more,
  *       and the biggest bursts throw rock clear into orbit, where it gathers into a moon.
  */
 import type { Rules } from './sim';
 
-export type WorldId = 'ocean' | 'moon' | 'mars' | 'ice' | 'io' | 'enceladus' | 'asteroid' | 'spin' | 'lamp' | 'young';
+export type WorldId = 'ocean' | 'moon' | 'mars' | 'ice' | 'io' | 'enceladus' | 'asteroid' | 'spin' | 'lamp' | 'suns' | 'deep' | 'young';
 
 export interface Palette {
   /** The ground: bare old rock, fresh basalt, ash, lava as it runs (and where it lies thick), and, for worlds that keep a mark of it, rock that lava has flooded. */
@@ -58,7 +63,7 @@ export interface World {
   /** Its second aim, for the card: one that pulls against the first (see second.ts). */
   second: string;
   palette: Palette;
-  goal: 'ring' | 'basins' | 'height' | 'cover' | 'plumes' | 'feed' | 'round' | 'ridge' | 'lamp' | 'orbit';
+  goal: 'ring' | 'basins' | 'height' | 'cover' | 'plumes' | 'feed' | 'round' | 'ridge' | 'lamp' | 'land' | 'bank' | 'orbit';
   /** What kind of world it is, without its name: for a world of this kind round another star (see system.ts). */
   kind: string;
   /** For a world whose aim is height: how high, in km, and how many km a unit of the world's height stands for. */
@@ -67,6 +72,10 @@ export interface World {
   cover?: number;
   /** For a world whose aim is to be round: how much of its first spread from round must go. */
   round?: number;
+  /** For the three-sun world: the share of the world that must stand as land when the fire ends. */
+  land?: number;
+  /** For the deep ocean: how much of the bank (in vertices of a planet of the drawn detail) must stand above the sea. */
+  island?: number;
   /** For the lava lamp: how much must pool on the far shore. */
   pool?: number;
   /** For a world whose aim is great plumes: how many. */
@@ -290,9 +299,53 @@ export const WORLDS: World[] = [
     pool: 140,
   },
   {
+    id: 'suns',
+    kind: 'A world of three suns',
+    numeral: 'X',
+    title: 'A world of three suns',
+    first: 'A world with three suns, and no telling where they\'ll go.',
+    then: 'The suns wander. In a stable era they keep their distance, and the heat comes slowly. When one swings close, a chaotic era begins: the heat floods in, but so do the tides, and they wear the coasts away. Have land standing when the fire ends: 3.7% of the world. Build broad, and build in the calm.',
+    second: 'Broad lowlands, or a peak that outlasts the tides?',
+    rules: {
+      terrain: 'ocean', floor: -0.22, life: false, suns: true,
+      drift: 0, rises: 0.03, heat: 460, rising: 1.0, steady: true,
+      impactEvery: [60, 100],
+    },
+    palette: {
+      // Parchment scorched a little, under three suns.
+      paper: '#efdcbc', basalt: '#9a8672', ash: '#b9ab99', lava: '#b8563c', deepLava: '#8f3b28',
+      shallow: '#d6e1e6', deep: '#b3c6d2',
+      landInk: '#6b4a2e', landInkHigh: '#4a2f1c', pencil: '#bea98c', seaInk: '#5b82a3',
+    },
+    goal: 'land',
+    land: 0.037,
+  },
+  {
+    id: 'deep',
+    kind: 'A deep ocean world',
+    numeral: 'XI',
+    title: 'A deep ocean world',
+    first: 'A world of deep, cold ocean, its fire on the sea floor.',
+    then: 'Lava sets fast in the cold deep, and goes nowhere. But lava running over crust it laid in the last moments stays hot inside it, as in a tube, and runs on further. Tip the world towards the dotted bank, again and again the same way, and build out to it. Then raise an island there, above the sea.',
+    second: 'Build one long tube, or many short ones?',
+    rules: {
+      terrain: 'ocean', floor: -0.45, life: false, sink: 0, swell: 0,
+      drift: 0, rises: 0, heat: 450, rising: 1.2, steady: true,
+      tubes: 0.02, tubeFresh: 40, bankFar: 0.6,
+      impactEvery: [60, 100],
+    },
+    palette: {
+      paper: '#e8dfcc', basalt: '#8d8478', ash: '#b0a99d', lava: '#b8563c', deepLava: '#8f3b28',
+      shallow: '#c6d9e6', deep: '#8aa9c1',
+      landInk: '#5a4632', landInkHigh: '#3b2c1e', pencil: '#b3a68f', seaInk: '#3f6787',
+    },
+    goal: 'bank',
+    island: 70,
+  },
+  {
     id: 'young',
     kind: 'A young world',
-    numeral: 'X',
+    numeral: 'XII',
     title: 'A young Earth',
     first: 'A young Earth, hot, and with no moon yet.',
     then: 'Here the cone holds the pressure down: the taller it stands, the more it can hold, and the more a burst throws. Build it up, then hold the world level as long as you dare and tip it: the rock that flies clear goes into orbit. Held too long, the cone blows apart and throws nothing. Throw up enough rock to make a moon.',

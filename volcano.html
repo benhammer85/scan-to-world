@@ -21,6 +21,12 @@
       @keyframes drawn { 50% { transform: translateY(-2px); } }
       /* A quiet word now and then, at the foot above the key, never across the world. */
       #event { position: fixed; bottom: calc(66px + env(safe-area-inset-bottom)); left: 16px; right: 16px; text-align: center; font-size: 14px; font-style: italic; opacity: 0; pointer-events: none; transition: opacity 2s; }
+      /* The words float over the world on a soft halo of the paper, as a map's lettering is cleared from the lines beneath it. */
+      #event, #stage-name { text-shadow: 0 0 2px #f4efe4, 0 0 6px #f4efe4, 0 0 12px #f4efe4, 0 0 18px #f4efe4; }
+      /* The world comes in from the paper, and goes back to it, never cut. */
+      #stage { opacity: 0; transition: opacity 1.2s ease; }
+      #stage.shown { opacity: 1; }
+      body.leaving #stage { opacity: 0; transition: opacity 0.8s ease; }
       #event.shown { opacity: 0.6; }
       /* The card the world begins from: one touch, which lets the phone share how it's held. */
       #begin { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; background: #f4efe4; transition: opacity 1.5s; cursor: pointer; }

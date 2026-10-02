@@ -377,14 +377,29 @@ function surface(v: number): number {
 const LAVA_WHOLE = 0.003;
 /** How many times the marks are eased toward their neighbours. */
 const MARK_EASING = 8;
-const coarseHeight = new Float32Array(N), coarseLand = new Float32Array(N * 3), coarseMarks = new Float32Array(N * 4), eased = new Float32Array(N * 4);
+const drawnHeight = new Float32Array(N), heightEase = new Float32Array(N), coarseHeight = new Float32Array(N), coarseLand = new Float32Array(N * 3), coarseMarks = new Float32Array(N * 4), eased = new Float32Array(N * 4);
 /** The simulation's heights and colours, a vertex at a time, ready to be carried onto the finer surface. */
 function coarse(): void {
   // How far the wash eases this time: by the seconds since last, over a second or two.
   const now = performance.now() / 1000, ease = washedAt < 0 ? 1 : 1 - Math.exp(-(now - washedAt) / 1.5);
   washedAt = now;
+  // The ground as drawn, eased a little toward its neighbours: a flow's edge (and the cliff it
+  // leaves when it sets) is a step a vertex high, which seen edge-on, near the world's rim, shows
+  // as a row of teeth. Eased twice, it's a soft rise instead. (The simulation keeps its own.)
+  {
+    const o = topo.nbrOffsets, l = topo.nbrList;
+    for (let v = 0; v < N; v++) drawnHeight[v] = surface(v);
+    for (let pass = 0; pass < 2; pass++) {
+      for (let v = 0; v < N; v++) {
+        let sum = 0;
+        for (let k = o[v]; k < o[v + 1]; k++) sum += drawnHeight[l[k]];
+        heightEase[v] = drawnHeight[v] * 0.55 + (sum / Math.max(1, o[v + 1] - o[v])) * 0.45;
+      }
+      drawnHeight.set(heightEase);
+    }
+  }
   for (let v = 0; v < N; v++) {
-    const h = surface(v), r = 1 + RELIEF * Math.max(0, h);
+    const h = drawnHeight[v], r = 1 + RELIEF * Math.max(0, h);
     topo.positions[v * 3] = base[v * 3] * r; topo.positions[v * 3 + 1] = base[v * 3 + 1] * r; topo.positions[v * 3 + 2] = base[v * 3 + 2] * r;
     coarseHeight[v] = h;
     const lava = planet.lava[v];
@@ -804,6 +819,30 @@ function lamping(): void {
   for (const b of planet.blobs) put(b.x, b.y, b.z, b.area, Math.max(0, b.heat));
   blobCount.value = n;
 }
+/**
+ * The three suns, engraved in the sky above the world: each where it is in its wandering, side to
+ * side, and larger the nearer it is to the world. Fixed in the sky, as the giant is on Enceladus.
+ */
+const SUNS = !!WORLD.rules.suns, sunMarks: THREE.Sprite[] = [];
+if (SUNS) {
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 128;
+  const g = cv.getContext('2d')!;
+  g.fillStyle = '#efdca8'; g.strokeStyle = P.landInkHigh; g.lineWidth = 3; g.lineCap = 'round';
+  g.beginPath(); g.arc(64, 64, 30, 0, Math.PI * 2); g.fill(); g.stroke();
+  for (let i = 0; i < 12; i++) { const a = (i / 12) * Math.PI * 2; g.beginPath(); g.moveTo(64 + 40 * Math.cos(a), 64 + 40 * Math.sin(a)); g.lineTo(64 + 54 * Math.cos(a), 64 + 54 * Math.sin(a)); g.stroke(); }
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  for (let i = 0; i < 3; i++) { const m = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true })); scene.add(m); sunMarks.push(m); }
+}
+/** Each frame: the suns, where they are now. */
+function sunning(): void {
+  planet.stars.forEach((st, i) => {
+    const d = Math.hypot(st.x, st.y), near = 1 / Math.max(0.35, d);
+    sunMarks[i].position.set(THREE.MathUtils.clamp(st.x * 0.8, -1.25, 1.25), 2.2 + THREE.MathUtils.clamp(st.y * 0.12, -0.15, 0.15), -4.8);
+    sunMarks[i].scale.setScalar(0.14 + 0.12 * Math.min(2, near));
+  });
+}
 let orbitShown = -1;
 /** The ring turns slowly; it's inked as far as the rock thrown up goes, and in the long age the rock gathers into the moon. */
 function orbiting(dt: number): void {
@@ -833,8 +872,8 @@ function orbiting(dt: number): void {
   }
 }
 const HEIGHT = WORLD.height ?? { target: 0, kmPerUnit: 40 };
-const POOL = WORLD.pool ?? 0, ROUND = Math.round((WORLD.round ?? 0) * 100), COVER = Math.round((WORLD.cover ?? 0) * 100), PLUMES = WORLD.plumes ?? 0, ORBIT = WORLD.orbit ?? 0;
-let aimDone = 0, aimOf = WORLD.goal === 'ring' ? CHAIN.stretches : WORLD.goal === 'height' ? HEIGHT.target : WORLD.goal === 'cover' ? COVER : WORLD.goal === 'round' ? ROUND : WORLD.goal === 'ridge' ? Planet.RIDGE_STRETCHES : WORLD.goal === 'lamp' ? 100 : WORLD.goal === 'plumes' ? PLUMES : WORLD.goal === 'orbit' || WORLD.goal === 'feed' ? 100 : planet.basins.length, lastAim = -10;
+const LAND = Math.round((WORLD.land ?? 0) * 1000) / 10, ISLAND = WORLD.island ?? 0, POOL = WORLD.pool ?? 0, ROUND = Math.round((WORLD.round ?? 0) * 100), COVER = Math.round((WORLD.cover ?? 0) * 100), PLUMES = WORLD.plumes ?? 0, ORBIT = WORLD.orbit ?? 0;
+let aimDone = 0, aimOf = WORLD.goal === 'ring' ? CHAIN.stretches : WORLD.goal === 'height' ? HEIGHT.target : WORLD.goal === 'cover' ? COVER : WORLD.goal === 'round' ? ROUND : WORLD.goal === 'ridge' ? Planet.RIDGE_STRETCHES : WORLD.goal === 'lamp' || WORLD.goal === 'bank' ? 100 : WORLD.goal === 'land' ? LAND : WORLD.goal === 'plumes' ? PLUMES : WORLD.goal === 'orbit' || WORLD.goal === 'feed' ? 100 : planet.basins.length, lastAim = -10;
 /** How much of the aim is done now, reckoned afresh. */
 function reckonAim(): void {
   if (chain) { aimDone = chain.update(planet, topo); aimOf = CHAIN.stretches; }
@@ -844,15 +883,20 @@ function reckonAim(): void {
   else if (WORLD.goal === 'round') { aimDone = planet.roundness * 100; aimOf = ROUND; }
   else if (WORLD.goal === 'ridge') { aimDone = planet.ridgeRaise().filter((r) => r >= planet.k.ridge).length; aimOf = Planet.RIDGE_STRETCHES; }
   else if (WORLD.goal === 'lamp') { aimDone = (100 * planet.pooled) / POOL; aimOf = 100; }
+  else if (WORLD.goal === 'land') { aimDone = planet.landShare() * 100; aimOf = LAND; }
+  else if (WORLD.goal === 'bank') { aimDone = (100 * planet.bankLand) / ISLAND; aimOf = 100; }
   else if (WORLD.goal === 'orbit' || WORLD.goal === 'feed') { aimDone = (100 * planet.orbit) / ORBIT; aimOf = 100; }
   else { aimDone = planet.basins.filter((b) => planet.flooded(b) >= FLOODED_ENOUGH).length; aimOf = planet.basins.length; }
 }
-const won = () => aimOf > 0 && aimDone >= aimOf;
+// (Land on the three-sun world counts only as the fire ends: it has to last through the chaos.)
+const won = () => aimOf > 0 && aimDone >= aimOf && (WORLD.goal !== 'land' || planet.over);
 let toldHeight = 0, toldDone = 0, toldAimAt = -1e9;
 /** The aim, in a line for the foot: said once the world has begun, and again if a long while passes with nothing gained. */
 const AIM_WORDS = WORLD.goal === 'ring' ? 'Keep building islands as the heat travels the dotted line. A gap breaks the chain'
   : WORLD.goal === 'basins' ? 'Flood each dotted basin with lava'
   : WORLD.goal === 'cover' ? `Make ${COVER}% of the old ice new`
+  : WORLD.goal === 'land' ? `Have ${LAND}% of the world standing as land when the fire ends`
+  : WORLD.goal === 'bank' ? 'Build out to the dotted bank, and raise an island there'
   : WORLD.goal === 'ridge' ? 'Raise a ridge all the way round the dotted equator'
   : WORLD.goal === 'lamp' ? 'Bring warm blobs to the dotted shore on the far side'
   : WORLD.goal === 'round' ? `Fill the hollows until the asteroid is ${ROUND}% rounder`
@@ -864,7 +908,7 @@ const AIM_WORDS = WORLD.goal === 'ring' ? 'Keep building islands as the heat tra
 function tellAim(now: number): void {
   if (planet.over || ending) return;
   if (now - toldAimAt > 180) { toldAimAt = now; announce(AIM_WORDS); }
-  if (WORLD.goal === 'height' || WORLD.goal === 'cover' || WORLD.goal === 'round' || WORLD.goal === 'orbit' || WORLD.goal === 'feed' || WORLD.goal === 'lamp') return;
+  if (WORLD.goal === 'height' || WORLD.goal === 'cover' || WORLD.goal === 'round' || WORLD.goal === 'land' || WORLD.goal === 'orbit' || WORLD.goal === 'feed' || WORLD.goal === 'lamp' || WORLD.goal === 'bank') return;
   const done = Math.round(aimDone);
   if (done > toldDone && done < aimOf) {
     toldAimAt = now;
@@ -904,6 +948,17 @@ function drawAim(now: number): void {
     if (begun && step > toldHeight && step < aimOf) { toldHeight = step; toldAimAt = now; announce(`${step}% of a moon in orbit`); }
     return;
   }
+  if (WORLD.goal === 'bank' && planet.bank) {
+    // The bank, in dots, inked round as its island rises; told at the foot by the quarter.
+    const step = Math.floor(aimDone / 25) * 25;
+    if (begun && step > toldHeight && step < aimOf) { toldHeight = step; toldAimAt = now; announce(`The island is ${step}% raised`); }
+    const pts = circleAt(planet.bank, planet.bank.r * 1.3), filled = Math.round(pts.length * Math.min(1, aimDone / aimOf)), ink: number[] = [], pencil: number[] = [];
+    onGround(pts.slice(0, filled), ink);
+    onGround(pts.slice(filled), pencil);
+    aimInk.set(ink);
+    aimPencil.set(pencil);
+    return;
+  }
   if (WORLD.goal === 'lamp' && planet.shore) {
     // The far shore, in dots, inked round as it fills; told at the foot by the quarter.
     const step = Math.floor(aimDone / 25) * 25;
@@ -923,10 +978,10 @@ function drawAim(now: number): void {
     toldHeight = step;
     return;
   }
-  if (WORLD.goal === 'height' || WORLD.goal === 'cover' || WORLD.goal === 'round') {
-    // How far along is told at the foot, every two km (or every 5%, or 10%).
-    const by = WORLD.goal === 'height' ? 2 : WORLD.goal === 'round' ? 10 : 5, step = Math.floor(aimDone / by) * by;
-    if (begun && step > toldHeight && step < aimOf) { toldHeight = step; toldAimAt = now; announce(WORLD.goal === 'height' ? `The mountain is ${step} of ${aimOf} km high` : WORLD.goal === 'round' ? `${step}% rounder, of ${aimOf}%` : `${step}% of the ice made new, of ${aimOf}%`); }
+  if (WORLD.goal === 'height' || WORLD.goal === 'cover' || WORLD.goal === 'round' || WORLD.goal === 'land') {
+    // How far along is told at the foot, every two km (or every 5%, or 10%, or 1% of land).
+    const by = WORLD.goal === 'height' ? 2 : WORLD.goal === 'round' ? 10 : WORLD.goal === 'land' ? 1 : 5, step = Math.floor(aimDone / by) * by;
+    if (begun && step > toldHeight && step < aimOf) { toldHeight = step; toldAimAt = now; announce(WORLD.goal === 'height' ? `The mountain is ${step} of ${aimOf} km high` : WORLD.goal === 'round' ? `${step}% rounder, of ${aimOf}%` : WORLD.goal === 'land' ? `${step}% of the world is land, of ${aimOf}%` : `${step}% of the ice made new, of ${aimOf}%`); }
     // On the asteroid, its deepest hollows stippled in pencil, as old charts stippled a depression:
     // where lava is wanted. They fade as they fill.
     if (WORLD.goal === 'round') {
@@ -1128,7 +1183,7 @@ function feel(pattern: number | number[]): void {
 
 // ---------------------------------------------------------------- words, and the key
 /** What's worth saying: the turns in the world's story, not every happening in it. */
-const QUIET_WORDS = /^(The plume reaches the ring|A great plume, but too near|Wanted where|A stone is coming|Land breaks|Life begins in|The first|Moss grows|Wish met|Held too long|Stone caught|The fire is out|The heat is nearly|A dust storm|The storm passes)/;
+const QUIET_WORDS = /^(A chaotic era begins|A stable era begins|The plume reaches the ring|A great plume, but too near|Wanted where|A stone is coming|Land breaks|Life begins in|The first|Moss grows|Wish met|Held too long|Stone caught|The fire is out|The heat is nearly|A dust storm|The storm passes)/;
 const ERAS: Record<Era, string> = { young: 'A young fire', burning: 'Burning strong', cooling: 'Cooling', embers: 'Last embers', out: 'The fire is out' };
 // (In free play the heat never runs low, so the title says what kind of play it is.)
 if (FREE) { ERAS.young = 'Free play'; $('stage-name').textContent = ERAS.young; }
@@ -1159,6 +1214,8 @@ const kindEls = KINDS.map((k) => {
 function words(): void {
   const era = planet.era;
   if (era !== shownEra && !ending) { shownEra = era; $('stage-name').textContent = ERAS[era]; eraFrom.push({ name: ERAS[era], from: planet.seconds }); }
+  // Under three suns, the title is the era the suns make: stable or chaotic.
+  if (SUNS && !ending && !FREE) $('stage-name').textContent = planet.chaotic ? 'A chaotic era' : 'A stable era';
   for (const text of planet.news.splice(0)) {
     // Only the few things worth a word are said, quietly, at the foot of the page.
     if (!ending && QUIET_WORDS.test(text)) announce(text);
@@ -1261,6 +1318,8 @@ const GOAL_WORDS: Record<typeof WORLD.goal, { age: (met: boolean) => string; don
   height: { age: () => 'Time passes, and the storms go on', done: `Done: the mountain reaches ${HEIGHT.target} km`, title: ['The great mountain', 'Not high enough yet'], got: () => `${Math.round(aimDone)} of ${aimOf} km high` },
   cover: { age: () => 'Time passes, and the new ice greys', done: `Done: ${COVER}% of the ice made new`, title: ['New ice', 'Not enough new ice'], got: () => `${Math.round(aimDone)}% of the ice new, of ${aimOf}%` },
   plumes: { age: () => 'Time passes, and the sulphur settles', done: `Done: ${PLUMES} great plumes`, title: ['Great plumes', 'Not enough great plumes'], got: () => `${aimDone} of ${aimOf} great plumes` },
+  land: { age: () => 'Time passes, and the tides go on', done: `Done: ${LAND}% of the world stands as land`, title: ['Land through the chaos', 'Not enough land'], got: () => `${aimDone.toFixed(1)}% of the world land, of ${aimOf}%` },
+  bank: { age: () => 'Time passes, and the sea goes on', done: 'Done: an island on the bank', title: ['An island on the bank', 'No island on the bank yet'], got: () => `the island ${Math.min(100, Math.round(aimDone))}% raised` },
   ridge: { age: () => 'Time passes, and small stones still fall', done: 'Done: a ridge all the way round', title: ['Ringed with a ridge', 'Not yet ringed'], got: () => `${aimDone} of ${aimOf} stretches raised` },
   lamp: { age: () => 'Time passes, and the blobs sink into the deep', done: 'Done: the far shore is full', title: ['The far shore filled', 'The far shore not filled'], got: () => `the far shore ${Math.min(100, Math.round(aimDone))}% full` },
   round: { age: () => 'Time passes, and small stones still fall', done: `Done: the asteroid is ${ROUND}% rounder`, title: ['A rounder world', 'Not round enough yet'], got: () => `${Math.round(aimDone)}% rounder, of ${aimOf}%` },
@@ -1404,6 +1463,7 @@ function turnedSince(): void {
 function anew(): void {
   void forget();
   $('begin').classList.remove('gone');
+  document.body.classList.add('leaving'); // (the world fades back to the paper as the next is fetched)
   // A world of a solar system: back to the system's chart, to choose the next.
   if (RUN !== null) { setTimeout(() => { location.search = '?system'; }, 900); return; }
   const q = new URLSearchParams(location.search);
@@ -1673,7 +1733,7 @@ function breathe(dt: number): void {
     let least = 1;
     for (let v = 0; v < N; v += 3) if (planet.rock[v] > 0) least = Math.min(least, base[v * 3] * q.x + base[v * 3 + 1] * q.y + base[v * 3 + 2] * q.z);
     // (Further back on a young Earth, to leave room for the moon's ring round it.)
-    reachDist = THREE.MathUtils.clamp(3.4 + 2 * Math.acos(least), 3.4, 4.8) * (WORLD.goal === 'orbit' ? 1.3 : WORLD.goal === 'feed' ? 1.15 : 1);
+    reachDist = THREE.MathUtils.clamp(3.4 + 2 * Math.acos(least), 3.4, 4.8) * (WORLD.goal === 'orbit' ? 1.3 : WORLD.goal === 'feed' || SUNS ? 1.15 : 1);
   }
   // At the end, the world steps back and up the page, leaving the foot for the chart.
   const want = ending?.shown ? farthest * 0.92 : reachDist, wantLift = ending?.shown ? 0.09 : 0;
@@ -1705,8 +1765,11 @@ const clock = new THREE.Clock();
 let seconds = 0, lastWords = 0, lastDraw = 0, lastIslands = 0, lastEcology = 0;
 /** In development, how long each frame's own work took (before drawing), to find what stutters. */
 const frameCost: number[] = [];
+let stageShown = false;
 renderer.setAnimationLoop(() => {
   const began0 = performance.now();
+  // Once the world has been drawn, it comes in from the paper.
+  if (!stageShown) { stageShown = true; requestAnimationFrame(() => stage.classList.add('shown')); }
   const raw = clock.getDelta(), dt = Math.min(raw, 1 / 20);
   seconds += dt;
   pace(raw);
@@ -1762,8 +1825,9 @@ renderer.setAnimationLoop(() => {
   aimNext.update(dt);
   if (WORLD.goal === 'orbit') orbiting(dt);
   if (LAMP) lamping();
+  if (SUNS) sunning();
   if (WORLD.goal === 'feed') feeding(dt);
-  if (WORLD.goal === 'height' || WORLD.goal === 'cover' || WORLD.goal === 'round') {
+  if (WORLD.goal === 'height' || WORLD.goal === 'cover' || WORLD.goal === 'round' || WORLD.goal === 'land') {
     // The ring follows the heat, eased, so it glides as the heat creeps.
     gaugeAt.lerp(new THREE.Vector3(planet.plume.x, planet.plume.y, planet.plume.z), 1 - Math.exp(-dt / 1.5)).normalize();
     gauge.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), gaugeAt);

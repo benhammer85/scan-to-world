@@ -16,6 +16,10 @@
  *                   pressure held deep into the tide, which costs plumes, and risks the cone.
  *   An asteroid     round it, and keep the lava in its hollows: pouring fast, or bursting, spills
  *                   it over the lumps, which rounds it less and leaves it messier.
+ *   Three suns      land standing at the end, and a peak among it: broad lowlands outlast the tides,
+ *                   a peak asks the heat to stay put through them.
+ *   A deep ocean    an island on the bank, and the longest tube to it: one long tube is slow to
+ *                   build; short ones won't reach.
  *   A spinning world  ring its equator with a ridge, and raise it high: spreading thin finishes
  *                   the ring fastest, a tall ridge asks you to stay.
  *   A lava lamp     fill the far shore, and in as great a blob as can be: a great blob lasts the
@@ -45,6 +49,8 @@ export function secondWords(goal: World['goal'], value: number): string {
     case 'height': return `a base ${value} km wide`;
     case 'cover': return `the largest sheet ${value}%`;
     case 'round': return `${value}% of the lava kept in the hollows`;
+    case 'land': return `a peak ${value} km high`;
+    case 'bank': return `a tube ${value.toLocaleString('en')} km long`;
     case 'ridge': return `a ridge ${value} km high`;
     case 'lamp': return `${value}% of the pool brought in one blob`;
     case 'feed': return `${value}% of the moon frosted new`;
@@ -86,6 +92,14 @@ export function measureSecond(world: World, pl: Planet, topo: Topology, islands:
       if (pl.start[v] < mean) low++;
     }
     value = all ? Math.round((100 * low) / all) : 0;
+  } else if (world.goal === 'land') {
+    value = Math.round(Math.max(0, pl.peak()) * 40 * 10) / 10;
+  } else if (world.goal === 'bank') {
+    // How far from the heat its lava has built (new rock, a fair amount of it), in km on a world as big as ours.
+    const q = pl.plume;
+    let far = 0;
+    for (let v = 0; v < n; v++) if (pl.rock[v] - pl.start[v] > 0.02) far = Math.max(far, Math.acos(Math.min(1, p[v * 3] * q.x + p[v * 3 + 1] * q.y + p[v * 3 + 2] * q.z)));
+    value = Math.round((far * 6371) / 10) * 10;
   } else if (world.goal === 'ridge') {
     // How high the ridge stands, on average round the whole equator, in km.
     const raise = pl.ridgeRaise();
