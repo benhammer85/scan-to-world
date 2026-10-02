@@ -210,34 +210,24 @@ const ENGRAVE = /* glsl */ `
       vec3 vt1 = normalize(cross(uVent, abs(uVent.y) < 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0))), vt2 = cross(uVent, vt1);
       float far = acos(clamp(dot(vDir, uVent), -1.0, 1.0));
       float ang = atan(dot(vDir, vt2), dot(vDir, vt1)) + 0.25 * (noise3(vDir * 14.0) - 0.5);
-      // Rays, twice as many beyond a little way out, so they stay as close set as the flow widens.
-      float rays = ang * (far < 0.12 ? 26.0 : 52.0) / 6.2832 * 3.0, fwR = fwidth(rays);
+      // Rays; and further out, as the flow widens, more rays between them, fading in (not all at once, which drew a ring).
+      float rays = ang * 78.0 / 6.2832, fwR = fwidth(rays);
+      float rays2 = ang * 156.0 / 6.2832, fwR2 = fwidth(rays2), between = mod(floor(rays2 + 0.5), 2.0) * smoothstep(0.07, 0.17, far);
       float heat = clamp(smoothstep(0.55, 1.8, lv) * 0.5 + exp(-far / 0.12) * 0.7, 0.0, 1.0);
       float taper = smoothstep(0.5, 0.64, lv);
       float k = floor(rays + 0.5);
-      // Dashes along each ray, streaming outward; a gap now and then, each ray its own.
-      float dash = fract(far * 140.0 - uTime * 0.9 * uFeeding + fract(sin(k * 12.9898) * 43.7) * 7.0);
-      float dashOn = smoothstep(0.0, 0.06, dash) * (1.0 - smoothstep(0.62, 0.7, dash));
-      float lnRun = engrave(rays, fwR, heat, taper) * mix(1.0, dashOn, 0.85);
+      // Whole lines, each swelling and thinning a little along its length; the swellings drift outward while it's fed.
+      float swellAlong = 0.75 + 0.5 * noise3(vec3(k * 3.1, far * 40.0 - uTime * 0.25 * uFeeding, 0.0));
+      float lnRun = max(engrave(rays, fwR, heat * swellAlong, taper), engrave(rays2, fwR2, heat * swellAlong, taper) * between);
       vec3 warm = mix(vec3(0.99, 0.74, 0.58), vec3(0.95, 0.47, 0.3), heat);
       col *= mix(vec3(1.0), warm, onL * 0.85);
       col = mix(col, mix(uBlockDeep, uBlock, smoothstep(0.25, 0.8, heat)), lnRun * onL * 0.95);
-      // (Set, it's hatched as an engraver shades rock: short parallel strokes on the slant, few of them, fixed to the ground.)
-      float hatch = dot(vDir, normalize(vec3(0.62, 0.78, 0.1))) * 520.0, fwH = fwidth(hatch);
-      float lnSet = engrave(hatch, fwH, 0.15 * black, 1.0);
+      // Set: a soft grey wash over its stipple, fading as it weathers.
       float hs = setOn * (1.0 - onL);
-      // Short strokes, sparse, fewer as it weathers until none are left.
-      float strokes = smoothstep(0.0, 0.08, noise3(vDir * vec3(140.0, 40.0, 140.0) + vec3(floor(hatch + 0.5) * 1.7)) - 0.62 + 0.3 * black);
       col *= mix(vec3(1.0), vec3(0.86, 0.84, 0.81), hs * black * 0.7 * washEdge);
-      col = mix(col, ink, hs * step(0.02, black) * lnSet * strokes * 0.75 * edgeOn);
-      // Cracks that glow: round the vent as the pressure builds (the ground straining before it gives),
-      // and in crust just set, fading as it cools. (Level lines of a noise, a set width in pixels.)
-      float cn = noise3(vDir * 70.0) + 0.5 * noise3(vDir * 160.0 + 3.0), fwC = max(fwidth(cn), 1e-5);
-      float crack = (1.0 - smoothstep(0.45 * uPx - 0.5, 0.45 * uPx + 0.5, abs(cn - 0.75) / fwC)) * (1.0 - smoothstep(0.08, 0.2, fwC));
+      // As the pressure builds, the ground round the vent warms: a soft glow, widening, before it gives.
       float strain = smoothstep(0.25, 1.0, uBuild) * exp(-far / (0.03 + 0.07 * uBuild)) * (1.0 - onL);
-      col *= mix(vec3(1.0), vec3(1.0, 0.86, 0.76), strain * 0.6);
-      float glow = max(strain, hs * smoothstep(0.55, 0.97, black));
-      col = mix(col, vec3(0.86, 0.28, 0.12), crack * glow * 0.9);
+      col *= mix(vec3(1.0), vec3(1.0, 0.8, 0.66), strain * 0.7);
       // Its front: one bolder line, deep red.
       col = mix(col, uBlockDeep, (1.0 - smoothstep(0.85 * uPx - 0.5, 0.85 * uPx + 0.5, abs(lv - 0.5) / lw)) * step(0.5 - 2.0 * lw, lv) * 0.92);`;
 
