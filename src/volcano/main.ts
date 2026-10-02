@@ -315,6 +315,7 @@ for (const pen of [...landPens, ...seaPens]) { pen.width = 2; pens.push(pen); gr
 let frontPen = 0, fadeFrom = -1;
 const CROSS_FADE = 1.2;
 landPens[1].opacity = seaPens[1].opacity = 0;
+const CONTOURED = WORLD.id === 'mars' || WORLD.id === 'asteroid';
 /** Whether a contour is a small loop lying wholly inside a crater (drawn as a print, the crater is drawn as itself instead). */
 function inCrater(l: Polyline): boolean {
   if (!l.closed) return false;
@@ -331,7 +332,9 @@ function inCrater(l: Polyline): boolean {
 function newLines(land: Polyline[], sea: Polyline[]): void {
   if (fadeFrom >= 0) finishFade();
   const back = 1 - frontPen;
-  landPens[back].setLines(LOOK ? land.filter((l) => !inCrater(l)) : land, 'settle');
+  // (Drawn as a print, the stipple shows the relief, and contours are kept only where height is the aim:
+  // the mountain on Mars, above the plain it stands on, and the asteroid's hollows; and not inside craters.)
+  landPens[back].setLines(LOOK ? (CONTOURED ? land.filter((l) => !inCrater(l) && (WORLD.id !== 'mars' || l.iso > (WORLD.rules.floor ?? 0) + 0.08)) : []) : land, 'settle');
   // (Drawn as a print, the sea's contours are left out, but on the deep ocean, where they show what's rising beneath.)
   seaPens[back].setLines(LOOK && WORLD.id !== 'deep' ? [] : sea, 'settle');
   fadeFrom = performance.now() / 1000;
