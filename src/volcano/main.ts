@@ -51,7 +51,7 @@ import { Chain, CHAIN } from './chain';
 import { measureSecond, secondWords, type Second } from './second';
 import { loadSystem, saveSystem, worldFor, recordPlayed, madeCount } from './system';
 import { openSystem, closeSystem } from './systemChart';
-import { LOOKS, PRINT_FUNCTIONS, printFragment, type Look } from './print';
+import { LOOKS, PRINT_FUNCTIONS, LAMP_PRINT_FUNCTIONS, LAMP_PRINT, printFragment, type Look } from './print';
 
 const $ = (id: string) => document.getElementById(id)!;
 const stage = $('stage');
@@ -133,11 +133,11 @@ const CHOSEN = SYSTEM && RUN !== null ? worldFor(SYSTEM, RUN) : worldOf(ASKED.ge
 const WORLD = FREE ? { ...CHOSEN, rules: { ...CHOSEN.rules, endless: true } } : CHOSEN;
 if (RUN === null) remember('volcano.world', WORLD.id);
 /**
- * How the world is drawn: on the first world, as a print (stipple, hand-laid washes, and lava as a
+ * How the worlds are drawn: as prints (stipple, hand-laid washes, and lava as a
  * woodblock or a watercolour; see print.ts), or as it was. Chosen on the card, and remembered.
  */
 const LOOK_ID = ASKED.get('look') ?? remembered('volcano.look') ?? 'wood';
-const LOOK: Look = WORLD.id === 'ocean' ? (LOOKS.find((l) => l.id === LOOK_ID)?.look ?? 1) : 0;
+const LOOK: Look = LOOKS.find((l) => l.id === LOOK_ID)?.look ?? 1;
 const P = WORLD.palette, LIFE = WORLD.rules.life !== false, ICE = WORLD.rules.terrain === 'ice';
 /** On Io, the plumes' sulphur is drawn as the flood mark is elsewhere: in a clean-edged band, as a geological map draws a unit. */
 const SULPHUR = (WORLD.rules.ashRing ?? 0) > 0;
@@ -229,6 +229,12 @@ material.onBeforeCompile = (shader) => {
   shader.uniforms.uShallow = { value: SHALLOW };
   shader.uniforms.uDeep = { value: DEEP };
   shader.uniforms.uLandPaper = { value: PAPER };
+  shader.uniforms.uFloodDots = { value: WORLD.id === 'moon' ? 0.35 : 0 };
+  // The woodblock's colours: vermilion, deeper at the edge, hot orange at the core (as working values, not hex: as first seen and liked);
+  // on the ice moons, where the lava is water, its blues.
+  shader.uniforms.uBlock = { value: ICE ? new THREE.Color(P.lava) : new THREE.Color(0.85, 0.24, 0.12) };
+  shader.uniforms.uBlockDeep = { value: ICE ? new THREE.Color(P.deepLava) : new THREE.Color(0.66, 0.14, 0.09) };
+  shader.uniforms.uBlockHot = { value: ICE ? new THREE.Color('#b9dbe8') : new THREE.Color(0.95, 0.55, 0.17) };
   shader.fragmentShader = shader.fragmentShader
     .replace('void main() {', `uniform vec3 uShallow;\nuniform vec3 uDeep;\nuniform vec3 uFlooded;\nuniform float uFloodStrength;\nuniform vec3 uLava;\nuniform vec3 uDeepLava;\nuniform vec3 uHot;\nuniform vec3 uCrust;\nuniform float uTime;\nuniform float uPx;\nuniform vec3 uLandPaper;\nvarying float vH;\nvarying vec4 vMarks;\nvarying vec3 vDir;\nvarying vec3 vN;
       float hash3(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
@@ -239,7 +245,7 @@ material.onBeforeCompile = (shader) => {
       }
       ${LOOK ? PRINT_FUNCTIONS : ''}
       void main() {`)
-    .replace('#include <color_fragment>', LOOK ? printFragment(LOOK) : `
+    .replace('#include <color_fragment>', LOOK ? printFragment(LOOK, WORLD.rules.terrain === 'ocean') : `
       float edge = max(fwidth(vH), 1e-5) * 0.7;
       vec3 sea = mix(uShallow, uDeep, clamp(-vH / 0.3, 0.0, 1.0));
       // The land's colour laid on as watercolour is: never quite even, a little darker where it
@@ -292,7 +298,8 @@ function newLines(land: Polyline[], sea: Polyline[]): void {
   if (fadeFrom >= 0) finishFade();
   const back = 1 - frontPen;
   landPens[back].setLines(land, 'settle');
-  seaPens[back].setLines(LOOK ? [] : sea, 'settle');
+  // (Drawn as a print, the sea's contours are left out, but on the deep ocean, where they show what's rising beneath.)
+  seaPens[back].setLines(LOOK && WORLD.id !== 'deep' ? [] : sea, 'settle');
   fadeFrom = performance.now() / 1000;
 }
 function finishFade(): void {
@@ -787,7 +794,7 @@ if (LAMP) {
   const shell = new THREE.Mesh(new THREE.SphereGeometry(1 + RELIEF * 0.08, 160, 120), new THREE.ShaderMaterial({
     transparent: true,
     depthWrite: false,
-    uniforms: { uBlob: { value: blobAt }, uHeat: { value: blobHeat }, uCount: blobCount, uHot: { value: new THREE.Color(P.lava) }, uCool: { value: new THREE.Color(P.deepLava) }, uHeart: { value: new THREE.Color('#f6c27a') } },
+    uniforms: { uBlob: { value: blobAt }, uHeat: { value: blobHeat }, uCount: blobCount, uHot: { value: new THREE.Color(P.lava) }, uCool: { value: new THREE.Color(P.deepLava) }, uHeart: { value: new THREE.Color('#f6c27a') }, uTime: lavaClock, uPx: pxRatio },
     vertexShader: /* glsl */ `
       varying vec3 vDir;
       void main() { vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
@@ -796,7 +803,9 @@ if (LAMP) {
       uniform float uHeat[${BLOBS}];
       uniform int uCount;
       uniform vec3 uHot, uCool, uHeart;
+      uniform float uTime, uPx;
       varying vec3 vDir;
+      ${LOOK ? LAMP_PRINT_FUNCTIONS : ''}
       void main() {
         float f = 0.0, hs = 0.0;
         for (int i = 0; i < ${BLOBS}; i++) {
@@ -809,10 +818,10 @@ if (LAMP) {
         }
         float heat = f > 0.0 ? hs / f : 0.0, w = max(fwidth(f), 1e-4), a = smoothstep(0.88 - w, 0.88 + w, f);
         if (a <= 0.0) discard;
-        vec3 col = mix(uCool, uHot, smoothstep(0.2, 0.9, heat));
+        ${LOOK ? LAMP_PRINT : `vec3 col = mix(uCool, uHot, smoothstep(0.2, 0.9, heat));
         col = mix(col, uHeart, smoothstep(1.6, 5.0, f) * heat * 0.6);
         col = mix(col * 0.78, col, smoothstep(0.88, 1.5, f));
-        gl_FragColor = vec4(col, a * (0.45 + 0.55 * smoothstep(0.0, 0.4, heat)));
+        gl_FragColor = vec4(col, a * (0.45 + 0.55 * smoothstep(0.0, 0.4, heat)));`}
         #include <colorspace_fragment>
       }`,
   }));
@@ -1671,8 +1680,8 @@ if (RUN === null) {
   });
   $('begin').appendChild(link);
 }
-// How the first world is drawn, from the card: as a print with woodblock lava or watercolour lava, or as before.
-if (WORLD.id === 'ocean') {
+// How the worlds are drawn, from the card: as prints with woodblock lava or watercolour lava, or as before.
+{
   const row = document.createElement('p');
   row.className = 'look';
   row.append('drawn with ');

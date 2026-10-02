@@ -1,5 +1,5 @@
 /**
- * The world drawn as a print (the first world, for now): stipple on cream paper, pinned to the
+ * The worlds drawn as prints: stipple on cream paper, pinned to the
  * ground so it turns with it and never crawls (as Return of the Obra Dinn pins its dither); a few
  * loose washes of watercolour laid on by hand, sea-green along the coast and ochre over parts of
  * the land; a dotted graticule over the sea; a crisp coast; and the lava in one of two hands:
@@ -25,6 +25,8 @@ export const LOOKS: { id: string; look: Look; words: string }[] = [
 /** Declared before the shader's main(); uses its hash3, noise3 and uPx. */
 export const PRINT_FUNCTIONS = /* glsl */ `
   varying vec3 vS;
+  uniform float uFloodDots;
+  uniform vec3 uBlock, uBlockDeep, uBlockHot; // the woodblock's colours: vermilion, or on the ice moons, water's blues
   vec3 hash33(vec3 p) {
     p = vec3(dot(p, vec3(127.1, 311.7, 74.7)), dot(p, vec3(269.5, 183.3, 246.1)), dot(p, vec3(113.5, 271.9, 124.6)));
     return fract(sin(p) * 43758.5453);
@@ -50,7 +52,7 @@ export const PRINT_FUNCTIONS = /* glsl */ `
       float th = 0.04 + h.x * 0.96, on = smoothstep(th - 0.03, th + 0.03, dark);
       cov = max(cov, on * (1.0 - smoothstep(rr - 0.5 * ps, rr + 0.5 * ps, length(p - q))));
     }
-    return mix(cov, clamp(dark * 3.1 * r * r, 0.0, 1.0), smoothstep(0.35, 0.7, ps));
+    return mix(cov, clamp(dark * 1.6 * r * r, 0.0, 0.6), smoothstep(0.35, 0.7, ps));
   }
   // Two lattices, turned against each other and of different sizes, so no grid shows however dense.
   float stipple(vec3 dir, float D, float dark, float rPx) {
@@ -100,11 +102,11 @@ export const PRINT_FUNCTIONS = /* glsl */ `
 `;
 
 /** The ground's colour, as a print: replaces the shader's own colour step. */
-export function printFragment(look: Look): string {
+export function printFragment(look: Look, sea: boolean): string {
   return /* glsl */ `
       float px = max(length(dFdx(vDir)), length(dFdy(vDir)));
       float edge = max(fwidth(vH), 1e-5) * 0.7;
-      float onLand = smoothstep(-edge, edge, vH);
+      float onLand = ${sea ? 'smoothstep(-edge, edge, vH)' : '1.0'};
       vec3 paper = vec3(0.957, 0.937, 0.89), ink = vec3(0.13, 0.12, 0.105);
       vec3 col = paper;
       float b1 = noise3(vDir * 7.0), b2 = noise3(vDir * 19.0 + 3.1), b3 = noise3(vDir * 60.0 + 7.0);
@@ -114,7 +116,7 @@ export function printFragment(look: Look): string {
       float rw = max(fwidth(reach), 1e-4);
       float inSea = (1.0 - smoothstep(1.0 - rw, 1.0 + rw, reach)) * (1.0 - smoothstep(0.0, 0.004 + 0.012 * b3, vH));
       float seaRim = exp(-max(0.0, 1.0 - reach) / 0.09) * 0.9;
-      float aSea = clamp(0.32 * (0.25 + b2 * b2 + 0.3 * b1 + seaRim) * grain, 0.0, 1.0) * inSea;
+      float aSea = ${sea ? 'clamp(0.32 * (0.25 + b2 * b2 + 0.3 * b1 + seaRim) * grain, 0.0, 1.0) * inSea' : '0.0'};
       col *= 1.0 - aSea * (1.0 - vec3(0.36, 0.55, 0.59));
       // The land: life's washes and ash, as their tint over the land's paper; and loose ochre over parts of it, never all.
       // Life's washes (and ash, and fresh rock) come as a soft tint; laid as a hand-coloured map lays them,
@@ -126,7 +128,15 @@ export function printFragment(look: Look): string {
       float oReach = 0.35 + 1.5 * (1.0 - noise3(vDir * 5.0 + 9.0)) - vH * 2.5 + 0.25 * (b2 - 0.5);
       float ow = max(fwidth(oReach), 1e-4);
       float aO = clamp(0.22 * (0.3 + 1.1 * b1 * b1 + exp(-max(0.0, 1.0 - oReach) / 0.08) * 0.9) * grain, 0.0, 1.0) * (1.0 - smoothstep(1.0 - ow, 1.0 + ow, oReach));
-      vec3 landCol = paper * tint;
+      // The world's own colour, laid over all its land as one loose wash: heavier here, thinner there.
+      vec3 own = clamp(uLandPaper / paper, 0.0, 1.05);
+      vec3 landCol = paper * mix(vec3(1.0), own, clamp(0.8 + 0.5 * (b1 - 0.5), 0.0, 1.0) * (0.9 + 0.1 * grain)) * tint;
+      // Where lava has lain and the world keeps the mark (the Moon's dark seas, the ice moons' new ice, Io's
+      // sulphur): a wash of its own, with a ragged edge and a rim where it pooled.
+      float flr = vMarks.x + 0.12 * (b3 - 0.5) + 0.08 * (b2 - 0.5), flw = max(fwidth(flr), 1e-4);
+      float inF = smoothstep(0.5 - flw, 0.5 + flw, flr), rimF = exp(-max(0.0, (flr - 0.5) / flw) / (3.0 * uPx));
+      landCol = mix(landCol, uFlooded * (1.0 - 0.12 * rimF), uFloodStrength * inF * clamp(0.72 + 0.35 * (b2 - 0.5) + 0.25 * rimF, 0.0, 1.0));
+      float floodDark = inF * uFloodStrength * uFloodDots; // (the Moon's dark seas are stippled darker, as lunar charts draw them)
       landCol *= 1.0 - aO * (1.0 - vec3(0.77, 0.63, 0.36));
       col = mix(col, landCol * mix(vec3(1.0), col / paper, inSea), onLand);
 
@@ -138,21 +148,21 @@ export function printFragment(look: Look): string {
       // Stipple: crowded along the shore, thinning inland, gathering on slopes turned from the light,
       // and at the world's edge to round it.
       vec3 V = normalize(vViewPosition), Nn = normalize(vN), S = normalize(vS), L = normalize(vec3(-0.55, 0.6, 0.6));
-      float limb = exp(-clamp(dot(S, V), 0.0, 1.0) * 20.0) * 0.5;
+      float limb = exp(-clamp(dot(S, V), 0.0, 1.0) * 22.0) * 0.35;
       float hl = max(vH, 0.0);
-      float relief = max(0.0, dot(S, L) - dot(Nn, L)) * 2.2;
-      float darkL = exp(-hl / 0.005) * 0.9 + exp(-hl / 0.02) * 0.3 + relief + 0.02;
+      float relief = max(0.0, dot(S, L) - dot(Nn, L)) * ${sea ? '2.2' : '3.6'};
+      float darkL = ${sea ? 'exp(-hl / 0.005) * 0.9 + exp(-hl / 0.02) * 0.3 + ' : ''}relief + ${sea ? '0.02' : '0.06 + smoothstep(0.35, -0.25, dot(S, L)) * 0.22'} + floodDark; // (a dry world is shaded round, away from the light, as an engraved globe is)
       ${look === 2 ? 'darkL += 0.45 * sin(black * 3.14159) * setOn; // the dried wash giving way to stipple' : ''}
-      float dark = mix(limb, darkL + limb, onLand);
+      float dark = mix(limb + exp(-max(-vH, 0.0) / 0.03) * 0.14, darkL + limb, onLand); // (and a little over the shallows, so what rises under the sea shows)
       if (dark > 0.035) col = mix(col, ink, stipple(vDir, 300.0, dark, 0.45 * uPx) * 0.92);
       // The graticule, over the open sea.
-      col = mix(col, ink, graticule(vDir, px) * (1.0 - onLand) * (1.0 - 0.5 * aSea) * 0.5);
+      col = mix(col, ink, graticule(vDir, px) * ${sea ? '(1.0 - onLand) * (1.0 - 0.5 * aSea) * 0.5' : '0.22'});
 
       ${look === 1 ? WOOD : WATER}
 
-      // The coast: one crisp line.
+      ${sea ? `// The coast: one crisp line.
       float coastPx = abs(vH) / max(fwidth(vH), 1e-6);
-      col = mix(col, ink, (1.0 - smoothstep(0.55 * uPx - 0.5, 0.55 * uPx + 0.5, coastPx)) * 0.95);
+      col = mix(col, ink, (1.0 - smoothstep(0.55 * uPx - 0.5, 0.55 * uPx + 0.5, coastPx)) * 0.95);` : ''}
       diffuseColor.rgb *= col;`;
 }
 
@@ -162,15 +172,15 @@ const WOOD = /* glsl */ `
       float onR = smoothstep(0.5 - lw, 0.5 + lw, lvR);
       float hs = setOn * (1.0 - onR);
       if (hs > 0.0 && black > 0.02) {
-        col = mix(col, ink, hs * halftone(vDir, 320.0, 0.66 * pow(black, 0.6)) * 0.94);
+        col = mix(col, ink, hs * halftone(vDir, 320.0, 0.6 * pow(black, 0.6)) * 0.88);
       }
       // Running: the colour block, printed a little off its outline.
       if (onR > 0.0) {
         float inPx = (lvR - 0.5) / lw;
         // Vermilion, deeper at the edge, and hot orange only in the core of a broad flow.
         float core = smoothstep(14.0, 70.0, inPx / uPx) * (0.5 + 0.9 * (b2 - 0.5));
-        vec3 lc = mix(vec3(0.66, 0.14, 0.09), vec3(0.85, 0.24, 0.12), smoothstep(0.0, 4.0, inPx / uPx));
-        lc = mix(lc, vec3(0.95, 0.55, 0.17), clamp(core, 0.0, 0.55));
+        vec3 lc = mix(uBlockDeep, uBlock, smoothstep(0.0, 4.0, inPx / uPx));
+        lc = mix(lc, uBlockHot, clamp(core, 0.0, 0.55));
         // Ink squeezed darker at the edge, and the wood's grain in the flat.
         lc *= 1.0 - 0.2 * exp(-max(inPx, 0.0) / (2.5 * uPx));
         lc *= 0.93 + 0.07 * (0.5 + 0.5 * sin(dot(vDir, vec3(0.2, 1.0, 0.3)) * 900.0 + noise3(vDir * 10.0) * 16.0));
@@ -178,7 +188,7 @@ const WOOD = /* glsl */ `
         // (Along the level lines of a smooth field fixed to the ground, not of the height: the height is
         // drawn a triangle at a time, and its level lines would show the triangles.)
         float swirl = (noise3(vDir * 9.0) * 0.7 + noise3(vDir * 23.0 + 5.0) * 0.3) * 30.0;
-        float cut = max(gouges(swirl - uTime * 0.3, smoothstep(0.52, 0.7, lv)), gouges(lv * 7.0, 1.0) * step(0.58, lv));
+        float cut = max(gouges(swirl - uTime * 0.3, smoothstep(0.52, 0.7, lv)), gouges(lv * 4.0, 1.0) * step(0.6, lv));
         lc = mix(lc, paper, cut);
         float speck = step(0.86, noise3(vDir * 260.0) * 0.6 + hash3(floor(vDir * 520.0)) * 0.4);
         col = mix(col, lc, onR * (1.0 - speck * 0.7 * (1.0 - cut)));
@@ -209,3 +219,33 @@ const WATER = /* glsl */ `
         float a = clamp(1.2 * (body + rim), 0.0, 0.95) * cov * grain;
         col *= 1.0 - a * (1.0 - wc);
       }`;
+
+/** The lava lamp's blobs, as woodblock prints too: a flat block, hot orange at a hot heart, cut with gouges, in a black outline. */
+export const LAMP_PRINT_FUNCTIONS = /* glsl */ `
+  float hash3(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
+  float noise3(vec3 p) {
+    vec3 i = floor(p), f = fract(p), s = f * f * (3.0 - 2.0 * f);
+    return mix(mix(mix(hash3(i), hash3(i + vec3(1, 0, 0)), s.x), mix(hash3(i + vec3(0, 1, 0)), hash3(i + vec3(1, 1, 0)), s.x), s.y),
+               mix(mix(hash3(i + vec3(0, 0, 1)), hash3(i + vec3(1, 0, 1)), s.x), mix(hash3(i + vec3(0, 1, 1)), hash3(i + vec3(1, 1, 1)), s.x), s.y), s.z);
+  }
+  float gouges(float phase, float taper) {
+    float fw = max(fwidth(phase), 1e-5), k = floor(phase + 0.5);
+    float dpx = abs(phase - k) / fw;
+    float w = (0.35 + 1.1 * noise3(vDir * 38.0 + vec3(k * 1.37))) * uPx * taper;
+    float stroke = smoothstep(0.24, 0.36, noise3(vDir * 60.0 + vec3(k * 2.1, 0.0, k)));
+    return (1.0 - smoothstep(w - 0.5, w + 0.5, dpx)) * stroke * (1.0 - smoothstep(0.12, 0.3, fw)) * smoothstep(0.004, 0.02, fw);
+  }
+`;
+export const LAMP_PRINT = /* glsl */ `
+        vec3 paper = vec3(0.957, 0.937, 0.89), ink = vec3(0.13, 0.12, 0.105);
+        // Cooling deepens the block from vermilion to its deep red; a hot heart is orange.
+        vec3 col = mix(vec3(0.66, 0.14, 0.09), vec3(0.85, 0.24, 0.12), smoothstep(0.2, 0.9, heat));
+        col = mix(col, vec3(0.95, 0.55, 0.17), smoothstep(2.0, 5.0, f) * heat * 0.6);
+        float inPx = (f - 0.88) / w;
+        col *= 1.0 - 0.2 * exp(-max(inPx, 0.0) / (2.5 * uPx));
+        float swirl = (noise3(vDir * 9.0) * 0.7 + noise3(vDir * 23.0 + 5.0) * 0.3) * 30.0;
+        float cut = gouges(swirl - uTime * 0.3 * heat, smoothstep(0.0, 4.0 * uPx, inPx));
+        col = mix(col, paper, cut);
+        float kw = (0.45 + 1.2 * noise3(vDir * 22.0 + 4.0)) * uPx;
+        col = mix(col, ink, (1.0 - smoothstep(kw - 0.6, kw + 0.6, abs(inPx))) * 0.92);
+        gl_FragColor = vec4(col, a * (0.85 + 0.12 * smoothstep(0.0, 0.4, heat)));`;
