@@ -29,6 +29,8 @@ Every world you make, what grew on it, the railways between worlds, which way ea
 
 ## Volcano (a prototype beside it)
 
+**On an iPhone:** the game is also a native iOS app (Capacitor, in `ios/`), with the phone's own haptics and share sheet. See [IOS.md](IOS.md) for running it from Xcode, TestFlight and the App Store.
+
 `volcano.html` (`src/volcano/`) is a separate prototype, and Atlas Minor is untouched by it. You are the heat beneath a world, and there are worlds in sequence (`worlds.ts`). Each has the same single control and its own physics, aim and colours, as each has its own kind of volcanism:
 
 | | World | What's different | The aim |

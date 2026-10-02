@@ -51,6 +51,7 @@ import { Chain, CHAIN } from './chain';
 import { measureSecond, secondWords, type Second } from './second';
 import { loadSystem, saveSystem, worldFor, recordPlayed, madeCount } from './system';
 import { openSystem, closeSystem } from './systemChart';
+import { feel, keepImage, NATIVE } from './native';
 import { LOOKS, PRINT_FUNCTIONS, LAMP_PRINT_FUNCTIONS, LAMP_PRINT, printFragment, type Look } from './print';
 
 const $ = (id: string) => document.getElementById(id)!;
@@ -1272,9 +1273,6 @@ function lessons(): void {
 
 
 /** A soft pulse in the hand, where the phone can give one (not iPhones). */
-function feel(pattern: number | number[]): void {
-  try { navigator.vibrate?.(pattern); } catch { /* none */ }
-}
 
 // ---------------------------------------------------------------- words, and the key
 /** What's worth saying: the turns in the world's story, not every happening in it. */
@@ -1526,7 +1524,7 @@ function drawEnding(): void {
     $('again').classList.add('shown');
     intoTheAtlas();
     // The chart can be kept as a picture where the page may hand over a file: not inside a frame (as a hosted preview), which can't.
-    if (window.self === window.top) $('keep').classList.add('shown');
+    if (NATIVE || window.self === window.top) $('keep').classList.add('shown');
   }
 }
 /**
@@ -1593,7 +1591,7 @@ function plate(): HTMLCanvasElement {
   return cv;
 }
 $('keep').addEventListener('click', () => {
-  const a = document.createElement('a'); a.href = plate().toDataURL('image/png'); a.download = `volcano-${seed}.png`; a.click();
+  void keepImage(plate(), `volcano-${seed}`);
 });
 /** Once the chart is drawn, it goes into the atlas: a small picture of the plate, and what it says. */
 let paged = false;

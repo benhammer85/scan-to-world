@@ -1,0 +1,90 @@
+# The volcano game on an iPhone
+
+The game is wrapped as a native iOS app with [Capacitor](https://capacitorjs.com): the web game
+runs full-screen in the app, and plays on the phone's own haptics and share sheet (`src/volcano/native.ts`).
+The Xcode project is in `ios/`. Everything here costs nothing but the Apple Developer Program
+($99 a year), and that only once you want TestFlight or the App Store.
+
+## What you need
+
+* A Mac with **Xcode** (free, from the Mac App Store; open it once to let it install its parts).
+* **Node.js** 22 or later (`node -v`; from nodejs.org if it's missing).
+* Your iPhone and its cable.
+* An **Apple ID** signed into Xcode (Xcode → Settings → Accounts). A free one is enough to run the
+  game on your own phone; the paid Developer Program is needed for TestFlight and the App Store.
+
+## Run it on your phone (the first time)
+
+```sh
+git clone https://github.com/benhammer85/scan-to-world.git
+cd scan-to-world
+npm install
+npm run ios          # builds the game, copies it into the app, and opens Xcode
+```
+
+In Xcode:
+
+1. In the left column click **App** (the blue icon at the top), then the **App** target, then
+   **Signing & Capabilities**.
+2. Tick **Automatically manage signing**, and choose your **Team** (your Apple ID).
+3. Change **Bundle Identifier** from `com.example.volcano` to something of your own, such as
+   `com.yourname.volcano` (see *Naming* below before you choose for good).
+4. Plug in your iPhone and pick it at the top of the window, where it says *Any iOS Device*.
+5. Press **▶ Run**. The first time, the phone will refuse to open an app from an unknown developer:
+   on the phone go to **Settings → General → VPN & Device Management**, trust your Apple ID, and run
+   again. The phone may also ask to turn on **Developer Mode** (Settings → Privacy & Security).
+6. When the game asks to use motion, allow it: that's the tilt.
+
+## After changing the game
+
+```sh
+npm run ios
+```
+
+then **▶ Run** again in Xcode. (Or `npm run build:app && npx cap sync ios` if Xcode is already open.)
+
+## Naming
+
+* The **name under the icon** is `appName` in `capacitor.config.ts`, and the *Display Name* in
+  Xcode (General tab). Both can change at any time, even after release.
+* The **Bundle Identifier** is the app's permanent id. Change it freely until you make the app's
+  record in App Store Connect; after that it can never change. Set it in Xcode, and set `appId` in
+  `capacitor.config.ts` to match.
+
+## Icon and launch screen
+
+Both are placeholders: the old volcano icon, and a plain paper-coloured launch screen.
+
+* **Icon:** replace `ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png` with a
+  1024 × 1024 PNG with no transparency. iOS rounds the corners itself.
+* **Launch screen:** the three PNGs in `ios/App/App/Assets.xcassets/Splash.imageset/` (2732 × 2732,
+  the paper colour `#f4efe4`). Keep it plain: the game fades in from the paper.
+
+## TestFlight (friends play it before release)
+
+Needs the paid Developer Program.
+
+1. In [App Store Connect](https://appstoreconnect.apple.com) → **Apps → +**, make the app with your
+   final name and Bundle Identifier.
+2. In Xcode, choose **Any iOS Device (arm64)** at the top, then **Product → Archive**.
+3. When the Organizer opens, **Distribute App → App Store Connect → Upload**.
+4. After processing (10–30 minutes), add testers under **TestFlight** in App Store Connect. They
+   install the **TestFlight** app and get an invitation.
+
+## The App Store
+
+In App Store Connect, on the app's page:
+
+* **Screenshots:** at least the 6.9" iPhone size (take them on a big iPhone, or in the simulator).
+* **Description, keywords, support URL, privacy policy URL.**
+* **App Privacy:** *Data Not Collected* (the game keeps everything on the phone).
+* **Age rating:** answer the questionnaire; it comes out 4+.
+* **Price**, then **Add for Review**. Review usually takes a day or two.
+
+## What's native, and what isn't yet
+
+* **Haptics:** the phone's own engine (in Safari on an iPhone they did nothing at all).
+* **Keeping a plate:** the share sheet (save to Photos, send it on).
+* **Portrait only, no status bar, motion permission explained** (`Info.plist`).
+* **Saves** are still in the web view's storage. Inside an app that isn't cleared as Safari's can
+  be, but moving them to native storage (and iCloud) is a later step, as is **Game Center**.
