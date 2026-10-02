@@ -12,7 +12,7 @@ let triangles: Uint32Array, base: Float32Array, relief = 0.32;
 
 type Ask =
   | { init: { parts: FineSurface['parts']; triangles: Uint32Array; basePositions: Float32Array; relief: number } }
-  | { shape: { height: Float32Array; land: Float32Array; marks: Float32Array; flow: Float32Array } };
+  | { shape: { height: Float32Array; land: Float32Array; marks: Float32Array } };
 
 /** Answer one ask (in the worker, or on the page if no worker could be started). */
 export const handleSurface: Handler = (message, post) => {
@@ -48,8 +48,5 @@ export const handleSurface: Handler = (message, post) => {
   // Where lava lies and where it has lain, carried as amounts, not colours: the shader draws their edges crisply.
   const marks = new Float32Array(n * 4);
   fine.carry(ask.shape.marks, marks, 4);
-  // And how the lava is moving, for its streaks.
-  const flow = new Float32Array(n * 3);
-  fine.carry(ask.shape.flow, flow, 3);
-  post({ height, land, position, normal, marks, flow }, [height.buffer, land.buffer, position.buffer, normal.buffer, marks.buffer, flow.buffer]);
+  post({ height, land, position, normal, marks }, [height.buffer, land.buffer, position.buffer, normal.buffer, marks.buffer]);
 };

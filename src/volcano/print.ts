@@ -4,7 +4,9 @@
  * loose washes of watercolour laid on by hand, sea-green along the coast and ochre over parts of
  * the land; a dotted graticule over the sea; a crisp coast; and the lava in one of two hands:
  *
- *   1  woodblock: a block of vermilion, hot orange where it lies thick, cut by hand with gouges
+ *   1  engraving: no fill, fine lines in red-brown ink that swell where the lava is hot and drift as it
+ *      runs, freezing black when it sets and breaking into dashes and dots as it weathers (it was a
+ *      woodblock first: a block of vermilion, hot orange where it lies thick, cut by hand with gouges
  *      that ride downhill with it, outlined in black that goes thick and thin and breaks, printed
  *      a little off its outline; set, it's a black block whose cuts stay; weathering, it breaks into
  *      halftone dots that shrink until they're stipple;
@@ -17,7 +19,7 @@
  */
 export type Look = 0 | 1 | 2;
 export const LOOKS: { id: string; look: Look; words: string }[] = [
-  { id: 'wood', look: 1, words: 'woodblock' },
+  { id: 'engrave', look: 1, words: 'engraving' },
   { id: 'water', look: 2, words: 'watercolour' },
   { id: 'plain', look: 0, words: 'last used' },
 ];
@@ -96,6 +98,13 @@ export const PRINT_FUNCTIONS = /* glsl */ `
     float db = (fract(lat / sp) - 0.5) * sp;
     g = max(g, (1.0 - smoothstep(rr - aa, rr + aa, length(vec2(dLon, db)))) * step(abs(lat), 1.3));
     return g;
+  }
+  // Engraved lines: along the level lines of a phase, each as wide as the heat makes it (swelling as an
+  // engraver's line does), tapering at the edge; none where they'd crowd into a smear.
+  float engrave(float phase, float heat, float taper) {
+    float fw = max(fwidth(phase), 1e-5), k = floor(phase + 0.5);
+    float w = (0.3 + 1.4 * heat) * uPx * 0.62 * taper * (0.85 + 0.3 * noise3(vDir * 40.0 + vec3(k)));
+    return (1.0 - smoothstep(w - 0.5, w + 0.5, abs(phase - k) / fw)) * (1.0 - smoothstep(0.12, 0.3, fw)) * smoothstep(0.004, 0.02, fw);
   }
   // Gouges: the cuts lie along the level lines of a phase, each line broken into strokes of its own
   // width that taper as it nears the block's edge; none where the lines would crowd into a smear.
@@ -190,7 +199,7 @@ export function printFragment(look: Look, sea: boolean): string {
       float darkL = ${sea ? 'exp(-hl / 0.005) * 0.9 + exp(-hl / 0.02) * 0.3 + ' : ''}relief + ${sea ? '0.02' : '0.06 + smoothstep(0.35, -0.25, dot(S, L)) * 0.22'} + floodDark; // (a dry world is shaded round, away from the light, as an engraved globe is)
       ${look === 2 ? 'darkL += 0.45 * sin(black * 3.14159) * setOn; // the dried wash giving way to stipple' : ''}
       darkL = darkL * (1.0 - 0.85 * litWall) + crDark;
-      ${look === 1 ? 'darkL += 1.7 * pow(black, 1.1) * setOn * (1.0 - smoothstep(0.5 - lw, 0.5 + lw, lv)); // set rock: black in close stipple, thinning as it weathers' : ''}
+      ${look === 1 ? 'darkL += 0.4 * pow(black, 1.2) * setOn * (1.0 - smoothstep(0.5 - lw, 0.5 + lw, lv)); // set rock: a little stipple under its engraved lines' : ''}
       float dark = mix(limb + exp(-max(-vH, 0.0) / 0.03) * 0.14, darkL + limb, onLand); // (and a little over the shallows, so what rises under the sea shows)
       if (dark > 0.035) col = mix(col, ink, stipple(vDir, 300.0, dark, 0.45 * uPx) * 0.92);
       // The graticule, over the open sea.
@@ -198,7 +207,7 @@ export function printFragment(look: Look, sea: boolean): string {
 
       col = mix(col, ink, rimInk * onLand * 0.85 * edgeOn);
 
-      ${look === 1 ? WOOD : WATER}
+      ${look === 1 ? ENGRAVE : WATER}
 
       ${sea ? `// The coast: one crisp line.
       float coastPx = abs(vH) / max(fwidth(vH), 1e-6);
@@ -206,34 +215,29 @@ export function printFragment(look: Look, sea: boolean): string {
       diffuseColor.rgb *= col;`;
 }
 
-const WOOD = /* glsl */ `
-      // Set: black, in close halftone dots; weathering, the dots shrink until they are only stipple.
-      float lvR = lv + (dFdx(lv) * 1.6 - dFdy(lv) * 1.1) * uPx + 0.05 * (noise3(vDir * 45.0) - 0.5);
-      float onR = smoothstep(0.5 - lw, 0.5 + lw, lvR);
-      float hs = setOn * (1.0 - onR);
-      // (Set rock's darkness is added to the stipple's, above: dense, random dots that thin as it weathers.)
-      // Running: the colour block, printed a little off its outline.
-      if (onR > 0.0) {
-        float inPx = (lvR - 0.5) / lw;
-        // Vermilion, deeper at the edge, and hot orange only in the core of a broad flow.
-        // (Not by how far in from the edge: that's measured a triangle at a time, and showed the triangles.)
-        float core = smoothstep(0.85, 1.0, lv) * smoothstep(0.4, 0.75, b1 * 0.6 + b2 * 0.4);
-        vec3 lc = mix(uBlockDeep, uBlock, smoothstep(0.0, 4.0, inPx / uPx));
-        lc = mix(lc, uBlockHot, clamp(core, 0.0, 0.55));
-        // Ink squeezed darker at the edge, and the wood's grain in the flat.
-        lc *= 1.0 - 0.2 * exp(-max(inPx, 0.0) / (2.5 * uPx));
-        lc *= 0.93 + 0.07 * (0.5 + 0.5 * sin(dot(vDir, vec3(0.2, 1.0, 0.3)) * 900.0 + noise3(vDir * 10.0) * 16.0));
-        // (The cuts are the streaks, as a wind map draws the wind: see streaks.ts, drawn over this as the lava carries them.)
-        float cut = 0.0;
-        float speck = step(0.86, noise3(vDir * 260.0) * 0.6 + hash3(floor(vDir * 520.0)) * 0.4);
-        col = mix(col, lc, onR * (1.0 - speck * 0.7 * (1.0 - cut)));
+const ENGRAVE = /* glsl */ `
+      // Engraved, as an old atlas's plates were. Running lava has no fill, only a breath of warmth: its
+      // lines, in red-brown ink, swell where it's hot and thin to hairlines at its edge, and drift as it
+      // runs (along the level lines of a smooth field fixed to the ground, not of the height, whose level
+      // lines would show its triangles).
+      float onL = smoothstep(0.5 - lw, 0.5 + lw, lv);
+      float swirl = (noise3(vDir * 9.0) * 0.7 + noise3(vDir * 23.0 + 5.0) * 0.3) * 30.0;
+      float heat = smoothstep(0.5, 1.0, lv) * (0.55 + 0.45 * smoothstep(0.3, 0.75, b1 * 0.6 + b2 * 0.4));
+      if (onL > 0.0) {
+        col *= mix(vec3(1.0), vec3(1.0, 0.88, 0.78), 0.55 * onL);
+        float ln = engrave(swirl - uTime * 0.3, heat, smoothstep(0.5, 0.62, lv));
+        col = mix(col, mix(uBlockDeep, uBlock, smoothstep(0.25, 0.8, heat)), ln * onL * 0.95);
       }
-      // The key block: the outline, thick and thin, here and there broken.
-      {
-        float dpx = abs(lv - 0.5) / lw, kw = (0.45 + 1.2 * noise3(vDir * 22.0 + 4.0)) * uPx;
-        float ol = (1.0 - smoothstep(kw - 0.6, kw + 0.6, dpx)) * smoothstep(0.12, 0.2, noise3(vDir * 16.0 + 2.0)) * step(0.5 - 2.0 * lw, lv);
-        col = mix(col, ink, ol * 0.92);
-      }`;
+      // Set: the same lines, frozen where they stopped, in black; weathering breaks them into dashes,
+      // then dots, then nothing.
+      float hs = setOn * (1.0 - onL);
+      if (hs > 0.0 && black > 0.02) {
+        float k = floor(swirl + 0.5);
+        float dash = smoothstep(0.0, 0.1, noise3(vDir * 70.0 + vec3(k * 1.9)) - (1.0 - black) * 0.95);
+        col = mix(col, ink, hs * engrave(swirl, 0.3 * black, 1.0) * dash * 0.9);
+      }
+      // Its edge: one fine line.
+      col = mix(col, uBlockDeep, (1.0 - smoothstep(0.45 * uPx - 0.5, 0.45 * uPx + 0.5, abs(lv - 0.5) / lw)) * step(0.5 - 2.0 * lw, lv) * 0.9);`;
 
 const WATER = /* glsl */ `
       // Set: the wash dries to sienna, then grey, then goes.
@@ -273,11 +277,15 @@ export const LAMP_PRINT_FUNCTIONS = /* glsl */ `
 `;
 export const LAMP_PRINT = /* glsl */ `
         vec3 paper = vec3(0.957, 0.937, 0.89), ink = vec3(0.13, 0.12, 0.105);
-        // Cooling deepens the block from vermilion to its deep red; a hot heart is orange.
-        vec3 col = mix(vec3(0.66, 0.14, 0.09), vec3(0.85, 0.24, 0.12), smoothstep(0.2, 0.9, heat));
-        col = mix(col, vec3(0.95, 0.55, 0.17), smoothstep(2.0, 5.0, f) * heat * 0.6);
+        // Engraved too: a breath of warmth for the blob, its lines in red-brown ink, swelling where it's
+        // hot and drifting as it moves, deepening as it cools; one fine line round it.
         float inPx = (f - 0.88) / w;
-        col *= 1.0 - 0.2 * exp(-max(inPx, 0.0) / (2.5 * uPx));
-        float kw = (0.45 + 1.2 * noise3(vDir * 22.0 + 4.0)) * uPx;
-        col = mix(col, ink, (1.0 - smoothstep(kw - 0.6, kw + 0.6, abs(inPx))) * 0.92);
-        gl_FragColor = vec4(col, a * (0.85 + 0.12 * smoothstep(0.0, 0.4, heat)));`;
+        float swirl = (noise3(vDir * 9.0) * 0.7 + noise3(vDir * 23.0 + 5.0) * 0.3) * 30.0;
+        float hot = smoothstep(0.2, 0.9, heat) * (0.6 + 0.4 * smoothstep(1.2, 3.0, f));
+        float fw = max(fwidth(swirl), 1e-5), k = floor(swirl - uTime * 0.3 * heat + 0.5), ph = swirl - uTime * 0.3 * heat;
+        float lw = (0.3 + 1.4 * hot) * uPx * 0.62 * smoothstep(0.0, 3.0 * uPx, inPx);
+        float ln = (1.0 - smoothstep(lw - 0.5, lw + 0.5, abs(ph - k) / fw)) * (1.0 - smoothstep(0.12, 0.3, fw));
+        vec3 lc = mix(vec3(0.216, 0.016, 0.008), vec3(0.617, 0.061, 0.016), hot);
+        vec3 col = mix(paper * mix(vec3(1.0, 0.86, 0.74), vec3(0.97, 0.7, 0.55), hot), lc, ln * 0.95);
+        col = mix(col, vec3(0.216, 0.016, 0.008), (1.0 - smoothstep(0.6 * uPx - 0.5, 0.6 * uPx + 0.5, abs(inPx))) * 0.95);
+        gl_FragColor = vec4(col, a * 0.9);`;

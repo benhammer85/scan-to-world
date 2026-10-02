@@ -358,12 +358,6 @@ export class Planet {
 
   private eruptions: Eruption[] = [];
   private next: Float32Array;
-  /**
-   * How the lava is moving at each vertex (x, y, z in the world's frame, in units a second), eased
-   * over half a second or so: for drawing it as a wind map draws the wind. Nothing reads it but the page.
-   */
-  readonly current: Float32Array;
-  private moving: Float32Array;
   private firmness: Float32Array;
   private drift: { x: number; y: number; z: number };
   private scale: number;
@@ -399,8 +393,6 @@ export class Planet {
     this.sunk = new Float32Array(n);
     this.wear = new Float32Array(n);
     this.next = new Float32Array(n);
-    this.current = new Float32Array(n * 3);
-    this.moving = new Float32Array(n * 3);
     this.slowDelta = new Float32Array(n);
     this.firmness = new Float32Array(n);
     for (let v = 0; v < n; v++) {
@@ -1103,8 +1095,6 @@ export class Planet {
     const t = this.topo, n = this.rock.length, next = this.next, p = t.basePositions;
     const G = this.gravity, R = this.k.relief;
     next.set(this.lava);
-    const mv = this.moving;
-    mv.fill(0);
     for (let v = 0; v < n; v++) {
       const l = this.lava[v];
       if (l < this.k.thin) continue;
@@ -1130,22 +1120,12 @@ export class Planet {
       // flow's thick core pushes its thin margin ahead of it in blunt, rounded lobes.
       const lv = l * Math.sqrt(l), out = Math.min(l * 0.5, this.k.flow * dt * sum * lv / (lv + VISCOUS_15));
       next[v] -= out;
-      let mx = 0, my = 0, mz = 0;
       for (let q = a; q < b; q++) {
         const w = t.nbrList[q], d = drop(w);
-        if (d > 0) {
-          const share = (out * Math.pow(d, this.k.channel)) / weights;
-          next[w] += share;
-          mx += share * (p[w * 3] - p[v * 3]); my += share * (p[w * 3 + 1] - p[v * 3 + 1]); mz += share * (p[w * 3 + 2] - p[v * 3 + 2]);
-        }
+        if (d > 0) next[w] += (out * Math.pow(d, this.k.channel)) / weights;
       }
-      // (The share of this vertex's lava that left, times how far it went, a second.)
-      const per = 1 / (l * Math.max(dt, 1e-4));
-      mv[v * 3] = mx * per; mv[v * 3 + 1] = my * per; mv[v * 3 + 2] = mz * per;
     }
     this.lava.set(next);
-    const ease = 1 - Math.exp(-dt / 0.5), cur = this.current;
-    for (let i = 0; i < cur.length; i++) cur[i] += (mv[i] - cur[i]) * ease;
   }
 
   /** Lava cools into rock: slowly on land, fast where it meets the sea. A real covering clears the ground. */

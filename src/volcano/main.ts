@@ -51,7 +51,6 @@ import { Chain, CHAIN } from './chain';
 import { measureSecond, secondWords, type Second } from './second';
 import { loadSystem, saveSystem, worldFor, recordPlayed, madeCount } from './system';
 import { openSystem, closeSystem } from './systemChart';
-import { Streaks, type Field } from './streaks';
 import { LOOKS, PRINT_FUNCTIONS, LAMP_PRINT_FUNCTIONS, LAMP_PRINT, printFragment, type Look } from './print';
 
 const $ = (id: string) => document.getElementById(id)!;
@@ -140,7 +139,7 @@ if (RUN === null) remember('volcano.world', WORLD.id);
  * How the worlds are drawn: as prints (stipple, hand-laid washes, and lava as a
  * woodblock or a watercolour; see print.ts), or as it was. Chosen on the card, and remembered.
  */
-const LOOK_ID = ASKED.get('look') ?? remembered('volcano.look') ?? 'wood';
+const LOOK_ID = ASKED.get('look') ?? remembered('volcano.look') ?? 'engrave';
 const LOOK: Look = LOOKS.find((l) => l.id === LOOK_ID)?.look ?? 1;
 const SEA = WORLD.rules.terrain === 'ocean';
 const P = WORLD.palette, LIFE = WORLD.rules.life !== false, ICE = WORLD.rules.terrain === 'ice';
@@ -189,8 +188,6 @@ const positions = new Float32Array(FN * 3);
 const landColour = new Float32Array(FN * 3), fineHeight = new Float32Array(FN);
 /** Where lava lies (how thick) and where it has lain (this fire's, or an earlier one's): amounts, so their edges are drawn crisp in each pixel. */
 const fineMarks = new Float32Array(FN * 4), prevMarks = new Float32Array(FN * 4);
-/** How the lava is moving, carried to the finer surface: its streaks run along it. */
-const fineFlow = new Float32Array(FN * 3), prevFlow = new Float32Array(FN * 3);
 geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
 geometry.setAttribute('color', new THREE.BufferAttribute(landColour, 3));
 geometry.setAttribute('aH', new THREE.BufferAttribute(fineHeight, 1));
@@ -204,8 +201,6 @@ geometry.setAttribute('aPrevColour', new THREE.BufferAttribute(prevColour, 3));
 geometry.setAttribute('aPrevH', new THREE.BufferAttribute(prevHeight, 1));
 geometry.setAttribute('aMarks', new THREE.BufferAttribute(fineMarks, 4));
 geometry.setAttribute('aPrevMarks', new THREE.BufferAttribute(prevMarks, 4));
-geometry.setAttribute('aFlow', new THREE.BufferAttribute(fineFlow, 3));
-geometry.setAttribute('aPrevFlow', new THREE.BufferAttribute(prevFlow, 3));
 geometry.setIndex(new THREE.BufferAttribute(ftopo.triangles, 1));
 const blend = { value: 1 }, blendFrom = { at: 0, span: 0.5 };
 /** How strongly ground lava has lain on is marked: less, as the ice moon's new ice greys in its long age. */
@@ -231,8 +226,8 @@ function cratering(): void {
 const material = new THREE.MeshLambertMaterial({ vertexColors: true, dithering: true });
 material.onBeforeCompile = (shader) => {
   shader.vertexShader = shader.vertexShader
-    .replace('void main() {', 'attribute float aH;\nattribute float aPrevH;\nattribute vec3 aPrevPos;\nattribute vec3 aPrevColour;\nattribute vec4 aMarks;\nattribute vec4 aPrevMarks;\nattribute vec3 aFlow;\nattribute vec3 aPrevFlow;\nvarying vec3 vFlow;\nuniform float uBlend;\nvarying float vH;\nvarying vec4 vMarks;\nvarying vec3 vDir;\nvarying vec3 vN;\nvarying vec3 vS;\nvoid main() {')
-    .replace('#include <color_vertex>', '#include <color_vertex>\n  vColor.rgb = mix(aPrevColour, color.rgb, uBlend);\n  vH = mix(aPrevH, aH, uBlend);\n  vMarks = mix(aPrevMarks, aMarks, uBlend);\n  vDir = normalize(position);\n  vN = normalize(normalMatrix * normal);\n  vS = normalize(normalMatrix * normalize(position));\n  vFlow = mix(aPrevFlow, aFlow, uBlend);')
+    .replace('void main() {', 'attribute float aH;\nattribute float aPrevH;\nattribute vec3 aPrevPos;\nattribute vec3 aPrevColour;\nattribute vec4 aMarks;\nattribute vec4 aPrevMarks;\nuniform float uBlend;\nvarying float vH;\nvarying vec4 vMarks;\nvarying vec3 vDir;\nvarying vec3 vN;\nvarying vec3 vS;\nvoid main() {')
+    .replace('#include <color_vertex>', '#include <color_vertex>\n  vColor.rgb = mix(aPrevColour, color.rgb, uBlend);\n  vH = mix(aPrevH, aH, uBlend);\n  vMarks = mix(aPrevMarks, aMarks, uBlend);\n  vDir = normalize(position);\n  vN = normalize(normalMatrix * normal);\n  vS = normalize(normalMatrix * normalize(position));')
     .replace('#include <begin_vertex>', 'vec3 transformed = mix(aPrevPos, position, uBlend);');
   shader.uniforms.uBlend = blend;
   // The sea's colour is only its depth, so it's worked out here rather than sent: paler over the shallows.
@@ -255,8 +250,9 @@ material.onBeforeCompile = (shader) => {
   shader.uniforms.uLightObj = { value: lightObj };
   // The woodblock's colours: vermilion, deeper at the edge, hot orange at the core (as working values, not hex: as first seen and liked);
   // on the ice moons, where the lava is water, its blues.
-  shader.uniforms.uBlock = { value: ICE ? new THREE.Color(P.lava) : new THREE.Color(0.85, 0.24, 0.12) };
-  shader.uniforms.uBlockDeep = { value: ICE ? new THREE.Color(P.deepLava) : new THREE.Color(0.66, 0.14, 0.09) };
+  // (Engraved, the lines are inks: red-brown, deeper at the edge; on the ice moons, where the lava is water, blues.)
+  shader.uniforms.uBlock = { value: new THREE.Color(ICE ? '#3f7fa6' : '#ce4622') };
+  shader.uniforms.uBlockDeep = { value: new THREE.Color(ICE ? '#2a5674' : '#802216') };
   shader.uniforms.uBlockHot = { value: ICE ? new THREE.Color('#b9dbe8') : new THREE.Color(0.95, 0.55, 0.17) };
   shader.fragmentShader = shader.fragmentShader
     .replace('void main() {', `uniform vec3 uShallow;\nuniform vec3 uDeep;\nuniform vec3 uFlooded;\nuniform float uFloodStrength;\nuniform vec3 uLava;\nuniform vec3 uDeepLava;\nuniform vec3 uHot;\nuniform vec3 uCrust;\nuniform float uTime;\nuniform float uPx;\nuniform vec3 uLandPaper;\nvarying float vH;\nvarying vec4 vMarks;\nvarying vec3 vDir;\nvarying vec3 vN;
@@ -268,7 +264,7 @@ material.onBeforeCompile = (shader) => {
       }
       ${LOOK ? PRINT_FUNCTIONS : ''}
       void main() {`)
-    .replace('#include <color_fragment>', LOOK ? printFragment(LOOK, WORLD.rules.terrain === 'ocean') : `
+    .replace('#include <color_fragment>', LOOK ? printFragment(LOOK, SEA) : `
       float edge = max(fwidth(vH), 1e-5) * 0.7;
       vec3 sea = mix(uShallow, uDeep, clamp(-vH / 0.3, 0.0, 1.0));
       // The land's colour laid on as watercolour is: never quite even, a little darker where it
@@ -519,12 +515,12 @@ const shaper = offThread(() => { if (noWorkers) throw new Error('no workers'); r
 shaper.post({ init: { parts: fine.parts, triangles: ftopo.triangles.slice(), basePositions: fbase.slice(), relief: RELIEF } });
 let shapeOut = false;
 shaper.onmessage = (data) => {
-  const d = data as { height: Float32Array; land: Float32Array; position: Float32Array; normal: Float32Array; marks: Float32Array; flow: Float32Array };
+  const d = data as { height: Float32Array; land: Float32Array; position: Float32Array; normal: Float32Array; marks: Float32Array };
   // What was being drawn becomes where the new one eases in from, over about as long as it took to come.
-  prevHeight.set(fineHeight); prevColour.set(landColour); prevPositions.set(positions); prevMarks.set(fineMarks); prevFlow.set(fineFlow);
-  fineMarks.set(d.marks); fineFlow.set(d.flow);
+  prevHeight.set(fineHeight); prevColour.set(landColour); prevPositions.set(positions); prevMarks.set(fineMarks);
+  fineMarks.set(d.marks);
   fineHeight.set(d.height); landColour.set(d.land); positions.set(d.position); normals.set(d.normal);
-  for (const name of ['position', 'normal', 'color', 'aH', 'aPrevPos', 'aPrevColour', 'aPrevH', 'aMarks', 'aPrevMarks', 'aFlow', 'aPrevFlow']) geometry.getAttribute(name).needsUpdate = true;
+  for (const name of ['position', 'normal', 'color', 'aH', 'aPrevPos', 'aPrevColour', 'aPrevH', 'aMarks', 'aPrevMarks']) geometry.getAttribute(name).needsUpdate = true;
   const now = performance.now() / 1000;
   blendFrom.span = Math.min(0.8, Math.max(0.05, now - blendFrom.at));
   blendFrom.at = now;
@@ -535,8 +531,8 @@ function draw(): void {
   if (shapeOut) return;
   coarse();
   shapeOut = true;
-  const height = coarseHeight.slice(), land = coarseLand.slice(), marks = coarseMarks.slice(), flow = planet.current.slice();
-  shaper.post({ shape: { height, land, marks, flow } }, [height.buffer, land.buffer, marks.buffer, flow.buffer]);
+  const height = coarseHeight.slice(), land = coarseLand.slice(), marks = coarseMarks.slice();
+  shaper.post({ shape: { height, land, marks } }, [height.buffer, land.buffer, marks.buffer]);
 }
 
 /** Redraw the surface here and now: at the start, on taking up a kept world, and for the kept chart. */
@@ -864,77 +860,6 @@ if (LAMP) {
   }));
   shell.renderOrder = 2;
   group.add(shell);
-}
-/**
- * The woodblock's streaks (see streaks.ts): particles carried by the running lava (or, on the lava
- * lamp, by each blob as it floats or sinks), their trails cut into the block as paper.
- */
-const streaks = LOOK === 1 ? new Streaks(LAMP ? 260 : 650, new THREE.Color(0.957, 0.937, 0.89), pxRatio, halfScreen) : null;
-if (streaks) group.add(streaks.object);
-/** The vertex nearest a point, walking from one near it. */
-function walkTo(x: number, y: number, z: number, from: number): number {
-  let v = from;
-  const d = (w: number) => (base[w * 3] - x) ** 2 + (base[w * 3 + 1] - y) ** 2 + (base[w * 3 + 2] - z) ** 2;
-  for (let moves = 0; moves < 60; moves++) {
-    let best = v;
-    for (let k = topo.nbrOffsets[v]; k < topo.nbrOffsets[v + 1]; k++) if (d(topo.nbrList[k]) < d(best)) best = topo.nbrList[k];
-    if (best === v) break;
-    v = best;
-  }
-  return v;
-}
-const lavaField: Field = {
-  at(x, y, z, hint) {
-    const v = walkTo(x, y, z, hint), c = planet.current;
-    const alive = planet.lava[v] > LAVA_WHOLE * 0.25 && (!SEA || surface(v) > 0);
-    // (The sim's figure is how fast lava is handed on, which is quicker than the lava itself moves: carried at a little over half of it, the streaks keep to the flow.)
-    const k = 0.6;
-    return { vx: c[v * 3] * k, vy: c[v * 3 + 1] * k, vz: c[v * 3 + 2] * k, lift: 1 + RELIEF * Math.max(0, drawnHeight[v]) + 0.008, alive, hint: v };
-  },
-};
-/** On the lava lamp: inside a blob, carried the way it's going (up if it's hot, down if it's cold), as the sim moves it. */
-const blobField: Field = {
-  at(x, y, z, hint) {
-    const g = planet.gravity, q = planet.plume, up = g ? { x: -g.x, y: -g.y, z: -g.z } : q, ul = Math.hypot(up.x, up.y, up.z) || 1;
-    for (const b of planet.blobs) {
-      if (Math.acos(Math.min(1, x * b.x + y * b.y + z * b.z)) > blobRadius(b.area) * 0.9) continue;
-      const s = b.heat > 0.45 ? 1 : -1, tx = (s * up.x) / ul, ty = (s * up.y) / ul, tz = (s * up.z) / ul, d = tx * x + ty * y + tz * z;
-      const speed = (planet.k.blobSpeed * Math.sqrt(Math.abs(b.heat - 0.45) / 0.55)) / Math.sqrt(Math.sqrt(b.area / 4)) * 1.6 + 0.012;
-      const l = Math.hypot(tx - d * x, ty - d * y, tz - d * z) || 1;
-      return { vx: ((tx - d * x) / l) * speed, vy: ((ty - d * y) / l) * speed, vz: ((tz - d * z) / l) * speed, lift: 1 + RELIEF * 0.08 + 0.004, alive: b.heat > 0.15, hint };
-    }
-    return { vx: 0, vy: 0, vz: 0, lift: 1, alive: false, hint };
-  },
-};
-/** Where running lava lies, looked for now and then, for new streaks to start. */
-let lavaSpots: number[] = [], spotsAt = -1;
-function streaming(dt: number): void {
-  if (!streaks) return;
-  const now = performance.now() / 1000;
-  if (LAMP) {
-    const bs = planet.blobs.filter((b) => b.heat > 0.15);
-    const area = bs.reduce((t, b) => t + blobRadius(b.area) ** 2, 0);
-    streaks.update(dt, blobField, () => {
-      if (!bs.length) return null;
-      const b = bs[Math.floor(Math.random() * bs.length)], r = blobRadius(b.area) * 0.8 * Math.sqrt(Math.random()), a = Math.random() * Math.PI * 2;
-      const t1 = new THREE.Vector3(b.x, b.y, b.z).cross(Math.abs(b.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0)).normalize(), t2 = new THREE.Vector3(b.x, b.y, b.z).cross(t1);
-      const p = new THREE.Vector3(b.x, b.y, b.z).addScaledVector(t1, Math.cos(a) * r).addScaledVector(t2, Math.sin(a) * r).normalize();
-      return { x: p.x, y: p.y, z: p.z, hint: 0 };
-    }, Math.min(200, Math.round(area * 0.6e5)));
-    return;
-  }
-  if (now - spotsAt > 0.3) {
-    spotsAt = now;
-    lavaSpots = [];
-    const c = planet.current;
-    for (let v = 0; v < N; v++) if (planet.lava[v] > LAVA_WHOLE * 0.5 && (!SEA || surface(v) > 0) && Math.hypot(c[v * 3], c[v * 3 + 1], c[v * 3 + 2]) > 0.01) lavaSpots.push(v);
-  }
-  streaks.update(dt, lavaField, () => {
-    if (!lavaSpots.length) return null;
-    const v = lavaSpots[Math.floor(Math.random() * lavaSpots.length)], j = 0.012;
-    const x = base[v * 3] + (Math.random() - 0.5) * j, y = base[v * 3 + 1] + (Math.random() - 0.5) * j, z = base[v * 3 + 2] + (Math.random() - 0.5) * j, r = Math.hypot(x, y, z);
-    return { x: x / r, y: y / r, z: z / r, hint: v };
-  }, Math.min(500, Math.round(lavaSpots.length * 1.4)));
 }
 /** Each frame: the blobs, the bud at the heat, and the pool on the far shore, into the shell's uniforms. */
 function lamping(): void {
@@ -1695,7 +1620,7 @@ function world(): Kept {
     free: FREE,
     way: chain ? { a: chain.a, b: chain.b } : null,
     seed,
-    planet: snapshotOf(planet, ['topo', 'next', 'firmness', 'scale', 'news', 'current', 'moving']),
+    planet: snapshotOf(planet, ['topo', 'next', 'firmness', 'scale', 'news']),
     ecology: snapshotOf(ecology, ['pl', 'topo', 'scale']),
     islands: snapshotOf(islands, ['topo', 'scale']),
     page: { lesson, embersSaid, shownEra, eraFrom: eraFrom.slice(), turn: group.quaternion.toArray() as number[], dist },
@@ -1975,7 +1900,6 @@ renderer.setAnimationLoop(() => {
   aimNext.update(dt);
   if (WORLD.goal === 'orbit') orbiting(dt);
   if (LAMP) lamping();
-  if (streaks) streaming(dt);
   if (SUNS) sunning();
   if (WORLD.goal === 'feed') feeding(dt);
   if (WORLD.goal === 'height' || WORLD.goal === 'cover' || WORLD.goal === 'round' || WORLD.goal === 'land') {
@@ -1998,4 +1922,4 @@ renderer.setAnimationLoop(() => {
   turnedSince();
 });
 
-if (import.meta.env.DEV) (window as unknown as { volcano: unknown }).volcano = { planet, group, base, streaks, renderer, scene, camera, lavaSpots: () => lavaSpots, puffs, ecology, islands, rotate, draw, save, world, frameCost, kindDots, chain: () => chain, aim: () => aimInk, lines: () => { lastLines = -1; redrawLines(1e6); }, life: () => { lastLife = -10; redrawLife(1e6); } };
+if (import.meta.env.DEV) (window as unknown as { volcano: unknown }).volcano = { planet, group, base, renderer, scene, camera, puffs, ecology, islands, rotate, draw, save, world, frameCost, kindDots, chain: () => chain, aim: () => aimInk, lines: () => { lastLines = -1; redrawLines(1e6); }, life: () => { lastLife = -10; redrawLife(1e6); } };
