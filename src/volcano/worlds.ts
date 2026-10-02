@@ -22,9 +22,8 @@
  *       aim is a ridge all the way round it, as Iapetus has.
  *   IX  A lava-lamp world: hot rock lighter than the deep, rising in blobs that float to whatever is
  *       uppermost, cool, merge and sink. Carry them, merged big enough to last, to the far shore.
- *   X   A world of three suns, whose wandering makes stable eras and chaotic ones, as the three
- *       bodies of the problem do: the heat floods in when a sun swings close, and so do the tides.
- *       Have land standing when the fire ends.
+ *   X   A tumbling moon, as Hyperion tumbles: its spin wanders and never settles, and every
+ *       eruption pushes against it. Erupt where the ground sweeps past, and calm it.
  *   XI  A deep ocean world: lava cools fast in the cold deep, but in a tube of its own fresh crust
  *       it runs far. Build out to the shallow bank and raise an island there.
  *   XII A young Earth, with no moon yet: its cone holds the pressure down, the taller the more,
@@ -32,7 +31,7 @@
  */
 import type { Rules } from './sim';
 
-export type WorldId = 'ocean' | 'moon' | 'mars' | 'ice' | 'io' | 'enceladus' | 'asteroid' | 'spin' | 'lamp' | 'suns' | 'deep' | 'young';
+export type WorldId = 'ocean' | 'moon' | 'mars' | 'ice' | 'io' | 'enceladus' | 'asteroid' | 'spin' | 'lamp' | 'tumble' | 'deep' | 'young';
 
 export interface Palette {
   /** The ground: bare old rock, fresh basalt, ash, lava as it runs (and where it lies thick), and, for worlds that keep a mark of it, rock that lava has flooded. */
@@ -63,7 +62,7 @@ export interface World {
   /** Its second aim, for the card: one that pulls against the first (see second.ts). */
   second: string;
   palette: Palette;
-  goal: 'ring' | 'basins' | 'height' | 'cover' | 'plumes' | 'feed' | 'round' | 'ridge' | 'lamp' | 'land' | 'bank' | 'orbit';
+  goal: 'ring' | 'basins' | 'height' | 'cover' | 'plumes' | 'feed' | 'round' | 'ridge' | 'lamp' | 'calm' | 'bank' | 'orbit';
   /** What kind of world it is, without its name: for a world of this kind round another star (see system.ts). */
   kind: string;
   /** For a world whose aim is height: how high, in km, and how many km a unit of the world's height stands for. */
@@ -72,8 +71,8 @@ export interface World {
   cover?: number;
   /** For a world whose aim is to be round: how much of its first spread from round must go. */
   round?: number;
-  /** For the three-sun world: the share of the world that must stand as land when the fire ends. */
-  land?: number;
+  /** For the tumbling moon: how much of its tumble (in %) must be calmed. */
+  calm?: number;
   /** For the deep ocean: how much of the bank (in vertices of a planet of the drawn detail) must stand above the sea. */
   island?: number;
   /** For the lava lamp: how much must pool on the far shore. */
@@ -299,26 +298,28 @@ export const WORLDS: World[] = [
     pool: 140,
   },
   {
-    id: 'suns',
-    kind: 'A world of three suns',
+    id: 'tumble',
+    kind: 'A tumbling moon',
     numeral: 'X',
-    title: 'A world of three suns',
-    first: 'A restless sky, and no telling where its lights will go.',
-    then: 'Three suns never settle into a pattern, so calm years and wild ones come and go.',
-    second: 'Build in the calm, and the land stands when the tides rise.',
+    title: 'A tumbling moon',
+    first: 'A battered moon, rolling end over end.',
+    then: 'Knocked askew long ago, it has never settled into a steady spin.',
+    second: 'Erupt where the ground sweeps past, and the tumbling slows.',
     rules: {
-      terrain: 'ocean', floor: -0.22, life: false, suns: true,
-      drift: 0, rises: 0.03, heat: 460, rising: 1.0, steady: true,
-      impactEvery: [60, 100],
+      // As Hyperion tumbles: slowly, but never settling. The heat rises to whatever is uppermost, so as
+      // the moon rolls the vent wanders, and pours break out wherever it tips.
+      terrain: 'moon', basins: 0, craters: 30, floor: 0.05, rough: 0.02,
+      rises: 0.03, heat: 560, rising: 1.3, steady: true, impactEvery: [70, 110],
+      tumble: 0.3, tumbleGrow: 0.0015, tumbleKick: 0.4,
     },
     palette: {
-      // Parchment scorched a little, under three suns.
-      paper: '#efdcbc', basalt: '#9a8672', ash: '#b9ab99', lava: '#b8563c', deepLava: '#8f3b28',
-      shallow: '#d6e1e6', deep: '#b3c6d2',
-      landInk: '#6b4a2e', landInkHigh: '#4a2f1c', pencil: '#bea98c', seaInk: '#5b82a3',
+      // Pale, porous rock, a little warm.
+      paper: '#e2dccd', basalt: '#9d968a', ash: '#bcb6aa', lava: '#b8563c', deepLava: '#8f3b28',
+      shallow: '#d4e3ec', deep: '#b1c8d8',
+      landInk: '#5e554a', landInkHigh: '#3f372e', pencil: '#b8ae9e', seaInk: '#5b82a3',
     },
-    goal: 'land',
-    land: 0.037,
+    goal: 'calm',
+    calm: 75,
   },
   {
     id: 'deep',

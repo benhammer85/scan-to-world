@@ -16,8 +16,7 @@
  *                   pressure held deep into the tide, which costs plumes, and risks the cone.
  *   An asteroid     round it, and keep the lava in its hollows: pouring fast, or bursting, spills
  *                   it over the lumps, which rounds it less and leaves it messier.
- *   Three suns      land standing at the end, and a peak among it: broad lowlands outlast the tides,
- *                   a peak asks the heat to stay put through them.
+ *   Tumbling moon   how still it's left: calming it past the aim means bursting just where the ground sweeps past
  *   A deep ocean    an island on the bank, and the longest tube to it: one long tube is slow to
  *                   build; short ones won't reach.
  *   A spinning world  ring its equator with a ridge, and raise it high: spreading thin finishes
@@ -49,7 +48,7 @@ export function secondWords(goal: World['goal'], value: number): string {
     case 'height': return `a base ${value} km wide`;
     case 'cover': return `the largest sheet ${value}%`;
     case 'round': return `${value}% of the lava kept in the hollows`;
-    case 'land': return `a peak ${value} km high`;
+    case 'calm': return `${value}% still at the end`;
     case 'bank': return `a tube ${value.toLocaleString('en')} km long`;
     case 'ridge': return `a ridge ${value} km high`;
     case 'lamp': return `${value}% of the pool brought in one blob`;
@@ -92,8 +91,9 @@ export function measureSecond(world: World, pl: Planet, topo: Topology, islands:
       if (pl.start[v] < mean) low++;
     }
     value = all ? Math.round((100 * low) / all) : 0;
-  } else if (world.goal === 'land') {
-    value = Math.round(Math.max(0, pl.peak()) * 40 * 10) / 10;
+  } else if (world.goal === 'calm') {
+    // How still it was left as the fire ended: calming it further than the aim asks is the second aim.
+    value = Math.max(0, Math.round((1 - pl.tumbling) * 100));
   } else if (world.goal === 'bank') {
     // How far from the heat its lava has built (new rock, a fair amount of it), in km on a world as big as ours.
     const q = pl.plume;

@@ -237,6 +237,17 @@ export const VOLCANO = {
    */
   suns: false,
   /**
+   * A tumbling moon, as Hyperion tumbles: its spin wanders and grows of itself toward `tumble`
+   * radians a second, its axis drifting, `tumbleGrow` a second; and every eruption pushes against
+   * the spin where it breaks out, taking away `tumbleKick` of the spin across the vent for a burst
+   * of the usual size (a pour, a third as much; never more than 0.45 at once), most on the tumble's
+   * equator and little towards its poles. So erupt where the ground is sweeping past, and the
+   * tumble eases. 0: no tumble.
+   */
+  tumble: 0,
+  tumbleGrow: 0.0015,
+  tumbleKick: 0.4,
+  /**
    * The deep ocean's lava tubes: lava running over crust laid within `tubeFresh` seconds cools only
    * this share as fast in the sea, as if in a tube of its own crust; so flow after flow down the
    * same way carries it further. 1: no tubes.
@@ -273,7 +284,14 @@ export type Rules = typeof VOLCANO;
 
 export type Era = 'young' | 'burning' | 'cooling' | 'embers' | 'out';
 
-interface Eruption { vertex: number; flank: number; left: number; rate: number }
+/**
+ * Lava on its way out: where, how much is left, and how fast. Given a `dur`, it comes as a real
+ * eruption does, not all at once: a trickle that swells to its height and tails away (its `total`
+ * let out over `dur` seconds as the integral of a sine's square), so a pour has weight.
+ */
+interface Eruption { vertex: number; flank: number; left: number; rate: number; total?: number; t?: number; dur?: number }
+/** How much of a swelling eruption is out by `x` (0..1) of its time: slow, then most, then slow. */
+const swell = (x: number): number => x - Math.sin(2 * Math.PI * x) / (2 * Math.PI);
 
 /**
  * A blob of hot rock on the lava-lamp world: where it is (a unit vector), how much of it, and how
@@ -333,6 +351,13 @@ export class Planet {
   readonly tally = { flows: 0, bursts: 0, calderas: 0, stones: 0, caught: 0 };
   /** How hard the sea wore at each vertex, at the last reckoning (per second): where the surf is. */
   readonly wear: Float32Array;
+  /** Where lava has just burned living ground: 1, fading over half a minute or so (it's drawn scorched before it's gone). */
+  readonly scorch: Float32Array;
+  /**
+   * A tumbling moon's spin (an angular velocity, in the world's own frame, radians a second): it
+   * wanders and grows of itself, and each eruption pushes against it (see `kick`).
+   */
+  readonly spinNow = { x: 0, y: 0, z: 0 };
   /** The great plumes counted so far: where, and how far their rings reached (radians). */
   readonly plumes: { x: number; y: number; z: number; reach: number }[] = [];
   /** Rock thrown clear of the world, into orbit, so far; or, round a giant, what its ring holds now. */
@@ -392,6 +417,7 @@ export class Planet {
     this.life = new Float32Array(n);
     this.sunk = new Float32Array(n);
     this.wear = new Float32Array(n);
+    this.scorch = new Float32Array(n);
     this.next = new Float32Array(n);
     this.slowDelta = new Float32Array(n);
     this.firmness = new Float32Array(n);
@@ -698,7 +724,8 @@ export class Planet {
     const v = this.plumeVertex, s = this.scale;
     if (volume < this.k.explosive) {
       this.tally.flows++;
-      this.eruptions.push({ vertex: v, flank: this.flankOf(v), left: volume * s, rate: (volume * s) / this.k.pour });
+      this.eruptions.push({ vertex: v, flank: this.flankOf(v), left: volume * s, rate: (volume * s) / this.k.pour, total: volume * s, t: 0, dur: this.k.pour * 1.7 });
+      this.kick(volume, 0.35);
       return 'flow';
     }
     // A burst: most of it thrown up as ash that falls round the vent, the rest welling out.
@@ -723,7 +750,8 @@ export class Planet {
     if (!blast) this.tally.bursts++;
     if (!blast && this.k.great > 0 && strength >= this.k.great) this.greatPlume(this.k.ashReach * this.k.ashRing * far);
     const lava = left * (1 - this.k.ashShare) * s;
-    this.eruptions.push({ vertex: v, flank: v, left: lava, rate: lava / this.k.pour });
+    this.eruptions.push({ vertex: v, flank: v, left: lava, rate: lava / this.k.pour, total: lava, t: 0, dur: this.k.pour * 1.5 });
+    if (!blast) this.kick(volume, 1);
     return 'burst';
   }
 
@@ -832,8 +860,35 @@ export class Planet {
     this.called = true;
   }
 
+  /** The tumble wanders and grows: its axis drifts, and its rate creeps back toward `tumble`. */
+  private tumbleOn(dt: number): void {
+    const w = this.spinNow, r = Math.hypot(w.x, w.y, w.z);
+    if (r < 1e-6) { const a = unit({ x: 0.3, y: 1, z: 0.2 }); w.x = a.x * this.k.tumble; w.y = a.y * this.k.tumble; w.z = a.z * this.k.tumble; return; }
+    // Its axis wanders, as a chaotic tumble's does.
+    const j = 0.35 * Math.sqrt(dt), d = unit({ x: w.x / r + (this.rand() - 0.5) * j, y: w.y / r + (this.rand() - 0.5) * j, z: w.z / r + (this.rand() - 0.5) * j });
+    const to = Math.min(this.k.tumble, r + this.k.tumbleGrow * dt);
+    w.x = d.x * to; w.y = d.y * to; w.z = d.z * to;
+  }
+  /**
+   * An eruption pushes against the tumble where it breaks out: it takes away part of the spin
+   * across the vent (the part that sweeps the ground there past), so erupting where the ground is
+   * rushing by calms it most, and at the pole of the spin, not at all.
+   */
+  private kick(volume: number, share: number): void {
+    if (this.k.tumble <= 0) return;
+    const w = this.spinNow, p = this.plume, along = w.x * p.x + w.y * p.y + w.z * p.z, r = Math.hypot(w.x, w.y, w.z);
+    // (Most where the vent is on the tumble's equator, sweeping fastest; little towards its poles.)
+    const square = r > 1e-6 ? (1 - Math.abs(along) / r) ** 2 : 0;
+    const by = Math.min(0.45, this.k.tumbleKick * share * Math.min(1.5, volume / this.k.explosive)) * square;
+    w.x -= by * (w.x - along * p.x); w.y -= by * (w.y - along * p.y); w.z -= by * (w.z - along * p.z);
+  }
+  /** How fast the moon tumbles now, as a share of how fast it tumbles left alone. */
+  get tumbling(): number { return Math.hypot(this.spinNow.x, this.spinNow.y, this.spinNow.z) / Math.max(1e-6, this.k.tumble); }
+
   step(dt: number): void {
     this.seconds += dt;
+    if (this.k.tumble > 0) this.tumbleOn(dt);
+    for (let v = 0, f = Math.exp(-dt / 25); v < this.scorch.length; v++) if (this.scorch[v] > 0) this.scorch[v] *= f;
     // The heat rises out of its store: fast at first, slower as the planet cools, and then it is gone.
     // (Or, on a world whose heat rises evenly, at one pace until it's gone.)
     // (And on a tidal moon, faster at high tide and slower at low.)
@@ -1081,7 +1136,12 @@ export class Planet {
       for (let q = a; q < b; q++) this.lava[t.nbrList[q]] += share * 0.5;
     };
     for (const e of this.eruptions) {
-      const amount = Math.min(e.left, e.rate * dt);
+      let amount: number;
+      if (e.dur && e.total !== undefined && e.t !== undefined) {
+        const x0 = Math.min(1, e.t / e.dur), x1 = Math.min(1, (e.t + dt) / e.dur);
+        e.t += dt;
+        amount = x1 >= 1 ? e.left : Math.min(e.left, e.total * (swell(x1) - swell(x0)));
+      } else amount = Math.min(e.left, e.rate * dt);
       e.left -= amount;
       const flank = e.flank === e.vertex ? 0 : this.k.flankShare;
       put(e.vertex, amount * (1 - flank));
@@ -1140,7 +1200,7 @@ export class Planet {
       if (solid > 0) this.laid[v] = 0;
       this.lava[v] -= solid;
       this.rock[v] += solid;
-      if (l > this.k.cover) { this.age[v] = 0; this.life[v] = 0; this.ash[v] = 0; this.rich[v] = 0; }
+      if (l > this.k.cover) { if (this.life[v] > 0.05) this.scorch[v] = 1; this.age[v] = 0; this.life[v] = 0; this.ash[v] = 0; this.rich[v] = 0; }
     }
   }
 

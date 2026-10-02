@@ -51,7 +51,7 @@ export const TWISTS: Twist[] = [
   { id: 'thick', name: 'thick lava', words: 'Lava piles up near the vent and sets soon.', rules: (r) => ({ flow: r.flow * 0.5, coolLand: r.coolLand * 1.8 }), not: ['moon', 'enceladus', 'lamp'] },
   {
     id: 'tidal', name: 'a near neighbour', words: 'Its tides make the heat come and go, and bursts throw further at high tide.',
-    rules: () => ({ tide: 0.6, tidePeriod: 60, tideThrow: 0.4 }), not: ['io', 'ocean', 'enceladus', 'suns'],
+    rules: () => ({ tide: 0.6, tidePeriod: 60, tideThrow: 0.4 }), not: ['io', 'ocean', 'enceladus', 'tumble'],
   },
 ];
 export const twistOf = (id: string): Twist => TWISTS.find((t) => t.id === id) ?? TWISTS[0];
@@ -82,7 +82,7 @@ export function twisted(world: WorldId, twistId: string): Partial<Rules> {
   return rules;
 }
 /** From the star outwards: the kinds of world in the order a system would have them, warmest first. */
-const WARMTH: WorldId[] = ['suns', 'young', 'ocean', 'deep', 'mars', 'lamp', 'asteroid', 'spin', 'io', 'moon', 'ice', 'enceladus'];
+const WARMTH: WorldId[] = ['tumble', 'young', 'ocean', 'deep', 'mars', 'lamp', 'asteroid', 'spin', 'io', 'moon', 'ice', 'enceladus'];
 
 export interface Made { met: boolean; second: number; words: string }
 export interface Body {
@@ -108,7 +108,7 @@ export interface System {
 }
 
 /** A good showing at each second aim: as good as this gives the most warmth (see `giftOf`). */
-const GOOD: Record<World['goal'], number> = { land: 12, bank: 4500, ridge: 2, lamp: 60, round: 80, ring: 3, basins: 85, height: 700, cover: 30, plumes: 1400, feed: 15, orbit: 3474 };
+const GOOD: Record<World['goal'], number> = { calm: 95, bank: 4500, ridge: 2, lamp: 60, round: 80, ring: 3, basins: 85, height: 700, cover: 30, plumes: 1400, feed: 15, orbit: 3474 };
 /** The most warmth a world passes on: this share more heat. */
 export const MOST_WARMTH = 0.15;
 const STARS = ['a yellow star', 'an orange star', 'a pale white star', 'a small red star'];

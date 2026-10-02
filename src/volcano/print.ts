@@ -27,7 +27,7 @@ export const LOOKS: { id: string; look: Look; words: string }[] = [
 /** Declared before the shader's main(); uses its hash3, noise3 and uPx. */
 export const PRINT_FUNCTIONS = /* glsl */ `
   varying vec3 vS;
-  uniform float uFloodDots, uFloodRim, uFeeding;
+  uniform float uFloodDots, uFloodRim, uFeeding, uBuild;
   uniform vec3 uVent;
   // Craters, as the charts draw them (see 'Craters' below): each one's middle and width, how long since it was dug, and the light in the world's own frame.
   uniform vec4 uCrater[64];
@@ -230,6 +230,14 @@ const ENGRAVE = /* glsl */ `
       float strokes = smoothstep(0.0, 0.08, noise3(vDir * vec3(140.0, 40.0, 140.0) + vec3(floor(hatch + 0.5) * 1.7)) - 0.62 + 0.3 * black);
       col *= mix(vec3(1.0), vec3(0.86, 0.84, 0.81), hs * black * 0.7 * washEdge);
       col = mix(col, ink, hs * step(0.02, black) * lnSet * strokes * 0.75 * edgeOn);
+      // Cracks that glow: round the vent as the pressure builds (the ground straining before it gives),
+      // and in crust just set, fading as it cools. (Level lines of a noise, a set width in pixels.)
+      float cn = noise3(vDir * 70.0) + 0.5 * noise3(vDir * 160.0 + 3.0), fwC = max(fwidth(cn), 1e-5);
+      float crack = (1.0 - smoothstep(0.45 * uPx - 0.5, 0.45 * uPx + 0.5, abs(cn - 0.75) / fwC)) * (1.0 - smoothstep(0.08, 0.2, fwC));
+      float strain = smoothstep(0.25, 1.0, uBuild) * exp(-far / (0.03 + 0.07 * uBuild)) * (1.0 - onL);
+      col *= mix(vec3(1.0), vec3(1.0, 0.86, 0.76), strain * 0.6);
+      float glow = max(strain, hs * smoothstep(0.55, 0.97, black));
+      col = mix(col, vec3(0.86, 0.28, 0.12), crack * glow * 0.9);
       // Its front: one bolder line, deep red.
       col = mix(col, uBlockDeep, (1.0 - smoothstep(0.85 * uPx - 0.5, 0.85 * uPx + 0.5, abs(lv - 0.5) / lw)) * step(0.5 - 2.0 * lw, lv) * 0.92);`;
 

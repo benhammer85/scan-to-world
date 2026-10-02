@@ -16,7 +16,7 @@ const run = (pl: Planet, seconds: number) => { for (let t = 0; t < seconds; t +=
 
 describe('the worlds', () => {
   it('come one after another, and each has its own aim', () => {
-    expect(WORLDS.map((w) => w.id)).toEqual(['ocean', 'moon', 'mars', 'ice', 'io', 'enceladus', 'asteroid', 'spin', 'lamp', 'suns', 'deep', 'young']);
+    expect(WORLDS.map((w) => w.id)).toEqual(['ocean', 'moon', 'mars', 'ice', 'io', 'enceladus', 'asteroid', 'spin', 'lamp', 'tumble', 'deep', 'young']);
     expect(worldOf('moon').goal).toBe('basins');
     expect(worldOf('nowhere').id).toBe('ocean');
     expect(nextWorld(worldOf('ocean'))!.id).toBe('moon');
@@ -27,8 +27,8 @@ describe('the worlds', () => {
     expect(nextWorld(worldOf('enceladus'))!.id).toBe('asteroid');
     expect(nextWorld(worldOf('asteroid'))!.id).toBe('spin');
     expect(nextWorld(worldOf('spin'))!.id).toBe('lamp');
-    expect(nextWorld(worldOf('lamp'))!.id).toBe('suns');
-    expect(nextWorld(worldOf('suns'))!.id).toBe('deep');
+    expect(nextWorld(worldOf('lamp'))!.id).toBe('tumble');
+    expect(nextWorld(worldOf('tumble'))!.id).toBe('deep');
     expect(nextWorld(worldOf('deep'))!.id).toBe('young');
     expect(nextWorld(worldOf('young'))).toBe(null);
   });
@@ -374,16 +374,24 @@ describe('the lava-lamp world', () => {
   });
 });
 
-describe('a world of three suns', () => {
-  it('turns chaotic now and then, as a sun swings close, and stable again', () => {
-    const pl = new Planet(topo, nearest(0, 0, 1), 7, worldOf('suns').rules);
-    pl.stonesFall = false;
-    pl.gravity = { x: 0, y: 0, z: -1 };
-    let chaotic = 0, flips = 0, was = false;
-    for (let t = 0; t < 400; t += 1 / 10) { pl.step(1 / 10); if (pl.pressure > 5) pl.erupt(); if (pl.chaotic) chaotic += 0.1; if (pl.chaotic !== was) flips++; was = pl.chaotic; }
-    expect(chaotic).toBeGreaterThan(20);
-    expect(chaotic).toBeLessThan(300);
-    expect(flips).toBeGreaterThanOrEqual(2);
+describe('a tumbling moon', () => {
+  it('tumbles of itself, and a burst where the ground sweeps past calms it more than one at the spin\'s pole', () => {
+    const calmed = (atPole: boolean) => {
+      const pl = new Planet(topo, nearest(0, 0, 1), 7, worldOf('tumble').rules);
+      pl.stonesFall = false;
+      pl.step(0.1);
+      expect(pl.tumbling).toBeGreaterThan(0.9);
+      // Turn the spin so the vent is on its equator, or at its pole.
+      const r = Math.hypot(pl.spinNow.x, pl.spinNow.y, pl.spinNow.z), q = pl.plume;
+      const axis = atPole ? { x: q.x, y: q.y, z: q.z } : { x: -q.y, y: q.x, z: 0 };
+      const l = Math.hypot(axis.x, axis.y, axis.z) || 1;
+      Object.assign(pl.spinNow, { x: (axis.x / l) * r, y: (axis.y / l) * r, z: (axis.z / l) * r });
+      pl.pressure = pl.k.explosive * 1.2;
+      pl.erupt();
+      return 1 - pl.tumbling;
+    };
+    expect(calmed(false)).toBeGreaterThan(0.3);
+    expect(calmed(true)).toBeLessThan(0.05);
   });
 });
 
