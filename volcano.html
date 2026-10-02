@@ -35,7 +35,7 @@
       #begin .world { font-size: 13px; letter-spacing: 0.18em; opacity: 0.55; font-variant: small-caps; }
       #begin .first { font-size: 22px; font-style: italic; max-width: 20em; line-height: 1.4; padding: 0 24px; }
       #begin .then { font-size: 14px; opacity: 0.6; max-width: 22em; line-height: 1.5; padding: 0 24px; }
-      #begin .worlds { display: flex; gap: 14px; font-size: 13px; letter-spacing: 0.12em; margin-top: 26px; }
+      #begin .worlds { display: flex; flex-wrap: wrap; justify-content: center; max-width: min(100%, 30em); padding: 0 12px; box-sizing: border-box; gap: 0 10px; font-size: 13px; letter-spacing: 0.12em; margin-top: 26px; }
       #begin .worlds span { opacity: 0.35; padding: 8px 6px; cursor: pointer; }
       #begin .worlds span.here { opacity: 0.75; border-bottom: 1px solid currentColor; cursor: default; }
       #begin .fresh { font-size: 12px; font-style: italic; opacity: 0.4; margin-top: 10px; cursor: pointer; padding: 6px; }
@@ -72,6 +72,9 @@
       /* In free play, a quiet way to end the fire when you choose, where the chart's keep will be. */
       #finish { position: fixed; top: calc(22px + env(safe-area-inset-top)); right: 24px; font: italic 12px "Iowan Old Style", Palatino, Georgia, serif; color: #2e2118; background: none; border: none; opacity: 0; pointer-events: none; transition: opacity 2s; cursor: pointer; padding: 4px; }
       #finish.shown { opacity: 0.4; pointer-events: auto; }
+      #begin .look { font-size: 12px; font-style: italic; opacity: 0.55; margin-top: 6px; }
+      #begin .look span { cursor: pointer; padding: 6px 2px; opacity: 0.7; }
+      #begin .look span.here { opacity: 1; border-bottom: 1px solid currentColor; cursor: default; }
       #begin .free { font-size: 13px; font-style: italic; opacity: 0.6; margin-top: 10px; cursor: pointer; padding: 6px; }
       #keep { position: fixed; top: calc(22px + env(safe-area-inset-top)); right: 24px; font: italic 12px "Iowan Old Style", Palatino, Georgia, serif; color: #2e2118; background: none; border: none; opacity: 0; pointer-events: none; transition: opacity 2s; cursor: pointer; padding: 4px; }
       #keep.shown { opacity: 0.5; pointer-events: auto; }

@@ -1,0 +1,211 @@
+/**
+ * The world drawn as a print (the first world, for now): stipple on cream paper, pinned to the
+ * ground so it turns with it and never crawls (as Return of the Obra Dinn pins its dither); a few
+ * loose washes of watercolour laid on by hand, sea-green along the coast and ochre over parts of
+ * the land; a dotted graticule over the sea; a crisp coast; and the lava in one of two hands:
+ *
+ *   1  woodblock: a block of vermilion, hot orange where it lies thick, cut by hand with gouges
+ *      that ride downhill with it, outlined in black that goes thick and thin and breaks, printed
+ *      a little off its outline; set, it's a black block whose cuts stay; weathering, it breaks into
+ *      halftone dots that shrink until they're stipple;
+ *   2  watercolour: a wet wash that pools dark at its ragged edge, with pigment drifting in it;
+ *      set, it dries to sienna and then grey, and goes, leaving stipple behind.
+ *
+ * Everything here is worked out in each pixel from what the ground shader already has: the height
+ * (vH), the marks (vMarks: where lava lies, where it has set and how black it still is), the
+ * ground's colour (vColor: life's washes, ash), and where on the world it is (vDir).
+ */
+export type Look = 0 | 1 | 2;
+export const LOOKS: { id: string; look: Look; words: string }[] = [
+  { id: 'wood', look: 1, words: 'woodblock lava' },
+  { id: 'water', look: 2, words: 'watercolour lava' },
+  { id: 'plain', look: 0, words: 'as before' },
+];
+
+/** Declared before the shader's main(); uses its hash3, noise3 and uPx. */
+export const PRINT_FUNCTIONS = /* glsl */ `
+  varying vec3 vS;
+  vec3 hash33(vec3 p) {
+    p = vec3(dot(p, vec3(127.1, 311.7, 74.7)), dot(p, vec3(269.5, 183.3, 246.1)), dot(p, vec3(113.5, 271.9, 124.6)));
+    return fract(sin(p) * 43758.5453);
+  }
+  // A dot for each cell of a lattice lying on the world's shell (D cells to its radius), each moved
+  // a little off its cell's middle; for each pixel, the dots of the eight cells round it. Each dot
+  // is drawn once the darkness wanted here passes its own threshold, at rPx pixels across (dots
+  // keep their size on the screen as you zoom; how closely they're set is fixed to the ground).
+  // Seen from far, where they'd crowd into moire, they give way to their own average tone.
+  float lattice(vec3 p, float D, float dark, float rPx, float salt) {
+    float ps = max(length(dFdx(p)), length(dFdy(p)));
+    float r = rPx * ps, cov = 0.0;
+    vec3 i0 = floor(p - 0.5);
+    for (int k = 0; k < 8; k++) {
+      float fk = float(k);
+      vec3 c = i0 + vec3(mod(fk, 2.0), mod(floor(fk / 2.0), 2.0), floor(fk / 4.0));
+      vec3 h = hash33(c + salt);
+      vec3 q = c + 0.5 + (h - 0.5) * 0.84;
+      float lq = length(q);
+      if (abs(lq - D) > 0.5) continue;
+      q *= D / lq;
+      float rr = r * (0.8 + 0.45 * h.y);
+      float th = 0.04 + h.x * 0.96, on = smoothstep(th - 0.03, th + 0.03, dark);
+      cov = max(cov, on * (1.0 - smoothstep(rr - 0.5 * ps, rr + 0.5 * ps, length(p - q))));
+    }
+    return mix(cov, clamp(dark * 3.1 * r * r, 0.0, 1.0), smoothstep(0.35, 0.7, ps));
+  }
+  // Two lattices, turned against each other and of different sizes, so no grid shows however dense.
+  float stipple(vec3 dir, float D, float dark, float rPx) {
+    vec3 d2 = vec3(dir.y * 0.8 + dir.z * 0.6, dir.z * 0.8 - dir.y * 0.6, dir.x).yzx;
+    return max(lattice(dir * D, D, dark * 0.6, rPx, 0.0), lattice(d2 * (D * 1.29), D * 1.29, dark * 0.6, rPx, 31.0));
+  }
+  // Round halftone dots on the same kind of lattice, each rCells across (in cells): rock breaking up.
+  float halftone(vec3 dir, float D, float rCells) {
+    vec3 p = dir * D;
+    float ps = max(length(dFdx(p)), length(dFdy(p))), cov = 0.0;
+    vec3 i0 = floor(p - 0.5);
+    for (int k = 0; k < 8; k++) {
+      float fk = float(k);
+      vec3 c = i0 + vec3(mod(fk, 2.0), mod(floor(fk / 2.0), 2.0), floor(fk / 4.0));
+      vec3 h = hash33(c + 17.0);
+      vec3 q = c + 0.5 + (h - 0.5) * 0.3;
+      float lq = length(q);
+      if (abs(lq - D) > 0.5) continue;
+      q *= D / lq;
+      float rr = rCells * (0.75 + 0.5 * h.z);
+      cov = max(cov, 1.0 - smoothstep(rr - 0.5 * ps, rr + 0.5 * ps, length(p - q)));
+    }
+    return cov;
+  }
+  // The graticule: dotted parallels every 15 degrees and meridians every 20, the dots fixed to the world.
+  float graticule(vec3 dir, float pxW) {
+    float lat = asin(clamp(dir.y, -1.0, 1.0)), lon = atan(dir.z, dir.x);
+    float cl = cos(lat), sp = 0.02, rr = 0.6 * uPx * pxW, aa = 0.5 * pxW;
+    float sLat = 0.2618, dLat = (fract(lat / sLat + 0.5) - 0.5) * sLat;
+    float da = (fract(lon * cl / sp) - 0.5) * sp;
+    float g = 1.0 - smoothstep(rr - aa, rr + aa, length(vec2(dLat, da)));
+    float sLon = 0.349, dLon = (fract(lon / sLon + 0.5) - 0.5) * sLon * cl;
+    float db = (fract(lat / sp) - 0.5) * sp;
+    g = max(g, (1.0 - smoothstep(rr - aa, rr + aa, length(vec2(dLon, db)))) * step(abs(lat), 1.3));
+    return g;
+  }
+  // Gouges: the cuts lie along the level lines of a phase, each line broken into strokes of its own
+  // width that taper as it nears the block's edge; none where the lines would crowd into a smear.
+  float gouges(float phase, float taper) {
+    float fw = max(fwidth(phase), 1e-5), k = floor(phase + 0.5);
+    float dpx = abs(phase - k) / fw;
+    float w = (0.35 + 1.1 * noise3(vDir * 38.0 + vec3(k * 1.37))) * uPx * taper;
+    float stroke = smoothstep(0.24, 0.36, noise3(vDir * 60.0 + vec3(k * 2.1, 0.0, k)));
+    // (Nor where the phase stands still, as it does where lava lies whole: there every pixel is "on" a line.)
+    return (1.0 - smoothstep(w - 0.5, w + 0.5, dpx)) * stroke * (1.0 - smoothstep(0.12, 0.3, fw)) * smoothstep(0.004, 0.02, fw);
+  }
+`;
+
+/** The ground's colour, as a print: replaces the shader's own colour step. */
+export function printFragment(look: Look): string {
+  return /* glsl */ `
+      float px = max(length(dFdx(vDir)), length(dFdy(vDir)));
+      float edge = max(fwidth(vH), 1e-5) * 0.7;
+      float onLand = smoothstep(-edge, edge, vH);
+      vec3 paper = vec3(0.957, 0.937, 0.89), ink = vec3(0.13, 0.12, 0.105);
+      vec3 col = paper;
+      float b1 = noise3(vDir * 7.0), b2 = noise3(vDir * 19.0 + 3.1), b3 = noise3(vDir * 60.0 + 7.0);
+      float grain = 0.8 + 0.4 * noise3(vDir * 420.0) * hash3(floor(vDir * 700.0));
+      // Sea-green along the coast, wide here and narrow there, slipping a little onto the land as a hand-laid wash does.
+      float reach = max(-vH, 0.0) / (0.012 + 0.07 * b1 * b1) + 0.35 * (b2 - 0.5);
+      float rw = max(fwidth(reach), 1e-4);
+      float inSea = (1.0 - smoothstep(1.0 - rw, 1.0 + rw, reach)) * (1.0 - smoothstep(0.0, 0.004 + 0.012 * b3, vH));
+      float seaRim = exp(-max(0.0, 1.0 - reach) / 0.09) * 0.9;
+      float aSea = clamp(0.32 * (0.25 + b2 * b2 + 0.3 * b1 + seaRim) * grain, 0.0, 1.0) * inSea;
+      col *= 1.0 - aSea * (1.0 - vec3(0.36, 0.55, 0.59));
+      // The land: life's washes and ash, as their tint over the land's paper; and loose ochre over parts of it, never all.
+      // Life's washes (and ash, and fresh rock) come as a soft tint; laid as a hand-coloured map lays them,
+      // each is an even wash with a ragged edge, a darker rim and grain, wherever it's more than a trace.
+      vec3 dt = clamp(1.0 - vColor.rgb / max(uLandPaper, vec3(0.01)), 0.0, 1.0);
+      float ds = max(dt.r, max(dt.g, dt.b)), lr = ds / (0.05 + 0.05 * b1) + 0.3 * (b3 - 0.5), lrw = max(fwidth(lr), 1e-4);
+      float inL = smoothstep(1.0 - lrw, 1.0 + lrw, lr), rimL = exp(-max(0.0, lr - 1.0) / 0.5) * 0.7;
+      vec3 tint = 1.0 - (dt / max(ds, 1e-3)) * clamp(0.3 * (0.55 + b2 + rimL) * grain, 0.0, 0.6) * inL;
+      float oReach = 0.35 + 1.5 * (1.0 - noise3(vDir * 5.0 + 9.0)) - vH * 2.5 + 0.25 * (b2 - 0.5);
+      float ow = max(fwidth(oReach), 1e-4);
+      float aO = clamp(0.22 * (0.3 + 1.1 * b1 * b1 + exp(-max(0.0, 1.0 - oReach) / 0.08) * 0.9) * grain, 0.0, 1.0) * (1.0 - smoothstep(1.0 - ow, 1.0 + ow, oReach));
+      vec3 landCol = paper * tint;
+      landCol *= 1.0 - aO * (1.0 - vec3(0.77, 0.63, 0.36));
+      col = mix(col, landCol * mix(vec3(1.0), col / paper, inSea), onLand);
+
+      // Lava's marks.
+      float lv = vMarks.y * onLand, lw = max(fwidth(lv), 1e-4); // (under the sea it's hidden, as it always was)
+      float here = vMarks.w, hw = max(fwidth(here), 1e-4), setOn = smoothstep(0.5 - hw, 0.5 + hw, here) * onLand;
+      float black = here > 0.01 ? clamp(vMarks.z / here, 0.0, 1.0) : 0.0;
+
+      // Stipple: crowded along the shore, thinning inland, gathering on slopes turned from the light,
+      // and at the world's edge to round it.
+      vec3 V = normalize(vViewPosition), Nn = normalize(vN), S = normalize(vS), L = normalize(vec3(-0.55, 0.6, 0.6));
+      float limb = exp(-clamp(dot(S, V), 0.0, 1.0) * 20.0) * 0.5;
+      float hl = max(vH, 0.0);
+      float relief = max(0.0, dot(S, L) - dot(Nn, L)) * 2.2;
+      float darkL = exp(-hl / 0.005) * 0.9 + exp(-hl / 0.02) * 0.3 + relief + 0.02;
+      ${look === 2 ? 'darkL += 0.45 * sin(black * 3.14159) * setOn; // the dried wash giving way to stipple' : ''}
+      float dark = mix(limb, darkL + limb, onLand);
+      if (dark > 0.035) col = mix(col, ink, stipple(vDir, 300.0, dark, 0.45 * uPx) * 0.92);
+      // The graticule, over the open sea.
+      col = mix(col, ink, graticule(vDir, px) * (1.0 - onLand) * (1.0 - 0.5 * aSea) * 0.5);
+
+      ${look === 1 ? WOOD : WATER}
+
+      // The coast: one crisp line.
+      float coastPx = abs(vH) / max(fwidth(vH), 1e-6);
+      col = mix(col, ink, (1.0 - smoothstep(0.55 * uPx - 0.5, 0.55 * uPx + 0.5, coastPx)) * 0.95);
+      diffuseColor.rgb *= col;`;
+}
+
+const WOOD = /* glsl */ `
+      // Set: black, in close halftone dots; weathering, the dots shrink until they are only stipple.
+      float lvR = lv + (dFdx(lv) * 1.6 - dFdy(lv) * 1.1) * uPx + 0.05 * (noise3(vDir * 45.0) - 0.5);
+      float onR = smoothstep(0.5 - lw, 0.5 + lw, lvR);
+      float hs = setOn * (1.0 - onR);
+      if (hs > 0.0 && black > 0.02) {
+        col = mix(col, ink, hs * halftone(vDir, 320.0, 0.66 * pow(black, 0.6)) * 0.94);
+      }
+      // Running: the colour block, printed a little off its outline.
+      if (onR > 0.0) {
+        float inPx = (lvR - 0.5) / lw;
+        // Vermilion, deeper at the edge, and hot orange only in the core of a broad flow.
+        float core = smoothstep(14.0, 70.0, inPx / uPx) * (0.5 + 0.9 * (b2 - 0.5));
+        vec3 lc = mix(vec3(0.66, 0.14, 0.09), vec3(0.85, 0.24, 0.12), smoothstep(0.0, 4.0, inPx / uPx));
+        lc = mix(lc, vec3(0.95, 0.55, 0.17), clamp(core, 0.0, 0.55));
+        // Ink squeezed darker at the edge, and the wood's grain in the flat.
+        lc *= 1.0 - 0.2 * exp(-max(inPx, 0.0) / (2.5 * uPx));
+        lc *= 0.93 + 0.07 * (0.5 + 0.5 * sin(dot(vDir, vec3(0.2, 1.0, 0.3)) * 900.0 + noise3(vDir * 10.0) * 16.0));
+        // The cuts: across the flow (along its level lines, drifting downhill), and following its edge.
+        // (Along the level lines of a smooth field fixed to the ground, not of the height: the height is
+        // drawn a triangle at a time, and its level lines would show the triangles.)
+        float swirl = (noise3(vDir * 9.0) * 0.7 + noise3(vDir * 23.0 + 5.0) * 0.3) * 30.0;
+        float cut = max(gouges(swirl - uTime * 0.3, smoothstep(0.52, 0.7, lv)), gouges(lv * 7.0, 1.0) * step(0.58, lv));
+        lc = mix(lc, paper, cut);
+        float speck = step(0.86, noise3(vDir * 260.0) * 0.6 + hash3(floor(vDir * 520.0)) * 0.4);
+        col = mix(col, lc, onR * (1.0 - speck * 0.7 * (1.0 - cut)));
+      }
+      // The key block: the outline, thick and thin, here and there broken.
+      {
+        float dpx = abs(lv - 0.5) / lw, kw = (0.45 + 1.2 * noise3(vDir * 22.0 + 4.0)) * uPx;
+        float ol = (1.0 - smoothstep(kw - 0.6, kw + 0.6, dpx)) * smoothstep(0.12, 0.2, noise3(vDir * 16.0 + 2.0)) * step(0.5 - 2.0 * lw, lv);
+        col = mix(col, ink, ol * 0.92);
+      }`;
+
+const WATER = /* glsl */ `
+      // Set: the wash dries to sienna, then grey, then goes.
+      {
+        float inS = (here - 0.5) / hw, rimS = exp(-max(inS, 0.0) / (3.0 * uPx)) * 0.8;
+        vec3 sc = mix(vec3(0.23, 0.235, 0.28), vec3(0.59, 0.26, 0.15), smoothstep(0.7, 1.0, black));
+        float sa = 0.7 * smoothstep(0.0, 0.55, black) * (0.4 + 0.8 * b2 * b2 + rimS) * grain;
+        col *= 1.0 - clamp(sa, 0.0, 0.95) * setOn * (1.0 - smoothstep(0.5 - lw, 0.5 + lw, lv)) * (1.0 - sc);
+      }
+      // Running: a wet wash with a ragged edge, pooled dark at it, pigment drifting inside.
+      {
+        float lvr = lv + 0.14 * (noise3(vDir * 40.0) - 0.5) + 0.06 * (noise3(vDir * 110.0) - 0.5);
+        float lwr = max(fwidth(lvr), 1e-4), cov = smoothstep(0.5 - lwr, 0.5 + lwr, lvr);
+        float rim = exp(-max((lvr - 0.5) / lwr, 0.0) / (3.0 * uPx)) * 0.85;
+        float body = 0.25 + 0.95 * pow(noise3(vDir * 16.0 + vec3(uTime * 0.04, -uTime * 0.05, uTime * 0.03)), 1.5);
+        float core = smoothstep(14.0, 70.0, (lvr - 0.5) / lwr / uPx) * (0.5 + 0.9 * (b2 - 0.5));
+        vec3 wc = mix(vec3(0.8, 0.2, 0.11), vec3(0.95, 0.5, 0.15), clamp(core, 0.0, 0.6) * (1.0 - rim));
+        float a = clamp(1.2 * (body + rim), 0.0, 0.95) * cov * grain;
+        col *= 1.0 - a * (1.0 - wc);
+      }`;

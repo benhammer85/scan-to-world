@@ -51,6 +51,7 @@ import { Chain, CHAIN } from './chain';
 import { measureSecond, secondWords, type Second } from './second';
 import { loadSystem, saveSystem, worldFor, recordPlayed, madeCount } from './system';
 import { openSystem, closeSystem } from './systemChart';
+import { LOOKS, PRINT_FUNCTIONS, printFragment, type Look } from './print';
 
 const $ = (id: string) => document.getElementById(id)!;
 const stage = $('stage');
@@ -131,6 +132,12 @@ const FREE = ASKED.has('free') && !ASKED.has('run');
 const CHOSEN = SYSTEM && RUN !== null ? worldFor(SYSTEM, RUN) : worldOf(ASKED.get('world') ?? remembered('volcano.world'));
 const WORLD = FREE ? { ...CHOSEN, rules: { ...CHOSEN.rules, endless: true } } : CHOSEN;
 if (RUN === null) remember('volcano.world', WORLD.id);
+/**
+ * How the world is drawn: on the first world, as a print (stipple, hand-laid washes, and lava as a
+ * woodblock or a watercolour; see print.ts), or as it was. Chosen on the card, and remembered.
+ */
+const LOOK_ID = ASKED.get('look') ?? remembered('volcano.look') ?? 'wood';
+const LOOK: Look = WORLD.id === 'ocean' ? (LOOKS.find((l) => l.id === LOOK_ID)?.look ?? 1) : 0;
 const P = WORLD.palette, LIFE = WORLD.rules.life !== false, ICE = WORLD.rules.terrain === 'ice';
 /** On Io, the plumes' sulphur is drawn as the flood mark is elsewhere: in a clean-edged band, as a geological map draws a unit. */
 const SULPHUR = (WORLD.rules.ashRing ?? 0) > 0;
@@ -205,8 +212,8 @@ const lavaClock = { value: 0 }, pxRatio = { value: 1 };
 const material = new THREE.MeshLambertMaterial({ vertexColors: true, dithering: true });
 material.onBeforeCompile = (shader) => {
   shader.vertexShader = shader.vertexShader
-    .replace('void main() {', 'attribute float aH;\nattribute float aPrevH;\nattribute vec3 aPrevPos;\nattribute vec3 aPrevColour;\nattribute vec4 aMarks;\nattribute vec4 aPrevMarks;\nuniform float uBlend;\nvarying float vH;\nvarying vec4 vMarks;\nvarying vec3 vDir;\nvoid main() {')
-    .replace('#include <color_vertex>', '#include <color_vertex>\n  vColor.rgb = mix(aPrevColour, color.rgb, uBlend);\n  vH = mix(aPrevH, aH, uBlend);\n  vMarks = mix(aPrevMarks, aMarks, uBlend);\n  vDir = normalize(position);')
+    .replace('void main() {', 'attribute float aH;\nattribute float aPrevH;\nattribute vec3 aPrevPos;\nattribute vec3 aPrevColour;\nattribute vec4 aMarks;\nattribute vec4 aPrevMarks;\nuniform float uBlend;\nvarying float vH;\nvarying vec4 vMarks;\nvarying vec3 vDir;\nvarying vec3 vN;\nvarying vec3 vS;\nvoid main() {')
+    .replace('#include <color_vertex>', '#include <color_vertex>\n  vColor.rgb = mix(aPrevColour, color.rgb, uBlend);\n  vH = mix(aPrevH, aH, uBlend);\n  vMarks = mix(aPrevMarks, aMarks, uBlend);\n  vDir = normalize(position);\n  vN = normalize(normalMatrix * normal);\n  vS = normalize(normalMatrix * normalize(position));')
     .replace('#include <begin_vertex>', 'vec3 transformed = mix(aPrevPos, position, uBlend);');
   shader.uniforms.uBlend = blend;
   // The sea's colour is only its depth, so it's worked out here rather than sent: paler over the shallows.
@@ -221,16 +228,18 @@ material.onBeforeCompile = (shader) => {
   shader.uniforms.uDeepLava = { value: DEEP_RED };
   shader.uniforms.uShallow = { value: SHALLOW };
   shader.uniforms.uDeep = { value: DEEP };
+  shader.uniforms.uLandPaper = { value: PAPER };
   shader.fragmentShader = shader.fragmentShader
-    .replace('void main() {', `uniform vec3 uShallow;\nuniform vec3 uDeep;\nuniform vec3 uFlooded;\nuniform float uFloodStrength;\nuniform vec3 uLava;\nuniform vec3 uDeepLava;\nuniform vec3 uHot;\nuniform vec3 uCrust;\nuniform float uTime;\nuniform float uPx;\nvarying float vH;\nvarying vec4 vMarks;\nvarying vec3 vDir;
+    .replace('void main() {', `uniform vec3 uShallow;\nuniform vec3 uDeep;\nuniform vec3 uFlooded;\nuniform float uFloodStrength;\nuniform vec3 uLava;\nuniform vec3 uDeepLava;\nuniform vec3 uHot;\nuniform vec3 uCrust;\nuniform float uTime;\nuniform float uPx;\nuniform vec3 uLandPaper;\nvarying float vH;\nvarying vec4 vMarks;\nvarying vec3 vDir;\nvarying vec3 vN;
       float hash3(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
       float noise3(vec3 p) {
         vec3 i = floor(p), f = fract(p), s = f * f * (3.0 - 2.0 * f);
         return mix(mix(mix(hash3(i), hash3(i + vec3(1, 0, 0)), s.x), mix(hash3(i + vec3(0, 1, 0)), hash3(i + vec3(1, 1, 0)), s.x), s.y),
                    mix(mix(hash3(i + vec3(0, 0, 1)), hash3(i + vec3(1, 0, 1)), s.x), mix(hash3(i + vec3(0, 1, 1)), hash3(i + vec3(1, 1, 1)), s.x), s.y), s.z);
       }
+      ${LOOK ? PRINT_FUNCTIONS : ''}
       void main() {`)
-    .replace('#include <color_fragment>', `
+    .replace('#include <color_fragment>', LOOK ? printFragment(LOOK) : `
       float edge = max(fwidth(vH), 1e-5) * 0.7;
       vec3 sea = mix(uShallow, uDeep, clamp(-vH / 0.3, 0.0, 1.0));
       // The land's colour laid on as watercolour is: never quite even, a little darker where it
@@ -270,7 +279,8 @@ group.add(mesh);
  * new set fades in over the old as the old fades out, so a line never jumps; it drifts, as the
  * land does, and you don't see it happen unless you're watching for it.
  */
-const landStyle = { ...defaultPlotterStyle, ink: P.landInk, inkHigh: P.landInkHigh, pencil: P.pencil, alpha: 0.5, indexAlpha: 0.8, indexEvery: 5, fadeSeconds: 0, pen: false, appearSeconds: 0.001, widthPx: 1.15, nib: false };
+// (Drawn as a print, the stipple carries the relief: the land's contours are fainter, the sea's are left out.)
+const landStyle = { ...defaultPlotterStyle, ink: LOOK ? '#2a241e' : P.landInk, inkHigh: LOOK ? '#2a241e' : P.landInkHigh, pencil: P.pencil, alpha: LOOK ? 0.22 : 0.5, indexAlpha: LOOK ? 0.35 : 0.8, indexEvery: 5, fadeSeconds: 0, pen: false, appearSeconds: 0.001, widthPx: 1.15, nib: false };
 const seaStyle = { ...defaultPlotterStyle, ink: P.seaInk, inkHigh: P.seaInk, pencil: '#a9bfd0', alpha: 0.45, indexAlpha: 0.6, fadeSeconds: 0, pen: false, appearSeconds: 0.001, widthPx: 0.95, nib: false };
 const landPens = [new PlotterLines(landStyle), new PlotterLines(landStyle)], seaPens = [new PlotterLines(seaStyle), new PlotterLines(seaStyle)];
 for (const pen of [...landPens, ...seaPens]) { pen.width = 2; pens.push(pen); group.add(pen.object); }
@@ -282,7 +292,7 @@ function newLines(land: Polyline[], sea: Polyline[]): void {
   if (fadeFrom >= 0) finishFade();
   const back = 1 - frontPen;
   landPens[back].setLines(land, 'settle');
-  seaPens[back].setLines(sea, 'settle');
+  seaPens[back].setLines(LOOK ? [] : sea, 'settle');
   fadeFrom = performance.now() / 1000;
 }
 function finishFade(): void {
@@ -1661,6 +1671,27 @@ if (RUN === null) {
   });
   $('begin').appendChild(link);
 }
+// How the first world is drawn, from the card: as a print with woodblock lava or watercolour lava, or as before.
+if (WORLD.id === 'ocean') {
+  const row = document.createElement('p');
+  row.className = 'look';
+  row.append('drawn with ');
+  LOOKS.forEach((l, i) => {
+    if (i) row.append(' · ');
+    const b = document.createElement('span');
+    b.textContent = l.words;
+    if (l.look === LOOK) b.className = 'here';
+    else b.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      remember('volcano.look', l.id);
+      const q = new URLSearchParams(location.search);
+      q.delete('look');
+      location.search = q.toString();
+    });
+    row.appendChild(b);
+  });
+  $('begin').appendChild(row);
+}
 if (FREE) ($('begin').querySelector('.then') as HTMLElement).textContent = `Free play: the heat never runs out, and nothing ends until you end it, at the top. ${WORLD.then}`;
 // The end of a fire in free play: when you choose.
 $('finish').addEventListener('pointerdown', (e) => e.stopPropagation());
@@ -1847,4 +1878,4 @@ renderer.setAnimationLoop(() => {
   turnedSince();
 });
 
-if (import.meta.env.DEV) (window as unknown as { volcano: unknown }).volcano = { planet, puffs, ecology, islands, rotate, draw, save, world, frameCost, kindDots, chain: () => chain, aim: () => aimInk, lines: () => { lastLines = -1; redrawLines(1e6); }, life: () => { lastLife = -10; redrawLife(1e6); } };
+if (import.meta.env.DEV) (window as unknown as { volcano: unknown }).volcano = { planet, group, base, puffs, ecology, islands, rotate, draw, save, world, frameCost, kindDots, chain: () => chain, aim: () => aimInk, lines: () => { lastLines = -1; redrawLines(1e6); }, life: () => { lastLife = -10; redrawLife(1e6); } };
