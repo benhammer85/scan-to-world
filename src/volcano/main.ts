@@ -215,12 +215,16 @@ const lavaClock = { value: 0 }, pxRatio = { value: 1 };
  */
 /** The craters for the print's shader (the latest 64 of them), and the light in the world's own frame, so a crater's shadow falls the right way however it's turned. */
 const CRATERS = 64, craterAt = Array.from({ length: CRATERS }, () => new THREE.Vector4()), craterAge = new Float32Array(CRATERS), craterCount = { value: 0 };
+/** Where the vent is (the world's own frame), and whether it's feeding lava (the engraving's dashes stream while it is). */
+const ventObj = new THREE.Vector3(0, 0, 1), fed = { value: 0 };
 const LIGHT_VIEW = new THREE.Vector3(-0.55, 0.6, 0.6).normalize(), lightObj = new THREE.Vector3(), unturn = new THREE.Quaternion();
 function cratering(): void {
   const all = planet.craters, from = Math.max(0, all.length - CRATERS);
   for (let i = from; i < all.length; i++) { const c = all[i]; craterAt[i - from].set(c.x, c.y, c.z, c.r); craterAge[i - from] = planet.seconds - c.born; }
   craterCount.value = all.length - from;
   // (The camera looks straight down at the world, unturned, so its frame is the scene's.)
+  ventObj.set(planet.plume.x, planet.plume.y, planet.plume.z).normalize();
+  fed.value += ((planet.erupting || planet.pouring || planet.molten > 0.01 ? 1 : 0.25) - fed.value) * 0.05;
   lightObj.copy(LIGHT_VIEW).applyQuaternion(unturn.copy(group.quaternion).invert());
 }
 const material = new THREE.MeshLambertMaterial({ vertexColors: true, dithering: true });
@@ -250,6 +254,8 @@ material.onBeforeCompile = (shader) => {
   shader.uniforms.uCraterAge = { value: craterAge };
   shader.uniforms.uCraterCount = craterCount;
   shader.uniforms.uLightObj = { value: lightObj };
+  shader.uniforms.uVent = { value: ventObj };
+  shader.uniforms.uFeeding = fed;
   // The woodblock's colours: vermilion, deeper at the edge, hot orange at the core (as working values, not hex: as first seen and liked);
   // on the ice moons, where the lava is water, its blues.
   // (Engraved, the lines are inks: red-brown, deeper at the edge; on the ice moons, where the lava is water, blues.)

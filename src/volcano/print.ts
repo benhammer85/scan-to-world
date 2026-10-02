@@ -27,7 +27,8 @@ export const LOOKS: { id: string; look: Look; words: string }[] = [
 /** Declared before the shader's main(); uses its hash3, noise3 and uPx. */
 export const PRINT_FUNCTIONS = /* glsl */ `
   varying vec3 vS;
-  uniform float uFloodDots, uFloodRim;
+  uniform float uFloodDots, uFloodRim, uFeeding;
+  uniform vec3 uVent;
   // Craters, as the charts draw them (see 'Craters' below): each one's middle and width, how long since it was dug, and the light in the world's own frame.
   uniform vec4 uCrater[64];
   uniform float uCraterAge[64];
@@ -132,7 +133,7 @@ export function printFragment(look: Look, sea: boolean): string {
       vec3 landCol = paper * mix(vec3(1.0), own, clamp(0.8 + 0.5 * (b1 - 0.5), 0.0, 1.0) * (0.9 + 0.1 * grain)) * tint;
       // Where lava has lain and the world keeps the mark (the Moon's dark seas, the ice moons' new ice, Io's
       // sulphur): a wash of its own, with a ragged edge and a rim where it pooled.
-      float flr = vMarks.x + 0.12 * (b3 - 0.5) + 0.08 * (b2 - 0.5), flw = max(fwidth(flr), 1e-4);
+      float flr = vMarks.x + 0.04 * (b3 - 0.5) + 0.14 * (b2 - 0.5), flw = max(fwidth(flr), 1e-4) * 1.6;
       float inF = smoothstep(0.5 - flw, 0.5 + flw, flr), rimF = exp(-max(0.0, (flr - 0.5) / flw) / (3.0 * uPx));
       landCol = mix(landCol, uFlooded * (1.0 - 0.12 * rimF * uFloodRim), washEdge * uFloodStrength * inF * clamp(0.72 + 0.35 * (b2 - 0.5) + 0.25 * rimF * uFloodRim, 0.0, 1.0));
       float floodDark = inF * uFloodStrength * uFloodDots; // (the Moon's dark seas are stippled darker, as lunar charts draw them)
@@ -141,7 +142,7 @@ export function printFragment(look: Look, sea: boolean): string {
 
       // Lava's marks.
       float lv = vMarks.y * onLand, lw = max(fwidth(lv), 1e-4); // (under the sea it's hidden, as it always was)
-      float here = vMarks.w, hw = max(fwidth(here), 1e-4), setOn = smoothstep(0.5 - hw, 0.5 + hw, here) * onLand;
+      float here = vMarks.w + 0.1 * (b2 - 0.5), hw = max(fwidth(here), 1e-4) * 1.6, setOn = smoothstep(0.5 - hw, 0.5 + hw, here) * onLand; // (a little wobble and a softer edge, so the mesh's triangles don't show as teeth)
       float black = here > 0.01 ? clamp(vMarks.z / here, 0.0, 1.0) : 0.0;
 
       // Stipple: crowded along the shore, thinning inland, gathering on slopes turned from the light,
@@ -199,30 +200,38 @@ export function printFragment(look: Look, sea: boolean): string {
 }
 
 const ENGRAVE = /* glsl */ `
-      // Engraved, as an old atlas's plates were. Running lava has no fill, only a breath of warmth: its
-      // lines, in red-brown ink, follow the flow's own shape, running along it parallel to its edges
-      // (the level lines of how deep it lies), swell where it's hot and thin to hairlines at its edge,
-      // and drift outward as it spreads. Where it lies so deep its depth hardly changes, they follow a
-      // smooth field fixed to the ground instead.
+      // Engraved, as an old atlas's plates were, but plainly molten: running lava is laid with a warm
+      // vermilion tint, strongest near the vent and fading towards its front, and engraved with lines
+      // that run downhill, out from the vent, as a geological map hatches a flow; the lines are broken
+      // into dashes that stream outward while the vent feeds it, so even a pool that's still being fed
+      // is seen to move. Its front is one bolder line.
       float onL = smoothstep(0.5 - lw, 0.5 + lw, lv);
-      float swirl = (noise3(vDir * 9.0) * 0.7 + noise3(vDir * 23.0 + 5.0) * 0.3) * 30.0, fwS = fwidth(swirl);
-      float along = lv * 9.0 + 0.4 * noise3(vDir * 15.0) + uTime * 0.5, fwA = fwidth(along);
-      float heat = smoothstep(0.55, 1.8, lv) * (0.6 + 0.4 * smoothstep(0.3, 0.75, b1 * 0.6 + b2 * 0.4));
-      float taper = smoothstep(0.5, 0.62, lv);
-      float lnRun = max(engrave(along, fwA, heat, taper), engrave(swirl + uTime * 0.3, fwS, heat, taper) * (1.0 - smoothstep(0.004, 0.02, fwA)));
+      // Out from the vent: how far (radians round the world) and which way (an angle round it).
+      vec3 vt1 = normalize(cross(uVent, abs(uVent.y) < 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0))), vt2 = cross(uVent, vt1);
+      float far = acos(clamp(dot(vDir, uVent), -1.0, 1.0));
+      float ang = atan(dot(vDir, vt2), dot(vDir, vt1)) + 0.25 * (noise3(vDir * 14.0) - 0.5);
+      // Rays, twice as many beyond a little way out, so they stay as close set as the flow widens.
+      float rays = ang * (far < 0.12 ? 26.0 : 52.0) / 6.2832 * 3.0, fwR = fwidth(rays);
+      float heat = clamp(smoothstep(0.55, 1.8, lv) * 0.5 + exp(-far / 0.12) * 0.7, 0.0, 1.0);
+      float taper = smoothstep(0.5, 0.64, lv);
+      float k = floor(rays + 0.5);
+      // Dashes along each ray, streaming outward; a gap now and then, each ray its own.
+      float dash = fract(far * 140.0 - uTime * 0.9 * uFeeding + fract(sin(k * 12.9898) * 43.7) * 7.0);
+      float dashOn = smoothstep(0.0, 0.06, dash) * (1.0 - smoothstep(0.62, 0.7, dash));
+      float lnRun = engrave(rays, fwR, heat, taper) * mix(1.0, dashOn, 0.85);
+      vec3 warm = mix(vec3(0.99, 0.74, 0.58), vec3(0.95, 0.47, 0.3), heat);
+      col *= mix(vec3(1.0), warm, onL * 0.85);
+      col = mix(col, mix(uBlockDeep, uBlock, smoothstep(0.25, 0.8, heat)), lnRun * onL * 0.95);
       // (Set, it's hatched as an engraver shades rock: short parallel strokes on the slant, few of them, fixed to the ground.)
       float hatch = dot(vDir, normalize(vec3(0.62, 0.78, 0.1))) * 520.0, fwH = fwidth(hatch);
       float lnSet = engrave(hatch, fwH, 0.15 * black, 1.0);
-      col *= mix(vec3(1.0), vec3(1.0, 0.88, 0.78), 0.55 * onL);
-      col = mix(col, mix(uBlockDeep, uBlock, smoothstep(0.25, 0.8, heat)), lnRun * onL * 0.95);
-      // Set: lines frozen where they stopped, in black; weathering breaks them into dashes, then dots, then nothing.
       float hs = setOn * (1.0 - onL);
       // Short strokes, sparse, fewer as it weathers until none are left.
       float strokes = smoothstep(0.0, 0.08, noise3(vDir * vec3(140.0, 40.0, 140.0) + vec3(floor(hatch + 0.5) * 1.7)) - 0.62 + 0.3 * black);
       col *= mix(vec3(1.0), vec3(0.86, 0.84, 0.81), hs * black * 0.7 * washEdge);
       col = mix(col, ink, hs * step(0.02, black) * lnSet * strokes * 0.75 * edgeOn);
-      // Its edge: one fine line.
-      col = mix(col, uBlockDeep, (1.0 - smoothstep(0.45 * uPx - 0.5, 0.45 * uPx + 0.5, abs(lv - 0.5) / lw)) * step(0.5 - 2.0 * lw, lv) * 0.9);`;
+      // Its front: one bolder line, deep red.
+      col = mix(col, uBlockDeep, (1.0 - smoothstep(0.85 * uPx - 0.5, 0.85 * uPx + 0.5, abs(lv - 0.5) / lw)) * step(0.5 - 2.0 * lw, lv) * 0.92);`;
 
 const WATER = /* glsl */ `
       // Set: the wash dries to sienna, then grey, then goes.
