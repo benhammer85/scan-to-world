@@ -31,7 +31,7 @@ export const LOOKS: { id: string; look: Look; words: string }[] = [
 /** Declared before the shader's main(); uses its hash3, noise3 and uPx. */
 export const PRINT_FUNCTIONS = /* glsl */ `
   varying vec3 vS;
-  uniform float uFloodDots, uFloodRim, uFeeding, uBuild, uSpray, uDrift, uBurp, uBurpSize, uBurpSeed, uBurpDir;
+  uniform float uFloodDots, uFloodRim, uFeeding, uBuild, uSpray, uDrift, uBurp, uBurpSize, uBurpSeed, uBurpDir, uGold;
   #define uFeedingGlow (0.4 + 0.6 * uFeeding)
   uniform vec3 uVent;
   // Craters, as the charts draw them (see 'Craters' below): each one's middle and width, how long since it was dug, and the light in the world's own frame.
@@ -445,8 +445,14 @@ const PRINT = (q: boolean) => /* glsl */ `
         // short, a sliver of paper shows between them.
         // (Shifted by a slow noise, not along how fast it changes from pixel to pixel: that jumps from
         // triangle to triangle of the mesh, and the shifted edges stepped in teeth.)
-        float Ty = T + 0.07 * (noise3(vDir * 5.0 + 17.0) - 0.5);
-        float redOn = smoothstep(0.66 - bw, 0.66 + bw, T), yelOn = smoothstep(0.66 - bw, 0.66 + bw, Ty);
+        ${q ? `// (Quiet: the gold isn't the hottest band but lava still arriving: near the vent, and down the
+        // deepest of the channel, while the vent feeds it (uGold); once it stops, the gold draws back to
+        // the vent over a few seconds and goes out, and the flow is left to cool.)
+        float G = uGold * (exp(-far / (0.03 + 0.1 * uGold)) * 1.1 + 0.6 * smoothstep(0.9, 2.0, lvR) * exp(-far / 0.3)) * smoothstep(0.55, 0.9, lvR) + 0.08 * (pinch - 0.5);
+        float gw = max(fwidth(G), 1e-4) * 0.8;
+        float Ty = G + 0.06 * (noise3(vDir * 5.0 + 17.0) - 0.5);
+        float redOn = smoothstep(0.66 - gw, 0.66 + gw, G), yelOn = smoothstep(0.66 - gw, 0.66 + gw, Ty);` : `float Ty = T + 0.07 * (noise3(vDir * 5.0 + 17.0) - 0.5);
+        float redOn = smoothstep(0.66 - bw, 0.66 + bw, T), yelOn = smoothstep(0.66 - bw, 0.66 + bw, Ty);`}
         vec3 inkCol = mix(deep, verm, smoothstep(0.33 - bw, 0.33 + bw, T));
         // (The gap only here and there, as the plates drift a hair; a ring of it all round read as an outline.)
         float gapShows = smoothstep(0.55, 0.72, noise3(vDir * 11.0 + 31.0));
@@ -477,7 +483,11 @@ const PRINT = (q: boolean) => /* glsl */ `
         inkCol = mix(inkCol, mix(paper, inkCol, 0.35), starve);
         ${q ? `// (Quiet: a wash on the paper, the ground showing through; only the hot core glows, a little.)
         col = mix(col, inkCol * mix(vec3(1.0), col / paper, 0.5), cov * 0.92);
-        glowInk = cov * mix(0.45, 0.7, yelOn); // (a little of its own light, or the lighting dims the soft inks to mud)` : `col = mix(col, inkCol, cov * 0.97);
+        glowInk = cov * mix(0.4, 0.95, yelOn); // (a little of its own light, or the lighting dims the soft inks to mud; the gold, the one light)
+        // As the pressure builds, a spot of gold warms the ground at the vent, widening, before anything pours.
+        float spot = smoothstep(0.3, 0.6, uBuild) * (1.0 - smoothstep((0.004 + 0.018 * uBuild) * (0.8 + 0.4 * noise3(vDir * 90.0)) - px, (0.004 + 0.018 * uBuild) * (0.8 + 0.4 * noise3(vDir * 90.0)) + px, far)) * onLand * (1.0 - cov);
+        col = mix(col, yel * mix(vec3(1.0), col / paper, 0.5), spot * 0.55);
+        glowInk = max(glowInk, spot * 0.5);` : `col = mix(col, inkCol, cov * 0.97);
         glowInk = cov * 0.85;`}
         // Splatter. Round the vent while it erupts, thrown in jets (thicker one way than another), the
         // near drops still hot; and along every running edge, a spray a little way out onto the ground.

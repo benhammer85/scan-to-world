@@ -19,8 +19,10 @@ interface Puff { alive: boolean; age: number; life: number; x: number; y: number
 
 export class Puffs {
   readonly object: THREE.Points;
-  /** Lighter smoke, and no red beneath it (the quiet print). */
-  calm = false;
+  /** Lighter, paler smoke, and no red beneath it (the quiet print). */
+  get calm(): boolean { return this.calmNow; }
+  set calm(on: boolean) { this.calmNow = on; ((this.object.material as THREE.ShaderMaterial).uniforms.uCalm.value = on ? 1 : 0); }
+  private calmNow = false;
   private puffs: Puff[] = [];
   private nextSlot = 0;
   private position = new Float32Array(MOST * 3);
@@ -47,7 +49,7 @@ export class Puffs {
       // Drawn over the map, as an engraver draws smoke over the land it rises from, rather than
       // lost behind the slope it drifts up (the far side of the world fades it away regardless).
       depthTest: false,
-      uniforms: { uScale: { value: 900 * pixelRatio } },
+      uniforms: { uScale: { value: 900 * pixelRatio }, uCalm: { value: 0 } },
       vertexShader: /* glsl */ `
         uniform float uScale;
         attribute float aAlpha;
@@ -81,6 +83,7 @@ export class Puffs {
         varying float vPx;
         varying float vLife;
         varying float vWarm;
+        uniform float uCalm;
         // (Hashed without sin, which phones work out roughly.)
         float h2(vec2 p) { vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
         float n2(vec2 p) {
@@ -116,6 +119,8 @@ export class Puffs {
             if (a <= 0.01) discard;
             vec3 shade = vTint < 0.5 ? vec3(0.32, 0.42, 0.5) : vTint < 1.5 ? vec3(0.06, 0.05, 0.05) : vec3(0.17, 0.15, 0.15);
             vec3 light = vTint < 0.5 ? vec3(0.72, 0.78, 0.8) : vTint < 1.5 ? vec3(0.26, 0.23, 0.21) : vec3(0.56, 0.5, 0.44);
+            // (Calm, as the quiet print draws it: paler, nearer the paper.)
+            shade = mix(shade, light, 0.5 * uCalm); light = mix(light, vec3(0.74, 0.69, 0.63), 0.5 * uCalm);
             vec3 c = mix(shade, light, lit);
             // Young, over lava, its underside is lit red from below.
             c = mix(c, vec3(0.26, 0.035, 0.015), 0.75 * vWarm * (1.0 - lit) * (1.0 - smoothstep(0.03, 0.22, vLife))); // (only the youngest, and only beneath: more turned them pink)

@@ -222,7 +222,7 @@ const lavaClock = { value: 0 }, pxRatio = { value: 1 };
 /** The craters for the print's shader (the latest 64 of them), and the light in the world's own frame, so a crater's shadow falls the right way however it's turned. */
 const CRATERS = 64, craterAt = Array.from({ length: CRATERS }, () => new THREE.Vector4()), craterAge = new Float32Array(CRATERS), craterCount = { value: 0 };
 /** Where the vent is (the world's own frame), and whether it's feeding lava (the engraving's dashes stream while it is). */
-const ventObj = new THREE.Vector3(0, 0, 1), fed = { value: 0 }, building = { value: 0 }, spray = { value: 0 }, drift = { value: 0 }, burp = { value: -1 }, burpSize = { value: 1 }, burpSeed = { value: 0 }, burpDir = { value: 0 };
+const ventObj = new THREE.Vector3(0, 0, 1), fed = { value: 0 }, building = { value: 0 }, spray = { value: 0 }, drift = { value: 0 }, burp = { value: -1 }, burpSize = { value: 1 }, burpSeed = { value: 0 }, burpDir = { value: 0 }, gold = { value: 0 };
 let driftAt = 0, burpAt = -1, nextBurp = 0, burst = true;
 const LIGHT_VIEW = new THREE.Vector3(-0.55, 0.6, 0.6).normalize(), lightObj = new THREE.Vector3(), unturn = new THREE.Quaternion();
 function cratering(): void {
@@ -238,7 +238,10 @@ function cratering(): void {
   const throwing = !QUIET && (planet.erupting || planet.pouring) ? 1 : 0; // (quiet: only when it bursts)
   spray.value += (throwing - spray.value) * (throwing > spray.value ? 0.06 : 0.008);
   // (How far the crust on running lava has drifted: on while the vent feeds it, nearly still once it doesn't.)
-  drift.value += Math.min(0.5, Math.max(0, planet.seconds - driftAt)) * fed.value;
+  const since = Math.min(0.5, Math.max(0, planet.seconds - driftAt));
+  drift.value += since * fed.value;
+  // (Quiet print's gold, lava still arriving: up within a second or so as it pours, drawing back over about four once it stops.)
+  gold.value = planet.erupting || planet.pouring ? Math.min(1, gold.value + since * 1.2) : Math.max(0, gold.value - since / 4);
   driftAt = planet.seconds;
   // Burps: now and then while it erupts, gas swells under the crust at the vent and tears out, throwing
   // clots and ash, felt as a knock. Each its own: mostly small, now and then a big one, thrown its own
@@ -290,6 +293,7 @@ material.onBeforeCompile = (shader) => {
   shader.uniforms.uSpray = spray;
   shader.uniforms.uDrift = drift;
   shader.uniforms.uBurp = burp;
+  shader.uniforms.uGold = gold;
   shader.uniforms.uBurpSize = burpSize;
   shader.uniforms.uBurpSeed = burpSeed;
   shader.uniforms.uBurpDir = burpDir;
