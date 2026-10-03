@@ -309,6 +309,8 @@ export const WORLDS: World[] = [
       // As Hyperion tumbles: slowly, but never settling. The heat rises to whatever is uppermost, so as
       // the moon rolls the vent wanders, and pours break out wherever it tips.
       terrain: 'moon', basins: 0, craters: 30, floor: 0.05, rough: 0.02,
+      // (Airless, as the other moons are: it grew life, a sea and rain without these.)
+      waves: 0, rain: 0, sink: 0, swell: 0, life: false, drift: 0,
       rises: 0.03, heat: 560, rising: 1.3, steady: true, impactEvery: [70, 110],
       tumble: 0.3, tumbleGrow: 0.0015, tumbleKick: 0.4,
     },

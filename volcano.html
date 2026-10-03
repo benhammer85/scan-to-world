@@ -13,7 +13,9 @@
       #stage canvas { width: 100% !important; height: 100% !important; display: block; }
       .engraved { font-family: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif; color: #2e2118; }
       /* The era, as a map's title; and, at the end, the chart drawn round the world, on a canvas over it. */
-      #stage-name { position: fixed; top: calc(22px + env(safe-area-inset-top)); left: 0; right: 0; text-align: center; font-size: 19px; font-style: italic; letter-spacing: 0.04em; pointer-events: none; }
+      #stage-name { position: fixed; top: calc(22px + env(safe-area-inset-top)); left: 0; right: 0; text-align: center; font-size: 19px; letter-spacing: 0.04em; pointer-events: none; }
+      /* What to do, and how far it's come: always there, quietly, under the world's name. */
+      #goal { position: fixed; top: calc(52px + env(safe-area-inset-top)); left: 16px; right: 16px; text-align: center; font-size: 14px; letter-spacing: 0.03em; opacity: 0.7; pointer-events: none; font-variant-numeric: tabular-nums; }
       #frame { position: fixed; inset: 0; width: 100vw; height: 100dvh; pointer-events: none; }
       /* The key, at the foot: the six kinds by their signs, faint until living; drawn out a little when it's new. */
       #legend { position: fixed; bottom: calc(24px + env(safe-area-inset-bottom)); left: 26px; right: 26px; display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 14px; font-size: 12px; font-style: italic; pointer-events: none; }
@@ -23,28 +25,35 @@
       /* A quiet word now and then, at the foot above the key, never across the world. */
       #event { position: fixed; bottom: calc(66px + env(safe-area-inset-bottom)); left: 16px; right: 16px; text-align: center; font-size: 14px; font-style: italic; opacity: 0; pointer-events: none; transition: opacity 2s; }
       /* The words float over the world on a soft halo of the paper, as a map's lettering is cleared from the lines beneath it. */
-      #event, #stage-name { text-shadow: 0 0 2px #f4efe4, 0 0 6px #f4efe4, 0 0 12px #f4efe4, 0 0 18px #f4efe4; }
+      #event, #stage-name, #goal { text-shadow: 0 0 2px #f4efe4, 0 0 6px #f4efe4, 0 0 12px #f4efe4, 0 0 18px #f4efe4; }
       /* The world comes in from the paper, and goes back to it, never cut. */
       #stage { opacity: 0; transition: opacity 1.2s ease; }
       #stage.shown { opacity: 1; }
       body.leaving #stage { opacity: 0; transition: opacity 0.8s ease; }
-      #event.shown { opacity: 0.6; }
+      #event.shown { opacity: 0.75; }
       /* A burst's moment: the words fall quiet. */
       #stage-name, #legend { transition: opacity 1.2s ease; }
-      body.hush #event, body.hush #stage-name, body.hush #legend { opacity: 0.12 !important; transition: opacity 0.6s ease; }
+      body.hush #event, body.hush #stage-name, body.hush #goal, body.hush #legend { opacity: 0.12 !important; transition: opacity 0.6s ease; }
       /* The card the world begins from: one touch, which lets the phone share how it's held. */
       #begin { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; background: #f4efe4; transition: opacity 1.5s; cursor: pointer; }
       #begin.gone { opacity: 0; pointer-events: none; }
       #begin p { margin: 0; text-align: center; }
-      #begin .world { font-size: 13px; letter-spacing: 0.18em; opacity: 0.55; font-variant: small-caps; }
-      #begin .first { font-size: 22px; font-style: italic; max-width: 20em; line-height: 1.4; padding: 0 24px; }
-      #begin .second { margin-top: -12px; }
-      #begin .second, #begin .then { text-wrap: pretty; font-size: 14px; opacity: 0.6; max-width: 22em; line-height: 1.5; padding: 0 24px; }
-      #begin .worlds { display: flex; flex-wrap: wrap; justify-content: center; max-width: min(100%, 30em); padding: 0 12px; box-sizing: border-box; gap: 0 10px; font-size: 13px; letter-spacing: 0.12em; margin-top: 26px; }
-      #begin .worlds span { opacity: 0.35; padding: 8px 6px; cursor: pointer; }
-      #begin .worlds span.here { opacity: 0.75; border-bottom: 1px solid currentColor; cursor: default; }
-      #begin .fresh { font-size: 12px; font-style: italic; opacity: 0.4; margin-top: 10px; cursor: pointer; padding: 6px; }
-      #begin .atlas-link { font-size: 12px; font-style: italic; opacity: 0.5; margin-top: 6px; cursor: pointer; padding: 6px; }
+      #begin .world { font-size: 13px; letter-spacing: 0.2em; opacity: 0.6; }
+      #begin .name { font-size: 30px; font-weight: normal; margin: -8px 0 0; letter-spacing: 0.01em; text-align: center; }
+      #begin .first { font-size: 17px; font-style: italic; max-width: 22em; line-height: 1.45; padding: 0 24px; opacity: 0.8; }
+      #begin .second { text-wrap: pretty; font-size: 16px; max-width: 21em; line-height: 1.55; padding: 0 28px; opacity: 0.9; }
+      #begin button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
+      #begin .touch { font-size: 16px; letter-spacing: 0.08em; margin-top: 10px; padding: 12px 34px; border: 1px solid rgba(46, 33, 24, 0.35); border-radius: 999px; }
+      #begin .worlds { display: flex; flex-wrap: wrap; justify-content: center; max-width: min(100%, 30em); padding: 0 12px; box-sizing: border-box; gap: 0 4px; margin-top: 18px; }
+      #begin .worlds button { font-size: 14px; letter-spacing: 0.08em; opacity: 0.55; min-width: 36px; min-height: 40px; padding: 6px; }
+      #begin .worlds button.here { opacity: 0.95; text-decoration: underline; text-underline-offset: 6px; cursor: default; }
+      #begin .more-toggle { font-size: 14px; opacity: 0.6; padding: 10px 16px; }
+      #begin .more { display: flex; flex-direction: column; align-items: center; gap: 2px; margin-top: -8px; }
+      #begin .more[hidden] { display: none !important; }
+      #begin .more > button { font-size: 15px; opacity: 0.8; padding: 9px 14px; }
+      #begin .more .ink { display: flex; gap: 4px; margin: 4px 0 0; }
+      #begin .more .ink button { font-size: 14px; opacity: 0.6; padding: 8px 10px; }
+      #begin .more .ink button.here { opacity: 1; text-decoration: underline; text-underline-offset: 5px; cursor: default; }
       /* The atlas: every chart kept, as pages to leaf through; one opened fills the page. */
       /* The solar system's chart, over the card: its worlds round the star, to choose the next. */
       #system { position: fixed; inset: 0; z-index: 10; display: none; overflow-y: auto; background: #f4efe4; padding: calc(20px + env(safe-area-inset-top)) 16px 40px; box-sizing: border-box; touch-action: pan-y; }
@@ -55,7 +64,6 @@
       #system .about { margin: 0 4px 10px; font-size: 13px; font-style: italic; opacity: 0.7; line-height: 1.45; }
       #system .foot { text-align: center; font-size: 14px; font-style: italic; margin-top: 8px; }
       #system .foot .again { opacity: 0.55; font-size: 13px; cursor: pointer; padding: 8px; }
-      #begin .system-link { font-size: 13px; font-style: italic; opacity: 0.6; margin-top: 10px; cursor: pointer; padding: 6px; }
       #atlas { position: fixed; inset: 0; z-index: 10; display: none; overflow-y: auto; background: #f4efe4; padding: calc(20px + env(safe-area-inset-top)) 16px 40px; box-sizing: border-box; touch-action: pan-y; }
       #atlas.open { display: block; }
       #atlas .head { display: flex; justify-content: space-between; align-items: baseline; margin: 0 4px 18px; }
@@ -69,18 +77,12 @@
       #atlas .view { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: #f4efe4; padding: 16px; cursor: pointer; }
       #atlas.viewing .view { display: flex; }
       #atlas .view img { max-width: 100%; max-height: 100%; box-shadow: 0 2px 10px rgba(46, 33, 24, 0.2); }
-      #begin .best { font-size: 12px; font-style: italic; opacity: 0.45; margin-top: -6px; }
-      #begin .touch { font-size: 13px; opacity: 0.45; letter-spacing: 0.12em; margin-top: 18px; }
       /* After the chart: a word on beginning again, and a way to keep it. */
       #again { position: fixed; top: calc(96px + env(safe-area-inset-top)); left: 0; right: 0; text-align: center; font-size: 12px; font-style: italic; opacity: 0; pointer-events: none; transition: opacity 2s; margin: 0; }
       #again.shown { opacity: 0.55; }
       /* In free play, a quiet way to end the fire when you choose, where the chart's keep will be. */
       #finish { position: fixed; top: calc(22px + env(safe-area-inset-top)); right: 24px; font: italic 12px "Iowan Old Style", Palatino, Georgia, serif; color: #2e2118; background: none; border: none; opacity: 0; pointer-events: none; transition: opacity 2s; cursor: pointer; padding: 4px; }
       #finish.shown { opacity: 0.4; pointer-events: auto; }
-      #begin .look { font-size: 12px; font-style: italic; opacity: 0.55; margin-top: 6px; }
-      #begin .look span { cursor: pointer; padding: 6px 2px; opacity: 0.7; }
-      #begin .look span.here { opacity: 1; border-bottom: 1px solid currentColor; cursor: default; }
-      #begin .free { font-size: 13px; font-style: italic; opacity: 0.6; margin-top: 10px; cursor: pointer; padding: 6px; }
       #keep { position: fixed; top: calc(22px + env(safe-area-inset-top)); right: 24px; font: italic 12px "Iowan Old Style", Palatino, Georgia, serif; color: #2e2118; background: none; border: none; opacity: 0; pointer-events: none; transition: opacity 2s; cursor: pointer; padding: 4px; }
       #keep.shown { opacity: 0.5; pointer-events: auto; }
       /* The worlds, in a corner off the world: back to the card that lists them. */
@@ -90,7 +92,8 @@
   <body>
     <div id="stage"></div>
     <canvas id="frame"></canvas>
-    <div id="stage-name" class="engraved">A young fire</div>
+    <div id="stage-name" class="engraved"></div>
+    <div id="goal" class="engraved" aria-live="polite"></div>
     <div id="event" class="engraved"></div>
     <div id="legend" class="engraved"></div>
     <p id="again" class="engraved">touch to start again</p>
@@ -99,7 +102,7 @@
     <button id="worlds" aria-label="the worlds"></button>
     <div id="atlas" class="engraved"><div class="head"><h2>The atlas</h2><button class="close">back</button></div><div class="pages"></div><div class="view"><img alt=""></div></div>
     <div id="system" class="engraved"><div class="head"><h2>A solar system</h2><button class="close">back</button></div><p class="about"></p><div class="plate"></div><div class="foot"></div></div>
-    <div id="begin" class="engraved"><p class="world"></p><p class="first"></p><p class="then"></p><p class="second"></p><p class="touch">touch to begin</p><p class="worlds"></p></div>
+    <div id="begin" class="engraved"><p class="world"></p><h1 class="name"></h1><p class="first"></p><p class="second"></p><button class="touch">Begin</button><p class="worlds"></p><button class="more-toggle">more</button><div class="more" hidden></div></div>
     <script type="module" src="/src/volcano/main.ts"></script>
   </body>
 </html>

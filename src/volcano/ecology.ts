@@ -130,7 +130,7 @@ export class Ecology {
         const k = KINDS.find((x) => x.kind === this.wish!.kind)!;
         this.kept++;
         pl.reserve += ECOLOGY.wishHeat;
-        pl.tell(`Wish met: ${k.name}. More heat`);
+        pl.tell(`${k.name[0].toUpperCase()}${k.name.slice(1)} took hold. More heat`);
         this.wish = null;
         this.wishIn = this.between();
       } else if (this.wish.left <= 0 || pl.over) {
@@ -154,7 +154,7 @@ export class Ecology {
     if (this.here(wish) >= ECOLOGY.wishNeeds * this.scale) { this.wishIn = 3; return; } // already there: ask for something else
     this.wish = wish;
     const k = KINDS.find((x) => x.kind === kind)!;
-    pl.tell(`Wanted where pencilled: ${k.name}, on ${k.wants}`);
+    pl.tell(`Wanted where pencilled: ${k.name}`);
   }
 
   /** How many vertices of the wished-for kind live near the wish. */
