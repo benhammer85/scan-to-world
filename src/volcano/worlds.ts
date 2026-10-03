@@ -236,7 +236,7 @@ export const WORLDS: World[] = [
       terrain: 'asteroid', basins: 0, craters: 25, floor: 0.3, rough: 0.015, lumps: 0.15, selfGravity: 1,
       waves: 0, rain: 0, sink: 0, swell: 0, life: false,
       flow: 14, channel: 1, coolLand: 0.08,
-      drift: 0, rises: 0.045, heat: 800, rising: 1.8, steady: true,
+      drift: 0, rises: 0.045, heat: 800, rising: 1.8, steady: true, pourLeast: 2.6, pourMost: 4, // (its heat rises fast, so tipped it pours faster, or tipping wouldn't drain it)
       impactEvery: [55, 95], impactWarning: 14, impactHeat: 4, ageCraters: 0.06,
     },
     palette: {

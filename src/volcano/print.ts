@@ -503,9 +503,12 @@ const PRINT = (q: boolean) => /* glsl */ `
         // forty-five, which then breaks into the ground's stipple. (black is e^(-age/45).)
         float hs = setOn * (1.0 - cov) * (1.0 - sp);
         float sb = max(fwidth(black), 1e-4) * 0.8;
-        ${q ? `// (Quiet: red for its first few seconds, rust till about twelve, then a faint shadow on the paper that goes by about half a minute.)
-        float sHot = smoothstep(0.92 - sb, 0.92 + sb, black), sWarm = smoothstep(0.77 - sb, 0.77 + sb, black);
-        vec3 setCol = mix(paper * vec3(0.88, 0.85, 0.82), deep, sWarm);
+        ${q ? `// (Quiet: red for its first few seconds, rust till about twelve, then a pale terracotta mark that
+        // lingers a minute or two and goes; each change gradual, not in bands. Banded by its age, and fading
+        // to bare paper in half a minute, a pool cooled from its edge in rings, and an old one left a pale
+        // hole inside newer lava.)
+        float sHot = smoothstep(0.85, 0.97, black), sWarm = smoothstep(0.55, 0.85, black);
+        vec3 setCol = mix(paper * vec3(0.95, 0.86, 0.78), deep, sWarm);
         setCol = mix(setCol, verm, sHot);` : `vec3 setCol = mix(vec3(0.24, 0.22, 0.21), deep, smoothstep(0.6 - sb, 0.6 + sb, black));
         setCol = mix(setCol, verm, smoothstep(0.8 - sb, 0.8 + sb, black));`}
         // (Pressed as the running ink is; and skinning over with crust as it cools, the plates now still.)
@@ -513,7 +516,7 @@ const PRINT = (q: boolean) => /* glsl */ `
         setCol = mix(setCol, deep * mix(0.55, 1.0, smoothstep(0.8 - sb, 0.8 + sb, black)), sCrust * 0.9);
         setCol *= (0.82 + 0.3 * mottle) * mix(1.0, grain, 0.5);
         setCol = mix(setCol, mix(paper, setCol, 0.35), starve);
-        ${q ? `float setA = hs * smoothstep(0.45, 0.6, black) * 0.92;
+        ${q ? `float setA = hs * (0.3 * smoothstep(0.006, 0.15, black) + 0.62 * smoothstep(0.45, 0.8, black));
         col = mix(col, setCol * mix(vec3(1.0), col / paper, 0.5), setA);
         glowInk = max(glowInk, setA * sWarm * 0.4);` : `float setA = hs * smoothstep(0.33, 0.4, black) * 0.92;
         col = mix(col, setCol, setA);

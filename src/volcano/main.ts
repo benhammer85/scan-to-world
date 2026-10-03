@@ -526,7 +526,8 @@ function coarse(): void {
     // is sixteen thousand vertices, many times a second.)
     const v3 = v * 3;
     // (Not on a world that marks where lava has lain: there that mark is the edge, and a soft tint beside it only smears it.)
-    const fresh = !FL && planet.age[v] < 200 ? Math.exp(-planet.age[v] / 30) * 0.3 : 0, ash = Math.min(0.22, planet.ash[v] * 0.3);
+    // (Not in the quiet print: there its cooling lava fades itself, and the grey of fresh rock outlined every flow.)
+    const fresh = !FL && !QUIET && planet.age[v] < 200 ? Math.exp(-planet.age[v] / 30) * 0.3 : 0, ash = Math.min(0.22, planet.ash[v] * 0.3);
     const hot = lava > 0.002 ? Math.min(1, lava * 40) : 0;
     // Where a world keeps the mark of it (the Moon's seas), ground lava has lain on stays dark: this
     // fire's fully, an earlier one's a little faded. And the lava itself, by how thick it lies.

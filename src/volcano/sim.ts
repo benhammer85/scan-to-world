@@ -130,8 +130,10 @@ export const VOLCANO = {
    */
   relief: 0.32,
   tipPour: 0.22,
-  pourLeast: 0.8,
-  pourMost: 6,
+  pourLeast: 1.8,
+  /** (It ran from 0.8 to 6: tipped hard, lava gushed out several times faster than an eruption lets it, so it was fast one moment and
+   *  slow the next. Tipped a little it pours as it did; tipped hard, no longer a gush. Faster than the heat rises, so tipping drains it.) */
+  pourMost: 3,
   rises: 0.016,
   /** How strongly lava keeps to the steepest way down (1 spreads evenly; higher runs in tongues). */
   channel: 3,
@@ -393,6 +395,12 @@ export class Planet {
 
   private eruptions: Eruption[] = [];
   private next: Float32Array;
+  /**
+   * The ground's grain, as lava finds it (0 to 1, fixed): where a flow divides between the ways
+   * down, it favours the rougher-grained ones, a little, so it runs in fingers and lobes, as lava
+   * does, rather than spreading in even discs round the vent. Only where it goes, not how much.
+   */
+  private grainOf: Float32Array;
   private firmness: Float32Array;
   private drift: { x: number; y: number; z: number };
   private scale: number;
@@ -429,10 +437,12 @@ export class Planet {
     this.wear = new Float32Array(n);
     this.scorch = new Float32Array(n);
     this.next = new Float32Array(n);
+    this.grainOf = new Float32Array(n);
     this.slowDelta = new Float32Array(n);
     this.firmness = new Float32Array(n);
     for (let v = 0; v < n; v++) {
       const x = p[v * 3], y = p[v * 3 + 1], z = p[v * 3 + 2];
+      this.grainOf[v] = 0.5 + (Math.sin(x * 23.1 + y * 9.7 + 0.7) + Math.sin(y * 21.3 - z * 11.9 + 1.9) + Math.sin(z * 24.7 + x * 8.3 - 2.3) + Math.sin((x + y - z) * 37.9)) / 8;
       const fine = (Math.sin(x * 13.1 + z * 7.3) + Math.sin(y * 11.7 - x * 9.1 + 2.1) + Math.sin(z * 12.3 + y * 8.9 - 1.3)) / 3;
       this.firmness[v] = 0.55 + 0.9 * (0.5 + 0.5 * Math.sin(x * 17.3 + y * 5.1 - z * 11.9) * Math.sin(y * 13.7 + z * 6.3 + 0.7));
       this.rock[v] = this.k.floor + this.k.rough * fine;
@@ -734,7 +744,9 @@ export class Planet {
     const v = this.plumeVertex, s = this.scale;
     if (volume < this.k.explosive) {
       this.tally.flows++;
-      this.eruptions.push({ vertex: v, flank: this.flankOf(v), left: volume * s, rate: (volume * s) / this.k.pour, total: volume * s, t: 0, dur: this.k.pour * 1.7 });
+      // (It lasts by its size, so lava comes out at much the same pace whatever the eruption: it
+      // lasted the same whatever its size, so a small one dribbled and a big one gushed.)
+      this.eruptions.push({ vertex: v, flank: this.flankOf(v), left: volume * s, rate: (volume * s) / this.k.pour, total: volume * s, t: 0, dur: this.k.pour * Math.min(3.2, 0.8 + volume * 0.16) });
       this.kick(volume, 0.35);
       return 'flow';
     }
@@ -1183,7 +1195,8 @@ export class Planet {
       // Spun fast, lava is flung outwards from the axis: towards the equator, as much as down.
       const drop = spin > 0 ? (w: number) => base(w) + spin * (p[v * 3 + 1] ** 2 - p[w * 3 + 1] ** 2) : base;
       let sum = 0, weights = 0;
-      for (let q = a; q < b; q++) { const d = drop(t.nbrList[q]); if (d > 0) { sum += d; weights += Math.pow(d, this.k.channel); } }
+      const grain = this.grainOf, along = (w: number, d: number) => Math.pow(d, this.k.channel) * (0.35 + 1.3 * grain[w]);
+      for (let q = a; q < b; q++) { const w = t.nbrList[q], d = drop(w); if (d > 0) { sum += d; weights += along(w, d); } }
       if (sum <= 0) continue;
       // Viscous, as lava is: it runs fast where it lies deep and hardly at all where it's thin (its
       // flux rising as its depth to the power two and a half, nearly as a Bingham fluid's does down a slope), so a
@@ -1194,7 +1207,7 @@ export class Planet {
       next[v] -= out;
       for (let q = a; q < b; q++) {
         const w = t.nbrList[q], d = drop(w);
-        if (d > 0) next[w] += (out * Math.pow(d, this.k.channel)) / weights;
+        if (d > 0) next[w] += (out * along(w, d)) / weights;
       }
     }
     this.lava.set(next);
