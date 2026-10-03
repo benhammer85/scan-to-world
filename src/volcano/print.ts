@@ -85,9 +85,20 @@ export const PRINT_FUNCTIONS = /* glsl */ `
   // the share of them that land. Fixed to the ground, so as dens rises the spray spreads, and never flickers.
   float splat(vec3 dir, float dens, float px) {
     vec3 d2 = vec3(dir.y * 0.8 + dir.z * 0.6, dir.z * 0.8 - dir.y * 0.6, dir.x).yzx;
-    float fine = lattice(dir * 190.0, 190.0, dens, 0.6 * uPx, 11.0, px * 190.0);
-    float fat = lattice(d2 * 64.0, 64.0, dens * 0.55, 1.9 * uPx, 23.0, px * 64.0);
+    float fine = lattice(dir * 120.0, 120.0, dens * 0.6, 0.6 * uPx, 11.0, px * 120.0);
+    float fat = lattice(d2 * 46.0, 46.0, dens * 0.4, 1.9 * uPx, 23.0, px * 46.0);
     return max(fine, fat);
+  }
+  // Crust on lava, graded by how cool it is (0 hot, 1 cool): scattered small flakes when hot, fewer,
+  // bigger plates spaced apart when cool. p is a point carried with the flow; far, how far from the vent.
+  float crustAt(vec3 p, float cool, float far) {
+    vec3 w = 0.35 * vec3(noise3(vDir * 60.0), noise3(vDir * 60.0 + 9.0), 0.0);
+    vec3 big = p * 16.0 + w + vec3(0.0, 0.0, 2.3), small = p * 52.0 + w * 2.0 + vec3(0.0, 0.0, 8.1);
+    float nb = noise3(big) * 0.7 + noise3(big * 2.7 + 5.0) * 0.3;
+    float ns = noise3(small) * 0.75 + noise3(small * 2.3 + 3.0) * 0.25;
+    float n = mix(ns, nb, smoothstep(0.25, 0.8, cool));
+    float th = mix(0.74, 0.6, cool) - 0.04 * smoothstep(0.1, 0.45, far), fw = max(fwidth(n), 1e-4);
+    return smoothstep(th - fw, th + fw, n);
   }
   // The graticule: dotted parallels every 15 degrees and meridians every 20, the dots fixed to the world.
   float graticule(vec3 dir, float pxW) {
@@ -170,7 +181,7 @@ export function printFragment(look: Look, sea: boolean): string {
 
       // Lava's marks.
       float lv = vMarks.y * onLand, lw = max(fwidth(lv), 1e-4); // (under the sea it's hidden, as it always was)
-      float here = vMarks.w + 0.1 * (b2 - 0.5), hw = max(fwidth(here), 1e-4) * 1.6, setOn = smoothstep(0.5 - hw, 0.5 + hw, here) * onLand; // (a little wobble and a softer edge, so the mesh's triangles don't show as teeth)
+      float here = vMarks.w + 0.1 * (b2 - 0.5) + 0.12 * (noise3(vDir * 38.0 + 5.0) - 0.5), hw = max(fwidth(here), 1e-4) * 1.6, setOn = smoothstep(0.5 - hw, 0.5 + hw, here) * onLand; // (a little wobble and a softer edge, so the mesh's triangles don't show as teeth)
       float black = here > 0.01 ? clamp(vMarks.z / here, 0.0, 1.0) : 0.0;
 
       // Stipple: crowded along the shore, thinning inland, gathering on slopes turned from the light,
@@ -373,9 +384,8 @@ const GLOW = /* glsl */ `
 
 const PRINT = /* glsl */ `
       // Lava as a 1960s Soviet science book printed it: heat in three flat bands of ink (yellow core,
-      // vermilion, dark red), no gradients and no outline, the colour plate a little out of register
-      // (by a different amount on each part of the world, as if each pour were a different pass), the
-      // ink starved here and there, all on twos. While it's fed the bands pulse outward from the vent.
+      // vermilion, dark red), no gradients and no outline, the yellow plate a little out of register
+      // with the red, the ink starved here and there, all on twos. While it's fed the core breathes.
       // The inks glow by their own light, on the night side too. An eruption throws splatter round the
       // vent, in jets, and every flow's edge is sprayed rather than cut.
       // Set, the dark red turns a flat grey-black, which then breaks into the ground's stipple.
@@ -384,20 +394,29 @@ const PRINT = /* glsl */ `
         float far = acos(clamp(dot(vDir, uVent), -1.0, 1.0));
         vec3 vt1 = normalize(cross(uVent, abs(uVent.y) < 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0))), vt2 = cross(uVent, vt1);
         float ang = atan(dot(vDir, vt2), dot(vDir, vt1));
-        float mis = noise3(vDir * 3.0) * 6.2832, mx = cos(mis) * 1.6, my = sin(mis) * 1.6;
-        float lvR = lv + (dFdx(lv) * mx + dFdy(lv) * my) * uPx;
-        float lwr = max(fwidth(lvR), 1e-4) * 0.8, cov = smoothstep(0.5 - lwr, 0.5 + lwr, lvR + 0.03 * (noise3(vDir * 50.0) - 0.5));
-        float T = clamp(smoothstep(0.5, 1.6, lvR) * 0.7 + exp(-far / 0.1) * 0.5, 0.0, 1.0) * smoothstep(0.5, 0.85, lvR);
-        T += 0.09 * uFeeding * sin(tq * 2.4 - far * 38.0); // the surge, pulsing outward
-        T += 0.05 * (noise3(vDir * 9.0 + vec3(0.0, tq * 0.05, 0.0)) - 0.5);
+        // (Its edges wobble irregularly, at about the size of the mesh's triangles, so what's left of
+        // their teeth, seen close, doesn't line up into a saw.)
+        float wob = 0.16 * (noise3(vDir * 38.0) - 0.5) + 0.07 * (noise3(vDir * 110.0 + 2.0) - 0.5);
+        float lvR = lv + wob;
+        float lwr = max(fwidth(lvR), 1e-4) * 0.8, cov = smoothstep(0.5 - lwr, 0.5 + lwr, lvR);
+        // Its heat: the core follows the deepest lava, down the flow (the vent warms it only a little,
+        // or the core sat round the vent like a yolk), pinching and swelling along its length as it's carried.
+        vec2 pol = vec2(cos(ang), sin(ang)) * far;
+        vec2 rid = pol * (1.0 - uDrift * 0.004 / max(far, 0.02)); // (carried outward from the vent)
+        float pinch = noise3(vec3(rid * 12.0, 7.0));
+        float T = clamp(smoothstep(0.55, 2.1, lvR) * 0.85 + exp(-far / 0.06) * 0.2 + 0.1 * (pinch - 0.5), 0.0, 1.0) * smoothstep(0.5, 0.85, lvR);
+        // While it's fed, the core breathes: widening and narrowing all together (it was rings pulsing outward, which striped long flows).
+        T += 0.06 * uFeeding * (0.5 + 0.5 * sin(tq * 1.3)) * smoothstep(0.35, 0.6, T);
+        T += 0.04 * (noise3(vDir * 9.0 + vec3(0.0, tq * 0.05, 0.0)) - 0.5);
         float bw = max(fwidth(T), 1e-4) * 0.8;
         // (Given as printed, then made linear: the screen lightens what's drawn, which turned the red to coral.)
         vec3 deep = pow(vec3(0.5, 0.06, 0.05), vec3(2.2)), verm = pow(vec3(0.89, 0.2, 0.08), vec3(2.2)), yel = pow(vec3(1.0, 0.8, 0.15), vec3(2.2));
         // Two plates, each a little out of register its own way: the red (knocked out under the core)
         // and the yellow. Where the yellow overlaps the red it overprints a deeper orange; where it falls
         // short, a sliver of paper shows between them.
-        float my2 = noise3(vDir * 3.0 + 17.0) * 6.2832;
-        float Ty = T + (dFdx(T) * cos(my2) + dFdy(T) * sin(my2)) * 1.6 * uPx;
+        // (Shifted by a slow noise, not along how fast it changes from pixel to pixel: that jumps from
+        // triangle to triangle of the mesh, and the shifted edges stepped in teeth.)
+        float Ty = T + 0.07 * (noise3(vDir * 5.0 + 17.0) - 0.5);
         float redOn = smoothstep(0.66 - bw, 0.66 + bw, T), yelOn = smoothstep(0.66 - bw, 0.66 + bw, Ty);
         vec3 inkCol = mix(deep, verm, smoothstep(0.33 - bw, 0.33 + bw, T));
         // (The gap only here and there, as the plates drift a hair; a ring of it all round read as an outline.)
@@ -407,12 +426,10 @@ const PRINT = /* glsl */ `
         // Crust: dark plates riding the red, carried slowly downhill while the vent feeds the flow,
         // breaking smaller towards the core and none on it, where it's too hot to skin over; more of it
         // far out, where the flow has cooled.
-        vec2 pol = vec2(cos(ang), sin(ang)) * far;
-        vec2 rid = pol * (1.0 - uDrift * 0.004 / max(far, 0.02)); // (carried outward from the vent)
-        vec3 cq = vec3(rid * 34.0, 2.3) + 0.35 * vec3(noise3(vDir * 60.0), noise3(vDir * 60.0 + 9.0), 0.0);
-        float cn = noise3(cq) * 0.7 + noise3(cq * 2.7 + 5.0) * 0.3;
-        float cth = mix(0.6, 0.78, smoothstep(0.2, 0.62, T)) + 0.3 * smoothstep(0.55, 0.66, T) - 0.1 * smoothstep(0.08, 0.45, far), cw = max(fwidth(cn), 1e-4);
-        float crust = smoothstep(cth - cw, cth + cw, cn) * (1.0 - yelOn) * (1.0 - redOn);
+        // Graded, as real crust is: small, scattered flakes where it's hot, growing and gathering into
+        // fewer, bigger plates where it's cooler (an even scatter of one size read as camouflage).
+        float cool = 1.0 - smoothstep(0.2, 0.62, T);
+        float crust = crustAt(vec3(rid, 0.0), cool, max(far, 0.0)) * (1.0 - yelOn) * (1.0 - redOn);
         inkCol = mix(inkCol, mix(deep * 0.55, deep, smoothstep(0.33 - bw, 0.33 + bw, T)), crust * 0.9);
         // The ink as a press lays it: never quite even (heavier here, thinner there), the paper's grain
         // showing through, and a little built up along each colour's own edge, where the press squeezes it.
@@ -428,9 +445,9 @@ const PRINT = /* glsl */ `
         // Splatter. Round the vent while it erupts, thrown in jets (thicker one way than another), the
         // near drops still hot; and along every running edge, a spray a little way out onto the ground.
         float jets = 0.3 + 0.9 * smoothstep(0.35, 0.8, noise3(vec3(cos(ang) * 2.2, sin(ang) * 2.2, 4.0)));
-        float thrown = uSpray * exp(-far / (0.025 + 0.085 * uSpray)) * jets * onLand;
+        float thrown = uSpray * exp(-far / (0.035 + 0.11 * uSpray)) * jets * onLand; // (thrown wide, so the drops lie apart)
         float edgeSpray = smoothstep(0.06, 0.5, lv + 0.12 * (noise3(vDir * 30.0) - 0.5)) * (0.35 + 0.65 * uFeeding);
-        float sp = splat(vDir, clamp(thrown * 1.4 + edgeSpray * 0.8, 0.0, 1.0), px) * (1.0 - cov);
+        float sp = splat(vDir, clamp(thrown * 1.1 + edgeSpray * 0.45, 0.0, 1.0), px) * (1.0 - cov);
         vec3 spCol = mix(deep, verm, smoothstep(0.03, 0.0, far - 0.05 * uSpray) * 0.8 + 0.2 * uSpray);
         col = mix(col, spCol, sp * 0.95);
         glowInk = max(glowInk, sp * 0.85);
@@ -442,10 +459,7 @@ const PRINT = /* glsl */ `
         vec3 setCol = mix(vec3(0.24, 0.22, 0.21), deep, smoothstep(0.6 - sb, 0.6 + sb, black));
         setCol = mix(setCol, verm, smoothstep(0.8 - sb, 0.8 + sb, black));
         // (Pressed as the running ink is; and skinning over with crust as it cools, the plates now still.)
-        vec3 sq = vDir * 34.0 + 0.35 * vec3(noise3(vDir * 60.0), noise3(vDir * 60.0 + 9.0), 0.0);
-        float sn = noise3(sq) * 0.7 + noise3(sq * 2.7 + 5.0) * 0.3, snw = max(fwidth(sn), 1e-4);
-        float sth = mix(0.4, 0.66, smoothstep(0.6, 1.0, black));
-        float sCrust = smoothstep(sth - snw, sth + snw, sn) * smoothstep(0.55, 0.65, black);
+        float sCrust = crustAt(vDir, 0.6 + 0.4 * (1.0 - smoothstep(0.6, 1.0, black)), 1.0) * smoothstep(0.55, 0.65, black);
         setCol = mix(setCol, deep * mix(0.55, 1.0, smoothstep(0.8 - sb, 0.8 + sb, black)), sCrust * 0.9);
         setCol *= (0.82 + 0.3 * mottle) * mix(1.0, grain, 0.5);
         setCol = mix(setCol, mix(paper, setCol, 0.35), starve);
