@@ -19,6 +19,8 @@ interface Puff { alive: boolean; age: number; life: number; x: number; y: number
 
 export class Puffs {
   readonly object: THREE.Points;
+  /** Lighter smoke, and no red beneath it (the quiet print). */
+  calm = false;
   private puffs: Puff[] = [];
   private nextSlot = 0;
   private position = new Float32Array(MOST * 3);
@@ -143,7 +145,7 @@ export class Puffs {
     p.alive = true;
     p.age = 0;
     p.kind = TINT[kind];
-    p.warm = warm;
+    p.warm = this.calm ? 0 : warm;
     this.seed[this.nextSlot === 0 ? MOST - 1 : this.nextSlot - 1] = rand();
     if (kind === 'steam') { p.life = 2.6 + rand(); p.rise = 0.035; p.size = 0.03 + 0.02 * rand(); p.grow = 0.1; }
     else if (kind === 'ash') { p.life = 5 + rand() * 3; p.rise = 0.14 * strength * (0.6 + rand() * 0.8); p.size = 0.05 + 0.04 * rand(); p.grow = 0.2 + 0.12 * rand(); }
@@ -182,7 +184,7 @@ export class Puffs {
       this.size[i] = p.size + p.grow * f;
       // Coming in quickly, then fading slowly as it thins; smoke the strongest, so a wisp is seen.
       // (Billows come in quickly and then hold their tone, breaking up at the end in the shader; dots fade.)
-      this.alpha[i] = p.kind === 3 ? 0.95 * (1 - f) ** 0.7 : p.kind === 4 ? 0.7 * Math.min(1, f * 5) * (1 - f) ** 1.2 : (p.kind === 1 ? 0.85 : p.kind === 0 ? 0.6 : 0.72) * Math.min(1, f * (p.kind === 2 ? 3 : 8)); // (smoke leaves the vent a faint wisp, not a ball)
+      this.alpha[i] = (this.calm && p.kind !== 3 ? 0.6 : 1) * (p.kind === 3 ? 0.95 * (1 - f) ** 0.7 : p.kind === 4 ? 0.7 * Math.min(1, f * 5) * (1 - f) ** 1.2 : (p.kind === 1 ? 0.85 : p.kind === 0 ? 0.6 : 0.72) * Math.min(1, f * (p.kind === 2 ? 3 : 8))); // (smoke leaves the vent a faint wisp, not a ball)
       this.tint[i] = p.kind;
       this.life[i] = f;
       this.warmth[i] = p.warm;

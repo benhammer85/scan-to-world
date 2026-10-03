@@ -145,6 +145,8 @@ if (RUN === null) remember('volcano.world', WORLD.id);
 const OWN_LOOK = `volcano.look.${WORLD.id}`;
 const LOOK_ID = ASKED.get('look') ?? remembered(OWN_LOOK) ?? 'print';
 const LOOK: Look = LOOKS.find((l) => l.id === LOOK_ID)?.look ?? 1;
+/** The quiet print: lava the one warm accent on a calm map; burps only at the brink, splatter only when it bursts, the smoke lighter. */
+const QUIET = LOOK === 6;
 const SEA = WORLD.rules.terrain === 'ocean';
 const P = WORLD.palette, LIFE = WORLD.rules.life !== false, ICE = WORLD.rules.terrain === 'ice';
 /** On Io, the plumes' sulphur is drawn as the flood mark is elsewhere: in a clean-edged band, as a geological map draws a unit. */
@@ -233,7 +235,7 @@ function cratering(): void {
   building.value = LAMP || planet.pouring ? 0 : Math.min(1, planet.pressure / Math.max(1e-6, planet.capNow));
   fed.value += ((planet.erupting || planet.pouring || planet.molten > 0.01 ? 1 : 0.25) - fed.value) * 0.05;
   // (An eruption's splatter: thrown out quickly as it starts, settling slowly once it's done.)
-  const throwing = planet.erupting || planet.pouring ? 1 : 0;
+  const throwing = !QUIET && (planet.erupting || planet.pouring) ? 1 : 0; // (quiet: only when it bursts)
   spray.value += (throwing - spray.value) * (throwing > spray.value ? 0.06 : 0.008);
   // (How far the crust on running lava has drifted: on while the vent feeds it, nearly still once it doesn't.)
   drift.value += Math.min(0.5, Math.max(0, planet.seconds - driftAt)) * fed.value;
@@ -242,10 +244,12 @@ function cratering(): void {
   // clots and ash, felt as a knock. Each its own: mostly small, now and then a big one, thrown its own
   // way. (Drawn only; the simulation knows nothing of them.)
   const now = planet.seconds;
-  if (planet.erupting || planet.pouring) {
+  // (Quiet: only at the brink, a warning that it's about to blow, so the violence is the player's doing.)
+  const burping = QUIET ? !planet.pouring && !planet.erupting && planet.pressure > planet.capNow * 0.85 : planet.erupting || planet.pouring;
+  if (burping) {
     if (now >= nextBurp && burpAt < 0) {
-      burpAt = now; burst = false; nextBurp = now + 6 + Math.random() * 8;
-      burpSize.value = 0.5 + Math.random() ** 2 * 1.3; burpSeed.value = Math.random(); burpDir.value = Math.random() * Math.PI * 2;
+      burpAt = now; burst = false; nextBurp = now + (QUIET ? 5 + Math.random() * 5 : 6 + Math.random() * 8);
+      burpSize.value = QUIET ? 0.5 + Math.random() ** 2 * 0.7 : 0.5 + Math.random() ** 2 * 1.3; burpSeed.value = Math.random(); burpDir.value = Math.random() * Math.PI * 2;
     }
   } else nextBurp = Math.max(nextBurp, now + 1.5);
   if (now < burpAt || now - burpAt > 12) burpAt = -1; // (done, or a world begun again)
@@ -297,14 +301,15 @@ material.onBeforeCompile = (shader) => {
   shader.uniforms.uBlockHot = { value: ICE ? new THREE.Color('#b9dbe8') : new THREE.Color(0.95, 0.55, 0.17) };
   // The print's inks, as printed (sRGB), made linear: on the ice moons, water's blues.
   const ink = (r: number, g: number, b: number) => ({ value: new THREE.Vector3(r ** 2.2, g ** 2.2, b ** 2.2) });
-  shader.uniforms.uInkDeep = ICE ? ink(0.12, 0.27, 0.4) : ink(0.5, 0.06, 0.05);
-  shader.uniforms.uInkMid = ICE ? ink(0.25, 0.55, 0.74) : ink(0.89, 0.2, 0.08);
-  shader.uniforms.uInkHot = ICE ? ink(0.78, 0.92, 0.97) : ink(1.0, 0.8, 0.15);
-  shader.uniforms.uInkOver = ICE ? ink(0.45, 0.74, 0.88) : ink(0.96, 0.42, 0.08);
-  shader.uniforms.uInkPale = ICE ? ink(0.95, 0.99, 1.0) : ink(1.0, 0.94, 0.62);
+  // (Quiet: softer, a warm vermilion like the engraving's, a rust, an ochre; and paler blues.)
+  shader.uniforms.uInkDeep = ICE ? (QUIET ? ink(0.36, 0.52, 0.64) : ink(0.12, 0.27, 0.4)) : QUIET ? ink(0.8, 0.4, 0.28) : ink(0.5, 0.06, 0.05);
+  shader.uniforms.uInkMid = ICE ? (QUIET ? ink(0.55, 0.72, 0.83) : ink(0.25, 0.55, 0.74)) : QUIET ? ink(0.93, 0.52, 0.34) : ink(0.89, 0.2, 0.08);
+  shader.uniforms.uInkHot = ICE ? (QUIET ? ink(0.86, 0.94, 0.97) : ink(0.78, 0.92, 0.97)) : QUIET ? ink(0.98, 0.82, 0.52) : ink(1.0, 0.8, 0.15);
+  shader.uniforms.uInkOver = ICE ? (QUIET ? ink(0.7, 0.84, 0.92) : ink(0.45, 0.74, 0.88)) : QUIET ? ink(0.96, 0.66, 0.42) : ink(0.96, 0.42, 0.08);
+  shader.uniforms.uInkPale = ICE ? ink(0.95, 0.99, 1.0) : QUIET ? ink(0.98, 0.9, 0.7) : ink(1.0, 0.94, 0.62);
   // (A burp's clots cool to black, and its ash is dark; on the ice moons they freeze to frost, and its ash is frost.)
-  shader.uniforms.uInkCold = ICE ? ink(0.9, 0.95, 0.98) : ink(0.2, 0.19, 0.18);
-  shader.uniforms.uInkAsh = ICE ? ink(0.62, 0.74, 0.82) : ink(0.42, 0.4, 0.38);
+  shader.uniforms.uInkCold = ICE ? ink(0.9, 0.95, 0.98) : QUIET ? ink(0.4, 0.37, 0.35) : ink(0.2, 0.19, 0.18);
+  shader.uniforms.uInkAsh = ICE ? ink(0.62, 0.74, 0.82) : QUIET ? ink(0.58, 0.55, 0.52) : ink(0.42, 0.4, 0.38);
   shader.fragmentShader = shader.fragmentShader
     .replace('void main() {', `uniform vec3 uShallow;\nuniform vec3 uDeep;\nuniform vec3 uFlooded;\nuniform float uFloodStrength;\nuniform vec3 uLava;\nuniform vec3 uDeepLava;\nuniform vec3 uHot;\nuniform vec3 uCrust;\nuniform float uTime;\nuniform float uPx;\nuniform vec3 uLandPaper;\nvarying float vH;\nvarying vec4 vMarks;\nvarying vec3 vDir;\nvarying vec3 vN;
       // (Without sin, which phones' GPUs work out roughly for large numbers, turning noise into patterns.)
@@ -413,6 +418,7 @@ for (const s of [...kindDots, foam]) {
   group.add(s.object);
 }
 const puffs = new Puffs(renderer.getPixelRatio());
+puffs.calm = QUIET;
 group.add(puffs.object);
 
 /**
@@ -1379,6 +1385,7 @@ function effects(dt: number): void {
     // A burst is a moment: the view eases back and holds, and the words fall quiet, so it has the screen.
     momentAt = seconds;
     feel(torn ? [40, 60, 90] : 25);
+    spray.value = 1; // (a burst throws its splatter, whatever the ink)
     // The column of ash: many puffs from the vent, rising and spreading.
     // And a fountain of embers, thrown up and falling back glowing.
     for (let i = 0; i < (torn ? 70 : 40); i++) puffs.add('ember', p[v0 * 3], p[v0 * 3 + 1], p[v0 * 3 + 2], torn ? 1.4 : 1);
