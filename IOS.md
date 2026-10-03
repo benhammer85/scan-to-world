@@ -1,4 +1,4 @@
-# The volcano game on an iPhone
+# Warm to the Touch, on an iPhone
 
 The game is wrapped as a native iOS app with [Capacitor](https://capacitorjs.com): the web game
 runs full-screen in the app, and plays on the phone's own haptics and share sheet (`src/volcano/native.ts`).
@@ -27,8 +27,8 @@ In Xcode:
 1. In the left column click **App** (the blue icon at the top), then the **App** target, then
    **Signing & Capabilities**.
 2. Tick **Automatically manage signing**, and choose your **Team** (your Apple ID).
-3. Change **Bundle Identifier** from `com.example.volcano` to something of your own, such as
-   `com.yourname.volcano` (see *Naming* below before you choose for good).
+3. The **Bundle Identifier** is `app.warmtothetouch`. If it's taken, or you'd rather use a domain
+   you own (`com.yourname.warmtothetouch`), change it here and in `capacitor.config.ts`.
 4. Plug in your iPhone and pick it at the top of the window, where it says *Any iOS Device*.
 5. Press **▶ Run**. The first time, the phone will refuse to open an app from an unknown developer:
    on the phone go to **Settings → General → VPN & Device Management**, trust your Apple ID, and run
@@ -45,8 +45,9 @@ then **▶ Run** again in Xcode. (Or `npm run build:app && npx cap sync ios` if 
 
 ## Naming
 
-* The **name under the icon** is `appName` in `capacitor.config.ts`, and the *Display Name* in
-  Xcode (General tab). Both can change at any time, even after release.
+* The app is **Warm to the Touch** (`appName` in `capacitor.config.ts`); under its icon it's
+  **Warm** (`CFBundleDisplayName` in `Info.plist`; the full name would be cut off). On the App Store:
+  name *Warm to the Touch*, subtitle *Atlas of Unfinished Worlds*.
 * The **Bundle Identifier** is the app's permanent id. Change it freely until you make the app's
   record in App Store Connect; after that it can never change. Set it in Xcode, and set `appId` in
   `capacitor.config.ts` to match.

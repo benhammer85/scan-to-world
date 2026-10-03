@@ -1,13 +1,13 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 /**
- * The iPhone app: the volcano game (built by `npm run build:app` into dist-app) inside a native
- * shell. The name and the bundle id are placeholders until the game is named: the id must be set
- * for good before the app's App Store record is made (see IOS.md).
+ * The iPhone app, Warm to the Touch: the volcano game (built by `npm run build:app` into dist-app)
+ * inside a native shell. Under its icon it's "Warm" (Info.plist). The bundle id must be settled for
+ * good before the app's App Store record is made (see IOS.md).
  */
 const config: CapacitorConfig = {
-  appId: 'com.example.volcano',
-  appName: 'Volcano',
+  appId: 'app.warmtothetouch',
+  appName: 'Warm to the Touch',
   webDir: 'dist-app',
   backgroundColor: '#f4efe4',
   ios: {

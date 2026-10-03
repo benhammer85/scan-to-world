@@ -17,14 +17,16 @@
  * (vH), the marks (vMarks: where lava lies, where it has set and how black it still is), the
  * ground's colour (vColor: life's washes, ash), and where on the world it is (vDir).
  */
-export type Look = 0 | 1 | 2;
+export type Look = 0 | 1 | 2 | 3 | 4;
 export const LOOKS: { id: string; look: Look; words: string }[] = [
   { id: 'engrave', look: 1, words: 'engraving' },
   { id: 'water', look: 2, words: 'watercolour' },
+  { id: 'stipple', look: 3, words: 'stipple' },
+  { id: 'glow', look: 4, words: 'glow' },
   { id: 'plain', look: 0, words: 'last used' },
 ];
 /** Worlds that try another ink first (to see it on a world it suits), unless one is chosen for them. */
-export const FIRST_LOOK: Record<string, string> = { mars: 'water' };
+export const FIRST_LOOK: Record<string, string> = { mars: 'stipple' };
 
 /** Declared before the shader's main(); uses its hash3, noise3 and uPx. */
 export const PRINT_FUNCTIONS = /* glsl */ `
@@ -89,6 +91,19 @@ export const PRINT_FUNCTIONS = /* glsl */ `
     float db = (fract(lat / sp) - 0.5) * sp;
     g = max(g, (1.0 - smoothstep(rr - aa, rr + aa, length(vec2(dLon, db)))) * step(abs(lat), 1.3));
     return g;
+  }
+  // Lava's colour by its heat, as real lava's: dark crust, deep red, vermilion, orange, yellow, white-yellow.
+  vec3 heatRamp(float T) {
+    vec3 c = mix(vec3(0.24, 0.15, 0.12), vec3(0.55, 0.13, 0.08), smoothstep(0.0, 0.2, T));
+    c = mix(c, vec3(0.86, 0.24, 0.11), smoothstep(0.15, 0.42, T));
+    c = mix(c, vec3(0.96, 0.5, 0.17), smoothstep(0.38, 0.68, T));
+    c = mix(c, vec3(1.0, 0.78, 0.38), smoothstep(0.62, 0.86, T));
+    return mix(c, vec3(1.0, 0.95, 0.76), smoothstep(0.84, 1.0, T));
+  }
+  // How hot running lava is: deeper and nearer the vent hotter, the edge cooling first, warmth drifting in it.
+  float lavaHeat(float lv, float far) {
+    float T = clamp(smoothstep(0.5, 1.6, lv) * 0.7 + exp(-far / 0.1) * 0.5, 0.0, 1.0) * smoothstep(0.5, 0.9, lv);
+    return clamp(T + 0.14 * (noise3(vDir * 14.0 + vec3(0.0, -uTime * 0.07, uTime * 0.05)) - 0.5), 0.0, 1.0);
   }
   // Engraved lines: along the level lines of a phase, each as wide as the heat makes it (swelling as an
   // engraver's line does), tapering at the edge; none where they'd crowd into a smear, or where the
@@ -188,14 +203,15 @@ export function printFragment(look: Look, sea: boolean): string {
       ${look === 2 ? 'darkL += 0.45 * sin(black * 3.14159) * setOn; // the dried wash giving way to stipple' : ''}
       darkL = darkL * (1.0 - 0.85 * litWall) + crDark;
       ${look === 1 ? 'darkL += 0.18 * pow(black, 1.2) * setOn * (1.0 - smoothstep(0.5 - lw, 0.5 + lw, lv)); // set rock: a little stipple under its engraved lines' : ''}
-      ${look === 2 ? 'darkL *= 1.0 - 0.9 * smoothstep(0.45, 0.7, lv); // (running watercolour lava covers the ground\'s stipple)' : ''}
+      ${look >= 2 ? 'darkL *= 1.0 - 0.95 * smoothstep(0.45, 0.7, lv); // (running lava covers the ground\'s stipple)' : ''}
+      ${look === 3 ? 'darkL += 1.0 * pow(black, 1.1) * setOn * (1.0 - smoothstep(0.5 - lw, 0.5 + lw, lv)); // set: its own dots, black, thinning as it weathers' : ''}
       float dark = mix(limb + exp(-max(-vH, 0.0) / 0.03) * 0.14, darkL + limb, onLand); // (and a little over the shallows, so what rises under the sea shows)
       if (dark > 0.035) col = mix(col, ink, stipple(vDir, 300.0, dark, 0.45 * uPx, px) * 0.92);
       // The graticule, over the open sea.
       col = mix(col, ink, edgeOn * graticule(vDir, px) * ${sea ? '(1.0 - onLand) * (1.0 - 0.5 * aSea) * 0.5' : '0.22'});
 
 
-      ${look === 1 ? ENGRAVE : WATER}
+      ${look === 1 ? ENGRAVE : look === 2 ? WATER : look === 3 ? STIPPLE : GLOW}
 
       ${sea ? `// The coast: one crisp line.
       float coastPx = abs(vH) / max(fwidth(vH), 1e-6);
@@ -300,3 +316,44 @@ export const LAMP_PRINT = /* glsl */ `
         vec3 col = mix(paper * mix(vec3(1.0, 0.86, 0.74), vec3(0.97, 0.7, 0.55), hot), lc, ln * 0.95);
         col = mix(col, vec3(0.216, 0.016, 0.008), (1.0 - smoothstep(0.6 * uPx - 0.5, 0.6 * uPx + 0.5, abs(inPx))) * 0.95);
         gl_FragColor = vec4(col, a * 0.9);`;
+
+const STIPPLE = /* glsl */ `
+      // A · Lava in stipple, the planet's own material: dots fixed to the ground, densest and brightest
+      // where it's hottest, thinning to a feathered edge, over a warm wash; no outline. Set, the dots
+      // turn black (above, with the ground's own stipple) and thin away as it weathers.
+      {
+        float far = acos(clamp(dot(vDir, uVent), -1.0, 1.0));
+        float lvr = lv + 0.1 * (noise3(vDir * 40.0) - 0.5), lwr = max(fwidth(lvr), 1e-4) * 2.5;
+        float cov = smoothstep(0.5 - lwr, 0.5 + lwr, lvr), T = lavaHeat(lv, far);
+        float inner = smoothstep(0.5, 0.75, lvr);
+        // The warm wash beneath.
+        col = mix(col, mix(vec3(0.99, 0.74, 0.52), heatRamp(T), 0.55), cov * (0.6 + 0.3 * inner));
+        // The dots: more where it's hotter, fewer towards the edge; and the hottest glow brighter.
+        float want = (0.55 + 0.7 * T) * (0.4 + 0.6 * inner);
+        float dots = stipple(vDir, 260.0, want * 1.5, 0.75 * uPx, px); // (a coarser lattice than the ground's, on the same shell)
+        col = mix(col, heatRamp(max(T * 0.85, 0.28)), dots * cov);
+        // Set: a soft grey wash under its black dots, fading as it weathers.
+        float hs = setOn * (1.0 - cov);
+        col *= mix(vec3(1.0), vec3(0.88, 0.86, 0.83), hs * black * 0.6);
+        // A warm glow on the ground just beyond a fed flow.
+        float near = smoothstep(0.1, 0.5, lv) * (1.0 - cov);
+        col *= mix(vec3(1.0), vec3(1.0, 0.84, 0.7), near * 0.5 * (0.4 + 0.6 * uFeeding));
+      }`;
+
+const GLOW = /* glsl */ `
+      // B · Lava as a soft glowing body: no dots and no line, colour graded by heat, warmth drifting
+      // slowly through it, its edge darkening to crust before it meets the ground; set, a pale grey shadow.
+      {
+        float far = acos(clamp(dot(vDir, uVent), -1.0, 1.0));
+        float lvr = lv + 0.08 * (noise3(vDir * 40.0) - 0.5), lwr = max(fwidth(lvr), 1e-4) * 2.0;
+        float cov = smoothstep(0.5 - lwr, 0.5 + lwr, lvr), T = lavaHeat(lv, far);
+        float crust = 1.0 - smoothstep(0.5, 0.68, lvr);
+        vec3 lc = heatRamp(T * (1.0 - 0.55 * crust));
+        col = mix(col, lc, cov * 0.94);
+        // Set: a pale grey shadow, fading as it weathers.
+        float hs = setOn * (1.0 - cov);
+        col *= mix(vec3(1.0), vec3(0.78, 0.76, 0.74), hs * black * 0.55);
+        // Its glow on the ground beyond it.
+        float near = smoothstep(0.08, 0.5, lv) * (1.0 - cov);
+        col *= mix(vec3(1.0), vec3(1.0, 0.8, 0.64), near * 0.6 * (0.4 + 0.6 * uFeeding));
+      }`;
