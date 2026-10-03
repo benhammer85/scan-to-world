@@ -52,7 +52,7 @@ import { measureSecond, secondWords, type Second } from './second';
 import { loadSystem, saveSystem, worldFor, recordPlayed, madeCount } from './system';
 import { openSystem, closeSystem } from './systemChart';
 import { feel, keepImage, NATIVE } from './native';
-import { LOOKS, FIRST_LOOK, PRINT_FUNCTIONS, LAMP_PRINT_FUNCTIONS, LAMP_PRINT, printFragment, type Look } from './print';
+import { LOOKS, PRINT_FUNCTIONS, LAMP_PRINT_FUNCTIONS, LAMP_PRINT, printFragment, type Look } from './print';
 
 const $ = (id: string) => document.getElementById(id)!;
 const stage = $('stage');
@@ -141,8 +141,9 @@ if (RUN === null) remember('volcano.world', WORLD.id);
  * woodblock or a watercolour; see print.ts), or as it was. Chosen on the card, and remembered.
  */
 // (A world that tries another ink first keeps its own choice: chosen on its card, it's remembered for it alone.)
-const OWN_LOOK = FIRST_LOOK[WORLD.id] ? `volcano.look.${WORLD.id}` : 'volcano.look';
-const LOOK_ID = ASKED.get('look') ?? remembered(OWN_LOOK) ?? FIRST_LOOK[WORLD.id] ?? remembered('volcano.look') ?? 'engrave';
+// Print is every world's ink, unless another is chosen for it (and remembered, world by world).
+const OWN_LOOK = `volcano.look.${WORLD.id}`;
+const LOOK_ID = ASKED.get('look') ?? remembered(OWN_LOOK) ?? 'print';
 const LOOK: Look = LOOKS.find((l) => l.id === LOOK_ID)?.look ?? 1;
 const SEA = WORLD.rules.terrain === 'ocean';
 const P = WORLD.palette, LIFE = WORLD.rules.life !== false, ICE = WORLD.rules.terrain === 'ice';
@@ -294,6 +295,16 @@ material.onBeforeCompile = (shader) => {
   shader.uniforms.uBlock = { value: new THREE.Color(ICE ? '#3f7fa6' : '#ce4622') };
   shader.uniforms.uBlockDeep = { value: new THREE.Color(ICE ? '#2a5674' : '#802216') };
   shader.uniforms.uBlockHot = { value: ICE ? new THREE.Color('#b9dbe8') : new THREE.Color(0.95, 0.55, 0.17) };
+  // The print's inks, as printed (sRGB), made linear: on the ice moons, water's blues.
+  const ink = (r: number, g: number, b: number) => ({ value: new THREE.Vector3(r ** 2.2, g ** 2.2, b ** 2.2) });
+  shader.uniforms.uInkDeep = ICE ? ink(0.12, 0.27, 0.4) : ink(0.5, 0.06, 0.05);
+  shader.uniforms.uInkMid = ICE ? ink(0.25, 0.55, 0.74) : ink(0.89, 0.2, 0.08);
+  shader.uniforms.uInkHot = ICE ? ink(0.78, 0.92, 0.97) : ink(1.0, 0.8, 0.15);
+  shader.uniforms.uInkOver = ICE ? ink(0.45, 0.74, 0.88) : ink(0.96, 0.42, 0.08);
+  shader.uniforms.uInkPale = ICE ? ink(0.95, 0.99, 1.0) : ink(1.0, 0.94, 0.62);
+  // (A burp's clots cool to black, and its ash is dark; on the ice moons they freeze to frost, and its ash is frost.)
+  shader.uniforms.uInkCold = ICE ? ink(0.9, 0.95, 0.98) : ink(0.2, 0.19, 0.18);
+  shader.uniforms.uInkAsh = ICE ? ink(0.62, 0.74, 0.82) : ink(0.42, 0.4, 0.38);
   shader.fragmentShader = shader.fragmentShader
     .replace('void main() {', `uniform vec3 uShallow;\nuniform vec3 uDeep;\nuniform vec3 uFlooded;\nuniform float uFloodStrength;\nuniform vec3 uLava;\nuniform vec3 uDeepLava;\nuniform vec3 uHot;\nuniform vec3 uCrust;\nuniform float uTime;\nuniform float uPx;\nuniform vec3 uLandPaper;\nvarying float vH;\nvarying vec4 vMarks;\nvarying vec3 vDir;\nvarying vec3 vN;
       // (Without sin, which phones' GPUs work out roughly for large numbers, turning noise into patterns.)
@@ -1371,7 +1382,7 @@ function effects(dt: number): void {
     // The column of ash: many puffs from the vent, rising and spreading.
     // And a fountain of embers, thrown up and falling back glowing.
     for (let i = 0; i < (torn ? 70 : 40); i++) puffs.add('ember', p[v0 * 3], p[v0 * 3 + 1], p[v0 * 3 + 2], torn ? 1.4 : 1);
-    for (let i = 0; i < (torn ? 110 : 60); i++) puffs.add('ash', p[v0 * 3], p[v0 * 3 + 1], p[v0 * 3 + 2], torn ? 1.5 : 1, Math.random, up);
+    for (let i = 0; i < (torn ? 26 : 14); i++) puffs.add('ash', p[v0 * 3], p[v0 * 3 + 1], p[v0 * 3 + 2], torn ? 1.5 : 1, Math.random, up, 1); // (fewer: each is a billow now)
   }
   Object.assign(tallied, planet.tally);
   // Steam where lava runs into the sea, as much as there is lava there.
@@ -1380,7 +1391,7 @@ function effects(dt: number): void {
     steamIn = 0.6;
     for (let v = 0; v < N; v++) {
       const l = planet.lava[v];
-      if (l > 0.004 && planet.rock[v] < 0.005 && Math.random() < Math.min(0.06, l)) puffs.add('steam', p[v * 3], p[v * 3 + 1], p[v * 3 + 2], 1, Math.random, up);
+      if (l > 0.004 && planet.rock[v] < 0.005 && Math.random() < Math.min(0.02, l * 0.35)) puffs.add('steam', p[v * 3], p[v * 3 + 1], p[v * 3 + 2], 1, Math.random, up);
     }
   }
   // A dust storm: dust driven across the face of the world, low and fast.
@@ -1388,7 +1399,7 @@ function effects(dt: number): void {
     for (let i = 0; i < 3; i++) {
       const v = Math.floor(Math.random() * N);
       NORMAL.set(base[v * 3], base[v * 3 + 1], base[v * 3 + 2]).applyQuaternion(group.quaternion);
-      if (NORMAL.z > 0.2) puffs.add('smoke', p[v * 3], p[v * 3 + 1], p[v * 3 + 2], 0.3, Math.random, { x: INVERSE_RIGHT.x, y: INVERSE_RIGHT.y, z: INVERSE_RIGHT.z });
+      if (NORMAL.z > 0.2) puffs.add('dust', p[v * 3], p[v * 3 + 1], p[v * 3 + 2], 0.3, Math.random, { x: INVERSE_RIGHT.x, y: INVERSE_RIGHT.y, z: INVERSE_RIGHT.z });
     }
   }
   // The vent smokes as the heat gathers: a wisp now and then while there's little, more and
@@ -1402,9 +1413,11 @@ function effects(dt: number): void {
   wasBrink = brink;
   const full = planet.k.great > 0 ? planet.throwOf(planet.pressure) >= planet.k.great : planet.bursting;
   if (!LAMP && !planet.over && !planet.pouring && planet.pressure > 0.5 && smokeIn <= 0) {
-    smokeIn = brink ? 0.08 : full ? 0.15 : 0.5 - 0.3 * Math.min(1, planet.pressure / VOLCANO.explosive);
-    // A few dots at a time, so the plume is a soft stipple, fuller as the heat gathers.
-    for (let i = 0, k = full ? 6 : 3; i < k; i++) puffs.add('smoke', p[v0 * 3], p[v0 * 3 + 1], p[v0 * 3 + 2], full ? 1.4 + share : 0.5 + share, Math.random, up);
+    smokeIn = brink ? 0.14 : full ? 0.22 : 0.7 - 0.4 * Math.min(1, planet.pressure / VOLCANO.explosive);
+    // A billow at a time, so the plume builds from them, fuller and darker as the heat gathers;
+    // warmed from below where lava lies at the vent.
+    const warm = planet.lava[v0] > 0.002 ? 1 : 0.35 * share;
+    puffs.add('smoke', p[v0 * 3], p[v0 * 3 + 1], p[v0 * 3 + 2], full ? 1.4 + share : 0.5 + share, Math.random, up, warm);
   }
 }
 

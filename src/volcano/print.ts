@@ -26,8 +26,6 @@ export const LOOKS: { id: string; look: Look; words: string }[] = [
   { id: 'print', look: 5, words: 'print' },
   { id: 'plain', look: 0, words: 'last used' },
 ];
-/** Worlds that try another ink first (to see it on a world it suits), unless one is chosen for them. */
-export const FIRST_LOOK: Record<string, string> = { mars: 'print', moon: 'print' };
 
 /** Declared before the shader's main(); uses its hash3, noise3 and uPx. */
 export const PRINT_FUNCTIONS = /* glsl */ `
@@ -41,6 +39,7 @@ export const PRINT_FUNCTIONS = /* glsl */ `
   uniform int uCraterCount;
   uniform vec3 uLightObj;
   uniform vec3 uBlock, uBlockDeep, uBlockHot; // the woodblock's colours: vermilion, or on the ice moons, water's blues
+  uniform vec3 uInkDeep, uInkMid, uInkHot, uInkOver, uInkPale, uInkCold, uInkAsh; // the print's inks (linear): its dark, middle and hot bands, the two overprinted, the palest, what a burp's clots cool to, and its ash
   // (Hashed without sin: phones' GPUs work sin out roughly for large numbers, which turns "random"
   // into regular patterns.)
   vec3 hash33(vec3 p) {
@@ -430,8 +429,9 @@ const PRINT = /* glsl */ `
         T += 0.06 * uFeeding * (0.5 + 0.5 * sin(tq * 1.3)) * smoothstep(0.35, 0.6, T);
         T += 0.04 * (noise3(vDir * 9.0 + vec3(0.0, tq * 0.05, 0.0)) - 0.5);
         float bw = max(fwidth(T), 1e-4) * 0.8;
-        // (Given as printed, then made linear: the screen lightens what's drawn, which turned the red to coral.)
-        vec3 deep = pow(vec3(0.5, 0.06, 0.05), vec3(2.2)), verm = pow(vec3(0.89, 0.2, 0.08), vec3(2.2)), yel = pow(vec3(1.0, 0.8, 0.15), vec3(2.2));
+        // (Given as printed, then made linear, in main: the screen lightens what's drawn, which turned the red to coral.
+        // On the ice moons, where water is the lava, they're blues.)
+        vec3 deep = uInkDeep, verm = uInkMid, yel = uInkHot;
         // Two plates, each a little out of register its own way: the red (knocked out under the core)
         // and the yellow. Where the yellow overlaps the red it overprints a deeper orange; where it falls
         // short, a sliver of paper shows between them.
@@ -442,8 +442,8 @@ const PRINT = /* glsl */ `
         vec3 inkCol = mix(deep, verm, smoothstep(0.33 - bw, 0.33 + bw, T));
         // (The gap only here and there, as the plates drift a hair; a ring of it all round read as an outline.)
         float gapShows = smoothstep(0.55, 0.72, noise3(vDir * 11.0 + 31.0));
-        inkCol = mix(inkCol, mix(pow(vec3(0.96, 0.42, 0.08), vec3(2.2)), paper, gapShows), redOn);
-        inkCol = mix(inkCol, mix(pow(vec3(0.96, 0.42, 0.08), vec3(2.2)), yel, redOn), yelOn);
+        inkCol = mix(inkCol, mix(uInkOver, paper, gapShows), redOn);
+        inkCol = mix(inkCol, mix(uInkOver, yel, redOn), yelOn);
         // Crust: dark plates riding the red, carried slowly downhill while the vent feeds the flow,
         // breaking smaller towards the core and none on it, where it's too hot to skin over; more of it
         // far out, where the flow has cooled.
@@ -454,7 +454,7 @@ const PRINT = /* glsl */ `
         inkCol = mix(inkCol, mix(deep * 0.55, deep, smoothstep(0.33 - bw, 0.33 + bw, T)), crust * 0.9);
         // Bubbles: domes of the next hotter ink swelling on the deeper lava, more while it's fed, each
         // popping in a ring of drops. (On the yellow core, the palest yellow.)
-        vec3 pale = pow(vec3(1.0, 0.94, 0.62), vec3(2.2));
+        vec3 pale = uInkPale;
         vec3 hotter = mix(mix(verm, yel, smoothstep(0.33 - bw, 0.33 + bw, T)), pale, yelOn);
         vec2 bub = bubbles(vDir, (0.03 + 0.09 * uFeeding) * smoothstep(0.8, 1.3, lvR) * cov, uTime, px * 34.0); // (few, and well apart: a speckle of them was too much)
         inkCol = mix(inkCol, hotter, max(bub.x, bub.y) * cov);
@@ -523,11 +523,11 @@ const PRINT = /* glsl */ `
           if (flown > 0.0 && ft < 11.0) hit = max(hit, lattice(vDir * 150.0, 150.0, 0.45 * lop * inReach * (1.0 - smoothstep(6.0, 11.0, ft)), 0.7 * uPx, 41.0 + floor(uBurpSeed * 50.0), px * 150.0) * onLand);
           vec3 clotCol = mix(yel, verm, smoothstep(0.0, 0.7, ft));
           clotCol = mix(clotCol, deep * 0.5, smoothstep(0.5, 2.5, ft));
-          clotCol = mix(clotCol, vec3(0.035, 0.03, 0.028), smoothstep(2.0, 5.0, ft));
+          clotCol = mix(clotCol, uInkCold, smoothstep(2.0, 5.0, ft));
           col = mix(col, clotCol, hit * 0.95);
           glowInk = max(glowInk, hit * (1.0 - smoothstep(1.0, 3.5, ft)) * 0.85);
           // Ash, blown out the way it burst, settling, then going.
           float ash = flown * exp(-far / (reach * 1.4 + 1e-3)) * (0.3 + 0.9 * lop) * smoothstep(0.0, 0.6, ft) * (1.0 - smoothstep(4.0, 12.0, ft)) * onLand * (1.0 - hit);
-          if (ash > 0.02) col = mix(col, vec3(0.15, 0.14, 0.13), stipple(vDir, 300.0, ash * 1.3, 0.5 * uPx, px) * 0.85);
+          if (ash > 0.02) col = mix(col, uInkAsh, stipple(vDir, 300.0, ash * 1.3, 0.5 * uPx, px) * 0.85);
         }
       }`;
