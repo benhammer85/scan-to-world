@@ -424,6 +424,7 @@ for (const s of [...kindDots, foam]) {
 const puffs = new Puffs(renderer.getPixelRatio());
 puffs.calm = QUIET;
 group.add(puffs.object);
+group.add(puffs.shadow);
 
 /**
  * A mark on the map: drawn once on a small canvas, in white so it can be inked any colour, and
@@ -1423,7 +1424,15 @@ function effects(dt: number): void {
   if (brink && !wasBrink && !LAMP && !planet.pouring) feel([70, 60, 90]);
   wasBrink = brink;
   const full = planet.k.great > 0 ? planet.throwOf(planet.pressure) >= planet.k.great : planet.bursting;
-  if (!LAMP && !planet.over && !planet.pouring && planet.pressure > 0.5 && smokeIn <= 0) {
+  if (QUIET) {
+    // Quiet: the smoke reads the pressure. A thin wisp at rest; a taller, fuller column as it builds;
+    // dark only at the brink. Small puffs in a close stream, so it's one column, leaning with the breeze.
+    if (!LAMP && !planet.over && !planet.pouring && planet.pressure > 0.05 && smokeIn <= 0) {
+      smokeIn = 0.14 + 0.22 * (1 - share);
+      const dark = Math.min(1, Math.max(0, (share - 0.75) / 0.2)), lean = { x: up.x + 0.3 * INVERSE_RIGHT.x, y: up.y + 0.3 * INVERSE_RIGHT.y, z: up.z + 0.3 * INVERSE_RIGHT.z };
+      puffs.add('smoke', p[v0 * 3], p[v0 * 3 + 1], p[v0 * 3 + 2], 0.25 + 1.3 * share, Math.random, lean, 0, dark * dark);
+    }
+  } else if (!LAMP && !planet.over && !planet.pouring && planet.pressure > 0.5 && smokeIn <= 0) {
     smokeIn = brink ? 0.14 : full ? 0.22 : 0.7 - 0.4 * Math.min(1, planet.pressure / VOLCANO.explosive);
     // A billow at a time, so the plume builds from them, fuller and darker as the heat gathers;
     // warmed from below where lava lies at the vent.

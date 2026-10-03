@@ -6,6 +6,12 @@
  * fading. (They were fine dots of stipple, rising in strings, which looked like beads.) Embers, and
  * the dust a storm drives, stay dots. A fixed number of them, reused in turn, so there's never more
  * than the page can bear.
+ *
+ * Calm (the quiet print): smoke is the paper left bare, a cream a little lighter than the page, as a
+ * print leaves smoke unprinted; steam a pale blue-white; only smoke at the brink (`dark`) and a burst's
+ * ash are dark. Small puffs in a close stream, so they make one column, leaning with the breeze; and
+ * the plume casts a faint shadow on the map, away from the light, further the higher it's risen, as a
+ * map-maker shows height without perspective.
  */
 import * as THREE from 'three';
 import { rimGlsl } from '../render/rim';
@@ -15,13 +21,19 @@ export type PuffKind = 'steam' | 'ash' | 'smoke' | 'ember' | 'dust';
 const TINT: Record<PuffKind, number> = { steam: 0, ash: 1, smoke: 2, ember: 3, dust: 4 };
 const MOST = 1200;
 
-interface Puff { alive: boolean; age: number; life: number; x: number; y: number; z: number; ux: number; uy: number; uz: number; rise: number; size: number; grow: number; kind: number; nx: number; ny: number; nz: number; vz: number; warm: number }
+interface Puff { alive: boolean; age: number; life: number; x: number; y: number; z: number; ux: number; uy: number; uz: number; rise: number; size: number; grow: number; kind: number; nx: number; ny: number; nz: number; vz: number; warm: number; dark: number; sx: number; sy: number; sz: number }
 
 export class Puffs {
   readonly object: THREE.Points;
-  /** Lighter, paler smoke, and no red beneath it (the quiet print). */
+  /** The plume's shadow on the map: drawn only when calm. */
+  readonly shadow: THREE.Points;
+  /** Smoke as bare paper, a column, its shadow; no red beneath it (the quiet print). */
   get calm(): boolean { return this.calmNow; }
-  set calm(on: boolean) { this.calmNow = on; ((this.object.material as THREE.ShaderMaterial).uniforms.uCalm.value = on ? 1 : 0); }
+  set calm(on: boolean) {
+    this.calmNow = on;
+    (this.object.material as THREE.ShaderMaterial).uniforms.uCalm.value = on ? 1 : 0;
+    this.shadow.visible = on;
+  }
   private calmNow = false;
   private puffs: Puff[] = [];
   private nextSlot = 0;
@@ -32,9 +44,11 @@ export class Puffs {
   private seed = new Float32Array(MOST);
   private life = new Float32Array(MOST);
   private warmth = new Float32Array(MOST);
+  private darkness = new Float32Array(MOST);
+  private risen = new Float32Array(MOST);
 
   constructor(pixelRatio: number) {
-    for (let i = 0; i < MOST; i++) this.puffs.push({ alive: false, age: 0, life: 1, x: 0, y: 0, z: 0, ux: 0, uy: 0, uz: 0, rise: 0, size: 0, grow: 0, kind: 0, nx: 0, ny: 0, nz: 0, vz: 0, warm: 0 });
+    for (let i = 0; i < MOST; i++) this.puffs.push({ alive: false, age: 0, life: 1, x: 0, y: 0, z: 0, ux: 0, uy: 0, uz: 0, rise: 0, size: 0, grow: 0, kind: 0, nx: 0, ny: 0, nz: 0, vz: 0, warm: 0, dark: 0, sx: 0, sy: 0, sz: 0 });
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(this.position, 3));
     g.setAttribute('aAlpha', new THREE.BufferAttribute(this.alpha, 1));
@@ -43,7 +57,9 @@ export class Puffs {
     g.setAttribute('aSeed', new THREE.BufferAttribute(this.seed, 1));
     g.setAttribute('aLife', new THREE.BufferAttribute(this.life, 1));
     g.setAttribute('aWarm', new THREE.BufferAttribute(this.warmth, 1));
-    const material = new THREE.ShaderMaterial({
+    g.setAttribute('aDark', new THREE.BufferAttribute(this.darkness, 1));
+    g.setAttribute('aRise', new THREE.BufferAttribute(this.risen, 1));
+    const make = (shadow: boolean) => new THREE.ShaderMaterial({
       transparent: true,
       depthWrite: false,
       // Drawn over the map, as an engraver draws smoke over the land it rises from, rather than
@@ -58,6 +74,9 @@ export class Puffs {
         attribute float aSeed;
         attribute float aLife;
         attribute float aWarm;
+        attribute float aDark;
+        attribute float aRise;
+        varying float vDark;
         varying float vAlpha;
         varying float vTint;
         varying float vSeed;
@@ -67,6 +86,7 @@ export class Puffs {
         ${rimGlsl}
         void main() {
           vec4 v = modelViewMatrix * vec4(position, 1.0);
+          ${shadow ? 'v.xy += vec2(0.55, -0.8) * aRise * 0.9; // the shadow: down and to the right, away from the light, as far as it has risen' : ''}
           gl_Position = projectionMatrix * v;
           gl_PointSize = aSize * uScale / -v.z;
           vAlpha = aAlpha * rimFade(position, v);
@@ -75,6 +95,7 @@ export class Puffs {
           vPx = gl_PointSize;
           vLife = aLife;
           vWarm = aWarm;
+          vDark = aDark;
         }`,
       fragmentShader: /* glsl */ `
         varying float vAlpha;
@@ -83,6 +104,7 @@ export class Puffs {
         varying float vPx;
         varying float vLife;
         varying float vWarm;
+        varying float vDark;
         uniform float uCalm;
         // (Hashed without sin, which phones work out roughly.)
         float h2(vec2 p) { vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
@@ -93,6 +115,7 @@ export class Puffs {
         void main() {
           vec2 q = (gl_PointCoord - 0.5) * 2.0;
           if (vTint > 2.5) {
+            ${shadow ? 'discard;' : ''}
             // Embers and dust: a round dot with a soft edge a pixel wide, a touch larger or smaller by its own seed.
             float r = vPx * 0.5 * (0.75 + 0.25 * vSeed);
             float a = vAlpha * clamp(r - length(q) * vPx * 0.5 + 0.5, 0.0, 1.0);
@@ -117,36 +140,46 @@ export class Puffs {
             cover *= step(smoothstep(0.45, 1.0, vLife) * 0.97, g);
             float a = vAlpha * cover;
             if (a <= 0.01) discard;
-            vec3 shade = vTint < 0.5 ? vec3(0.32, 0.42, 0.5) : vTint < 1.5 ? vec3(0.06, 0.05, 0.05) : vec3(0.17, 0.15, 0.15);
+            ${shadow ? `gl_FragColor = vec4(0.3, 0.25, 0.2, a * (vTint < 1.5 && vTint > 0.5 ? 0.22 : 0.16));` : `vec3 shade = vTint < 0.5 ? vec3(0.32, 0.42, 0.5) : vTint < 1.5 ? vec3(0.06, 0.05, 0.05) : vec3(0.17, 0.15, 0.15);
             vec3 light = vTint < 0.5 ? vec3(0.72, 0.78, 0.8) : vTint < 1.5 ? vec3(0.26, 0.23, 0.21) : vec3(0.56, 0.5, 0.44);
-            // (Calm, as the quiet print draws it: paler, nearer the paper.)
-            shade = mix(shade, light, 0.5 * uCalm); light = mix(light, vec3(0.74, 0.69, 0.63), 0.5 * uCalm);
+            // (Calm, as the quiet print draws it: smoke the paper left bare, a cream a little lighter than
+            // the page, darkening only at the brink; steam a pale blue-white; ash as it is.)
+            vec3 cShade = vTint < 0.5 ? vec3(0.72, 0.8, 0.86) : vTint < 1.5 ? shade : mix(vec3(0.82, 0.77, 0.69), vec3(0.16, 0.15, 0.14), vDark);
+            vec3 cLight = vTint < 0.5 ? vec3(0.92, 0.96, 0.98) : vTint < 1.5 ? light : mix(vec3(0.97, 0.94, 0.87), vec3(0.36, 0.33, 0.3), vDark);
+            shade = mix(shade, cShade, uCalm); light = mix(light, cLight, uCalm);
             vec3 c = mix(shade, light, lit);
             // Young, over lava, its underside is lit red from below.
             c = mix(c, vec3(0.26, 0.035, 0.015), 0.75 * vWarm * (1.0 - lit) * (1.0 - smoothstep(0.03, 0.22, vLife))); // (only the youngest, and only beneath: more turned them pink)
-            gl_FragColor = vec4(c, a);
+            gl_FragColor = vec4(c, a);`}
           }
           #include <colorspace_fragment>
         }`,
     });
-    this.object = new THREE.Points(g, material);
+    this.object = new THREE.Points(g, make(false));
     this.object.frustumCulled = false;
     this.object.renderOrder = 4;
+    this.shadow = new THREE.Points(g, make(true));
+    this.shadow.frustumCulled = false;
+    this.shadow.renderOrder = 3;
+    this.shadow.visible = false;
   }
 
   /**
    * A puff at a point on the ground (in the planet's frame), rising along its up; or, given a
    * way to drift (`dir`, in the same frame), mostly that way, as smoke drawn on a map goes up the page.
    */
-  add(kind: PuffKind, x: number, y: number, z: number, strength = 1, rand = Math.random, dir?: { x: number; y: number; z: number }, warm = 0): void {
+  add(kind: PuffKind, x: number, y: number, z: number, strength = 1, rand = Math.random, dir?: { x: number; y: number; z: number }, warm = 0, dark = 0): void {
     const p = this.puffs[this.nextSlot];
     this.nextSlot = (this.nextSlot + 1) % MOST;
     const l = Math.hypot(x, y, z) || 1;
     // Up, tipped a little at random, so a column of them spreads as it goes.
-    const d = dir ?? { x: 0, y: 0, z: 0 }, lean = dir ? 1.6 : 0;
-    p.ux = x / l * 0.4 + d.x * lean + (rand() - 0.5) * 0.5; p.uy = y / l * 0.4 + d.y * lean + (rand() - 0.5) * 0.5; p.uz = z / l * 0.4 + d.z * lean + (rand() - 0.5) * 0.5;
+    // (Calm, the smoke keeps closer together, so it's one column.)
+    const d = dir ?? { x: 0, y: 0, z: 0 }, lean = dir ? 1.6 : 0, spread = this.calm && kind === 'smoke' ? 0.2 : 0.5;
+    p.ux = x / l * 0.4 + d.x * lean + (rand() - 0.5) * spread; p.uy = y / l * 0.4 + d.y * lean + (rand() - 0.5) * spread; p.uz = z / l * 0.4 + d.z * lean + (rand() - 0.5) * spread;
     const ul = Math.hypot(p.ux, p.uy, p.uz); p.ux /= ul; p.uy /= ul; p.uz /= ul;
     p.x = x; p.y = y; p.z = z;
+    p.sx = x; p.sy = y; p.sz = z;
+    p.dark = dark;
     p.alive = true;
     p.age = 0;
     p.kind = TINT[kind];
@@ -166,6 +199,7 @@ export class Puffs {
       p.vz = (0.1 + 0.12 * rand()) * strength;
       p.life = 1.4 + rand() * 1.2; p.size = 0.0032 + 0.002 * rand(); p.grow = -0.001;
     }
+    else if (this.calm) { p.life = 5 + rand() * 2; p.rise = (0.08 + 0.04 * rand()) * strength; p.size = 0.005 + 0.004 * rand(); p.grow = 0.03 + 0.12 * strength; }
     else { p.life = 4.5 + rand() * 3; p.rise = (0.1 + 0.06 * rand()) * strength; p.size = 0.008 + 0.006 * rand(); p.grow = 0.18 + 0.1 * strength; }
   }
 
@@ -189,12 +223,14 @@ export class Puffs {
       this.size[i] = p.size + p.grow * f;
       // Coming in quickly, then fading slowly as it thins; smoke the strongest, so a wisp is seen.
       // (Billows come in quickly and then hold their tone, breaking up at the end in the shader; dots fade.)
-      this.alpha[i] = (this.calm && p.kind !== 3 ? 0.6 : 1) * (p.kind === 3 ? 0.95 * (1 - f) ** 0.7 : p.kind === 4 ? 0.7 * Math.min(1, f * 5) * (1 - f) ** 1.2 : (p.kind === 1 ? 0.85 : p.kind === 0 ? 0.6 : 0.72) * Math.min(1, f * (p.kind === 2 ? 3 : 8))); // (smoke leaves the vent a faint wisp, not a ball)
+      this.alpha[i] = (this.calm && p.kind !== 3 ? (p.kind === 2 ? 0.9 : 0.6) : 1) * (p.kind === 3 ? 0.95 * (1 - f) ** 0.7 : p.kind === 4 ? 0.7 * Math.min(1, f * 5) * (1 - f) ** 1.2 : (p.kind === 1 ? 0.85 : p.kind === 0 ? 0.6 : 0.72) * Math.min(1, f * (p.kind === 2 ? 3 : 8))); // (smoke leaves the vent a faint wisp, not a ball)
       this.tint[i] = p.kind;
       this.life[i] = f;
       this.warmth[i] = p.warm;
+      this.darkness[i] = p.dark;
+      this.risen[i] = Math.hypot(p.x - p.sx, p.y - p.sy, p.z - p.sz);
     }
     const g = this.object.geometry;
-    for (const name of ['position', 'aAlpha', 'aSize', 'aTint', 'aSeed', 'aLife', 'aWarm']) g.getAttribute(name).needsUpdate = true;
+    for (const name of ['position', 'aAlpha', 'aSize', 'aTint', 'aSeed', 'aLife', 'aWarm', 'aDark', 'aRise']) g.getAttribute(name).needsUpdate = true;
   }
 }
