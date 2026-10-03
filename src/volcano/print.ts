@@ -32,7 +32,7 @@ export const FIRST_LOOK: Record<string, string> = { mars: 'print', moon: 'print'
 /** Declared before the shader's main(); uses its hash3, noise3 and uPx. */
 export const PRINT_FUNCTIONS = /* glsl */ `
   varying vec3 vS;
-  uniform float uFloodDots, uFloodRim, uFeeding, uBuild, uSpray;
+  uniform float uFloodDots, uFloodRim, uFeeding, uBuild, uSpray, uDrift;
   #define uFeedingGlow (0.4 + 0.6 * uFeeding)
   uniform vec3 uVent;
   // Craters, as the charts draw them (see 'Craters' below): each one's middle and width, how long since it was dug, and the light in the world's own frame.
@@ -393,8 +393,33 @@ const PRINT = /* glsl */ `
         float bw = max(fwidth(T), 1e-4) * 0.8;
         // (Given as printed, then made linear: the screen lightens what's drawn, which turned the red to coral.)
         vec3 deep = pow(vec3(0.5, 0.06, 0.05), vec3(2.2)), verm = pow(vec3(0.89, 0.2, 0.08), vec3(2.2)), yel = pow(vec3(1.0, 0.8, 0.15), vec3(2.2));
+        // Two plates, each a little out of register its own way: the red (knocked out under the core)
+        // and the yellow. Where the yellow overlaps the red it overprints a deeper orange; where it falls
+        // short, a sliver of paper shows between them.
+        float my2 = noise3(vDir * 3.0 + 17.0) * 6.2832;
+        float Ty = T + (dFdx(T) * cos(my2) + dFdy(T) * sin(my2)) * 1.6 * uPx;
+        float redOn = smoothstep(0.66 - bw, 0.66 + bw, T), yelOn = smoothstep(0.66 - bw, 0.66 + bw, Ty);
         vec3 inkCol = mix(deep, verm, smoothstep(0.33 - bw, 0.33 + bw, T));
-        inkCol = mix(inkCol, yel, smoothstep(0.66 - bw, 0.66 + bw, T));
+        // (The gap only here and there, as the plates drift a hair; a ring of it all round read as an outline.)
+        float gapShows = smoothstep(0.55, 0.72, noise3(vDir * 11.0 + 31.0));
+        inkCol = mix(inkCol, mix(pow(vec3(0.96, 0.42, 0.08), vec3(2.2)), paper, gapShows), redOn);
+        inkCol = mix(inkCol, mix(pow(vec3(0.96, 0.42, 0.08), vec3(2.2)), yel, redOn), yelOn);
+        // Crust: dark plates riding the red, carried slowly downhill while the vent feeds the flow,
+        // breaking smaller towards the core and none on it, where it's too hot to skin over; more of it
+        // far out, where the flow has cooled.
+        vec2 pol = vec2(cos(ang), sin(ang)) * far;
+        vec2 rid = pol * (1.0 - uDrift * 0.004 / max(far, 0.02)); // (carried outward from the vent)
+        vec3 cq = vec3(rid * 34.0, 2.3) + 0.35 * vec3(noise3(vDir * 60.0), noise3(vDir * 60.0 + 9.0), 0.0);
+        float cn = noise3(cq) * 0.7 + noise3(cq * 2.7 + 5.0) * 0.3;
+        float cth = mix(0.6, 0.78, smoothstep(0.2, 0.62, T)) + 0.3 * smoothstep(0.55, 0.66, T) - 0.1 * smoothstep(0.08, 0.45, far), cw = max(fwidth(cn), 1e-4);
+        float crust = smoothstep(cth - cw, cth + cw, cn) * (1.0 - yelOn) * (1.0 - redOn);
+        inkCol = mix(inkCol, mix(deep * 0.55, deep, smoothstep(0.33 - bw, 0.33 + bw, T)), crust * 0.9);
+        // The ink as a press lays it: never quite even (heavier here, thinner there), the paper's grain
+        // showing through, and a little built up along each colour's own edge, where the press squeezes it.
+        float mottle = noise3(vDir * 80.0) * 0.6 + noise3(vDir * 230.0 + 4.0) * 0.4;
+        float dEdge = min(min(abs(T - 0.33) / max(fwidth(T), 1e-4), abs(Ty - 0.66) / max(fwidth(Ty), 1e-4)), abs(lvR - 0.5) / max(fwidth(lvR), 1e-4));
+        float squeeze = (1.0 - smoothstep(0.0, 2.5 * uPx, dEdge)) * 0.18;
+        inkCol *= (0.82 + 0.3 * mottle) * mix(1.0, grain, 0.5) * (1.0 - squeeze);
         // Starved ink: the paper shows through in specks.
         float starve = step(0.9, noise3(vDir * 240.0) * 0.55 + hash3(floor(vDir * 600.0)) * 0.45);
         inkCol = mix(inkCol, mix(paper, inkCol, 0.35), starve);
@@ -416,6 +441,13 @@ const PRINT = /* glsl */ `
         float sb = max(fwidth(black), 1e-4) * 0.8;
         vec3 setCol = mix(vec3(0.24, 0.22, 0.21), deep, smoothstep(0.6 - sb, 0.6 + sb, black));
         setCol = mix(setCol, verm, smoothstep(0.8 - sb, 0.8 + sb, black));
+        // (Pressed as the running ink is; and skinning over with crust as it cools, the plates now still.)
+        vec3 sq = vDir * 34.0 + 0.35 * vec3(noise3(vDir * 60.0), noise3(vDir * 60.0 + 9.0), 0.0);
+        float sn = noise3(sq) * 0.7 + noise3(sq * 2.7 + 5.0) * 0.3, snw = max(fwidth(sn), 1e-4);
+        float sth = mix(0.4, 0.66, smoothstep(0.6, 1.0, black));
+        float sCrust = smoothstep(sth - snw, sth + snw, sn) * smoothstep(0.55, 0.65, black);
+        setCol = mix(setCol, deep * mix(0.55, 1.0, smoothstep(0.8 - sb, 0.8 + sb, black)), sCrust * 0.9);
+        setCol *= (0.82 + 0.3 * mottle) * mix(1.0, grain, 0.5);
         setCol = mix(setCol, mix(paper, setCol, 0.35), starve);
         float setA = hs * smoothstep(0.33, 0.4, black) * 0.92;
         col = mix(col, setCol, setA);
