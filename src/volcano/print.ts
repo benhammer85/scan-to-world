@@ -259,7 +259,7 @@ export function printFragment(look: Look, sea: boolean): string {
 
       ${sea ? `// The coast: one crisp line.
       float coastPx = abs(vH) / max(fwidth(vH), 1e-6);
-      col = mix(col, ink, (1.0 - smoothstep(0.55 * uPx - 0.5, 0.55 * uPx + 0.5, coastPx)) * 0.95 * edgeOn);` : ''}
+      col = mix(col, ink, (1.0 - smoothstep(0.55 * uPx - 0.5, 0.55 * uPx + 0.5, coastPx)) * ${look === 6 ? '0.4' : '0.95'} * edgeOn); // (quiet: soft, not an outline)` : ''}
       diffuseColor.rgb *= col * (1.0 - glowInk);
       totalEmissiveRadiance += col * glowInk;`;
 }
@@ -361,6 +361,7 @@ export const LAMP_QUIET = /* glsl */ `
         col = mix(col, gold, smoothstep(0.45 - gw, 0.45 + gw, G));
         float mottle = noise3(vDir * 80.0) * 0.6 + noise3(vDir * 230.0 + 4.0) * 0.4;
         col *= 0.86 + 0.24 * mottle;
+        if (a <= 0.0) discard; // (here, after fwidth: before it, its derivatives at the blob's edge are undefined on phones)
         gl_FragColor = vec4(col, a * (0.55 + 0.4 * smoothstep(0.0, 0.4, heat)));`;
 export const LAMP_PRINT = /* glsl */ `
         vec3 paper = vec3(0.957, 0.937, 0.89), ink = vec3(0.13, 0.12, 0.105);
@@ -486,7 +487,7 @@ const PRINT = (q: boolean) => /* glsl */ `
         vec3 pale = uInkPale;
         vec3 hotter = mix(mix(verm, yel, smoothstep(0.33 - bw, 0.33 + bw, T)), pale, yelOn);
         vec2 bub = bubbles(vDir, ${q ? '(0.01 + 0.03 * uFeeding)' : '(0.03 + 0.09 * uFeeding)'} * smoothstep(0.8, 1.3, lvR) * cov, uTime, px * 34.0); // (few, and well apart: a speckle of them was too much)
-        inkCol = mix(inkCol, hotter, max(bub.x, bub.y) * cov);
+        inkCol = mix(inkCol, hotter, ${q ? 'bub.x' : 'max(bub.x, bub.y)'} * cov); // (quiet: no ring of drops, which looked like a cartoon)
         // The ink as a press lays it: never quite even (heavier here, thinner there), the paper's grain
         // showing through, and a little built up along each colour's own edge, where the press squeezes it.
         float mottle = noise3(vDir * 80.0) * 0.6 + noise3(vDir * 230.0 + 4.0) * 0.4;
@@ -500,16 +501,20 @@ const PRINT = (q: boolean) => /* glsl */ `
         col = mix(col, inkCol * mix(vec3(1.0), col / paper, 0.5), cov * 0.92);
         glowInk = cov * mix(0.4, 0.95, yelOn); // (a little of its own light, or the lighting dims the soft inks to mud; the gold, the one light)
         // As the pressure builds, a spot of gold warms the ground at the vent, widening, before anything pours.
-        float spot = smoothstep(0.3, 0.6, uBuild) * (1.0 - smoothstep((0.004 + 0.018 * uBuild) * (0.8 + 0.4 * noise3(vDir * 90.0)) - px, (0.004 + 0.018 * uBuild) * (0.8 + 0.4 * noise3(vDir * 90.0)) + px, far)) * onLand * (1.0 - cov);
-        col = mix(col, yel * mix(vec3(1.0), col / paper, 0.5), spot * 0.55);
-        glowInk = max(glowInk, spot * 0.5);` : `col = mix(col, inkCol, cov * 0.97);
+        if (uBuild > 0.3) {
+          float spotR = (0.004 + 0.018 * uBuild) * (0.8 + 0.4 * noise3(vDir * 90.0));
+          float spot = smoothstep(0.3, 0.6, uBuild) * (1.0 - smoothstep(spotR - px, spotR + px, far)) * onLand * (1.0 - cov);
+          col = mix(col, yel * mix(vec3(1.0), col / paper, 0.5), spot * 0.55);
+          glowInk = max(glowInk, spot * 0.5);
+        }` : `col = mix(col, inkCol, cov * 0.97);
         glowInk = cov * 0.85;`}
         // Splatter. Round the vent while it erupts, thrown in jets (thicker one way than another), the
         // near drops still hot; and along every running edge, a spray a little way out onto the ground.
         float jets = 0.3 + 0.9 * smoothstep(0.35, 0.8, noise3(vec3(cos(ang) * 2.2, sin(ang) * 2.2, 4.0)));
         float thrown = uSpray * exp(-far / (0.035 + 0.11 * uSpray)) * jets * onLand; // (thrown wide, so the drops lie apart)
         float edgeSpray = smoothstep(0.06, 0.5, lv + 0.12 * (noise3(vDir * 30.0) - 0.5)) * (0.35 + 0.65 * uFeeding);
-        float sp = splat(vDir, clamp(thrown * 1.1 + edgeSpray * ${q ? '0.12' : '0.45'}, 0.0, 1.0), px) * (1.0 - cov);
+        float spDens = clamp(thrown * 1.1 + edgeSpray * ${q ? '0.12 * uSpray' : '0.45'}, 0.0, 1.0); // (quiet: the edges spray only with a burst)
+        float sp = spDens > 0.001 ? splat(vDir, spDens, px) * (1.0 - cov) : 0.0;
         vec3 spCol = mix(deep, verm, smoothstep(0.03, 0.0, far - 0.05 * uSpray) * 0.8 + 0.2 * uSpray);
         col = mix(col, spCol, sp * 0.95);
         glowInk = max(glowInk, sp * ${q ? '0.0' : '0.85'});
@@ -541,7 +546,7 @@ const PRINT = (q: boolean) => /* glsl */ `
         // than another, landing hot and darkening to black, lying a while, then crumbling; and dark ash
         // blown out over the ground. Every one different (its size, its way, its shape: from main).
         // (A pale dome popping in a neat ring of drops looked like a cartoon.)
-        {
+        if (uBurp >= 0.0) {
           float bt = uBurp, on = step(0.0, bt), S = uBurpSize;
           float sw = clamp(bt / 1.4, 0.0, 1.0);
           vec2 dirA = vec2(cos(ang), sin(ang));

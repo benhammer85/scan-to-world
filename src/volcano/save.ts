@@ -17,8 +17,14 @@ export function snapshotOf(obj: object, skip: string[] = []): Record<string, unk
  * read-only fields, and others hold references to them), the named plain objects are merged
  * into (for the same reason), and everything else is simply set.
  */
-export function restoreInto(obj: object, snap: Record<string, unknown>, merge: string[] = []): void {
+export function restoreInto(obj: object, snap: Record<string, unknown>, merge: string[] = []): boolean {
   const o = obj as Record<string, unknown>;
+  // A snapshot from a world of a different size (another mesh) can't be put back: say so before
+  // touching anything, rather than half restoring it and failing.
+  for (const [k, v] of Object.entries(snap)) {
+    const cur = o[k];
+    if (ArrayBuffer.isView(cur) && ArrayBuffer.isView(v) && (cur as unknown as Float32Array).length !== (v as unknown as Float32Array).length) return false;
+  }
   for (const [k, v] of Object.entries(snap)) {
     const cur = o[k];
     if (ArrayBuffer.isView(cur) && ArrayBuffer.isView(v)) (cur as unknown as Float32Array).set(v as unknown as Float32Array);
@@ -27,6 +33,7 @@ export function restoreInto(obj: object, snap: Record<string, unknown>, merge: s
     else if (merge.includes(k) && cur && typeof cur === 'object' && v && typeof v === 'object') Object.assign(cur, v);
     else o[k] = v;
   }
+  return true;
 }
 
 const DB = 'volcano', STORE = 'world', KEY = 'current';

@@ -35,6 +35,8 @@ export class Puffs {
     this.shadow.visible = on;
   }
   private calmNow = false;
+  /** An ice moon: embers and ash in frost, not fire. */
+  set ice(on: boolean) { (this.object.material as THREE.ShaderMaterial).uniforms.uIce.value = on ? 1 : 0; }
   private puffs: Puff[] = [];
   private nextSlot = 0;
   private position = new Float32Array(MOST * 3);
@@ -65,7 +67,7 @@ export class Puffs {
       // Drawn over the map, as an engraver draws smoke over the land it rises from, rather than
       // lost behind the slope it drifts up (the far side of the world fades it away regardless).
       depthTest: false,
-      uniforms: { uScale: { value: 900 * pixelRatio }, uCalm: { value: 0 } },
+      uniforms: { uScale: { value: 900 * pixelRatio }, uCalm: { value: 0 }, uIce: { value: 0 } },
       vertexShader: /* glsl */ `
         uniform float uScale;
         attribute float aAlpha;
@@ -109,6 +111,7 @@ export class Puffs {
         varying float vDark;
         varying float vRise;
         uniform float uCalm;
+        uniform float uIce;
         // (Hashed without sin, which phones work out roughly.)
         float h2(vec2 p) { vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
         float n2(vec2 p) {
@@ -123,7 +126,7 @@ export class Puffs {
             float r = vPx * 0.5 * (0.75 + 0.25 * vSeed);
             float a = vAlpha * clamp(r - length(q) * vPx * 0.5 + 0.5, 0.0, 1.0);
             if (a <= 0.01) discard;
-            gl_FragColor = vec4(vTint < 3.5 ? vec3(0.91, 0.47, 0.18) : vec3(0.24, 0.18, 0.14), a);
+            gl_FragColor = vec4(vTint < 3.5 ? mix(vec3(0.91, 0.47, 0.18), vec3(0.75, 0.9, 1.0), uIce) : vec3(0.24, 0.18, 0.14), a); // (on the ice moons, the embers are frost)
           } else {
             // A billow: its edge lumpy, the lumps turning slowly as it rises.
             float d = length(q), ang = atan(q.y, q.x), t = vLife * 4.0;
@@ -151,6 +154,8 @@ export class Puffs {
             vec3 cShade = vTint < 0.5 ? vec3(0.72, 0.8, 0.86) : vTint < 1.5 ? shade : mix(vec3(0.82, 0.77, 0.69), vec3(0.16, 0.15, 0.14), vDark);
             vec3 cLight = vTint < 0.5 ? vec3(0.92, 0.96, 0.98) : vTint < 1.5 ? light : mix(vec3(0.97, 0.94, 0.87), vec3(0.36, 0.33, 0.3), vDark);
             shade = mix(shade, cShade, uCalm); light = mix(light, cLight, uCalm);
+            // (On the ice moons a burst's ash is frost, as the ground draws it.)
+            if (vTint > 0.5 && vTint < 1.5) { shade = mix(shade, vec3(0.5, 0.62, 0.72), uIce); light = mix(light, vec3(0.86, 0.92, 0.96), uIce); }
             vec3 c = mix(shade, light, lit);
             // Young, over lava, its underside is lit red from below.
             c = mix(c, vec3(0.26, 0.035, 0.015), 0.75 * vWarm * (1.0 - lit) * (1.0 - smoothstep(0.03, 0.22, vLife))); // (only the youngest, and only beneath: more turned them pink)

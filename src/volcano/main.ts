@@ -425,6 +425,7 @@ for (const s of [...kindDots, foam]) {
 }
 const puffs = new Puffs(renderer.getPixelRatio());
 puffs.calm = QUIET;
+puffs.ice = ICE;
 group.add(puffs.object);
 group.add(puffs.shadow);
 
@@ -931,7 +932,7 @@ if (LAMP) {
           hs += uHeat[i] * k;
         }
         float heat = f > 0.0 ? hs / f : 0.0, w = max(fwidth(f), 1e-4), a = smoothstep(0.88 - w, 0.88 + w, f);
-        if (a <= 0.0) discard;
+        ${LOOK === 6 ? '' : 'if (a <= 0.0) discard;'}
         ${LOOK === 6 ? LAMP_QUIET : LOOK ? LAMP_PRINT : `vec3 col = mix(uCool, uHot, smoothstep(0.2, 0.9, heat));
         col = mix(col, uHeart, smoothstep(1.6, 5.0, f) * heat * 0.6);
         col = mix(col * 0.78, col, smoothstep(0.88, 1.5, f));
@@ -1749,7 +1750,8 @@ function world(): Kept {
     free: FREE,
     way: chain ? { a: chain.a, b: chain.b } : null,
     seed,
-    planet: snapshotOf(planet, ['topo', 'next', 'firmness', 'scale', 'news']),
+    // (Not its rules, nor what's worked out from the ground: those come fresh from this version of the game.)
+    planet: snapshotOf(planet, ['topo', 'next', 'firmness', 'scale', 'news', 'k', 'grainOf', 'slowDelta', 'moltenWas', 'moltenKnown']),
     ecology: snapshotOf(ecology, ['pl', 'topo', 'scale']),
     islands: snapshotOf(islands, ['topo', 'scale']),
     page: { lesson, embersSaid, shownEra, eraFrom: eraFrom.slice(), turn: group.quaternion.toArray() as number[], dist },
@@ -1771,9 +1773,15 @@ async function resume(): Promise<boolean> {
   if (!w || !w.planet || (w.world ?? 'ocean') !== WORLD.id || w.run !== RUN_TAG || !!w.free !== FREE) return false;
   if (w.way && chain) chain = new Chain(w.way.a, w.way.b);
   seed = w.seed;
-  restoreInto(planet, w.planet, ['plume', 'tally', 'drift', 'wear']);
+  // (A save from an older game kept its rules too: they are the game's own now.)
+  const { k: _oldRules, grainOf: _grain, slowDelta: _scratch, moltenWas: _m, moltenKnown: _mk, ...kept } = w.planet as Record<string, unknown>;
+  void _oldRules; void _grain; void _scratch; void _m; void _mk;
+  if (!restoreInto(planet, kept, ['plume', 'tally', 'drift', 'wear'])) { void forget(); return false; }
+  planet.lavaChanged();
   restoreInto(ecology, w.ecology);
   restoreInto(islands, w.islands);
+  // (The tumbling moon's calm is reckoned from now: the whole of the time kept had counted at once.)
+  calmAt = planet.seconds;
   lesson = w.page.lesson; embersSaid = w.page.embersSaid; shownEra = w.page.shownEra;
   eraFrom.length = 0; eraFrom.push(...w.page.eraFrom);
   group.quaternion.fromArray(w.page.turn);
@@ -1973,7 +1981,9 @@ renderer.setAnimationLoop(() => {
   // Nothing happens until the world is begun.
   if (begun && !ending?.shown) {
     const before = new THREE.Vector3(planet.plume.x, planet.plume.y, planet.plume.z);
-    for (let k = 0; k < speed; k++) planet.step(dt);
+    // (In the long age, four larger steps rather than fourteen small ones: it was 14 to 43 ms a frame.)
+    const steps = speed > 1 ? 4 : 1;
+    for (let k = 0; k < steps; k++) planet.step((dt * speed) / steps);
     // A tumbling moon rolls of itself, about its spin's axis (in its own frame), as fast as it tumbles.
     if (planet.k.tumble > 0) {
       const w = planet.spinNow, r = Math.hypot(w.x, w.y, w.z);

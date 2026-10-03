@@ -340,6 +340,7 @@ export class Planet {
   gravity: { x: number; y: number; z: number } | null = null;
   /** Whether the heat is pouring out now, the world being tipped. */
   pouring = false;
+  private pourCounted = true;
   /** Where the plume is, as a unit vector, and the vertex above it. */
   readonly plume = { x: 0, y: 0, z: 1 };
   plumeVertex = 0;
@@ -627,7 +628,8 @@ export class Planet {
 
   /** The fire is out: no heat left to speak of, and nothing still flowing. */
   get over(): boolean {
-    return this.reserve + this.pressure < this.k.least && !this.erupting && this.molten < 0.01;
+    // (On the glass world, not while blobs still float: the last of them counted for nothing.)
+    return this.reserve + this.pressure < this.k.least && !this.erupting && this.molten < 0.01 && !(this.k.lamp && this.blobs.length > 0);
   }
 
   get erupting(): boolean {
@@ -636,10 +638,17 @@ export class Planet {
 
   /** How much lava is still flowing, over the whole world. */
   get molten(): number {
+    // (Kept until the lava next changes: it was summed over every vertex several times a step.)
+    if (this.moltenKnown) return this.moltenWas;
     let s = 0;
     for (let v = 0; v < this.lava.length; v++) s += this.lava[v];
+    this.moltenWas = s; this.moltenKnown = true;
     return s;
   }
+  private moltenWas = 0;
+  private moltenKnown = false;
+  /** Lava has changed (here, or from outside): the total is to be summed afresh. */
+  lavaChanged(): void { this.moltenKnown = false; }
 
   /** The tide now, from -1 (low) to 1 (high): it begins rising. */
   get tideNow(): number {
@@ -800,13 +809,15 @@ export class Planet {
     if (!this.pouring && tip >= this.k.tipPour) {
       this.pouring = true;
       if (this.pressure >= this.k.explosive) { this.erupt(); return; }
-      if (this.pressure >= this.k.least) this.tally.flows++;
+      this.pourCounted = false;
     } else if (this.pouring && tip < this.k.tipPour * 0.7) this.pouring = false;
     if (!this.pouring) return;
     const rate = this.k.pourLeast + (this.k.pourMost - this.k.pourLeast) * Math.min(1, (tip - this.k.tipPour) / (1 - this.k.tipPour));
     const amount = Math.min(this.pressure, Math.max(0, rate) * dt);
     if (amount <= 0) return;
     this.pressure -= amount;
+    // (Counted once it pours at all: a gentle pour, begun under the least, never counted.)
+    if (!this.pourCounted) { this.pourCounted = true; this.tally.flows++; }
     const v = this.plumeVertex, a = amount * this.scale;
     this.eruptions.push({ vertex: v, flank: v, left: a, rate: a / dt });
   }
@@ -918,7 +929,10 @@ export class Planet {
     const rise = Math.min(this.reserve, this.k.rising * (this.k.steady ? 1 : Math.sqrt(Math.max(0, this.reserve) / this.k.heat)) * (1 + this.k.tide * this.tideNow) * (this.k.suns ? this.sunTide : 1) * dt + 1e-4 * dt);
     if (!this.k.endless) this.reserve -= rise; // (in free play, the store never empties)
     this.pressure += rise;
-    if (this.pressure >= this.capNow) {
+    // (Pouring, the heat can still rise faster than it pours, as at Io's high tide: then it bursts,
+    // as tipping when it's past the dashed ring does, rather than the mountain blowing apart.)
+    if (this.pressure >= this.capNow && this.pouring && !this.k.lamp) this.erupt();
+    else if (this.pressure >= this.capNow) {
       if (!this.k.lamp) this.collapse();
       this.erupt(true);
       this.tally.calderas++;
@@ -1140,6 +1154,7 @@ export class Planet {
       w[v] = ring > 0 ? (Math.abs(d - r * ring) < r ? Math.exp(-(((d - r * ring) / (r * 0.3)) ** 2)) : 0) : d < r * 3 ? Math.exp(-((d / r) ** 2)) : 0;
       sum += w[v];
     }
+    if (!(sum > 0)) return; // (no ground in reach on a coarse mesh: nothing falls, rather than NaN)
     for (let v = 0; v < n; v++) {
       if (!w[v]) continue;
       const add = (volume * w[v]) / sum;
@@ -1151,6 +1166,7 @@ export class Planet {
 
   /** Lava poured from each eruption, into the vent and the ring round it, and out at its flank. */
   private pour(dt: number): void {
+    this.moltenKnown = false;
     const t = this.topo;
     const put = (v: number, amount: number) => {
       const a = t.nbrOffsets[v], b = t.nbrOffsets[v + 1], share = amount / (1 + (b - a) * 0.5);
@@ -1174,6 +1190,7 @@ export class Planet {
 
   /** Lava runs downhill, mostly by the steepest way, and downhill is as the world is held. */
   private flow(dt: number): void {
+    this.moltenKnown = false;
     const t = this.topo, n = this.rock.length, next = this.next, p = t.basePositions;
     const G = this.gravity, R = this.k.relief;
     next.set(this.lava);
@@ -1215,13 +1232,15 @@ export class Planet {
 
   /** Lava cools into rock: slowly on land, fast where it meets the sea. A real covering clears the ground. */
   private cool(dt: number): void {
+    this.moltenKnown = false;
     for (let v = 0; v < this.rock.length; v++) {
       const l = this.lava[v];
       if (l <= 0) continue;
       const sea = this.rock[v] + l < 0;
       // (In a tube of its own fresh crust, lava in the sea cools far slower.)
       const tube = sea && this.k.tubes < 1 && this.laid[v] < this.k.tubeFresh ? this.k.tubes : 1;
-      const solid = l * (1 - Math.exp(-(l < this.k.thin ? THIN_SETS : sea ? this.k.coolSea * tube : this.k.coolLand) * LAVA_PACE * dt));
+      // (A trace too small to matter is rock at once, or it lingers for ever, costing a step each time.)
+      const solid = l < 1e-7 ? l : l * (1 - Math.exp(-(l < this.k.thin ? THIN_SETS : sea ? this.k.coolSea * tube : this.k.coolLand) * LAVA_PACE * dt));
       if (solid > 0) this.laid[v] = 0;
       this.lava[v] -= solid;
       this.rock[v] += solid;
