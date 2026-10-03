@@ -52,7 +52,7 @@ import { measureSecond, secondWords, type Second } from './second';
 import { loadSystem, saveSystem, worldFor, recordPlayed, madeCount } from './system';
 import { openSystem, closeSystem } from './systemChart';
 import { feel, keepImage, NATIVE } from './native';
-import { LOOKS, PRINT_FUNCTIONS, LAMP_PRINT_FUNCTIONS, LAMP_PRINT, printFragment, type Look } from './print';
+import { LOOKS, PRINT_FUNCTIONS, LAMP_PRINT_FUNCTIONS, LAMP_PRINT, LAMP_QUIET, printFragment, type Look } from './print';
 
 const $ = (id: string) => document.getElementById(id)!;
 const stage = $('stage');
@@ -931,7 +931,7 @@ if (LAMP) {
         }
         float heat = f > 0.0 ? hs / f : 0.0, w = max(fwidth(f), 1e-4), a = smoothstep(0.88 - w, 0.88 + w, f);
         if (a <= 0.0) discard;
-        ${LOOK ? LAMP_PRINT : `vec3 col = mix(uCool, uHot, smoothstep(0.2, 0.9, heat));
+        ${LOOK === 6 ? LAMP_QUIET : LOOK ? LAMP_PRINT : `vec3 col = mix(uCool, uHot, smoothstep(0.2, 0.9, heat));
         col = mix(col, uHeart, smoothstep(1.6, 5.0, f) * heat * 0.6);
         col = mix(col * 0.78, col, smoothstep(0.88, 1.5, f));
         gl_FragColor = vec4(col, a * (0.45 + 0.55 * smoothstep(0.0, 0.4, heat)));`}

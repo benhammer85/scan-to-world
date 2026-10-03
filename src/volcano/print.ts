@@ -347,6 +347,21 @@ export const LAMP_PRINT_FUNCTIONS = /* glsl */ `
     return (1.0 - smoothstep(w - 0.5, w + 0.5, dpx)) * stroke * (1.0 - smoothstep(0.12, 0.3, fw)) * smoothstep(0.004, 0.02, fw);
   }
 `;
+/**
+ * The lava lamp's blobs in the quiet print: flat inks laid like the lava's (rust at a cool edge,
+ * terracotta, and gold only at a hot heart), pressed unevenly, no lines and no outline; a cooling
+ * blob goes rust and thins. (They were still engraved, in a dark outline, after the lava was printed.)
+ */
+export const LAMP_QUIET = /* glsl */ `
+        vec3 rust = pow(vec3(0.8, 0.4, 0.28), vec3(2.2)), terra = pow(vec3(0.93, 0.52, 0.34), vec3(2.2)), gold = pow(vec3(0.98, 0.82, 0.52), vec3(2.2));
+        float T = heat * 0.65 + smoothstep(0.88, 3.2, f) * 0.45 + 0.06 * (noise3(vDir * 9.0 + vec3(0.0, uTime * 0.03, 0.0)) - 0.5);
+        float tw = max(fwidth(T), 1e-4) * 0.8;
+        vec3 col = mix(rust, terra, smoothstep(0.42 - tw, 0.42 + tw, T));
+        float G = heat * smoothstep(1.8, 4.0, f) + 0.05 * (noise3(vDir * 6.0 + 17.0) - 0.5), gw = max(fwidth(G), 1e-4) * 0.8;
+        col = mix(col, gold, smoothstep(0.45 - gw, 0.45 + gw, G));
+        float mottle = noise3(vDir * 80.0) * 0.6 + noise3(vDir * 230.0 + 4.0) * 0.4;
+        col *= 0.86 + 0.24 * mottle;
+        gl_FragColor = vec4(col, a * (0.55 + 0.4 * smoothstep(0.0, 0.4, heat)));`;
 export const LAMP_PRINT = /* glsl */ `
         vec3 paper = vec3(0.957, 0.937, 0.89), ink = vec3(0.13, 0.12, 0.105);
         // Engraved too: a breath of warmth for the blob, its lines in red-brown ink, swelling where it's
