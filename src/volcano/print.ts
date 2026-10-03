@@ -27,12 +27,12 @@ export const LOOKS: { id: string; look: Look; words: string }[] = [
   { id: 'plain', look: 0, words: 'last used' },
 ];
 /** Worlds that try another ink first (to see it on a world it suits), unless one is chosen for them. */
-export const FIRST_LOOK: Record<string, string> = { mars: 'print' };
+export const FIRST_LOOK: Record<string, string> = { mars: 'print', moon: 'print' };
 
 /** Declared before the shader's main(); uses its hash3, noise3 and uPx. */
 export const PRINT_FUNCTIONS = /* glsl */ `
   varying vec3 vS;
-  uniform float uFloodDots, uFloodRim, uFeeding, uBuild;
+  uniform float uFloodDots, uFloodRim, uFeeding, uBuild, uSpray;
   #define uFeedingGlow (0.4 + 0.6 * uFeeding)
   uniform vec3 uVent;
   // Craters, as the charts draw them (see 'Craters' below): each one's middle and width, how long since it was dug, and the light in the world's own frame.
@@ -80,6 +80,14 @@ export const PRINT_FUNCTIONS = /* glsl */ `
     vec3 d2 = vec3(dir.y * 0.8 + dir.z * 0.6, dir.z * 0.8 - dir.y * 0.6, dir.x).yzx;
     vec3 d3 = vec3(dir.z * 0.36 - dir.x * 0.93, dir.x * 0.36 + dir.z * 0.93, dir.y).zxy;
     return max(max(lattice(dir * D, D, k, rPx, 0.0, px * D), lattice(d2 * (D * 1.29), D * 1.29, k, rPx, 31.0, px * D * 1.29)), lattice(d3 * (D * 1.13), D * 1.13, k, rPx, 57.0, px * D * 1.13));
+  }
+  // Splatter, as ink flicked from a loaded brush: a fine spray, and here and there a fat drop; dens is
+  // the share of them that land. Fixed to the ground, so as dens rises the spray spreads, and never flickers.
+  float splat(vec3 dir, float dens, float px) {
+    vec3 d2 = vec3(dir.y * 0.8 + dir.z * 0.6, dir.z * 0.8 - dir.y * 0.6, dir.x).yzx;
+    float fine = lattice(dir * 190.0, 190.0, dens, 0.6 * uPx, 11.0, px * 190.0);
+    float fat = lattice(d2 * 64.0, 64.0, dens * 0.55, 1.9 * uPx, 23.0, px * 64.0);
+    return max(fine, fat);
   }
   // The graticule: dotted parallels every 15 degrees and meridians every 20, the dots fixed to the world.
   float graticule(vec3 dir, float pxW) {
@@ -139,7 +147,8 @@ export function printFragment(look: Look, sea: boolean): string {
       // each is an even wash with a ragged edge, a darker rim and grain, wherever it's more than a trace.
       // How squarely the ground faces us: washes (and, below, lines) thin away at the world's rim, so
       // nothing piles up there into a band.
-      float faceOn = clamp(dot(normalize(vS), normalize(vViewPosition)), 0.0, 1.0), washEdge = smoothstep(0.04, 0.35, faceOn);
+      // (By the ground's own slope, not the sphere's: a mountain standing on the rim faces us, and keeps its washes.)
+      float faceOn = clamp(dot(normalize(vN), normalize(vViewPosition)), 0.0, 1.0), washEdge = smoothstep(0.04, 0.35, faceOn);
       vec3 dt = clamp(1.0 - vColor.rgb / max(uLandPaper, vec3(0.01)), 0.0, 1.0);
       float ds = max(dt.r, max(dt.g, dt.b)), lr = ds / (0.05 + 0.05 * b1) + 0.3 * (b3 - 0.5), lrw = max(fwidth(lr), 1e-4);
       float inL = smoothstep(1.0 - lrw, 1.0 + lrw, lr), rimL = exp(-max(0.0, lr - 1.0) / 0.5) * 0.7;
@@ -167,10 +176,10 @@ export function printFragment(look: Look, sea: boolean): string {
       // Stipple: crowded along the shore, thinning inland, gathering on slopes turned from the light,
       // and at the world's edge to round it.
       vec3 V = normalize(vViewPosition), Nn = normalize(vN), S = normalize(vS), L = normalize(vec3(-0.55, 0.6, 0.6));
-      float limb = exp(-clamp(dot(S, V), 0.0, 1.0) * 22.0) * 0.35;
+      float limb = exp(-clamp(dot(Nn, V), 0.0, 1.0) * 22.0) * 0.35;
       // Lines fade out as the ground turns edge-on at the world's rim, so it ends softly, never in an
       // inked outline (seen edge-on, the height crosses the sea everywhere, and the coast line would ring the world).
-      float edgeOn = smoothstep(0.06, 0.3, clamp(dot(S, V), 0.0, 1.0));
+      float edgeOn = smoothstep(0.06, 0.3, clamp(dot(Nn, V), 0.0, 1.0));
       float hl = max(vH, 0.0);
       float relief = max(0.0, dot(S, L) - dot(Nn, L)) * ${sea ? '2.2' : '3.6'};
       // Craters, as lunar charts draw them: a crescent of dots on the inside wall nearest the light (it's
@@ -213,12 +222,14 @@ export function printFragment(look: Look, sea: boolean): string {
       col = mix(col, ink, edgeOn * graticule(vDir, px) * ${sea ? '(1.0 - onLand) * (1.0 - 0.5 * aSea) * 0.5' : '0.22'});
 
 
+      float glowInk = 0.0; // (lava's inks glow by their own light, and are not shaded with the ground)
       ${look === 1 ? ENGRAVE : look === 2 ? WATER : look === 3 ? STIPPLE : look === 4 ? GLOW : PRINT}
 
       ${sea ? `// The coast: one crisp line.
       float coastPx = abs(vH) / max(fwidth(vH), 1e-6);
       col = mix(col, ink, (1.0 - smoothstep(0.55 * uPx - 0.5, 0.55 * uPx + 0.5, coastPx)) * 0.95 * edgeOn);` : ''}
-      diffuseColor.rgb *= col;`;
+      diffuseColor.rgb *= col * (1.0 - glowInk);
+      totalEmissiveRadiance += col * glowInk;`;
 }
 
 const ENGRAVE = /* glsl */ `
@@ -365,10 +376,14 @@ const PRINT = /* glsl */ `
       // vermilion, dark red), no gradients and no outline, the colour plate a little out of register
       // (by a different amount on each part of the world, as if each pour were a different pass), the
       // ink starved here and there, all on twos. While it's fed the bands pulse outward from the vent.
+      // The inks glow by their own light, on the night side too. An eruption throws splatter round the
+      // vent, in jets, and every flow's edge is sprayed rather than cut.
       // Set, the dark red turns a flat grey-black, which then breaks into the ground's stipple.
       {
         float tq = floor(uTime * 12.0) / 12.0; // on twos
         float far = acos(clamp(dot(vDir, uVent), -1.0, 1.0));
+        vec3 vt1 = normalize(cross(uVent, abs(uVent.y) < 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0))), vt2 = cross(uVent, vt1);
+        float ang = atan(dot(vDir, vt2), dot(vDir, vt1));
         float mis = noise3(vDir * 3.0) * 6.2832, mx = cos(mis) * 1.6, my = sin(mis) * 1.6;
         float lvR = lv + (dFdx(lv) * mx + dFdy(lv) * my) * uPx;
         float lwr = max(fwidth(lvR), 1e-4) * 0.8, cov = smoothstep(0.5 - lwr, 0.5 + lwr, lvR + 0.03 * (noise3(vDir * 50.0) - 0.5));
@@ -376,19 +391,33 @@ const PRINT = /* glsl */ `
         T += 0.09 * uFeeding * sin(tq * 2.4 - far * 38.0); // the surge, pulsing outward
         T += 0.05 * (noise3(vDir * 9.0 + vec3(0.0, tq * 0.05, 0.0)) - 0.5);
         float bw = max(fwidth(T), 1e-4) * 0.8;
-        vec3 inkCol = mix(vec3(0.47, 0.13, 0.1), vec3(0.84, 0.24, 0.15), smoothstep(0.33 - bw, 0.33 + bw, T));
-        inkCol = mix(inkCol, vec3(0.96, 0.77, 0.25), smoothstep(0.66 - bw, 0.66 + bw, T));
+        // (Given as printed, then made linear: the screen lightens what's drawn, which turned the red to coral.)
+        vec3 deep = pow(vec3(0.5, 0.06, 0.05), vec3(2.2)), verm = pow(vec3(0.89, 0.2, 0.08), vec3(2.2)), yel = pow(vec3(1.0, 0.8, 0.15), vec3(2.2));
+        vec3 inkCol = mix(deep, verm, smoothstep(0.33 - bw, 0.33 + bw, T));
+        inkCol = mix(inkCol, yel, smoothstep(0.66 - bw, 0.66 + bw, T));
         // Starved ink: the paper shows through in specks.
-        float starve = step(0.88, noise3(vDir * 240.0) * 0.55 + hash3(floor(vDir * 600.0)) * 0.45);
+        float starve = step(0.9, noise3(vDir * 240.0) * 0.55 + hash3(floor(vDir * 600.0)) * 0.45);
         inkCol = mix(inkCol, mix(paper, inkCol, 0.35), starve);
-        col = mix(col, inkCol, cov * 0.95);
+        col = mix(col, inkCol, cov * 0.97);
+        glowInk = cov * 0.85;
+        // Splatter. Round the vent while it erupts, thrown in jets (thicker one way than another), the
+        // near drops still hot; and along every running edge, a spray a little way out onto the ground.
+        float jets = 0.3 + 0.9 * smoothstep(0.35, 0.8, noise3(vec3(cos(ang) * 2.2, sin(ang) * 2.2, 4.0)));
+        float thrown = uSpray * exp(-far / (0.025 + 0.085 * uSpray)) * jets * onLand;
+        float edgeSpray = smoothstep(0.06, 0.5, lv + 0.12 * (noise3(vDir * 30.0) - 0.5)) * (0.35 + 0.65 * uFeeding);
+        float sp = splat(vDir, clamp(thrown * 1.4 + edgeSpray * 0.8, 0.0, 1.0), px) * (1.0 - cov);
+        vec3 spCol = mix(deep, verm, smoothstep(0.03, 0.0, far - 0.05 * uSpray) * 0.8 + 0.2 * uSpray);
+        col = mix(col, spCol, sp * 0.95);
+        glowInk = max(glowInk, sp * 0.85);
         // Set, it still glows a long while, cooling through the same inks, band by band: vermilion for
         // its first ten seconds or so, dark red till about twenty-five, then a flat grey-black till about
         // forty-five, which then breaks into the ground's stipple. (black is e^(-age/45).)
-        float hs = setOn * (1.0 - cov);
+        float hs = setOn * (1.0 - cov) * (1.0 - sp);
         float sb = max(fwidth(black), 1e-4) * 0.8;
-        vec3 setCol = mix(vec3(0.24, 0.22, 0.21), vec3(0.47, 0.13, 0.1), smoothstep(0.6 - sb, 0.6 + sb, black));
-        setCol = mix(setCol, vec3(0.84, 0.24, 0.15), smoothstep(0.8 - sb, 0.8 + sb, black));
+        vec3 setCol = mix(vec3(0.24, 0.22, 0.21), deep, smoothstep(0.6 - sb, 0.6 + sb, black));
+        setCol = mix(setCol, verm, smoothstep(0.8 - sb, 0.8 + sb, black));
         setCol = mix(setCol, mix(paper, setCol, 0.35), starve);
-        col = mix(col, setCol, hs * smoothstep(0.33, 0.4, black) * 0.92);
+        float setA = hs * smoothstep(0.33, 0.4, black) * 0.92;
+        col = mix(col, setCol, setA);
+        glowInk = max(glowInk, setA * smoothstep(0.6 - sb, 0.6 + sb, black) * 0.7); // (still hot, it glows; gone grey, it's ground)
       }`;

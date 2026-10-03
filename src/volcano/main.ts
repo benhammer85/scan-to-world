@@ -219,7 +219,7 @@ const lavaClock = { value: 0 }, pxRatio = { value: 1 };
 /** The craters for the print's shader (the latest 64 of them), and the light in the world's own frame, so a crater's shadow falls the right way however it's turned. */
 const CRATERS = 64, craterAt = Array.from({ length: CRATERS }, () => new THREE.Vector4()), craterAge = new Float32Array(CRATERS), craterCount = { value: 0 };
 /** Where the vent is (the world's own frame), and whether it's feeding lava (the engraving's dashes stream while it is). */
-const ventObj = new THREE.Vector3(0, 0, 1), fed = { value: 0 }, building = { value: 0 };
+const ventObj = new THREE.Vector3(0, 0, 1), fed = { value: 0 }, building = { value: 0 }, spray = { value: 0 };
 const LIGHT_VIEW = new THREE.Vector3(-0.55, 0.6, 0.6).normalize(), lightObj = new THREE.Vector3(), unturn = new THREE.Quaternion();
 function cratering(): void {
   const all = planet.craters, from = Math.max(0, all.length - CRATERS);
@@ -230,6 +230,9 @@ function cratering(): void {
   // (How near the vent is to giving way: the ground round it strains and its cracks glow.)
   building.value = LAMP || planet.pouring ? 0 : Math.min(1, planet.pressure / Math.max(1e-6, planet.capNow));
   fed.value += ((planet.erupting || planet.pouring || planet.molten > 0.01 ? 1 : 0.25) - fed.value) * 0.05;
+  // (An eruption's splatter: thrown out quickly as it starts, settling slowly once it's done.)
+  const throwing = planet.erupting || planet.pouring ? 1 : 0;
+  spray.value += (throwing - spray.value) * (throwing > spray.value ? 0.06 : 0.008);
   lightObj.copy(LIGHT_VIEW).applyQuaternion(unturn.copy(group.quaternion).invert());
 }
 const material = new THREE.MeshLambertMaterial({ vertexColors: true, dithering: true });
@@ -262,6 +265,7 @@ material.onBeforeCompile = (shader) => {
   shader.uniforms.uVent = { value: ventObj };
   shader.uniforms.uFeeding = fed;
   shader.uniforms.uBuild = building;
+  shader.uniforms.uSpray = spray;
   // The woodblock's colours: vermilion, deeper at the edge, hot orange at the core (as working values, not hex: as first seen and liked);
   // on the ice moons, where the lava is water, its blues.
   // (Engraved, the lines are inks: red-brown, deeper at the edge; on the ice moons, where the lava is water, blues.)

@@ -38,6 +38,16 @@ import type { Topology } from '../mesh/topology';
 const REFERENCE = 16002; // an icosphere of detail 40
 /** The depth about which lava runs freely: much thinner, and it hardly moves (see `flow`). */
 const VISCOUS = 0.0138, VISCOUS_15 = VISCOUS * Math.sqrt(VISCOUS);
+/**
+ * Lava's own clock, against everything else's: it spreads and sets this much slower than the
+ * worlds' rules say, both alike, so a flow ends where it always did but takes its time getting
+ * there, creeping and staying molten long enough to be watched.
+ */
+const LAVA_PACE = 0.3;
+/** The fastest lava runs off a vertex, as a rate per second (it used to be half of it each twentieth of a second). */
+const RUN_MOST = 13.9;
+/** How fast a smear thinner than `thin` sets, per second: at once, as it was, at the full pace. */
+const THIN_SETS = 20;
 
 export const VOLCANO = {
   /** The seafloor at the start: even, with only a fine roughness, so flows branch rather than following the mesh. */
@@ -71,7 +81,7 @@ export const VOLCANO = {
   /** Less than this, and there isn't enough to erupt. */
   least: 0.6,
   /** Seconds an eruption takes to pour out. */
-  pour: 2.2,
+  pour: 4.5,
 
   /** A flow also breaks out at a flank this many steps down the slope, in its own direction, taking this share. */
   flank: 5,
@@ -1178,7 +1188,9 @@ export class Planet {
       // Viscous, as lava is: it runs fast where it lies deep and hardly at all where it's thin (its
       // flux rising as its depth to the power two and a half, nearly as a Bingham fluid's does down a slope), so a
       // flow's thick core pushes its thin margin ahead of it in blunt, rounded lobes.
-      const lv = l * Math.sqrt(l), out = Math.min(l * 0.5, this.k.flow * dt * sum * lv / (lv + VISCOUS_15));
+      // (As a rate, at lava's own pace, so a step's length doesn't change how far it gets.)
+      const lv = l * Math.sqrt(l), rate = Math.min(RUN_MOST, (this.k.flow * sum * lv) / (lv + VISCOUS_15) / l);
+      const out = l * (1 - Math.exp(-rate * LAVA_PACE * dt));
       next[v] -= out;
       for (let q = a; q < b; q++) {
         const w = t.nbrList[q], d = drop(w);
@@ -1196,7 +1208,7 @@ export class Planet {
       const sea = this.rock[v] + l < 0;
       // (In a tube of its own fresh crust, lava in the sea cools far slower.)
       const tube = sea && this.k.tubes < 1 && this.laid[v] < this.k.tubeFresh ? this.k.tubes : 1;
-      const solid = l < this.k.thin ? l : l * (1 - Math.exp(-(sea ? this.k.coolSea * tube : this.k.coolLand) * dt));
+      const solid = l * (1 - Math.exp(-(l < this.k.thin ? THIN_SETS : sea ? this.k.coolSea * tube : this.k.coolLand) * LAVA_PACE * dt));
       if (solid > 0) this.laid[v] = 0;
       this.lava[v] -= solid;
       this.rock[v] += solid;
