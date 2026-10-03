@@ -54,11 +54,11 @@ then **▶ Run** again in Xcode. (Or `npm run build:app && npx cap sync ios` if 
 
 ## Icon and launch screen
 
-Both are placeholders: the old volcano icon, and a plain paper-coloured launch screen.
-
-* **Icon:** replace `ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png` with a
-  1024 × 1024 PNG with no transparency. iOS rounds the corners itself.
-* **Launch screen:** the three PNGs in `ios/App/App/Assets.xcassets/Splash.imageset/` (2732 × 2732,
+* **Icon:** the Moon, as the game draws it in the quiet print, on night blue (`#1b2333`), rendered
+  by the game itself. `ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png` is
+  1024 × 1024 with no transparency (the App Store refuses an icon with an alpha channel); iOS rounds
+  the corners itself. The web page's own icons are `public/warm-180.png` and `public/warm-64.png`.
+* **Launch screen** (still a placeholder): the three PNGs in `ios/App/App/Assets.xcassets/Splash.imageset/` (2732 × 2732,
   the paper colour `#f4efe4`). Keep it plain: the game fades in from the paper.
 
 ## TestFlight (friends play it before release)
