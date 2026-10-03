@@ -205,7 +205,7 @@ export function printFragment(look: Look, sea: boolean): string {
       darkL = darkL * (1.0 - 0.85 * litWall) + crDark;
       ${look === 1 ? 'darkL += 0.18 * pow(black, 1.2) * setOn * (1.0 - smoothstep(0.5 - lw, 0.5 + lw, lv)); // set rock: a little stipple under its engraved lines' : ''}
       ${look >= 2 ? 'darkL *= 1.0 - 0.95 * smoothstep(0.45, 0.7, lv); // (running lava covers the ground\'s stipple)' : ''}
-      ${look === 5 ? 'darkL += 0.9 * smoothstep(0.75, 0.2, black) * smoothstep(0.0, 0.25, black) * setOn * (1.0 - smoothstep(0.5 - lw, 0.5 + lw, lv)); // set print: the black breaks into stipple as it weathers' : ''}
+      ${look === 5 ? 'darkL += 0.9 * smoothstep(0.4, 0.2, black) * smoothstep(0.0, 0.15, black) * setOn * (1.0 - smoothstep(0.5 - lw, 0.5 + lw, lv)); // set print: the black breaks into stipple as it weathers' : ''}
       ${look === 3 ? 'darkL += 1.0 * pow(black, 1.1) * setOn * (1.0 - smoothstep(0.5 - lw, 0.5 + lw, lv)); // set: its own dots, black, thinning as it weathers' : ''}
       float dark = mix(limb + exp(-max(-vH, 0.0) / 0.03) * 0.14, darkL + limb, onLand); // (and a little over the shallows, so what rises under the sea shows)
       if (dark > 0.035) col = mix(col, ink, stipple(vDir, 300.0, dark, 0.45 * uPx, px) * 0.92);
@@ -382,8 +382,13 @@ const PRINT = /* glsl */ `
         float starve = step(0.88, noise3(vDir * 240.0) * 0.55 + hash3(floor(vDir * 600.0)) * 0.45);
         inkCol = mix(inkCol, mix(paper, inkCol, 0.35), starve);
         col = mix(col, inkCol, cov * 0.95);
-        // Set: a flat grey-black, the dark red giving way to it, fading as it weathers into stipple.
+        // Set, it still glows a long while, cooling through the same inks, band by band: vermilion for
+        // its first ten seconds or so, dark red till about twenty-five, then a flat grey-black till about
+        // forty-five, which then breaks into the ground's stipple. (black is e^(-age/45).)
         float hs = setOn * (1.0 - cov);
-        vec3 setCol = mix(vec3(0.24, 0.22, 0.21), vec3(0.47, 0.13, 0.1), smoothstep(0.85, 1.0, black));
-        col = mix(col, setCol, hs * smoothstep(0.3, 0.8, black) * 0.8);
+        float sb = max(fwidth(black), 1e-4) * 0.8;
+        vec3 setCol = mix(vec3(0.24, 0.22, 0.21), vec3(0.47, 0.13, 0.1), smoothstep(0.6 - sb, 0.6 + sb, black));
+        setCol = mix(setCol, vec3(0.84, 0.24, 0.15), smoothstep(0.8 - sb, 0.8 + sb, black));
+        setCol = mix(setCol, mix(paper, setCol, 0.35), starve);
+        col = mix(col, setCol, hs * smoothstep(0.33, 0.4, black) * 0.92);
       }`;
