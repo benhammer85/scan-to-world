@@ -141,9 +141,10 @@ if (RUN === null) remember('volcano.world', WORLD.id);
  * woodblock or a watercolour; see print.ts), or as it was. Chosen on the card, and remembered.
  */
 // (A world that tries another ink first keeps its own choice: chosen on its card, it's remembered for it alone.)
-// Print is every world's ink, unless another is chosen for it (and remembered, world by world).
-const OWN_LOOK = `volcano.look.${WORLD.id}`;
-const LOOK_ID = ASKED.get('look') ?? remembered(OWN_LOOK) ?? 'print';
+// The quiet print is every world's ink, unless another is chosen for it (and remembered, world by world).
+// (A new key: inks chosen while comparing the print and the quiet print aren't carried over.)
+const OWN_LOOK = `volcano.ink.${WORLD.id}`;
+const LOOK_ID = ASKED.get('look') ?? remembered(OWN_LOOK) ?? 'quiet';
 const LOOK: Look = LOOKS.find((l) => l.id === LOOK_ID)?.look ?? 1;
 /** The quiet print: lava the one warm accent on a calm map; burps only at the brink, splatter only when it bursts, the smoke lighter. */
 const QUIET = LOOK === 6;

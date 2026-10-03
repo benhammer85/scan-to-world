@@ -19,12 +19,12 @@
  */
 export type Look = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 export const LOOKS: { id: string; look: Look; words: string }[] = [
+  { id: 'quiet', look: 6, words: 'quiet print' },
   { id: 'engrave', look: 1, words: 'engraving' },
   { id: 'water', look: 2, words: 'watercolour' },
   { id: 'stipple', look: 3, words: 'stipple' },
   { id: 'glow', look: 4, words: 'glow' },
   { id: 'print', look: 5, words: 'print' },
-  { id: 'quiet', look: 6, words: 'quiet print' },
   { id: 'plain', look: 0, words: 'last used' },
 ];
 
