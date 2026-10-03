@@ -23,11 +23,14 @@ export const LOOKS: { id: string; look: Look; words: string }[] = [
   { id: 'water', look: 2, words: 'watercolour' },
   { id: 'plain', look: 0, words: 'last used' },
 ];
+/** Worlds that try another ink first (to see it on a world it suits), unless one is chosen for them. */
+export const FIRST_LOOK: Record<string, string> = { mars: 'water' };
 
 /** Declared before the shader's main(); uses its hash3, noise3 and uPx. */
 export const PRINT_FUNCTIONS = /* glsl */ `
   varying vec3 vS;
   uniform float uFloodDots, uFloodRim, uFeeding, uBuild;
+  #define uFeedingGlow (0.4 + 0.6 * uFeeding)
   uniform vec3 uVent;
   // Craters, as the charts draw them (see 'Craters' below): each one's middle and width, how long since it was dug, and the light in the world's own frame.
   uniform vec4 uCrater[64];
@@ -185,6 +188,7 @@ export function printFragment(look: Look, sea: boolean): string {
       ${look === 2 ? 'darkL += 0.45 * sin(black * 3.14159) * setOn; // the dried wash giving way to stipple' : ''}
       darkL = darkL * (1.0 - 0.85 * litWall) + crDark;
       ${look === 1 ? 'darkL += 0.18 * pow(black, 1.2) * setOn * (1.0 - smoothstep(0.5 - lw, 0.5 + lw, lv)); // set rock: a little stipple under its engraved lines' : ''}
+      ${look === 2 ? 'darkL *= 1.0 - 0.9 * smoothstep(0.45, 0.7, lv); // (running watercolour lava covers the ground\'s stipple)' : ''}
       float dark = mix(limb + exp(-max(-vH, 0.0) / 0.03) * 0.14, darkL + limb, onLand); // (and a little over the shallows, so what rises under the sea shows)
       if (dark > 0.035) col = mix(col, ink, stipple(vDir, 300.0, dark, 0.45 * uPx, px) * 0.92);
       // The graticule, over the open sea.
@@ -232,23 +236,38 @@ const ENGRAVE = /* glsl */ `
       col = mix(col, uBlockDeep, (1.0 - smoothstep(0.85 * uPx - 0.5, 0.85 * uPx + 0.5, abs(lv - 0.5) / lw)) * step(0.5 - 2.0 * lw, lv) * 0.92);`;
 
 const WATER = /* glsl */ `
+      // Watercolour lava, coloured by its heat as real lava is: yellow-white at the core, through orange
+      // and red, to a dark crust that forms from the edges in. No outline: a wet wash with a ragged edge,
+      // pigment drifting in it, pooling a little at its edge; a warm glow on the ground round it; drying
+      // to sienna and grey once set, then fading.
+      float wFar = acos(clamp(dot(vDir, uVent), -1.0, 1.0));
       // Set: the wash dries to sienna, then grey, then goes.
       {
-        float inS = (here - 0.5) / hw, rimS = exp(-max(inS, 0.0) / (3.0 * uPx)) * 0.8;
-        vec3 sc = mix(vec3(0.23, 0.235, 0.28), vec3(0.59, 0.26, 0.15), smoothstep(0.7, 1.0, black));
-        float sa = 0.7 * smoothstep(0.0, 0.55, black) * (0.4 + 0.8 * b2 * b2 + rimS) * grain;
-        col *= 1.0 - clamp(sa, 0.0, 0.95) * setOn * (1.0 - smoothstep(0.5 - lw, 0.5 + lw, lv)) * (1.0 - sc);
+        float inS = (here - 0.5) / hw, rimS = exp(-max(inS, 0.0) / (3.0 * uPx)) * 0.6;
+        vec3 sc = mix(vec3(0.42, 0.42, 0.46), vec3(0.62, 0.32, 0.2), smoothstep(0.7, 1.0, black));
+        float sa = 0.6 * smoothstep(0.0, 0.55, black) * (0.4 + 0.8 * b2 * b2 + rimS) * grain;
+        col *= 1.0 - clamp(sa, 0.0, 0.9) * setOn * (1.0 - smoothstep(0.5 - lw, 0.5 + lw, lv)) * (1.0 - sc);
       }
-      // Running: a wet wash with a ragged edge, pooled dark at it, pigment drifting inside.
       {
         float lvr = lv + 0.14 * (noise3(vDir * 40.0) - 0.5) + 0.06 * (noise3(vDir * 110.0) - 0.5);
-        float lwr = max(fwidth(lvr), 1e-4), cov = smoothstep(0.5 - lwr, 0.5 + lwr, lvr);
-        float rim = exp(-max((lvr - 0.5) / lwr, 0.0) / (3.0 * uPx)) * 0.85;
-        float body = 0.25 + 0.95 * pow(noise3(vDir * 16.0 + vec3(uTime * 0.04, -uTime * 0.05, uTime * 0.03)), 1.5);
-        float core = smoothstep(14.0, 70.0, (lvr - 0.5) / lwr / uPx) * (0.5 + 0.9 * (b2 - 0.5));
-        vec3 wc = mix(vec3(0.8, 0.2, 0.11), vec3(0.95, 0.5, 0.15), clamp(core, 0.0, 0.6) * (1.0 - rim));
-        float a = clamp(1.2 * (body + rim), 0.0, 0.95) * cov * grain;
+        float lwr = max(fwidth(lvr), 1e-4) * 1.5, cov = smoothstep(0.5 - lwr, 0.5 + lwr, lvr);
+        // Its heat: deeper and nearer the vent is hotter; the edge cools first.
+        float T = clamp(smoothstep(0.5, 1.6, lv) * 0.65 + exp(-wFar / 0.1) * 0.45, 0.0, 1.0) * smoothstep(0.5, 0.95, lv);
+        T = clamp(T + 0.12 * (noise3(vDir * 14.0 + vec3(0.0, -uTime * 0.06, uTime * 0.04)) - 0.5), 0.0, 1.0);
+        vec3 wc = mix(vec3(0.52, 0.24, 0.17), vec3(0.66, 0.17, 0.1), smoothstep(0.0, 0.2, T));
+        wc = mix(wc, vec3(0.86, 0.24, 0.11), smoothstep(0.15, 0.45, T));
+        wc = mix(wc, vec3(0.94, 0.48, 0.18), smoothstep(0.4, 0.7, T));
+        wc = mix(wc, vec3(0.99, 0.78, 0.4), smoothstep(0.65, 0.9, T));
+        wc = mix(wc, vec3(1.0, 0.94, 0.72), smoothstep(0.85, 1.0, T));
+        float rim = exp(-max((lvr - 0.5) / lwr, 0.0) / (3.0 * uPx)) * 0.5;
+        float body = 0.35 + 0.8 * pow(noise3(vDir * 16.0 + vec3(uTime * 0.04, -uTime * 0.05, uTime * 0.03)), 1.5);
+        float a = clamp(1.15 * (body + rim) * (0.75 + 0.35 * T), 0.0, 0.95) * cov * grain;
+        // (Its hottest part glows: lighter than the paper's tint, laid over rather than multiplied.)
         col *= 1.0 - a * (1.0 - wc);
+        col = mix(col, wc, a * smoothstep(0.6, 1.0, T) * 0.6);
+        // The ground just beyond it warms in its glow.
+        float near = smoothstep(0.08, 0.5, lv) * (1.0 - cov) * smoothstep(-0.5, 0.0, -wFar + 1.0);
+        col *= mix(vec3(1.0), vec3(1.0, 0.82, 0.66), near * 0.55 * uFeedingGlow);
       }`;
 
 /** The lava lamp's blobs, as woodblock prints too: a flat block, hot orange at a hot heart, cut with gouges, in a black outline. */

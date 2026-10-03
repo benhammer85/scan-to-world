@@ -52,7 +52,7 @@ import { measureSecond, secondWords, type Second } from './second';
 import { loadSystem, saveSystem, worldFor, recordPlayed, madeCount } from './system';
 import { openSystem, closeSystem } from './systemChart';
 import { feel, keepImage, NATIVE } from './native';
-import { LOOKS, PRINT_FUNCTIONS, LAMP_PRINT_FUNCTIONS, LAMP_PRINT, printFragment, type Look } from './print';
+import { LOOKS, FIRST_LOOK, PRINT_FUNCTIONS, LAMP_PRINT_FUNCTIONS, LAMP_PRINT, printFragment, type Look } from './print';
 
 const $ = (id: string) => document.getElementById(id)!;
 const stage = $('stage');
@@ -140,7 +140,9 @@ if (RUN === null) remember('volcano.world', WORLD.id);
  * How the worlds are drawn: as prints (stipple, hand-laid washes, and lava as a
  * woodblock or a watercolour; see print.ts), or as it was. Chosen on the card, and remembered.
  */
-const LOOK_ID = ASKED.get('look') ?? remembered('volcano.look') ?? 'engrave';
+// (A world that tries another ink first keeps its own choice: chosen on its card, it's remembered for it alone.)
+const OWN_LOOK = FIRST_LOOK[WORLD.id] ? `volcano.look.${WORLD.id}` : 'volcano.look';
+const LOOK_ID = ASKED.get('look') ?? remembered(OWN_LOOK) ?? FIRST_LOOK[WORLD.id] ?? remembered('volcano.look') ?? 'engrave';
 const LOOK: Look = LOOKS.find((l) => l.id === LOOK_ID)?.look ?? 1;
 const SEA = WORLD.rules.terrain === 'ocean';
 const P = WORLD.palette, LIFE = WORLD.rules.life !== false, ICE = WORLD.rules.terrain === 'ice';
@@ -443,11 +445,12 @@ function surface(v: number): number {
 const LAVA_WHOLE = 0.003;
 /** How many times the marks are eased toward their neighbours. */
 const MARK_EASING = 8;
-const drawnHeight = new Float32Array(N), heightEase = new Float32Array(N), coarseHeight = new Float32Array(N), coarseLand = new Float32Array(N * 3), coarseMarks = new Float32Array(N * 4), eased = new Float32Array(N * 4);
+const lavaShown = new Float32Array(N), drawnHeight = new Float32Array(N), heightEase = new Float32Array(N), coarseHeight = new Float32Array(N), coarseLand = new Float32Array(N * 3), coarseMarks = new Float32Array(N * 4), eased = new Float32Array(N * 4);
 /** The simulation's heights and colours, a vertex at a time, ready to be carried onto the finer surface. */
 function coarse(): void {
   // How far the wash eases this time: by the seconds since last, over a second or two.
   const now = performance.now() / 1000, ease = washedAt < 0 ? 1 : 1 - Math.exp(-(now - washedAt) / 1.5);
+  const lavaEase = washedAt < 0 ? 1 : 1 - Math.exp(-(now - washedAt) / 0.45);
   washedAt = now;
   // The ground as drawn, eased a little toward its neighbours: a flow's edge (and the cliff it
   // leaves when it sets) is a step a vertex high, which seen edge-on, near the world's rim, shows
@@ -485,7 +488,11 @@ function coarse(): void {
     // (Beyond whole, rising on gently, to 2.2: drawn as an engraving, its lines follow the level lines of
     // how deep it lies, well inside its edge. Gently, so the edge, at a half, is as smooth as ever.)
     const deep = lava > 0.00002 ? Math.sqrt(lava / LAVA_WHOLE) : 0;
-    coarseMarks[v * 4 + 1] = Math.min(1, deep) + 0.3 * Math.min(4, Math.max(0, deep - 1));
+    // (Eased over about half a second, so the edge glides as the flow spreads rather than stepping
+    // from vertex to vertex each time the simulation hands lava on.)
+    const lavaNow = Math.min(1, deep) + 0.3 * Math.min(4, Math.max(0, deep - 1));
+    lavaShown[v] += (lavaNow - lavaShown[v]) * lavaEase;
+    coarseMarks[v * 4 + 1] = lavaShown[v];
     // Lava just set: black, weathering back into the ground's colour over a minute or two. Carried as
     // where it lies (1 or 0) and that times how black it still is, so the shader can divide the one
     // by the other and have the blackness even right up to a clean edge.
@@ -1773,7 +1780,7 @@ if (RUN === null) {
     if (l.look === LOOK) b.className = 'here';
     else b.addEventListener('pointerdown', (e) => {
       e.stopPropagation();
-      remember('volcano.look', l.id);
+      remember(OWN_LOOK, l.id);
       const q = new URLSearchParams(location.search);
       q.delete('look');
       location.search = q.toString();
