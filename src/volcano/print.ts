@@ -32,7 +32,7 @@ export const FIRST_LOOK: Record<string, string> = { mars: 'print', moon: 'print'
 /** Declared before the shader's main(); uses its hash3, noise3 and uPx. */
 export const PRINT_FUNCTIONS = /* glsl */ `
   varying vec3 vS;
-  uniform float uFloodDots, uFloodRim, uFeeding, uBuild, uSpray, uDrift, uBurp;
+  uniform float uFloodDots, uFloodRim, uFeeding, uBuild, uSpray, uDrift, uBurp, uBurpSize, uBurpSeed, uBurpDir;
   #define uFeedingGlow (0.4 + 0.6 * uFeeding)
   uniform vec3 uVent;
   // Craters, as the charts draw them (see 'Craters' below): each one's middle and width, how long since it was dug, and the light in the world's own frame.
@@ -458,17 +458,6 @@ const PRINT = /* glsl */ `
         vec3 hotter = mix(mix(verm, yel, smoothstep(0.33 - bw, 0.33 + bw, T)), pale, yelOn);
         vec2 bub = bubbles(vDir, (0.03 + 0.09 * uFeeding) * smoothstep(0.8, 1.3, lvR) * cov, uTime, px * 34.0); // (few, and well apart: a speckle of them was too much)
         inkCol = mix(inkCol, hotter, max(bub.x, bub.y) * cov);
-        // A burp: every so often while it erupts, a great dome of gas swells at the vent, its skin pale
-        // with a ring of orange at its foot, and bursts, throwing a ring of drops (and the splatter, from main).
-        float bp = uBurp;
-        float burpR = 0.008 + 0.03 * smoothstep(0.0, 0.8, bp);
-        float dome = step(bp, 0.8) * (1.0 - smoothstep(burpR - px, burpR + px, far)) * onLand;
-        vec3 domeCol = mix(pale, pow(vec3(0.96, 0.42, 0.08), vec3(2.2)), smoothstep(0.62, 0.8, far / burpR));
-        float bq = (bp - 0.8) / 0.2, ring = 0.0;
-        {
-          float ac = (floor(ang / 6.2832 * 11.0 + 0.5)) * 6.2832 / 11.0, rr = 0.007 * (1.0 - bq) + 0.0015;
-          ring = step(0.0, bq) * (1.0 - step(1.0, bq)) * (1.0 - smoothstep(rr - px, rr + px, length(pol - 0.038 * (1.0 + 1.6 * bq) * vec2(cos(ac), sin(ac))))) * onLand;
-        }
         // The ink as a press lays it: never quite even (heavier here, thinner there), the paper's grain
         // showing through, and a little built up along each colour's own edge, where the press squeezes it.
         float mottle = noise3(vDir * 80.0) * 0.6 + noise3(vDir * 230.0 + 4.0) * 0.4;
@@ -480,9 +469,6 @@ const PRINT = /* glsl */ `
         inkCol = mix(inkCol, mix(paper, inkCol, 0.35), starve);
         col = mix(col, inkCol, cov * 0.97);
         glowInk = cov * 0.85;
-        col = mix(col, domeCol * (0.9 + 0.15 * mottle), dome);
-        col = mix(col, mix(yel, verm, bq), ring * (1.0 - dome));
-        glowInk = max(glowInk, max(dome, ring) * 0.85);
         // Splatter. Round the vent while it erupts, thrown in jets (thicker one way than another), the
         // near drops still hot; and along every running edge, a spray a little way out onto the ground.
         float jets = 0.3 + 0.9 * smoothstep(0.35, 0.8, noise3(vec3(cos(ang) * 2.2, sin(ang) * 2.2, 4.0)));
@@ -507,4 +493,41 @@ const PRINT = /* glsl */ `
         float setA = hs * smoothstep(0.33, 0.4, black) * 0.92;
         col = mix(col, setCol, setA);
         glowInk = max(glowInk, setA * smoothstep(0.6 - sb, 0.6 + sb, black) * 0.7); // (still hot, it glows; gone grey, it's ground)
+        // A burp: now and then while it erupts, gas swells under the crust at the vent, a dark lumpy dome
+        // stretching till the heat shows through it in blotches, and tears: clots flung out, more one way
+        // than another, landing hot and darkening to black, lying a while, then crumbling; and dark ash
+        // blown out over the ground. Every one different (its size, its way, its shape: from main).
+        // (A pale dome popping in a neat ring of drops looked like a cartoon.)
+        {
+          float bt = uBurp, on = step(0.0, bt), S = uBurpSize;
+          float sw = clamp(bt / 1.4, 0.0, 1.0);
+          vec2 dirA = vec2(cos(ang), sin(ang));
+          float jag = noise3(vec3(dirA * 2.5, uBurpSeed * 17.0 + bt * 0.9)) * 0.7 + noise3(vec3(dirA * 7.0, uBurpSeed * 5.0 + bt * 1.7)) * 0.3;
+          float R = S * (0.006 + 0.04 * sw * sw) * (0.6 + 0.8 * jag);
+          float dome = on * step(bt, 1.4) * (1.0 - smoothstep(R - px, R + px, far)) * onLand;
+          float skin = noise3(vDir * 160.0 + uBurpSeed * 31.0) * 0.6 + noise3(vDir * 420.0) * 0.4, skw = max(fwidth(skin), 1e-4);
+          float thinAt = 0.86 - 0.42 * sw * sw, through = smoothstep(thinAt - skw, thinAt + skw, skin);
+          vec3 domeCol = mix(deep * 0.3, mix(verm, yel, smoothstep(0.78 - skw, 0.78 + skw, skin)), through);
+          col = mix(col, domeCol, dome);
+          glowInk = max(glowInk, dome * mix(0.35, 0.9, through));
+          float ft = bt - 1.4, flown = step(0.0, ft) * on;
+          float fly = clamp(ft / 0.45, 0.0, 1.0);
+          float lop = pow(0.5 + 0.5 * cos(ang - uBurpDir), 1.5);
+          float reach = S * (0.03 + 0.13 * (0.25 + 0.75 * lop) * (1.0 - (1.0 - fly) * (1.0 - fly)));
+          float inReach = 1.0 - smoothstep(reach * 0.75, reach * 1.05, far);
+          // Clots: torn blobs, big near the vent and scattered further out, breaking into crumbs as they go.
+          vec3 cp = vDir * 48.0 + uBurpSeed * 13.0;
+          float cn = noise3(cp) * 0.65 + noise3(cp * 2.9 + 4.0) * 0.35, cnw = max(fwidth(cn), 1e-4);
+          float cth = mix(0.48, 0.76, smoothstep(0.0, reach + 1e-4, far)) + 0.1 * (1.0 - lop) + 0.25 * smoothstep(6.0, 11.0, ft) * noise3(vDir * 300.0);
+          float hit = smoothstep(cth - cnw, cth + cnw, cn) * inReach * flown * onLand;
+          if (flown > 0.0 && ft < 11.0) hit = max(hit, lattice(vDir * 150.0, 150.0, 0.45 * lop * inReach * (1.0 - smoothstep(6.0, 11.0, ft)), 0.7 * uPx, 41.0 + floor(uBurpSeed * 50.0), px * 150.0) * onLand);
+          vec3 clotCol = mix(yel, verm, smoothstep(0.0, 0.7, ft));
+          clotCol = mix(clotCol, deep * 0.5, smoothstep(0.5, 2.5, ft));
+          clotCol = mix(clotCol, vec3(0.035, 0.03, 0.028), smoothstep(2.0, 5.0, ft));
+          col = mix(col, clotCol, hit * 0.95);
+          glowInk = max(glowInk, hit * (1.0 - smoothstep(1.0, 3.5, ft)) * 0.85);
+          // Ash, blown out the way it burst, settling, then going.
+          float ash = flown * exp(-far / (reach * 1.4 + 1e-3)) * (0.3 + 0.9 * lop) * smoothstep(0.0, 0.6, ft) * (1.0 - smoothstep(4.0, 12.0, ft)) * onLand * (1.0 - hit);
+          if (ash > 0.02) col = mix(col, vec3(0.15, 0.14, 0.13), stipple(vDir, 300.0, ash * 1.3, 0.5 * uPx, px) * 0.85);
+        }
       }`;
