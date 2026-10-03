@@ -77,6 +77,7 @@ export class Puffs {
         attribute float aDark;
         attribute float aRise;
         varying float vDark;
+        varying float vRise;
         varying float vAlpha;
         varying float vTint;
         varying float vSeed;
@@ -96,6 +97,7 @@ export class Puffs {
           vLife = aLife;
           vWarm = aWarm;
           vDark = aDark;
+          vRise = aRise;
         }`,
       fragmentShader: /* glsl */ `
         varying float vAlpha;
@@ -105,6 +107,7 @@ export class Puffs {
         varying float vLife;
         varying float vWarm;
         varying float vDark;
+        varying float vRise;
         uniform float uCalm;
         // (Hashed without sin, which phones work out roughly.)
         float h2(vec2 p) { vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
@@ -140,7 +143,8 @@ export class Puffs {
             cover *= step(smoothstep(0.45, 1.0, vLife) * 0.97, g);
             float a = vAlpha * cover;
             if (a <= 0.01) discard;
-            ${shadow ? `gl_FragColor = vec4(0.3, 0.25, 0.2, a * (vTint < 1.5 && vTint > 0.5 ? 0.22 : 0.16));` : `vec3 shade = vTint < 0.5 ? vec3(0.32, 0.42, 0.5) : vTint < 1.5 ? vec3(0.06, 0.05, 0.05) : vec3(0.17, 0.15, 0.15);
+            ${shadow ? `// (Only once it has risen, sliding out from under it: at the vent, the shadows of the newest puffs piled up into a dark ball.)
+            gl_FragColor = vec4(0.3, 0.25, 0.2, a * (vTint < 1.5 && vTint > 0.5 ? 0.22 : 0.16) * smoothstep(0.03, 0.12, vRise));` : `vec3 shade = vTint < 0.5 ? vec3(0.32, 0.42, 0.5) : vTint < 1.5 ? vec3(0.06, 0.05, 0.05) : vec3(0.17, 0.15, 0.15);
             vec3 light = vTint < 0.5 ? vec3(0.72, 0.78, 0.8) : vTint < 1.5 ? vec3(0.26, 0.23, 0.21) : vec3(0.56, 0.5, 0.44);
             // (Calm, as the quiet print draws it: smoke the paper left bare, a cream a little lighter than
             // the page, darkening only at the brink; steam a pale blue-white; ash as it is.)

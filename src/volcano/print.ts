@@ -550,7 +550,7 @@ const PRINT = (q: boolean) => /* glsl */ `
           float dome = on * step(bt, 1.4) * (1.0 - smoothstep(R - px, R + px, far)) * onLand;
           float skin = noise3(vDir * 160.0 + uBurpSeed * 31.0) * 0.6 + noise3(vDir * 420.0) * 0.4, skw = max(fwidth(skin), 1e-4);
           float thinAt = 0.86 - 0.42 * sw * sw, through = smoothstep(thinAt - skw, thinAt + skw, skin);
-          vec3 domeCol = mix(deep * 0.3, mix(verm, yel, smoothstep(0.78 - skw, 0.78 + skw, skin)), through);
+          vec3 domeCol = mix(deep * ${q ? '0.85' : '0.3'}, mix(verm, yel, smoothstep(0.78 - skw, 0.78 + skw, skin)), through); // (quiet: a rust skin, not a dark one, which read as a murky ball)
           col = mix(col, domeCol, dome);
           glowInk = max(glowInk, dome * mix(0.35, 0.9, through));
           float ft = bt - 1.4, flown = step(0.0, ft) * on;

@@ -76,7 +76,7 @@ Needs the paid Developer Program.
 
 In App Store Connect, on the app's page:
 
-* **Screenshots:** at least the 6.9" iPhone size (take them on a big iPhone, or in the simulator).
+* **Screenshots:** six are ready in `appstore/screenshots/`, at the 6.9" iPhone size (1320 × 2868), in this order: the Moon, Mars, an ice moon, the smoke, the world of glass, the start card. Each is a frame of the game under a night-blue band with one line in its voice.
 * **Description, keywords, support URL, privacy policy URL.**
 * **App Privacy:** *Data Not Collected* (the game keeps everything on the phone).
 * **Age rating:** answer the questionnaire; it comes out 4+.
