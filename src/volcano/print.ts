@@ -17,16 +17,17 @@
  * (vH), the marks (vMarks: where lava lies, where it has set and how black it still is), the
  * ground's colour (vColor: life's washes, ash), and where on the world it is (vDir).
  */
-export type Look = 0 | 1 | 2 | 3 | 4;
+export type Look = 0 | 1 | 2 | 3 | 4 | 5;
 export const LOOKS: { id: string; look: Look; words: string }[] = [
   { id: 'engrave', look: 1, words: 'engraving' },
   { id: 'water', look: 2, words: 'watercolour' },
   { id: 'stipple', look: 3, words: 'stipple' },
   { id: 'glow', look: 4, words: 'glow' },
+  { id: 'print', look: 5, words: 'print' },
   { id: 'plain', look: 0, words: 'last used' },
 ];
 /** Worlds that try another ink first (to see it on a world it suits), unless one is chosen for them. */
-export const FIRST_LOOK: Record<string, string> = { mars: 'stipple' };
+export const FIRST_LOOK: Record<string, string> = { mars: 'print' };
 
 /** Declared before the shader's main(); uses its hash3, noise3 and uPx. */
 export const PRINT_FUNCTIONS = /* glsl */ `
@@ -204,6 +205,7 @@ export function printFragment(look: Look, sea: boolean): string {
       darkL = darkL * (1.0 - 0.85 * litWall) + crDark;
       ${look === 1 ? 'darkL += 0.18 * pow(black, 1.2) * setOn * (1.0 - smoothstep(0.5 - lw, 0.5 + lw, lv)); // set rock: a little stipple under its engraved lines' : ''}
       ${look >= 2 ? 'darkL *= 1.0 - 0.95 * smoothstep(0.45, 0.7, lv); // (running lava covers the ground\'s stipple)' : ''}
+      ${look === 5 ? 'darkL += 0.9 * smoothstep(0.75, 0.2, black) * smoothstep(0.0, 0.25, black) * setOn * (1.0 - smoothstep(0.5 - lw, 0.5 + lw, lv)); // set print: the black breaks into stipple as it weathers' : ''}
       ${look === 3 ? 'darkL += 1.0 * pow(black, 1.1) * setOn * (1.0 - smoothstep(0.5 - lw, 0.5 + lw, lv)); // set: its own dots, black, thinning as it weathers' : ''}
       float dark = mix(limb + exp(-max(-vH, 0.0) / 0.03) * 0.14, darkL + limb, onLand); // (and a little over the shallows, so what rises under the sea shows)
       if (dark > 0.035) col = mix(col, ink, stipple(vDir, 300.0, dark, 0.45 * uPx, px) * 0.92);
@@ -211,7 +213,7 @@ export function printFragment(look: Look, sea: boolean): string {
       col = mix(col, ink, edgeOn * graticule(vDir, px) * ${sea ? '(1.0 - onLand) * (1.0 - 0.5 * aSea) * 0.5' : '0.22'});
 
 
-      ${look === 1 ? ENGRAVE : look === 2 ? WATER : look === 3 ? STIPPLE : GLOW}
+      ${look === 1 ? ENGRAVE : look === 2 ? WATER : look === 3 ? STIPPLE : look === 4 ? GLOW : PRINT}
 
       ${sea ? `// The coast: one crisp line.
       float coastPx = abs(vH) / max(fwidth(vH), 1e-6);
@@ -356,4 +358,32 @@ const GLOW = /* glsl */ `
         // Its glow on the ground beyond it.
         float near = smoothstep(0.08, 0.5, lv) * (1.0 - cov);
         col *= mix(vec3(1.0), vec3(1.0, 0.8, 0.64), near * 0.6 * (0.4 + 0.6 * uFeeding));
+      }`;
+
+const PRINT = /* glsl */ `
+      // Lava as a 1960s Soviet science book printed it: heat in three flat bands of ink (yellow core,
+      // vermilion, dark red), no gradients and no outline, the colour plate a little out of register
+      // (by a different amount on each part of the world, as if each pour were a different pass), the
+      // ink starved here and there, all on twos. While it's fed the bands pulse outward from the vent.
+      // Set, the dark red turns a flat grey-black, which then breaks into the ground's stipple.
+      {
+        float tq = floor(uTime * 12.0) / 12.0; // on twos
+        float far = acos(clamp(dot(vDir, uVent), -1.0, 1.0));
+        float mis = noise3(vDir * 3.0) * 6.2832, mx = cos(mis) * 1.6, my = sin(mis) * 1.6;
+        float lvR = lv + (dFdx(lv) * mx + dFdy(lv) * my) * uPx;
+        float lwr = max(fwidth(lvR), 1e-4) * 0.8, cov = smoothstep(0.5 - lwr, 0.5 + lwr, lvR + 0.03 * (noise3(vDir * 50.0) - 0.5));
+        float T = clamp(smoothstep(0.5, 1.6, lvR) * 0.7 + exp(-far / 0.1) * 0.5, 0.0, 1.0) * smoothstep(0.5, 0.85, lvR);
+        T += 0.09 * uFeeding * sin(tq * 2.4 - far * 38.0); // the surge, pulsing outward
+        T += 0.05 * (noise3(vDir * 9.0 + vec3(0.0, tq * 0.05, 0.0)) - 0.5);
+        float bw = max(fwidth(T), 1e-4) * 0.8;
+        vec3 inkCol = mix(vec3(0.47, 0.13, 0.1), vec3(0.84, 0.24, 0.15), smoothstep(0.33 - bw, 0.33 + bw, T));
+        inkCol = mix(inkCol, vec3(0.96, 0.77, 0.25), smoothstep(0.66 - bw, 0.66 + bw, T));
+        // Starved ink: the paper shows through in specks.
+        float starve = step(0.88, noise3(vDir * 240.0) * 0.55 + hash3(floor(vDir * 600.0)) * 0.45);
+        inkCol = mix(inkCol, mix(paper, inkCol, 0.35), starve);
+        col = mix(col, inkCol, cov * 0.95);
+        // Set: a flat grey-black, the dark red giving way to it, fading as it weathers into stipple.
+        float hs = setOn * (1.0 - cov);
+        vec3 setCol = mix(vec3(0.24, 0.22, 0.21), vec3(0.47, 0.13, 0.1), smoothstep(0.85, 1.0, black));
+        col = mix(col, setCol, hs * smoothstep(0.3, 0.8, black) * 0.8);
       }`;

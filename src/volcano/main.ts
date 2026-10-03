@@ -717,6 +717,46 @@ function setMark(m: THREE.Sprite, v: number, size: number): void {
   m.scale.setScalar(size * (dist / 3.2));
 }
 
+/**
+ * Drawn as a Soviet science book would (the "print" ink): a bold flat arrow in the lava's red along
+ * a running flow, pointing the way it goes, as those books drew a flow; it fades when the flow stops.
+ */
+const flowArrow = mark((g) => {
+  g.beginPath();
+  g.moveTo(32, 4); g.lineTo(52, 28); g.lineTo(39, 28); g.lineTo(39, 60); g.lineTo(25, 60); g.lineTo(25, 28); g.lineTo(12, 28);
+  g.closePath(); g.fill();
+}, 0.5);
+flowArrow.material.color.set('#c63d26');
+let arrowShown = 0, arrowAt = -1, arrowV = -1;
+const ARROW_C = new THREE.Vector3(), ARROW_A = new THREE.Vector3(), ARROW_B = new THREE.Vector3();
+function arrowing(dt: number): void {
+  const now = performance.now() / 1000;
+  if (now - arrowAt > 0.25) {
+    arrowAt = now;
+    // Where the running lava lies, weighted by how much: its middle, and so the way it's gone from the vent.
+    let wx = 0, wy = 0, wz = 0, w = 0;
+    for (let v = 0; v < N; v++) {
+      const l = planet.lava[v];
+      if (l > LAVA_WHOLE * 0.5 && surface(v) > 0) { wx += base[v * 3] * l; wy += base[v * 3 + 1] * l; wz += base[v * 3 + 2] * l; w += l; }
+    }
+    const q = planet.plume;
+    ARROW_C.set(wx, wy, wz);
+    const ok = w > LAVA_WHOLE * 30 && ARROW_C.lengthSq() > 0 && ARROW_C.normalize().distanceTo(ARROW_A.set(q.x, q.y, q.z)) > 0.04;
+    arrowV = ok ? nearestAbove(ARROW_C) : -1;
+  }
+  const want = arrowV >= 0 && !ending ? 1 : 0;
+  arrowShown += (want - arrowShown) * Math.min(1, dt * 1.5);
+  flowArrow.visible = arrowShown > 0.02 && arrowV >= 0;
+  if (!flowArrow.visible) return;
+  setMark(flowArrow, arrowV, 0.11);
+  flowArrow.material.opacity *= arrowShown * 0.9;
+  // Turned on the page to point from the vent towards it.
+  const q = planet.plume;
+  ARROW_A.set(q.x, q.y, q.z).applyQuaternion(group.quaternion).project(camera);
+  ARROW_B.copy(ARROW_C).applyQuaternion(group.quaternion).project(camera);
+  flowArrow.material.rotation = Math.atan2(ARROW_B.y - ARROW_A.y, (ARROW_B.x - ARROW_A.x) * camera.aspect) - Math.PI / 2;
+}
+
 // ---------------------------------------------------------------- the aim
 /**
  * Each world's aim, reckoned now and then and drawn on the map as a surveyor would draw a route or
@@ -1960,6 +2000,7 @@ renderer.setAnimationLoop(() => {
   aimNext.update(dt);
   if (WORLD.goal === 'orbit') orbiting(dt);
   if (LAMP) lamping();
+  if (LOOK === 5) arrowing(dt);
   if (SUNS) sunning();
   if (WORLD.goal === 'feed') feeding(dt);
   if (WORLD.goal === 'height' || WORLD.goal === 'cover' || WORLD.goal === 'round' || WORLD.goal === 'calm') {
