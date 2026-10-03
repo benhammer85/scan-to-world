@@ -32,7 +32,7 @@ export const FIRST_LOOK: Record<string, string> = { mars: 'print', moon: 'print'
 /** Declared before the shader's main(); uses its hash3, noise3 and uPx. */
 export const PRINT_FUNCTIONS = /* glsl */ `
   varying vec3 vS;
-  uniform float uFloodDots, uFloodRim, uFeeding, uBuild, uSpray, uDrift;
+  uniform float uFloodDots, uFloodRim, uFeeding, uBuild, uSpray, uDrift, uBurp;
   #define uFeedingGlow (0.4 + 0.6 * uFeeding)
   uniform vec3 uVent;
   // Craters, as the charts draw them (see 'Craters' below): each one's middle and width, how long since it was dug, and the light in the world's own frame.
@@ -99,6 +99,27 @@ export const PRINT_FUNCTIONS = /* glsl */ `
     float n = mix(ns, nb, smoothstep(0.25, 0.8, cool));
     float th = mix(0.74, 0.6, cool) - 0.04 * smoothstep(0.1, 0.45, far), fw = max(fwidth(n), 1e-4);
     return smoothstep(th - fw, th + fw, n);
+  }
+  // Bubbles rising through running lava: in some cells of a lattice on the ground (dens of them), each
+  // swells over a few seconds, then pops in a ring of drops. x: the bubble (0 to 1); y: its drops.
+  // (aa: a pixel's width in cells, worked out before any branch.)
+  vec2 bubbles(vec3 dir, float dens, float t, float aa) {
+    const float K = 34.0;
+    vec3 p = dir * K, c = floor(p), h = hash33(c + 71.0);
+    if (h.z > dens) return vec2(0.0);
+    vec3 n = normalize(c + 0.5 + (h - 0.5) * 0.3), ctr = n * K, q = p - ctr;
+    float period = 3.0 + 4.0 * h.x, x = fract(t / period + h.y);
+    float r = 0.24 * smoothstep(0.0, 0.7, x), d = length(q);
+    float disc = step(x, 0.75) * (1.0 - smoothstep(r - aa, r + aa, d));
+    float pp = (x - 0.75) / 0.17, drops = 0.0;
+    if (pp > 0.0 && pp < 1.0) {
+      vec3 u = normalize(cross(n, abs(n.y) < 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0))), v = cross(n, u);
+      vec2 q2 = vec2(dot(q, u), dot(q, v));
+      float a = atan(q2.y, q2.x), ac = (floor(a / 6.2832 * 7.0 + 0.5) + 0.2 * (h.x - 0.5)) * 6.2832 / 7.0;
+      float rr = 0.05 * (1.0 - pp) + 0.008;
+      drops = 1.0 - smoothstep(rr - aa, rr + aa, length(q2 - (0.24 + 0.22 * pp) * vec2(cos(ac), sin(ac))));
+    }
+    return vec2(disc, drops);
   }
   // The graticule: dotted parallels every 15 degrees and meridians every 20, the dots fixed to the world.
   float graticule(vec3 dir, float pxW) {
@@ -396,14 +417,14 @@ const PRINT = /* glsl */ `
         float ang = atan(dot(vDir, vt2), dot(vDir, vt1));
         // (Its edges wobble irregularly, at about the size of the mesh's triangles, so what's left of
         // their teeth, seen close, doesn't line up into a saw.)
-        float wob = 0.16 * (noise3(vDir * 38.0) - 0.5) + 0.07 * (noise3(vDir * 110.0 + 2.0) - 0.5);
+        float wob = 0.16 * (noise3(vDir * 38.0 + vec3(0.0, tq * 0.1, tq * 0.07)) - 0.5) + 0.07 * (noise3(vDir * 110.0 + 2.0) - 0.5); // (heaving slowly: a living surface, not a still one)
         float lvR = lv + wob;
         float lwr = max(fwidth(lvR), 1e-4) * 0.8, cov = smoothstep(0.5 - lwr, 0.5 + lwr, lvR);
         // Its heat: the core follows the deepest lava, down the flow (the vent warms it only a little,
         // or the core sat round the vent like a yolk), pinching and swelling along its length as it's carried.
         vec2 pol = vec2(cos(ang), sin(ang)) * far;
         vec2 rid = pol * (1.0 - uDrift * 0.004 / max(far, 0.02)); // (carried outward from the vent)
-        float pinch = noise3(vec3(rid * 12.0, 7.0));
+        float pinch = noise3(vec3(rid * 12.0, 7.0 + tq * 0.08));
         float T = clamp(smoothstep(0.55, 2.1, lvR) * 0.85 + exp(-far / 0.06) * 0.2 + 0.1 * (pinch - 0.5), 0.0, 1.0) * smoothstep(0.5, 0.85, lvR);
         // While it's fed, the core breathes: widening and narrowing all together (it was rings pulsing outward, which striped long flows).
         T += 0.06 * uFeeding * (0.5 + 0.5 * sin(tq * 1.3)) * smoothstep(0.35, 0.6, T);
@@ -431,6 +452,23 @@ const PRINT = /* glsl */ `
         float cool = 1.0 - smoothstep(0.2, 0.62, T);
         float crust = crustAt(vec3(rid, 0.0), cool, max(far, 0.0)) * (1.0 - yelOn) * (1.0 - redOn);
         inkCol = mix(inkCol, mix(deep * 0.55, deep, smoothstep(0.33 - bw, 0.33 + bw, T)), crust * 0.9);
+        // Bubbles: domes of the next hotter ink swelling on the deeper lava, more while it's fed, each
+        // popping in a ring of drops. (On the yellow core, the palest yellow.)
+        vec3 pale = pow(vec3(1.0, 0.94, 0.62), vec3(2.2));
+        vec3 hotter = mix(mix(verm, yel, smoothstep(0.33 - bw, 0.33 + bw, T)), pale, yelOn);
+        vec2 bub = bubbles(vDir, (0.03 + 0.09 * uFeeding) * smoothstep(0.8, 1.3, lvR) * cov, uTime, px * 34.0); // (few, and well apart: a speckle of them was too much)
+        inkCol = mix(inkCol, hotter, max(bub.x, bub.y) * cov);
+        // A burp: every so often while it erupts, a great dome of gas swells at the vent, its skin pale
+        // with a ring of orange at its foot, and bursts, throwing a ring of drops (and the splatter, from main).
+        float bp = uBurp;
+        float burpR = 0.008 + 0.03 * smoothstep(0.0, 0.8, bp);
+        float dome = step(bp, 0.8) * (1.0 - smoothstep(burpR - px, burpR + px, far)) * onLand;
+        vec3 domeCol = mix(pale, pow(vec3(0.96, 0.42, 0.08), vec3(2.2)), smoothstep(0.62, 0.8, far / burpR));
+        float bq = (bp - 0.8) / 0.2, ring = 0.0;
+        {
+          float ac = (floor(ang / 6.2832 * 11.0 + 0.5)) * 6.2832 / 11.0, rr = 0.007 * (1.0 - bq) + 0.0015;
+          ring = step(0.0, bq) * (1.0 - step(1.0, bq)) * (1.0 - smoothstep(rr - px, rr + px, length(pol - 0.038 * (1.0 + 1.6 * bq) * vec2(cos(ac), sin(ac))))) * onLand;
+        }
         // The ink as a press lays it: never quite even (heavier here, thinner there), the paper's grain
         // showing through, and a little built up along each colour's own edge, where the press squeezes it.
         float mottle = noise3(vDir * 80.0) * 0.6 + noise3(vDir * 230.0 + 4.0) * 0.4;
@@ -442,6 +480,9 @@ const PRINT = /* glsl */ `
         inkCol = mix(inkCol, mix(paper, inkCol, 0.35), starve);
         col = mix(col, inkCol, cov * 0.97);
         glowInk = cov * 0.85;
+        col = mix(col, domeCol * (0.9 + 0.15 * mottle), dome);
+        col = mix(col, mix(yel, verm, bq), ring * (1.0 - dome));
+        glowInk = max(glowInk, max(dome, ring) * 0.85);
         // Splatter. Round the vent while it erupts, thrown in jets (thicker one way than another), the
         // near drops still hot; and along every running edge, a spray a little way out onto the ground.
         float jets = 0.3 + 0.9 * smoothstep(0.35, 0.8, noise3(vec3(cos(ang) * 2.2, sin(ang) * 2.2, 4.0)));
