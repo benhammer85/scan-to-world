@@ -26,7 +26,7 @@ function layout(sys: System): { x: number; y: number; d: number }[] {
 
 function svgOf(sys: System): string {
   const at = layout(sys), h = (at.at(-1)?.y ?? 100) + 60, parts: string[] = [];
-  parts.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${h}" width="100%" style="display:block;max-width:520px;margin:0 auto" font-family="Iowan Old Style, Palatino, Georgia, serif">`);
+  parts.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${h}" width="100%" style="display:block;max-width:520px;margin:0 auto" font-family="Newsreader, Iowan Old Style, Georgia, serif">`);
   parts.push(`<rect width="${W}" height="${h}" fill="#f4efe4"/>`);
   // The star, with short rays.
   parts.push(`<circle cx="48" cy="34" r="12" fill="#efe0b0" stroke="${INK}" stroke-width="1.2"/>`);

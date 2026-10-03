@@ -22,7 +22,7 @@ export interface ChartInfo {
 }
 
 const PAPER = '#f4efe4', INK = '#2e2118', FAINT = 'rgba(46,33,24,0.45)';
-const SERIF = '"Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif';
+const SERIF = '"Newsreader", "Iowan Old Style", Georgia, serif';
 
 export function drawChart(globe: HTMLCanvasElement, info: ChartInfo): HTMLCanvasElement {
   const W = 1200, H = 1680;

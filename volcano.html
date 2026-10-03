@@ -11,7 +11,7 @@
       html, body { margin: 0; height: 100%; background: #f4efe4; overflow: hidden; touch-action: none; -webkit-user-select: none; user-select: none; }
       #stage { position: fixed; inset: 0; width: 100vw; height: 100dvh; }
       #stage canvas { width: 100% !important; height: 100% !important; display: block; }
-      .engraved { font-family: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif; color: #2e2118; }
+      .engraved { font-family: "Newsreader", "Iowan Old Style", Georgia, serif; color: #2e2118; }
       /* The era, as a map's title; and, at the end, the chart drawn round the world, on a canvas over it. */
       #stage-name { position: fixed; top: calc(22px + env(safe-area-inset-top)); left: 0; right: 0; text-align: center; font-size: 19px; letter-spacing: 0.04em; pointer-events: none; }
       /* What to do, and how far it's come: always there, quietly, under the world's name. */
@@ -60,7 +60,7 @@
       #system.open { display: block; }
       #system .head { display: flex; justify-content: space-between; align-items: baseline; margin: 0 4px 6px; }
       #system h2 { margin: 0; font-weight: normal; font-style: italic; font-size: 22px; letter-spacing: 0.04em; }
-      #system .close { font: italic 14px "Iowan Old Style", Palatino, Georgia, serif; color: #2e2118; background: none; border: none; opacity: 0.6; padding: 6px; cursor: pointer; }
+      #system .close { font: italic 14px "Newsreader", "Iowan Old Style", Georgia, serif; color: #2e2118; background: none; border: none; opacity: 0.6; padding: 6px; cursor: pointer; }
       #system .about { margin: 0 4px 10px; font-size: 13px; font-style: italic; opacity: 0.7; line-height: 1.45; }
       #system .foot { text-align: center; font-size: 14px; font-style: italic; margin-top: 8px; }
       #system .foot .again { opacity: 0.55; font-size: 13px; cursor: pointer; padding: 8px; }
@@ -68,7 +68,7 @@
       #atlas.open { display: block; }
       #atlas .head { display: flex; justify-content: space-between; align-items: baseline; margin: 0 4px 18px; }
       #atlas h2 { margin: 0; font-weight: normal; font-style: italic; font-size: 22px; letter-spacing: 0.04em; }
-      #atlas .close { font: italic 14px "Iowan Old Style", Palatino, Georgia, serif; color: #2e2118; background: none; border: none; opacity: 0.6; padding: 6px; cursor: pointer; }
+      #atlas .close { font: italic 14px "Newsreader", "Iowan Old Style", Georgia, serif; color: #2e2118; background: none; border: none; opacity: 0.6; padding: 6px; cursor: pointer; }
       #atlas .pages { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 20px 14px; max-width: 900px; margin: 0 auto; }
       #atlas figure { margin: 0; cursor: pointer; }
       #atlas figure img { width: 100%; display: block; box-shadow: 0 1px 4px rgba(46, 33, 24, 0.18); }
@@ -81,12 +81,12 @@
       #again { position: fixed; top: calc(96px + env(safe-area-inset-top)); left: 0; right: 0; text-align: center; font-size: 12px; font-style: italic; opacity: 0; pointer-events: none; transition: opacity 2s; margin: 0; }
       #again.shown { opacity: 0.55; }
       /* In free play, a quiet way to end the fire when you choose, where the chart's keep will be. */
-      #finish { position: fixed; top: calc(22px + env(safe-area-inset-top)); right: 24px; font: italic 12px "Iowan Old Style", Palatino, Georgia, serif; color: #2e2118; background: none; border: none; opacity: 0; pointer-events: none; transition: opacity 2s; cursor: pointer; padding: 4px; }
+      #finish { position: fixed; top: calc(22px + env(safe-area-inset-top)); right: 24px; font: italic 12px "Newsreader", "Iowan Old Style", Georgia, serif; color: #2e2118; background: none; border: none; opacity: 0; pointer-events: none; transition: opacity 2s; cursor: pointer; padding: 4px; }
       #finish.shown { opacity: 0.4; pointer-events: auto; }
-      #keep { position: fixed; top: calc(22px + env(safe-area-inset-top)); right: 24px; font: italic 12px "Iowan Old Style", Palatino, Georgia, serif; color: #2e2118; background: none; border: none; opacity: 0; pointer-events: none; transition: opacity 2s; cursor: pointer; padding: 4px; }
+      #keep { position: fixed; top: calc(22px + env(safe-area-inset-top)); right: 24px; font: italic 12px "Newsreader", "Iowan Old Style", Georgia, serif; color: #2e2118; background: none; border: none; opacity: 0; pointer-events: none; transition: opacity 2s; cursor: pointer; padding: 4px; }
       #keep.shown { opacity: 0.5; pointer-events: auto; }
       /* The worlds, in a corner off the world: back to the card that lists them. */
-      #worlds { position: fixed; top: calc(22px + env(safe-area-inset-top)); left: 20px; font: 12px "Iowan Old Style", Palatino, Georgia, serif; letter-spacing: 0.12em; color: #2e2118; background: none; border: none; opacity: 0.35; cursor: pointer; padding: 6px; }
+      #worlds { position: fixed; top: calc(22px + env(safe-area-inset-top)); left: 20px; font: 12px "Newsreader", "Iowan Old Style", Georgia, serif; letter-spacing: 0.12em; color: #2e2118; background: none; border: none; opacity: 0.35; cursor: pointer; padding: 6px; }
     </style>
   </head>
   <body>

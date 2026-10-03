@@ -52,6 +52,7 @@ import { measureSecond, type Second } from './second';
 import { loadSystem, saveSystem, worldFor, recordPlayed, madeCount } from './system';
 import { openSystem, closeSystem } from './systemChart';
 import { feel, keepImage, NATIVE } from './native';
+import './fonts.css';
 import { LOOKS, PRINT_FUNCTIONS, LAMP_PRINT_FUNCTIONS, LAMP_PRINT, LAMP_QUIET, printFragment, type Look } from './print';
 
 const $ = (id: string) => document.getElementById(id)!;
