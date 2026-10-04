@@ -17,19 +17,23 @@ const run = (pl: Planet, seconds: number) => { for (let t = 0; t < seconds; t +=
 
 describe('the worlds', () => {
   it('come one after another, and each has its own aim', () => {
-    expect(WORLDS.map((w) => w.id)).toEqual(['mars', 'moon', 'ice', 'asteroid', 'ocean', 'young', 'io', 'enceladus', 'tumble', 'spin', 'deep', 'lamp']);
+    expect(WORLDS.map((w) => w.id)).toEqual(['mars', 'moon', 'ice', 'asteroid', 'rogue', 'ocean', 'snowball', 'young', 'io', 'enceladus', 'tumble', 'spin', 'magma', 'dust', 'deep', 'lamp']);
     expect(worldOf('moon').goal).toBe('basins');
     expect(worldOf('nowhere').id).toBe('mars');
     expect(nextWorld(worldOf('mars'))!.id).toBe('moon');
     expect(nextWorld(worldOf('moon'))!.id).toBe('ice');
     expect(nextWorld(worldOf('ice'))!.id).toBe('asteroid');
-    expect(nextWorld(worldOf('asteroid'))!.id).toBe('ocean');
-    expect(nextWorld(worldOf('ocean'))!.id).toBe('young');
+    expect(nextWorld(worldOf('asteroid'))!.id).toBe('rogue');
+    expect(nextWorld(worldOf('rogue'))!.id).toBe('ocean');
+    expect(nextWorld(worldOf('ocean'))!.id).toBe('snowball');
+    expect(nextWorld(worldOf('snowball'))!.id).toBe('young');
     expect(nextWorld(worldOf('young'))!.id).toBe('io');
     expect(nextWorld(worldOf('io'))!.id).toBe('enceladus');
     expect(nextWorld(worldOf('enceladus'))!.id).toBe('tumble');
     expect(nextWorld(worldOf('tumble'))!.id).toBe('spin');
-    expect(nextWorld(worldOf('spin'))!.id).toBe('deep');
+    expect(nextWorld(worldOf('spin'))!.id).toBe('magma');
+    expect(nextWorld(worldOf('magma'))!.id).toBe('dust');
+    expect(nextWorld(worldOf('dust'))!.id).toBe('deep');
     expect(nextWorld(worldOf('deep'))!.id).toBe('lamp');
     expect(nextWorld(worldOf('lamp'))).toBe(null);
   });
@@ -444,5 +448,67 @@ describe('life growing up', () => {
     expect(stage('moss', 0.3)).toBe('meadow');
     expect(stage('moss', 1)).toBe('forest');
     expect(stage('mangrove', 0.3)).toBe('mangrove');
+  });
+});
+
+describe('a rogue planet', () => {
+  it('keeps life only on ground still warm from lava', () => {
+    const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('rogue').rules);
+    pl.stonesFall = false;
+    // Warm ground by the vent, and old cold ground the same: life lands on the one, and lives.
+    for (let v = 0; v < pl.rock.length; v++) if (p[v * 3 + 2] > 0.9) { pl.laid[v] = 30; pl.age[v] = 30; }
+    for (let t = 0; t < 40; t += 1 / 20) { pl.pressure = 0; pl.step(1 / 20); }
+    expect(pl.livingLand).toBeGreaterThan(20);
+    // Left to cool, it dies back.
+    for (let t = 0; t < 200; t += 1 / 20) { pl.pressure = 0; pl.step(1 / 20); }
+    expect(pl.livingLand).toBeLessThan(5);
+  });
+});
+
+describe('Snowball Earth', () => {
+  it('lets go of the ice from the equator as the gas builds, and gives way at the last', () => {
+    const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('snowball').rules);
+    pl.stonesFall = false;
+    pl.greenhouse = pl.k.thawAt * 0.5;
+    run(pl, 20);
+    expect(pl.iceLine).toBeGreaterThan(0.1);
+    expect(pl.thawed).toBe(false);
+    pl.greenhouse = pl.k.thawAt * 1.1;
+    run(pl, 5);
+    expect(pl.thawed).toBe(true);
+  });
+  it('loses the gas of an eruption under the ice', () => {
+    const pl = new Planet(topo, nearest(0, 1, 0), 3, worldOf('snowball').rules); // (at the pole, deep under the ice)
+    pl.stonesFall = false;
+    pl.pressure = 8; pl.erupt();
+    expect(pl.greenhouse).toBe(0);
+  });
+});
+
+describe('worlds under a star', () => {
+  it('boils away new ground facing the star, and keeps it in the night', () => {
+    const lost = (facing: boolean) => {
+      const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('dust').rules);
+      pl.stonesFall = false;
+      pl.star = facing ? { x: 0, y: 0, z: 1 } : { x: 0, y: 0, z: -1 };
+      pl.pressure = 6; pl.erupt();
+      run(pl, 40);
+      return pl.lost;
+    };
+    expect(lost(true)).toBeGreaterThan(1);
+    expect(lost(false)).toBe(0);
+  });
+  it('keeps lava molten in the starlight, and it falls as rock snow at the edge of night', () => {
+    const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('magma').rules);
+    pl.stonesFall = false;
+    pl.star = { x: 0, y: 0, z: 1 };
+    pl.pressure = 6; pl.erupt();
+    run(pl, 40);
+    expect(pl.snow).toBeGreaterThan(0.5);
+    // (Fallen just past the edge of day, not deep in the night.)
+    let edge = 0, far = 0;
+    for (let v = 0; v < pl.rock.length; v++) { const d = p[v * 3 + 2], gain = pl.rock[v] - pl.start[v]; if (d < -0.1 && d > -0.25) edge = Math.max(edge, gain); if (d < -0.75) far = Math.max(far, gain); }
+    expect(edge).toBeGreaterThan(0);
+    expect(far).toBe(0);
   });
 });

@@ -32,6 +32,7 @@ const chain = W.goal === 'ring' ? new Chain(pl.plume, pl.driftDirection) : null;
 // The aim, reckoned as main.ts reckons it.
 const HEIGHT = W.height ?? { target: 0, kmPerUnit: 40 };
 const CALM = W.calm ?? 0, ISLAND = W.island ?? 0, POOL = W.pool ?? 0, ROUND = Math.round((W.round ?? 0) * 100), COVER = Math.round((W.cover ?? 0) * 100), PLUMES = W.plumes ?? 0, ORBIT = W.orbit ?? 0;
+const HEARTH = W.hearth ?? 0, OUTBUILD = W.outbuild ?? 0, SNOWFALL = W.snowfall ?? 0;
 let calmHeld = 0, calmAt = 0;
 function aim(): [number, number] {
   switch (W.goal) {
@@ -45,6 +46,10 @@ function aim(): [number, number] {
     case 'calm': { const d = Math.max(0, Math.round((1 - pl.tumbling) * 100)); calmHeld = d >= CALM ? calmHeld + (pl.seconds - calmAt) : 0; calmAt = pl.seconds; return [d, CALM]; }
     case 'bank': return [(100 * pl.bankLand) / ISLAND, 100];
     case 'orbit': case 'feed': return [(100 * pl.orbit) / ORBIT, 100];
+    case 'hearth': return [(100 * pl.livingLand) / HEARTH, 100];
+    case 'thaw': return [pl.thawed ? 100 : Math.min(99, (100 * pl.greenhouse) / pl.k.thawAt), 100];
+    case 'outbuild': return [Math.max(0, (100 * pl.grownBy) / OUTBUILD), 100];
+    case 'snow': return [(100 * pl.snow) / SNOWFALL, 100];
     default: return [pl.basins.filter((b) => pl.flooded(b) >= 0.7).length, pl.basins.length];
   }
 }
@@ -58,7 +63,7 @@ ortho();
 const LEVEL = V(0, -0.3, -1).normalize();
 const hold = LEVEL.clone(); // which way is down, in the camera's frame
 const toPlanet = (c: THREE.Vector3) => V().addScaledVector(R, c.x).addScaledVector(S, c.y).addScaledVector(F, c.z);
-const GIANT = V(-0.95, 2.6, -4.8).normalize();
+const GIANT = V(-0.95, 2.6, -4.8).normalize(), SUNV = W.sun ? V(...(W.sun as [number, number, number])).normalize() : null;
 const vent = () => V(pl.plume.x, pl.plume.y, pl.plume.z);
 /** Drag the globe so `p` comes towards the middle, at a hand's pace (radians a second). */
 function turnTowards(p: THREE.Vector3, dt: number, pace = 1.2): void {
@@ -66,6 +71,14 @@ function turnTowards(p: THREE.Vector3, dt: number, pace = 1.2): void {
   const U = toPlanet(LEVEL).negate().normalize();
   const a = U.angleTo(p); if (a < 1e-4) return;
   const q = new THREE.Quaternion().setFromUnitVectors(U, p.clone().normalize());
+  const part = new THREE.Quaternion().slerp(q, Math.min(1, (pace * dt) / a));
+  F.applyQuaternion(part); S.applyQuaternion(part); ortho();
+}
+/** Drag the globe so the vent comes to a place on the screen (a direction, as seen), at a hand's pace. */
+function bringVentTo(view: THREE.Vector3, dt: number, pace = 1.2): void {
+  const U = toPlanet(view.clone().normalize()).normalize(), p = vent();
+  const a = U.angleTo(p); if (a < 1e-4) return;
+  const q = new THREE.Quaternion().setFromUnitVectors(U, p);
   const part = new THREE.Quaternion().slerp(q, Math.min(1, (pace * dt) / a));
   F.applyQuaternion(part); S.applyQuaternion(part); ortho();
 }
@@ -80,7 +93,7 @@ function tiltTowards(p: THREE.Vector3 | null, amt: number): void {
 let rs = seed * 9301 + 49297; const rnd = () => { rs = (rs * 9301 + 49297) % 233280; return rs / 233280; };
 const randomNear = (c: THREE.Vector3, ang: number) => { const t = V(rnd() - 0.5, rnd() - 0.5, rnd() - 0.5); t.addScaledVector(c, -t.dot(c)).normalize(); return c.clone().multiplyScalar(Math.cos(ang)).addScaledVector(t, Math.sin(ang)).normalize(); };
 const angleBetween = (a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }) => Math.acos(Math.max(-1, Math.min(1, (a.x * b.x + a.y * b.y + a.z * b.z) / Math.hypot(a.x, a.y, a.z) / Math.hypot(b.x, b.y, b.z))));
-const setInputs = () => { if (botKind === 'nogravity') { pl.gravity = null; return; } const g = toPlanet(hold).normalize(); pl.gravity = { x: g.x, y: g.y, z: g.z }; if (W.goal === 'feed') { const s = toPlanet(GIANT).normalize(); pl.giant = { x: s.x, y: s.y, z: s.z }; } };
+const setInputs = () => { if (SUNV) { const s = toPlanet(SUNV).normalize(); pl.star = { x: s.x, y: s.y, z: s.z }; } if (botKind === 'nogravity') { pl.gravity = null; return; } const g = toPlanet(hold).normalize(); pl.gravity = { x: g.x, y: g.y, z: g.z }; if (W.goal === 'feed') { const s = toPlanet(GIANT).normalize(); pl.giant = { x: s.x, y: s.y, z: s.z }; } };
 function clampOn(): void { pl.clamped = true; }
 function lift(): void { if (pl.clamped) pl.unclamp(); }
 
@@ -198,6 +211,19 @@ const card: Record<string, Bot> = {
   },
   // Pour towards the bank, again and again.
   bank: () => { const b = V(pl.bank!.x, pl.bank!.y, pl.bank!.z); pourCycle(b, 0.6); },
+  // Pour, each time a little round from the last, never on what lives.
+  // Turn a little after each pour, so the vent creeps on, and pour beside what lives, not on it.
+  hearth: (dt) => {
+    if (!focus || (phase === 'build' && timer <= 0)) { const v = vent(), t = V(0, 1, 0).cross(v).normalize(); focus = v.clone().addScaledVector(t.applyAxisAngle(v, pl.tally.flows * 1.1), 0.3).normalize(); timer = 25; }
+    timer -= dt; turnTowards(focus, dt, 0.3);
+    pourCycle(null, 0.5);
+  },
+  // Pour until the mountain stands above the sea, then hold and burst.
+  thaw: () => { if (pl.rock[pl.plumeVertex] < 0.02) return pourCycle(null); if (!pl.clamped) clampOn(); level(); if (pl.pressure >= pl.k.explosive * 1.05) lift(); },
+  // Drag the vent round into the night, where it pours of itself.
+  outbuild: (dt) => { bringVentTo(V(-0.55, 0.1, 0.83), dt); level(); },
+  // Drag the vent round into the starlight, where it pours of itself.
+  snow: (dt) => { bringVentTo(V(0.62, 0.2, 0.76), dt); level(); },
   // Hold until the smoke is heavy, then let it burst.
   orbit: () => { if (!pl.clamped) clampOn(); level(); if (pl.pressure >= pl.k.explosive * 1.05) lift(); else if (pl.pressure > pl.capNow * 0.93) lift(); },
 };

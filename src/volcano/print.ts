@@ -33,6 +33,8 @@ export const PRINT_FUNCTIONS = /* glsl */ `
   varying vec3 vS;
   uniform float uFloodDots, uFloodRim, uFeeding, uBuild, uSpray, uDrift, uBurp, uBurpSize, uBurpSeed, uBurpDir, uGold, uDark;
   uniform vec3 uCrustTint; // (each world's own basalt: redder on Mars, olive on Io, grey on the Moon)
+  uniform float uIceLine; // (Snowball Earth: the ice from this latitude's sine to the poles; below 0, no ice)
+  uniform vec4 uSky; // (its star's direction, as seen, and w: 0 no star in it, 1 a star, 2 none at all, a rogue planet)
   #define uFeedingGlow (0.4 + 0.6 * uFeeding)
   uniform vec3 uVent;
   // Craters, as the charts draw them (see 'Craters' below): each one's middle and width, how long since it was dug, and the light in the world's own frame.
@@ -226,6 +228,25 @@ export function printFragment(look: Look, sea: boolean): string {
       float floodDark = inF * uFloodStrength * uFloodDots; // (the Moon's dark seas are stippled darker, as lunar charts draw them)
       landCol *= 1.0 - aO * washEdge * (1.0 - vec3(0.77, 0.63, 0.36));
       col = mix(col, landCol * mix(vec3(1.0), col / paper, inSea), onLand);
+
+      // Snowball Earth: the ice, from the poles to where it has let go, its edge ragged; on land and sea alike,
+      // white with a faint blue, and a little greyer just at its edge, where it's thin.
+      if (uIceLine >= 0.0) {
+        float lat = abs(vDir.y) + 0.035 * (b2 - 0.5) + 0.012 * (b3 - 0.5), iw = max(fwidth(lat), 1e-4) * 1.5;
+        float iced = smoothstep(uIceLine - iw, uIceLine + iw, lat);
+        vec3 iceCol = paper * vec3(0.975, 0.99, 1.0) * (0.97 + 0.05 * grain) * (1.0 - 0.07 * exp(-max(0.0, lat - uIceLine) / 0.02));
+        col = mix(col, iceCol, iced * 0.94);
+      }
+      // A star in the sky: its night side in shadow. With none at all, a rogue planet, all of it in the dark,
+      // and only the lava's own light (drawn after) bright.
+      if (uSky.w > 0.5) {
+        float sunUp = dot(normalize(vN), uSky.xyz);
+        float night = uSky.w > 1.5 ? 1.0 : smoothstep(0.1, -0.22, sunUp);
+        // (On a rogue planet, darker, but what lives there kept light: life's washes glow out of the dark.)
+        float lives = uSky.w > 1.5 ? smoothstep(0.03, 0.1, ds) : 0.0;
+        col = mix(col, col * (uSky.w > 1.5 ? vec3(0.34, 0.37, 0.48) : vec3(0.36, 0.39, 0.5)), night * 0.9 * (1.0 - 0.85 * lives));
+        col = mix(col, col * vec3(0.74, 0.9, 0.66), lives * 0.75); // (a soft moss green, in the dark)
+      }
 
       // Lava's marks.
       float lv = vMarks.y * onLand, lw = max(fwidth(lv), 1e-4); // (under the sea it's hidden, as it always was)

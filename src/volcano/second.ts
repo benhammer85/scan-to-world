@@ -27,6 +27,14 @@
  *                   the ring is frost the moon doesn't get.
  *   A young Earth   make a moon, as big as it can be: bigger bursts throw more, but held too long
  *                   the cone blows apart and throws nothing.
+ *   A rogue planet  keep life warm, and as much as possible still alive as the fire ends: the last
+ *                   of the heat poured out fast covers what lives.
+ *   Snowball Earth  make the ice give way, and soon: the sooner it does, the more open sea there is
+ *                   as the fire ends.
+ *   Boiling away    outgrow what the star boils, and lose as little to it as can be: pouring only
+ *                   in the night is slower to turn to.
+ *   A lava world    make rock snow, and pile it deep in one place: snow spreads along all the edge
+ *                   of night, and turning the world to pile it costs the molten pool.
  */
 import type { Topology } from '../mesh/topology';
 import type { Planet } from './sim';
@@ -55,6 +63,10 @@ export function secondWords(goal: World['goal'], value: number): string {
     case 'feed': return `${value}% of the moon frosted new`;
     case 'plumes': return `the widest plume ${value.toLocaleString('en')} km across`;
     case 'orbit': return value > 0 ? `a moon ${value.toLocaleString('en')} km across` : 'no moon';
+    case 'hearth': return `${value} living as the fire ended`;
+    case 'thaw': return `${value}% open sea`;
+    case 'outbuild': return `${value}% of it kept from the star`;
+    case 'snow': return `drifts ${value} km deep`;
   }
 }
 
@@ -112,6 +124,18 @@ export function measureSecond(world: World, pl: Planet, topo: Topology, islands:
     // As much rock as the aim asks makes a moon as wide as ours; more, a wider one, by the cube root.
     const aim = world.orbit ?? 1;
     value = pl.orbit >= aim ? Math.round((MOON_KM * Math.cbrt(pl.orbit / aim)) / 10) * 10 : 0;
+  } else if (world.goal === 'hearth') {
+    value = Math.round(pl.livingLand);
+  } else if (world.goal === 'thaw') {
+    // (The ice band's edge is a latitude's sine, so the open band holds just that share of the surface.)
+    value = Math.round(pl.iceLine * 100);
+  } else if (world.goal === 'outbuild') {
+    const laid = Math.max(0, pl.grownBy) + pl.lost;
+    value = laid > 0 ? Math.round((100 * Math.max(0, pl.grownBy)) / laid) : 0;
+  } else if (world.goal === 'snow') {
+    let most = 0;
+    for (let v = 0; v < n; v++) if (pl.ash[v] > 0.5) most = Math.max(most, pl.rock[v] - pl.start[v]);
+    value = Math.round(most * (world.height?.kmPerUnit ?? 40) * 10) / 10;
   } else {
     // The largest connected sheet of new ice (or frost), as a share of the surface.
     const covered = (v: number) => pl.age[v] < 1e5 || pl.ash[v] > 0.15, seen = new Uint8Array(n);

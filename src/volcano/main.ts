@@ -155,6 +155,8 @@ const DARK_LAVA = WORLD.rules.terrain !== 'ice' && (() => { const asked = ASKED.
 // (The ocean world leaves its terrain to the simulation's default, which is ocean: read as given it
 // was undefined, and the first world was drawn as a dry one, with no sea, coast or shallows.)
 const SEA = (WORLD.rules.terrain ?? 'ocean') === 'ocean';
+// (A rogue planet has no star: the ground is dark, and what lives there is drawn at its full strength from the first, glowing out of it.)
+const ROGUE = WORLD.id === 'rogue';
 const P = WORLD.palette, LIFE = WORLD.rules.life !== false, ICE = WORLD.rules.terrain === 'ice';
 /** On Io, the plumes' sulphur is drawn as the flood mark is elsewhere: in a clean-edged band, as a geological map draws a unit. */
 const SULPHUR = (WORLD.rules.ashRing ?? 0) > 0;
@@ -299,8 +301,10 @@ material.onBeforeCompile = (shader) => {
   shader.uniforms.uFeeding = fed;
   shader.uniforms.uBuild = building;
   shader.uniforms.uDark = { value: DARK_LAVA ? 1 : 0 };
+  shader.uniforms.uIceLine = iceLine;
+  shader.uniforms.uSky = sky;
   // Each world's own basalt, as a tint on the dark lava (a multiplier: 1 is a plain black-brown).
-  const CRUST: Record<string, [number, number, number]> = { mars: [1.35, 0.9, 0.75], io: [0.78, 0.84, 0.86], moon: [0.95, 0.98, 1.08], ocean: [0.88, 0.97, 1.08], deep: [0.85, 0.97, 1.12], spin: [0.9, 0.98, 1.12], asteroid: [1.05, 0.98, 0.92], young: [1.25, 0.92, 0.82], tumble: [1.0, 0.97, 0.95] };
+  const CRUST: Record<string, [number, number, number]> = { rogue: [0.9, 0.95, 1.1], dust: [1.25, 0.95, 0.8], magma: [1.1, 0.96, 0.9], snowball: [0.9, 0.97, 1.08], mars: [1.35, 0.9, 0.75], io: [0.78, 0.84, 0.86], moon: [0.95, 0.98, 1.08], ocean: [0.88, 0.97, 1.08], deep: [0.85, 0.97, 1.12], spin: [0.9, 0.98, 1.12], asteroid: [1.05, 0.98, 0.92], young: [1.25, 0.92, 0.82], tumble: [1.0, 0.97, 0.95] };
   shader.uniforms.uCrustTint = { value: new THREE.Vector3(...(CRUST[WORLD.id] ?? [1, 1, 1])) };
   shader.uniforms.uSpray = spray;
   shader.uniforms.uDrift = drift;
@@ -562,11 +566,11 @@ function coarse(): void {
     // (Not on the ice moon: water freezes white, into the new ice the flood mark already draws.)
     // (Lava too thin to be drawn running is drawn set: a thin margin chills first.)
     // (And where life has taken it, less: moss greens black lava as it takes hold.)
-    const set = !ICE && lava <= LAVA_WHOLE / 4 && planet.age[v] < 240 ? 1 - (LIFE ? Math.min(1, planet.life[v] * 1.4) : 0) : 0;
+    const set = !ICE && lava <= LAVA_WHOLE / 4 && planet.age[v] < 240 ? 1 - (LIFE ? Math.min(1, planet.life[v] * 3) : 0) : 0;
     coarseMarks[v * 4 + 3] = set;
     coarseMarks[v * 4 + 2] = set * Math.exp(-planet.age[v] / 45);
     // (As it's drawn, by how grown it is; just come, faint.)
-    const kind = LIFE ? ecology.drawn[v] : -1, wash = kind >= 0 ? WASH[kind] : null, washBy = wash ? WASH_STRENGTH * Math.min(1, planet.life[v]) * (0.45 + 0.55 * Math.min(1, planet.grown[v] * 2.5)) * (1 - hot) : 0;
+    const kind = LIFE ? ecology.drawn[v] : -1, wash = kind >= 0 ? WASH[kind] : null, washBy = wash ? WASH_STRENGTH * Math.min(1, planet.life[v] * (ROGUE ? 1.6 : 1)) * (ROGUE ? 1 : 0.45 + 0.55 * Math.min(1, planet.grown[v] * 2.5)) * (1 - hot) : 0;
     washWeight[v] += (washBy - washWeight[v]) * ease;
     for (let i = 0; i < 3; i++) {
       let x = PA[i] + (BA[i] - PA[i]) * fresh;
@@ -893,6 +897,72 @@ if (WORLD.goal === 'feed') {
   giant.position.copy(GIANT_AT);
   scene.add(giant);
 }
+/**
+ * A star in the sky, for the worlds it boils or bakes: an engraved disc with short rays, upper right,
+ * fixed there as the giant is, so "towards the star" is always the same way; the world's night side
+ * in shadow. (A rogue planet has none: all of it is in the dark, and only the lava gives light.) And
+ * on the world boiling away, its dust streaming off the day side, away from the star, as a comet's tail.
+ */
+const SUN = WORLD.sun ? new THREE.Vector3(...WORLD.sun).normalize() : null, SUN_AT = new THREE.Vector3(0.85, 2.05, -4.6);
+const sky = { value: new THREE.Vector4(0, 0, 1, WORLD.id === 'rogue' ? 2 : SUN ? 1 : 0) }, iceLine = { value: planet.k.gas > 0 ? 0 : -1 };
+if (SUN) {
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 256;
+  const g = cv.getContext('2d')!;
+  g.strokeStyle = P.landInkHigh; g.fillStyle = '#f3e6c4'; g.lineCap = 'round';
+  // (Its rays, short and long by turns, as an old chart's sun; then the disc over them.)
+  for (let i = 0; i < 24; i++) {
+    const a = (i / 24) * Math.PI * 2, r0 = 66, r1 = i % 2 ? 92 : 112;
+    g.lineWidth = i % 2 ? 2 : 3;
+    g.beginPath(); g.moveTo(128 + Math.cos(a) * r0, 128 + Math.sin(a) * r0); g.lineTo(128 + Math.cos(a) * r1, 128 + Math.sin(a) * r1); g.stroke();
+  }
+  g.lineWidth = 3.5;
+  g.beginPath(); g.arc(128, 128, 56, 0, Math.PI * 2); g.fill(); g.stroke();
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const disc = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
+  disc.scale.setScalar(0.62);
+  disc.position.copy(SUN_AT);
+  scene.add(disc);
+}
+const TAIL = WORLD.goal === 'outbuild' ? 220 : 0, tailAt = new Float32Array(TAIL * 3), tailAge = new Float32Array(TAIL).fill(99), tailWay = new Float32Array(TAIL * 3);
+const tailGeo = new THREE.BufferGeometry();
+tailGeo.setAttribute('position', new THREE.BufferAttribute(tailAt, 3));
+const tail = new THREE.Points(tailGeo, new THREE.PointsMaterial({ color: new THREE.Color(P.ash).lerp(new THREE.Color(P.landInk), 0.35), size: 0.035, transparent: true, opacity: 0.6, depthWrite: false, sizeAttenuation: true }));
+if (TAIL) scene.add(tail);
+let tailNext = 0;
+const TAIL_WAY = new THREE.Vector3();
+/** The sky each moment: the shadow's way, as seen; Snowball Earth's ice line; the dust tail. */
+function skyNow(dt: number): void {
+  if (planet.k.gas > 0) iceLine.value = planet.iceLine;
+  if (SUN) {
+    camera.updateMatrixWorld();
+    const v = GIANT_DIR.copy(SUN).transformDirection(camera.matrixWorldInverse);
+    sky.value.set(v.x, v.y, v.z, 1);
+  }
+  if (!TAIL || !SUN) return;
+  // (Let go from the day side's rim, as the star sees it, and blown away from it, spreading.)
+  tailNext = Math.max(-1, tailNext - dt);
+  for (let i = 0; i < TAIL; i++) {
+    if (tailAge[i] > 7 && tailNext <= 0 && !planet.over) {
+      tailNext += 0.035;
+      // (Away from the star across the sky as seen, so the tail streams past the world's edge rather than hiding behind it.)
+      const away = TAIL_WAY.set(-SUN.x, -SUN.y, 0).normalize();
+      const r = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5);
+      r.addScaledVector(away, -r.dot(away)).normalize();
+      r.z = Math.abs(r.z); // (from the side we see)
+      const at = r.clone().multiplyScalar(0.9 + Math.random() * 0.12).addScaledVector(away, 0.5);
+      tailAt[i * 3] = at.x; tailAt[i * 3 + 1] = at.y; tailAt[i * 3 + 2] = at.z;
+      const out = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(0.04).addScaledVector(r, 0.03).addScaledVector(away, 0.18);
+      tailWay[i * 3] = out.x; tailWay[i * 3 + 1] = out.y; tailWay[i * 3 + 2] = out.z;
+      tailAge[i] = 0;
+    }
+    tailAge[i] += dt;
+    if (tailAge[i] > 7) { tailAt[i * 3 + 2] = 999; continue; }
+    for (let k = 0; k < 3; k++) tailAt[i * 3 + k] += tailWay[i * 3 + k] * dt;
+  }
+  tailGeo.attributes.position.needsUpdate = true;
+}
 let ringShown = -1;
 /** The giant's ring, inked round as far as it's full: it fills as it's fed, and thins away dot by dot. */
 const RING_PALE = new THREE.Color('#' + new THREE.Color(P.pencil).lerp(new THREE.Color(P.landInk), 0.6).getHexString()), RING_AIMED = new THREE.Color(P.landInk);
@@ -1003,7 +1073,8 @@ function orbiting(dt: number): void {
 }
 const HEIGHT = WORLD.height ?? { target: 0, kmPerUnit: 40 };
 const CALM = WORLD.calm ?? 0, ISLAND = WORLD.island ?? 0, POOL = WORLD.pool ?? 0, ROUND = Math.round((WORLD.round ?? 0) * 100), COVER = Math.round((WORLD.cover ?? 0) * 100), PLUMES = WORLD.plumes ?? 0, ORBIT = WORLD.orbit ?? 0;
-let aimDone = 0, aimOf = WORLD.goal === 'ring' ? CHAIN.stretches : WORLD.goal === 'height' ? HEIGHT.target : WORLD.goal === 'cover' ? COVER : WORLD.goal === 'round' ? ROUND : WORLD.goal === 'ridge' ? Planet.RIDGE_STRETCHES : WORLD.goal === 'lamp' || WORLD.goal === 'bank' ? 100 : WORLD.goal === 'calm' ? CALM : WORLD.goal === 'plumes' ? PLUMES : WORLD.goal === 'orbit' || WORLD.goal === 'feed' ? 100 : planet.basins.length, lastAim = -10;
+const HEARTH = WORLD.hearth ?? 0, OUTBUILD = WORLD.outbuild ?? 0, SNOWFALL = WORLD.snowfall ?? 0;
+let aimDone = 0, aimOf = WORLD.goal === 'hearth' || WORLD.goal === 'thaw' || WORLD.goal === 'outbuild' || WORLD.goal === 'snow' ? 100 : WORLD.goal === 'ring' ? CHAIN.stretches : WORLD.goal === 'height' ? HEIGHT.target : WORLD.goal === 'cover' ? COVER : WORLD.goal === 'round' ? ROUND : WORLD.goal === 'ridge' ? Planet.RIDGE_STRETCHES : WORLD.goal === 'lamp' || WORLD.goal === 'bank' ? 100 : WORLD.goal === 'calm' ? CALM : WORLD.goal === 'plumes' ? PLUMES : WORLD.goal === 'orbit' || WORLD.goal === 'feed' ? 100 : planet.basins.length, lastAim = -10;
 /** How much of the aim is done now, reckoned afresh. */
 function reckonAim(): void {
   if (chain) { aimDone = chain.update(planet, topo); aimOf = CHAIN.stretches; }
@@ -1021,6 +1092,10 @@ function reckonAim(): void {
   }
   else if (WORLD.goal === 'bank') { aimDone = (100 * planet.bankLand) / ISLAND; aimOf = 100; }
   else if (WORLD.goal === 'orbit' || WORLD.goal === 'feed') { aimDone = (100 * planet.orbit) / ORBIT; aimOf = 100; }
+  else if (WORLD.goal === 'hearth') { aimDone = (100 * planet.livingLand) / HEARTH; aimOf = 100; }
+  else if (WORLD.goal === 'thaw') { aimDone = planet.thawed ? 100 : Math.min(99, (100 * planet.greenhouse) / planet.k.thawAt); aimOf = 100; }
+  else if (WORLD.goal === 'outbuild') { aimDone = Math.max(0, (100 * planet.grownBy) / OUTBUILD); aimOf = 100; }
+  else if (WORLD.goal === 'snow') { aimDone = (100 * planet.snow) / SNOWFALL; aimOf = 100; }
   else { aimDone = planet.basins.filter((b) => planet.flooded(b) >= FLOODED_ENOUGH).length; aimOf = planet.basins.length; }
 }
 let calmHeld = 0, calmAt = 0;
@@ -1047,6 +1122,10 @@ const HOW: Record<string, string> = {
   calm: `Hold until the smoke turns grey, then lift to burst where the dotted ring crosses the vent: the tumbling slows. Calm it to ${CALM}%, and keep it there for ${CALM_HOLD} seconds.`,
   bank: 'Tilt towards the dotted bank to pour that way, again and again, until an island rises there.',
   orbit: 'Hold until the smoke turns grey, then lift to burst. Each burst throws rock up, and enough of it gathers into a moon.',
+  hearth: 'Life gathers on new rock while it is warm, and fades as it cools. Pour, turn a little, and pour beside it, never on it, to keep enough alive at once.',
+  thaw: 'Under the ice the gas is lost. Pour until the mountain stands above the ice, then hold until the smoke turns grey and lift to burst: bursts warm the sky most.',
+  outbuild: 'Whatever faces the star boils away. Drag the vent round into the night side, where it pours of itself, and build more than the star takes.',
+  snow: 'Drag the vent round into the starlight, where it pours of itself. Lava there stays molten, boils into the air, and falls as rock snow along the edge of night.',
 };
 /** The aim and how far it's come, in a few words for the top of the screen, always there while it's played. */
 function goalLine(): string {
@@ -1064,6 +1143,10 @@ function goalLine(): string {
     case 'calm': return d >= of ? `Calm · held ${Math.min(CALM_HOLD, Math.floor(calmHeld))} of ${CALM_HOLD} seconds` : `Calm · ${d} of ${of}%`;
     case 'bank': return `The island at the bank · ${pct}%`;
     case 'orbit': return `A moon · ${pct}%`;
+    case 'hearth': return `Living ground · ${pct}%`;
+    case 'thaw': return planet.thawed ? 'The ice gives way' : `A warmer sky · ${pct}%`;
+    case 'outbuild': return `Grown back · ${pct}%`;
+    case 'snow': return `Rock snow · ${pct}%`;
     default: return '';
   }
 }
@@ -1558,6 +1641,10 @@ const GOAL_WORDS: Record<typeof WORLD.goal, { age: (met: boolean) => string; don
   round: { age: () => 'Time passes, and small stones still fall', done: `The asteroid is ${ROUND}% rounder`, title: ['A rounder world', 'Not round enough yet'], got: () => `${Math.round(aimDone)}% rounder, of ${aimOf}%` },
   feed: { age: () => 'Time passes, and the ring slowly thins', done: 'The ring is full', title: ['The ring is full', 'The ring is not full'], got: () => `the ring ${Math.min(100, Math.round(aimDone))}% full` },
   orbit: { age: (met) => (met ? 'Time passes, and the ring of rock gathers into a moon' : 'Time passes, and the rock in orbit falls back'), done: 'Enough rock in orbit for a moon', title: ['A moon is made', 'No moon yet'], got: () => `${Math.min(100, Math.round(aimDone))}% of a moon in orbit` },
+  hearth: { age: () => 'Time passes, and the rock grows cold', done: 'Warm ground, and life all over it', title: ['Life kept warm', 'Not enough kept warm'], got: () => `${Math.min(100, Math.round(aimDone))}% of the living ground` },
+  thaw: { age: (met) => (met ? 'Time passes, and the ice goes on giving way' : 'Time passes, and the gas is drawn down'), done: 'The ice gives way', title: ['The ice gives way', 'Still frozen'], got: () => `the sky ${Math.min(100, Math.round(aimDone))}% warm enough` },
+  outbuild: { age: () => 'Time passes, and the star goes on boiling it', done: 'It has grown faster than it boils away', title: ['Built faster than it boils', 'Boiling away'], got: () => `${Math.min(100, Math.round(aimDone))}% of the growth` },
+  snow: { age: () => 'Time passes, and the last vapour falls', done: 'Rock snow all along the edge of night', title: ['Rock snow', 'Not enough rock snow'], got: () => `${Math.min(100, Math.round(aimDone))}% of the rock snow` },
 };
 const AGE_WORDS = (met: boolean) => GOAL_WORDS[WORLD.goal].age(met);
 /** What was made, in a sentence for the chart: what it is, not a score. */
@@ -1576,6 +1663,10 @@ function tale(met: boolean): string {
     case 'round': return `Its hollows filled with new rock: ${Math.round(aimDone)}% rounder than it was`;
     case 'feed': return met ? "The giant's ring, full of this moon's ice" : `The giant's ring ${pct}% full of this moon's ice`;
     case 'orbit': return met ? 'Enough rock thrown up to gather into a moon' : `${pct}% of a moon thrown up, and falling back`;
+    case 'hearth': return met ? 'Warm new rock, and life gathered on it, in the dark between the stars' : `Life on warm rock, ${pct}% of what was hoped, fading as it cooled`;
+    case 'thaw': return met ? 'The ice given way from the equator outwards, and open sea' : `A sky ${pct}% warm enough, and the ice still holding`;
+    case 'outbuild': return met ? 'A world built back faster than its star could boil it away' : `A world still boiling away, ${pct}% of the way to outgrowing it`;
+    case 'snow': return met ? 'Pale rock snow fallen all along the edge of night' : `Rock snow ${pct}% fallen along the edge of night`;
   }
 }
 let ending: { from: number; shown: boolean; at: number; info: ChartInfo | null; turned: number; won: boolean } | null = null;
@@ -2116,6 +2207,7 @@ renderer.setAnimationLoop(() => {
   planet.gravity = { x: GRAV.x, y: GRAV.y, z: GRAV.z };
   // And which way the giant is, on a world that has one in its sky.
   if (WORLD.goal === 'feed') { const s = GIANT_DIR.copy(GIANT_AT).normalize().applyQuaternion(INVERSE); planet.giant = { x: s.x, y: s.y, z: s.z }; }
+  if (SUN) { const s = GIANT_DIR.copy(SUN).applyQuaternion(INVERSE); planet.star = { x: s.x, y: s.y, z: s.z }; }
   drawLevel();
   // Once the fire is out, the long age runs quickly, in small steps so the sea's work stays as it would be.
   const speed = ending && !ending.shown && (!ending.won || seconds - wonAt() > 4) ? AGE_SPEED : 1;
@@ -2170,6 +2262,7 @@ renderer.setAnimationLoop(() => {
   if (WORLD.goal === 'orbit') orbiting(dt);
   if (LAMP) lamping();
   if (WORLD.goal === 'feed') feeding(dt);
+  skyNow(dt);
   if (WORLD.goal === 'height' || WORLD.goal === 'cover' || WORLD.goal === 'round' || WORLD.goal === 'calm') {
     // The ring follows the heat, eased, so it glides as the heat creeps.
     gaugeAt.lerp(new THREE.Vector3(planet.plume.x, planet.plume.y, planet.plume.z), 1 - Math.exp(-dt / 1.5)).normalize();
@@ -2196,4 +2289,4 @@ renderer.setAnimationLoop(() => {
   turnedSince();
 });
 
-if (import.meta.env.DEV) (window as unknown as { volcano: unknown }).volcano = { planet, group, base, renderer, scene, camera, puffs, ecology, islands, rotate, draw, save, world, frameCost, kindDots, chain: () => chain, aim: () => aimInk, lines: () => { lastLines = -1; redrawLines(1e6); }, life: () => { lastLife = -10; redrawLife(1e6); }, replayKeep: () => keepReplayFrame(), replayCount: () => replayFrames.length, replaying: () => (replaying ? replayShown : -1), settle: (d = 3.6) => { lift = 0; dist = d; begunAt = -100; zoomedAt = seconds; look(); } };
+if (import.meta.env.DEV) (window as unknown as { volcano: unknown }).volcano = { sky, planet, group, base, renderer, scene, camera, puffs, ecology, islands, rotate, draw, save, world, frameCost, kindDots, chain: () => chain, aim: () => aimInk, lines: () => { lastLines = -1; redrawLines(1e6); }, life: () => { lastLife = -10; redrawLife(1e6); }, replayKeep: () => keepReplayFrame(), replayCount: () => replayFrames.length, replaying: () => (replaying ? replayShown : -1), settle: (d = 3.6) => { lift = 0; dist = d; begunAt = -100; zoomedAt = seconds; look(); } };

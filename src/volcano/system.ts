@@ -82,6 +82,7 @@ export function twisted(world: WorldId, twistId: string): Partial<Rules> {
   return rules;
 }
 /** From the star outwards: the kinds of world in the order a system would have them, warmest first. */
+// (The four newest worlds aren't dealt into systems yet: their twists are still to be balanced.)
 const WARMTH: WorldId[] = ['tumble', 'young', 'ocean', 'deep', 'mars', 'lamp', 'asteroid', 'spin', 'io', 'moon', 'ice', 'enceladus'];
 
 export interface Made { met: boolean; second: number; words: string }
@@ -108,7 +109,7 @@ export interface System {
 }
 
 /** A good showing at each second aim: as good as this gives the most warmth (see `giftOf`). */
-const GOOD: Record<World['goal'], number> = { calm: 95, bank: 4500, ridge: 2, lamp: 60, round: 80, ring: 3, basins: 85, height: 700, cover: 30, plumes: 1400, feed: 15, orbit: 3474 };
+const GOOD: Record<World['goal'], number> = { calm: 95, bank: 4500, ridge: 2, lamp: 60, round: 80, ring: 3, basins: 85, height: 700, cover: 30, plumes: 1400, feed: 15, orbit: 3474, hearth: 150, thaw: 60, outbuild: 70, snow: 2 };
 /** The most warmth a world passes on: this share more heat. */
 export const MOST_WARMTH = 0.15;
 const STARS = ['a yellow star', 'an orange star', 'a pale white star', 'a small red star'];

@@ -213,7 +213,7 @@ export const VOLCANO = {
    * What the world is like at the start: 'ocean', one sea over an even floor; or 'moon', airless
    * highland scarred by `basins` great old impact basins, and a scatter of smaller craters.
    */
-  terrain: 'ocean' as 'ocean' | 'moon' | 'mars' | 'ice' | 'io' | 'young' | 'asteroid' | 'spin' | 'glass',
+  terrain: 'ocean' as 'ocean' | 'moon' | 'mars' | 'ice' | 'io' | 'young' | 'asteroid' | 'spin' | 'glass' | 'rogue' | 'dust' | 'magma',
   /** On a lumpy asteroid: how far its ground rises and falls from round, in broad lumps (and one great crater). */
   lumps: 0,
   /**
@@ -305,6 +305,38 @@ export const VOLCANO = {
   arrives: 0,
   /** Whether life asks for kinds of ground (ecology.ts's wishes). */
   wishes: true,
+
+  /**
+   * A rogue planet, with no star: life lives only on ground still warm from lava, for this many
+   * seconds after it last set there, and dies as it cools (0: life needs no warmth). Life lands only within
+   * `hearth` (radians) of the vent, the one warm place (0: anywhere).
+   */
+  warmLasts: 0,
+  hearth: 0,
+  /**
+   * Snowball Earth: ice from pole to pole, and the eruptions' gas warming the sky. Each unit of heat
+   * let out through open air (the vent on land above the sea, or in open water) gives this much gas
+   * as a burst, `gasPour` of it as a flow; the sky loses `drawdown` of what it holds a second (the
+   * rock drawing it down). With `thawAt` in the sky the ice gives way of itself, from the equator
+   * out, until the world is open sea. 0: no ice.
+   */
+  gas: 0,
+  gasPour: 0.35,
+  drawdown: 0.012,
+  thawAt: 100,
+  /**
+   * A world boiling away under its star, as Kepler-1520b is: new ground facing the star (lava, and
+   * the rock it has laid) loses this much height a second, full on, and what it loses streams away in
+   * a tail of dust. 0: none.
+   */
+  boil: 0,
+  /**
+   * A lava world, one face to its star: lava there cools only `dayCool` as fast, staying molten, and
+   * this much of it a second rises as rock vapour, which falls as rock snow on the night side, near
+   * its edge. 0: none.
+   */
+  vapour: 0,
+  dayCool: 1,
 };
 
 /** A world's settings: the same fields as VOLCANO, which are the ocean world's. */
@@ -395,6 +427,15 @@ export class Planet {
   orbit = 0;
   /** Which way the giant planet is, in the planet's frame (a unit vector), on a world that has one in its sky. */
   giant: { x: number; y: number; z: number } | null = null;
+  /** Which way its star is, in the planet's frame (a unit vector), on a world it boils or bakes. */
+  star: { x: number; y: number; z: number } | null = null;
+  /** Snowball Earth: the gas in the sky; how far from the equator the ice has let go (as the sine of the latitude); and whether it has given way of itself. */
+  greenhouse = 0;
+  iceLine = 0;
+  thawed = false;
+  /** Rock boiled away by the star, and rock snow fallen on the night side, so far (in the volume heat is reckoned in). */
+  lost = 0;
+  snow = 0;
   /** On the lava-lamp world: the blobs, the far shore they're to be brought to, how much has pooled there, and the biggest that came. */
   readonly blobs: Blob[] = [];
   shore: { x: number; y: number; z: number; r: number } | null = null;
@@ -722,6 +763,7 @@ export class Planet {
     const volume = this.pressure;
     if (volume < this.k.least) return null;
     this.pressure = 0;
+    this.breathe(volume, volume >= this.k.explosive);
     // The lava lamp: the bud lets go as one blob; held too long, it bursts into small ones, which cool before they get far.
     if (this.k.lamp) {
       const q = this.plume;
@@ -803,6 +845,7 @@ export class Planet {
     const amount = Math.min(this.pressure, Math.max(0, rate) * dt);
     if (amount <= 0) return;
     this.pressure -= amount;
+    this.breathe(amount, false);
     // (Counted once it pours at all: a gentle pour, begun under the least, never counted.)
     if (!this.pourCounted) { this.pourCounted = true; this.tally.flows++; }
     const v = this.plumeVertex, a = amount * this.scale;
@@ -935,6 +978,7 @@ export class Planet {
     this.pour(dt);
     this.flow(dt);
     this.cool(dt);
+    this.skies(dt);
     for (let v = 0; v < this.age.length; v++) { if (this.lava[v] < this.k.thin) this.age[v] += dt; this.laid[v] += dt; }
     // The slow forces every quarter second, and life the step after, so no one step carries both.
     this.slowIn -= dt;
@@ -1243,12 +1287,94 @@ export class Planet {
         const t = this.topo;
         for (let q = t.nbrOffsets[v]; q < t.nbrOffsets[v + 1]; q++) if (this.lava[t.nbrList[q]] < this.k.thin) { edge = this.k.levee; break; }
       }
-      const solid = l < 1e-7 ? l : l * (1 - Math.exp(-(l < this.k.thin ? THIN_SETS : sea ? this.k.coolSea * tube : this.k.coolLand * edge) * LAVA_PACE * dt));
+      // (On a lava world, facing its star, it hardly cools at all.)
+      const baked = this.k.dayCool < 1 && this.star ? 1 + (this.k.dayCool - 1) * this.dayAt(v) : 1;
+      const solid = l < 1e-7 ? l : l * (1 - Math.exp(-(l < this.k.thin ? THIN_SETS : (sea ? this.k.coolSea * tube : this.k.coolLand * edge) * baked) * LAVA_PACE * dt));
       if (solid > 0) this.laid[v] = 0;
       this.lava[v] -= solid;
       this.rock[v] += solid;
       if (l > this.k.cover) { if (this.life[v] > 0.05) this.scorch[v] = 1; this.age[v] = 0; this.life[v] = 0; this.grown[v] = 0; this.ash[v] = 0; this.rich[v] = 0; }
     }
+  }
+
+  /** How squarely the ground at a vertex faces the star: 0 on the night side and at the edge, to 1 under it. */
+  dayAt(v: number): number {
+    const s = this.star, p = this.topo.basePositions;
+    if (!s) return 0;
+    const d = p[v * 3] * s.x + p[v * 3 + 1] * s.y + p[v * 3 + 2] * s.z;
+    return d <= 0.08 ? 0 : Math.min(1, (d - 0.08) / 0.5);
+  }
+
+  /** Snowball Earth: whether the vent breathes into open air (from land above the sea, or open water). */
+  get ventOpen(): boolean {
+    const v = this.plumeVertex, p = this.topo.basePositions;
+    return this.rock[v] > 0 || Math.abs(p[v * 3 + 1]) < this.iceLine;
+  }
+
+  /** Whether the ground at a vertex is under the ice, on Snowball Earth. */
+  iced(v: number): boolean {
+    return this.k.gas > 0 && Math.abs(this.topo.basePositions[v * 3 + 1]) >= this.iceLine;
+  }
+
+  /** Heat let out: on Snowball Earth, its gas, if the vent is open to the sky. */
+  private breathe(volume: number, burst: boolean): void {
+    if (this.k.gas <= 0 || !this.ventOpen) return;
+    this.greenhouse += volume * this.k.gas * (burst ? 1 : this.k.gasPour);
+  }
+
+  /** What the sky does: the gas warming Snowball Earth; a star boiling a world away, or raising its lava as vapour. */
+  private skies(dt: number): void {
+    if (this.k.gas > 0) {
+      this.greenhouse -= this.greenhouse * this.k.drawdown * dt;
+      const thaw = this.greenhouse / this.k.thawAt;
+      if (thaw >= 1 && !this.thawed) { this.thawed = true; this.tell('The ice gives way'); }
+      // (Before it gives way, the ice lets go of the tropics only, as far as the gas holds it back;
+      // once it gives way, it goes on of itself, darker water taking in more sun, to the poles.)
+      const to = this.thawed ? 1 : 0.42 * Math.min(1, thaw);
+      this.iceLine += (to - this.iceLine) * Math.min(1, dt * (this.thawed ? 0.02 : 0.15));
+    }
+    if (!this.star || (this.k.boil <= 0 && this.k.vapour <= 0)) return;
+    const n = this.rock.length, s = this.scale;
+    let rose = 0;
+    for (let v = 0; v < n; v++) {
+      const day = this.dayAt(v);
+      if (day <= 0) continue;
+      if (this.k.boil > 0) {
+        // (Lava lying there boils first; then the new rock. The old crust beneath is too baked to boil
+        // any more: the world is shrinking, but over ages, not in a game.)
+        let off = this.k.boil * day * dt;
+        const fromLava = Math.min(this.lava[v], off);
+        this.lava[v] -= fromLava; off = Math.min(off - fromLava, Math.max(0, this.rock[v] - this.start[v]));
+        this.rock[v] -= off;
+        this.lost += (fromLava + off) / s;
+      }
+      if (this.k.vapour > 0 && this.lava[v] > 0) {
+        const up = this.lava[v] * Math.min(1, this.k.vapour * day * dt);
+        this.lava[v] -= up;
+        rose += up;
+      }
+    }
+    if (rose > 0) this.snowFall(rose);
+  }
+
+  /** Rock vapour falling as snow on the night side, most just past the edge of day. */
+  private snowFall(volume: number): void {
+    const p = this.topo.basePositions, st = this.star!, n = this.rock.length;
+    let sum = 0;
+    const w = this.next;
+    for (let v = 0; v < n; v++) {
+      const d = p[v * 3] * st.x + p[v * 3 + 1] * st.y + p[v * 3 + 2] * st.z;
+      w[v] = d < 0.05 && d > -0.6 ? Math.exp(-(((d + 0.18) / 0.16) ** 2)) : 0;
+      sum += w[v];
+    }
+    if (!(sum > 0)) return;
+    for (let v = 0; v < n; v++) {
+      if (!w[v]) continue;
+      const add = (volume * w[v]) / sum;
+      this.rock[v] += add;
+      this.ash[v] = Math.min(1, this.ash[v] + add * 60);
+    }
+    this.snow += volume / this.scale;
   }
 
   // ------------------------------------------------------------------ the slow forces
@@ -1371,9 +1497,13 @@ export class Planet {
   private room(v: number): number {
     const h = this.rock[v];
     if (this.lava[v] > this.k.thin) return 0;
+    // (Under Snowball Earth's ice, nothing lives but by the vent's warmth.)
+    if (this.iced(v) && this.dist(v, this.plumeVertex) > 0.12) return 0;
     if (h < 0) return h > this.k.reefDeep && this.k.reef > 0 ? 0.7 : 0; // the shallows, as reef (where reefs grow); the deep holds none
     const soil = this.k.soil + (this.k.ashSoil - this.k.soil) * this.rich[v];
-    return Math.min(1, this.age[v] / soil) * (0.7 + 0.3 * this.rich[v]);
+    // (On a rogue planet, only while the ground is warm.)
+    const warm = this.k.warmLasts > 0 ? Math.max(0, Math.min(1, (this.k.warmLasts - this.laid[v]) / (this.k.warmLasts * 0.3))) : 1; // (warm from lava set there; ash falls cold)
+    return Math.min(1, this.age[v] / soil) * (0.7 + 0.3 * this.rich[v]) * warm;
   }
 
   private living(dt: number): void {
@@ -1430,14 +1560,54 @@ export class Planet {
     this.alive = alive;
   }
 
-  /** Somewhere for life to land: bare ground above the sea, settled long enough to take it; or -1. */
+  /** Somewhere for life to land: bare ground above the sea that could take it (near the vent, on a world with a hearth); or -1. */
   private landing(): number {
-    const n = this.rock.length, soil = this.k.soil;
+    const n = this.rock.length;
     for (let tries = 0; tries < 400; tries++) {
-      const v = Math.floor(this.rand() * n);
-      if (this.rock[v] > 0 && this.lava[v] < this.k.thin && this.age[v] > soil && this.life[v] < 0.1) return v;
+      const v = this.k.hearth > 0 ? this.near(this.plume, this.k.hearth) : Math.floor(this.rand() * n);
+      if (this.rock[v] > 0 && this.life[v] < 0.1 && this.room(v) > 0.3) return v;
     }
     return -1;
+  }
+
+  /** A vertex picked at random within `reach` (radians) of a point. */
+  private near(c: { x: number; y: number; z: number }, reach: number): number {
+    const t1 = unit(cross(c, Math.abs(c.y) < 0.9 ? { x: 0, y: 1, z: 0 } : { x: 1, y: 0, z: 0 })), t2 = cross(c, t1);
+    const a = this.rand() * Math.PI * 2, r = reach * Math.sqrt(this.rand());
+    return this.vertexAt(unit({ x: c.x * Math.cos(r) + (t1.x * Math.cos(a) + t2.x * Math.sin(a)) * Math.sin(r), y: c.y * Math.cos(r) + (t1.y * Math.cos(a) + t2.y * Math.sin(a)) * Math.sin(r), z: c.z * Math.cos(r) + (t1.z * Math.cos(a) + t2.z * Math.sin(a)) * Math.sin(r) }));
+  }
+
+  /** The vertex nearest a point on the world, walked to from the plume's. */
+  private vertexAt(q: { x: number; y: number; z: number }): number {
+    const t = this.topo, p = t.basePositions, dist = (v: number) => (p[v * 3] - q.x) ** 2 + (p[v * 3 + 1] - q.y) ** 2 + (p[v * 3 + 2] - q.z) ** 2;
+    let v = this.plumeVertex;
+    for (let moves = 0; moves < 400; moves++) {
+      let best = v;
+      for (let k = t.nbrOffsets[v]; k < t.nbrOffsets[v + 1]; k++) if (dist(t.nbrList[k]) < dist(best)) best = t.nbrList[k];
+      if (best === v) break;
+      v = best;
+    }
+    return v;
+  }
+
+  /** How far apart two vertices are (straight through, as the other distances here are). */
+  private dist(a: number, b: number): number {
+    const p = this.topo.basePositions;
+    return Math.hypot(p[a * 3] - p[b * 3], p[a * 3 + 1] - p[b * 3 + 1], p[a * 3 + 2] - p[b * 3 + 2]);
+  }
+
+  /** On a rogue planet: how much living ground there is (in vertices of a planet of the drawn detail). */
+  get livingLand(): number {
+    let c = 0;
+    for (let v = 0; v < this.life.length; v++) if (this.life[v] >= 0.3 && this.rock[v] > 0) c++;
+    return c / this.scale;
+  }
+
+  /** How much new ground stands on the world (in the volume heat is reckoned in): what was laid, less what boiled away. */
+  get grownBy(): number {
+    let d = 0;
+    for (let v = 0; v < this.rock.length; v++) d += Math.max(0, this.rock[v] + this.lava[v] - this.start[v]);
+    return d / this.scale;
   }
 
   /** Whether anything lives within `reach` of a vertex. */
