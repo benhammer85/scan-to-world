@@ -12,6 +12,12 @@
  *   forest    on high ground
  *   heath     on the heights of a cone of ash, which only bursts build
  *
+ * Each is only what the ground grows up to. New life on land is drawn moss first, then grass and
+ * ferns, and only once it has grown up (`grown` in sim.ts) the kind its ground holds, as a new
+ * volcanic island greens: so old islands are wooded and young ones bare, all down a chain.
+ * (Plain low ground is wooded in the end too; mangroves come straight after the moss; reefs are as they are. What counts as held is the kind
+ * the ground holds, however grown.)
+ *
  * So one way of letting the heat out never makes every kind: flows give
  * shallows and low shores, bursts give heights and rich ground. What the world
  * holds when the fire goes out is how many kinds took hold.
@@ -51,6 +57,10 @@ export const ECOLOGY = {
   forestFrom: 0.07,
   heathFrom: 0.15,
   heathAsh: 0.3,
+  /** How grown (see `grown` in sim.ts) life on land is drawn as grass, then as its own kind; moss before. Mangroves only need the first. */
+  grass: 0.2,
+  grown: 0.55,
+  wooded: 0.85,
   /** Life at least this strong counts as that kind living there. */
   living: 0.3,
   /** A kind has taken hold when it lives on this share of the world (as vertices). */
@@ -80,9 +90,22 @@ export function habitat(pl: Planet, topo: Topology, v: number): Kind | null {
   return 'moss';
 }
 
+/** What a kind of life is drawn as, by how grown it is. */
+export function stage(kind: Kind, grown: number): Kind {
+  if (kind === 'reef') return kind;
+  if (grown < ECOLOGY.grass) return 'moss';
+  if (kind === 'mangrove') return kind;
+  if (grown < ECOLOGY.grown) return 'meadow';
+  // (Plain ground, left long enough, is wooded too, as old islands' lowlands are.)
+  if (kind === 'moss') return grown < ECOLOGY.wooded ? 'meadow' : 'forest';
+  return kind;
+}
+
 export class Ecology {
   /** Each vertex's kind, as an index into KINDS (-1 for none), at the last reckoning. */
   readonly kind: Int8Array;
+  /** Each vertex's kind as it's drawn, by how grown it is: moss, then grass, then its own (see the top). */
+  readonly drawn: Int8Array;
   /** How many vertices each kind lives on. */
   readonly count = new Map<Kind, number>();
   /** The kinds that have taken hold, in the order they did. */
@@ -95,6 +118,7 @@ export class Ecology {
 
   constructor(private pl: Planet, private topo: Topology) {
     this.kind = new Int8Array(topo.vertexCount).fill(-1);
+    this.drawn = new Int8Array(topo.vertexCount).fill(-1);
     this.scale = topo.vertexCount / 16002;
     this.wishIn = ECOLOGY.wishEvery[0];
   }
@@ -112,6 +136,7 @@ export class Ecology {
       const kind = pl.life[v] >= ECOLOGY.living ? habitat(pl, this.topo, v) : null;
       this.kind[v] = kind ? KINDS.findIndex((k) => k.kind === kind) : -1;
       if (kind) this.count.set(kind, this.count.get(kind)! + 1);
+      this.drawn[v] = kind ? KINDS.findIndex((k) => k.kind === stage(kind, pl.grown[v])) : -1;
     }
     for (const k of KINDS) {
       if (!this.held.includes(k.kind) && this.count.get(k.kind)! >= ECOLOGY.holds * n) {
@@ -139,7 +164,7 @@ export class Ecology {
       }
       return;
     }
-    if (pl.over || !this.anyAlive()) return;
+    if (pl.over || !pl.k.wishes || !this.anyAlive()) return;
     this.wishIn -= dt;
     if (this.wishIn > 0) return;
     // Wish for a kind not yet held, if there is one, else for the rarest; near a place where life is.

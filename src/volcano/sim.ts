@@ -292,6 +292,19 @@ export const VOLCANO = {
   life: true,
   reseed: 30,
   seedReach: 0.3,
+  /**
+   * How long living ground takes to grow up (seconds; twice as fast on ground rich with ash): first
+   * moss, then grass and ferns, then what the ground will hold, a wood on the heights, as a new
+   * volcanic island greens. (See `grown`, and the stages drawn in ecology.ts.)
+   */
+  mature: 150,
+  /**
+   * Life arriving from elsewhere, as it came to Surtsey: every so many seconds, a seed lands on
+   * bare ground that stands above the sea (0: never; life only begins at the vents).
+   */
+  arrives: 0,
+  /** Whether life asks for kinds of ground (ecology.ts's wishes). */
+  wishes: true,
 };
 
 /** A world's settings: the same fields as VOLCANO, which are the ocean world's. */
@@ -332,6 +345,8 @@ export class Planet {
   readonly rich: Float32Array;
   /** Life at each vertex, 0 to 1: on land, and as reef in the shallows. */
   readonly life: Float32Array;
+  /** How grown up the life on land is, 0 (just come) to 1 (all the ground will hold), over `mature` seconds. */
+  readonly grown: Float32Array;
   /** How far the ground has sunk since it cooled. */
   private sunk: Float32Array;
   /**
@@ -413,6 +428,7 @@ export class Planet {
   private impactIn: number;
   private began = false;
   private seedIn = 0;
+  private arriveIn = 0;
   private livingDue = false;
   private slowHalf = false;
   private slowDelta: Float32Array;
@@ -437,6 +453,7 @@ export class Planet {
     this.ash = new Float32Array(n);
     this.rich = new Float32Array(n);
     this.life = new Float32Array(n);
+    this.grown = new Float32Array(n);
     this.sunk = new Float32Array(n);
     this.wear = new Float32Array(n);
     this.scorch = new Float32Array(n);
@@ -1230,7 +1247,7 @@ export class Planet {
       if (solid > 0) this.laid[v] = 0;
       this.lava[v] -= solid;
       this.rock[v] += solid;
-      if (l > this.k.cover) { if (this.life[v] > 0.05) this.scorch[v] = 1; this.age[v] = 0; this.life[v] = 0; this.ash[v] = 0; this.rich[v] = 0; }
+      if (l > this.k.cover) { if (this.life[v] > 0.05) this.scorch[v] = 1; this.age[v] = 0; this.life[v] = 0; this.grown[v] = 0; this.ash[v] = 0; this.rich[v] = 0; }
     }
   }
 
@@ -1354,7 +1371,7 @@ export class Planet {
   private room(v: number): number {
     const h = this.rock[v];
     if (this.lava[v] > this.k.thin) return 0;
-    if (h < 0) return h > this.k.reefDeep ? 0.7 : 0; // the shallows, as reef; the deep holds none
+    if (h < 0) return h > this.k.reefDeep && this.k.reef > 0 ? 0.7 : 0; // the shallows, as reef (where reefs grow); the deep holds none
     const soil = this.k.soil + (this.k.ashSoil - this.k.soil) * this.rich[v];
     return Math.min(1, this.age[v] / soil) * (0.7 + 0.3 * this.rich[v]);
   }
@@ -1377,7 +1394,21 @@ export class Planet {
         this.began = true;
       }
     }
+    // Life from elsewhere, on the wind and the waves and the birds, landing on bare ground above the sea.
+    if (this.k.arrives > 0) {
+      this.arriveIn -= dt;
+      if (this.arriveIn <= 0) {
+        this.arriveIn = this.k.arrives;
+        const v = this.landing();
+        if (v >= 0) {
+          L[v] = Math.max(L[v], 0.4);
+          if (!this.began) this.tell('Life arrives on the new land');
+          this.began = true;
+        }
+      }
+    }
     let alive = false;
+    const G = this.grown, grows = dt / this.k.mature;
     for (let v = 0; v < n; v++) {
       // Rich ground stays rich where life holds it; bare, it washes out.
       if (L[v] < 0.3) this.rich[v] = Math.max(0, this.rich[v] - dt / this.k.richLasts);
@@ -1391,9 +1422,22 @@ export class Planet {
       if (l < 0.002) l = 0;
       if (l > 0) alive = true;
       next[v] = l;
+      // Grown up a little more where it holds on land; where it has all but died, it starts over.
+      if (l < 0.1 || this.rock[v] <= 0) G[v] = 0;
+      else if (l >= 0.3) G[v] = Math.min(1, G[v] + grows * (1 + this.rich[v]));
     }
     L.set(next.subarray(0, n));
     this.alive = alive;
+  }
+
+  /** Somewhere for life to land: bare ground above the sea, settled long enough to take it; or -1. */
+  private landing(): number {
+    const n = this.rock.length, soil = this.k.soil;
+    for (let tries = 0; tries < 400; tries++) {
+      const v = Math.floor(this.rand() * n);
+      if (this.rock[v] > 0 && this.lava[v] < this.k.thin && this.age[v] > soil && this.life[v] < 0.1) return v;
+    }
+    return -1;
   }
 
   /** Whether anything lives within `reach` of a vertex. */

@@ -120,6 +120,10 @@ The worlds are played once each, in whatever order you choose, on new ground. Wh
 
 So the order is the strategy. When every world has been played, the system's chart goes into the atlas. Each world of a system says its place and kind ("III · A red world"), not its name in ours.
 
+**Islands green.** On the ocean world, living ground grows up over about two and a half minutes (twice as fast on ground rich with ash; `mature` in `sim.ts`): drawn first as moss, then grass, then what the ground holds, a wood on the heights and on old lowland, mangroves on low shores (`stage` in `ecology.ts`). Black lava fades where moss takes it, and a deeper colour lays a deeper wash, so old islands are wooded and dark and young ones bare, all down the chain. What counts as a kind held is still the kind the ground holds, however grown.
+
+**Life arrives.** On the deep ocean, life doesn't begin at the vents: once the island stands above the sea, seeds land on it every twenty seconds or so (`arrives`), as they came to Surtsey after 1963, and it greens the same way. No reefs grow there, and life asks for nothing.
+
 **Atolls.** On the ocean world the long age follows every fire, met or not (the world stands still for it). The islands sink much further than while the fire burns, and the reef's seaward edge, marked once as the age begins (living ground bordering water that holds nothing, three wide), keeps growing up with the sinking. Its rock is cemented and doesn't slump into the lagoon. Here and there along it, in clusters, coral sand builds islets just above the surface; between them the reef lies awash. The middle drowns into a lagoon. What's left is a ring of islets round a lagoon where each island stood, as Darwin explained atolls, and the chart counts them. The next fire on that world rises among them.
 
 **Two aims that pull against each other.** Each world has a second aim beside the first, measured as the fire ends (`second.ts`), shown on the chart and in the atlas, with the best so far on each world under the card's words. The heat is finite, so they compete for it:

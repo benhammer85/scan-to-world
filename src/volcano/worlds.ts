@@ -332,7 +332,9 @@ export const WORLDS: World[] = [
     then: 'Lava cools fast in deep water, but inside its own crust it stays hot and runs on.',
     second: 'Pour toward the bank again and again, and an island rises there.',
     rules: {
-      terrain: 'ocean', floor: -0.45, life: false, sink: 0, swell: 0,
+      terrain: 'ocean', floor: -0.45, sink: 0, swell: 0,
+      // (Life comes to the island only once it's risen, as it came to Surtsey: from elsewhere, not at the vents; and no reefs.)
+      origin: 1e9, arrives: 20, reef: 0, wishes: false,
       drift: 0, rises: 0, heat: 450, rising: 1.2, steady: true,
       tubes: 0.02, tubeFresh: 40, bankFar: 0.6, selfGravity: 0, breakout: 0, // (here the tilt steers, aimed at the bank; and the lava runs on in its tubes, without breaking out)
       impactEvery: [60, 100],

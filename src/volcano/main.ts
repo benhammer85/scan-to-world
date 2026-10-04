@@ -561,10 +561,12 @@ function coarse(): void {
     // by the other and have the blackness even right up to a clean edge.
     // (Not on the ice moon: water freezes white, into the new ice the flood mark already draws.)
     // (Lava too thin to be drawn running is drawn set: a thin margin chills first.)
-    const set = !ICE && lava <= LAVA_WHOLE / 4 && planet.age[v] < 240 ? 1 : 0;
+    // (And where life has taken it, less: moss greens black lava as it takes hold.)
+    const set = !ICE && lava <= LAVA_WHOLE / 4 && planet.age[v] < 240 ? 1 - (LIFE ? Math.min(1, planet.life[v] * 1.4) : 0) : 0;
     coarseMarks[v * 4 + 3] = set;
     coarseMarks[v * 4 + 2] = set * Math.exp(-planet.age[v] / 45);
-    const kind = LIFE ? ecology.kind[v] : -1, wash = kind >= 0 ? WASH[kind] : null, washBy = wash ? WASH_STRENGTH * Math.min(1, planet.life[v]) * (1 - hot) : 0;
+    // (As it's drawn, by how grown it is; just come, faint.)
+    const kind = LIFE ? ecology.drawn[v] : -1, wash = kind >= 0 ? WASH[kind] : null, washBy = wash ? WASH_STRENGTH * Math.min(1, planet.life[v]) * (0.45 + 0.55 * Math.min(1, planet.grown[v] * 2.5)) * (1 - hot) : 0;
     washWeight[v] += (washBy - washWeight[v]) * ease;
     for (let i = 0; i < 3; i++) {
       let x = PA[i] + (BA[i] - PA[i]) * fresh;
@@ -722,7 +724,7 @@ function redrawLife(now: number): void {
   lastLife = now;
   lifeOut = true;
   // The simulation's own fields, small and coarse: the worker carries them onto the finer surface.
-  const heights = fineHeight.slice(), life = planet.life.slice(), wear = planet.wear.slice(), kind = ecology.kind.slice();
+  const heights = fineHeight.slice(), life = planet.life.slice(), wear = planet.wear.slice(), kind = ecology.drawn.slice();
   drafts.post({ life: { id: now, heights, life, wear, kind, density: signDensity } }, [heights.buffer, life.buffer, wear.buffer, kind.buffer]);
 }
 

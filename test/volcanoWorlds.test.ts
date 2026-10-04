@@ -4,6 +4,7 @@ import { buildTopology } from '../src/mesh/topology';
 import { Planet } from '../src/volcano/sim';
 import { Chain, CHAIN } from '../src/volcano/chain';
 import { WORLDS, worldOf, nextWorld } from '../src/volcano/worlds';
+import { stage } from '../src/volcano/ecology';
 
 const topo = buildTopology(new THREE.IcosahedronGeometry(1, 24).attributes.position.array, null);
 const p = topo.basePositions;
@@ -412,5 +413,36 @@ describe('a deep ocean world', () => {
       return far;
     };
     expect(reach(true)).toBeGreaterThan(reach(false));
+  });
+  it('brings life to an island once it has risen, as to Surtsey, and none to the sea floor', () => {
+    const pl = new Planet(topo, nearest(0, 0, 1), 3, { ...worldOf('deep').rules, bankFar: 0 });
+    pl.stonesFall = false;
+    // An island, risen long enough ago to take life.
+    const isle: number[] = [];
+    for (let v = 0; v < pl.rock.length; v++) if (p[v * 3] > 0.93) { pl.rock[v] = 0.05; pl.age[v] = 100; isle.push(v); }
+    run(pl, 240);
+    const lives = (vs: number[]) => vs.filter((v) => pl.life[v] > 0.3).length;
+    expect(lives(isle)).toBeGreaterThan(isle.length * 0.3);
+    let sea = 0;
+    for (let v = 0; v < pl.rock.length; v++) if (pl.rock[v] < -0.01 && pl.life[v] > 0.05) sea++;
+    expect(sea).toBe(0);
+  });
+});
+
+describe('life growing up', () => {
+  it('greens new land as moss, then grass, then what the ground holds', () => {
+    const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('ocean').rules);
+    pl.stonesFall = false;
+    const v = nearest(1, 0, 0);
+    for (let w = 0; w < pl.rock.length; w++) if (p[w * 3] > 0.9) { pl.rock[w] = 0.12; pl.age[w] = 100; pl.life[w] = 0.6; }
+    run(pl, 30);
+    expect(pl.grown[v]).toBeGreaterThan(0);
+    expect(stage('forest', pl.grown[v])).toBe('moss');
+    run(pl, 160); // (before the drifting fire comes this way)
+    expect(pl.grown[v]).toBeGreaterThan(0.9);
+    expect(stage('forest', pl.grown[v])).toBe('forest');
+    expect(stage('moss', 0.3)).toBe('meadow');
+    expect(stage('moss', 1)).toBe('forest');
+    expect(stage('mangrove', 0.3)).toBe('mangrove');
   });
 });
