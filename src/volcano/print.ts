@@ -32,6 +32,9 @@ export const LOOKS: { id: string; look: Look; words: string }[] = [
 export const PRINT_FUNCTIONS = /* glsl */ `
   varying vec3 vS;
   uniform float uFloodDots, uFloodRim, uFeeding, uBuild, uSpray, uDrift, uBurp, uBurpSize, uBurpSeed, uBurpDir, uGold, uDark;
+  uniform vec3 uCrustTint; // (each world's own basalt: redder on Mars, olive on Io, grey on the Moon)
+  // A halftone dot, as a print screens a tone: whole at 1, gone at 0, on a fine grid on the screen.
+  float halftone(float t, float cell) { vec2 c = fract(gl_FragCoord.xy / cell) - 0.5; float r = sqrt(clamp(t, 0.0, 1.0)) * 0.62; return 1.0 - smoothstep(r - 0.12, r + 0.12, length(c)); }
   #define uFeedingGlow (0.4 + 0.6 * uFeeding)
   uniform vec3 uVent;
   // Craters, as the charts draw them (see 'Craters' below): each one's middle and width, how long since it was dug, and the light in the world's own frame.
@@ -524,16 +527,23 @@ const PRINT = (q: boolean) => /* glsl */ `
           float seamW = 0.02 + 0.09 * hot;
           // (Only where it's hot, and mostly near the vent: everywhere, it read as cracked mud.)
           float seam = (1.0 - smoothstep(seamW, seamW + pfw * 1.5, pl.x)) * smoothstep(0.3, 0.6, T) * (0.25 + 0.75 * exp(-far / 0.1));
-          vec3 crustInk = vec3(0.05, 0.036, 0.028) * (0.78 + 0.38 * pl.y) * (0.85 + 0.3 * mottle) * mix(1.0, grain, 0.5);
+          vec3 crustInk = vec3(0.05, 0.036, 0.028) * uCrustTint * (0.72 + 0.5 * pl.y) * (0.85 + 0.3 * mottle) * mix(1.0, grain, 0.5); // (plates of their own shades, a little more apart: flat, it read as a hole)
           float frontPx = abs(lvR - 0.5) / max(fwidth(lvR), 1e-4);
           float front = (1.0 - smoothstep(1.0 * uPx, 3.0 * uPx, frontPx)) * uFeeding * smoothstep(0.35, 0.65, noise3(vDir * 45.0 + tq * 0.05));
           // The open heat at the vent and down the fresh stream, graded as incandescence is: pale gold
           // at the mouth, orange, then a dull red where the crust is closing over it; its edge ragged.
-          float heatV = max(G, T * 0.75) + 0.12 * (noise3(vDir * 30.0 + vec3(0.0, tq * 0.04, 0.0)) - 0.5);
-          float open = smoothstep(0.42, 0.6, heatV) * (0.25 + 0.75 * exp(-far / 0.12));
-          vec3 glowCol = mix(deep * 1.15, verm, smoothstep(0.45, 0.65, heatV));
-          glowCol = mix(glowCol, yel, smoothstep(0.7, 0.95, heatV));
-          glowCol = mix(glowCol, uInkPale, smoothstep(0.95, 1.2, heatV) * exp(-far / 0.025));
+          // The open heat at the vent and down the fresh stream, as a print lays it: three flat inks (a
+          // dull red, orange, gold), each edge crisp and ragged, screened in halftone dots where one gives
+          // way to the next (blended smoothly, it looked airbrushed beside the rest of the print).
+          float heatV = max(G, T * 0.75) + 0.12 * (noise3(vDir * 30.0 + vec3(0.0, tq * 0.04, 0.0)) - 0.5) + 0.05 * (noise3(vDir * 90.0) - 0.5);
+          float hw = max(fwidth(heatV), 1e-4) * 0.8, cell = 4.0 * uPx;
+          float band1 = smoothstep(0.42 - hw, 0.42 + hw, heatV), band2 = smoothstep(0.6 - hw, 0.6 + hw, heatV), band3 = smoothstep(0.8 - hw, 0.8 + hw, heatV);
+          band2 = max(band2, halftone(smoothstep(0.5, 0.6, heatV), cell) * band1);
+          band3 = max(band3, halftone(smoothstep(0.7, 0.8, heatV), cell) * band2);
+          float open = band1 * (0.25 + 0.75 * exp(-far / 0.12));
+          vec3 glowCol = mix(deep * 1.15, verm, band2);
+          glowCol = mix(glowCol, yel, band3);
+          glowCol = mix(glowCol, uInkPale, smoothstep(0.95 - hw, 0.95 + hw, heatV) * step(far, 0.03));
           inkCol = crustInk;
           inkCol = mix(inkCol, mix(deep * 1.2, verm, hot), seam * 0.9);
           inkCol = mix(inkCol, verm, front * 0.9);
@@ -558,6 +568,7 @@ const PRINT = (q: boolean) => /* glsl */ `
         float spDens = clamp(thrown * 1.1 + edgeSpray * ${q ? '0.12 * uSpray' : '0.45'}, 0.0, 1.0); // (quiet: the edges spray only with a burst)
         float sp = spDens > 0.001 ? splat(vDir, spDens, px) * (1.0 - cov) : 0.0;
         vec3 spCol = mix(deep, verm, smoothstep(0.03, 0.0, far - 0.05 * uSpray) * 0.8 + 0.2 * uSpray);
+        ${q ? 'if (uDark > 0.5) spCol = mix(vec3(0.045, 0.034, 0.027) * uCrustTint, spCol, smoothstep(0.35, 0.9, uSpray)); // (dark: drops glow as they land, and go black as the burst passes)' : ''}
         col = mix(col, spCol, sp * 0.95);
         glowInk = max(glowInk, sp * ${q ? '0.0' : '0.85'});
         // Set, it still glows a long while, cooling through the same inks, band by band: vermilion for
@@ -576,9 +587,11 @@ const PRINT = (q: boolean) => /* glsl */ `
         // (Dark: cooling in one sequence: a dull red for its first moments, then black, then basalt
         // brown, weathering to a dark grey-brown before it goes; the newest always the darkest.)
         if (uDark > 0.5) {
-          setCol = mix(vec3(0.13, 0.105, 0.085), vec3(0.06, 0.044, 0.034), smoothstep(0.12, 0.4, black));
-          setCol = mix(setCol, vec3(0.035, 0.026, 0.021), smoothstep(0.55, 0.8, black));
-          setCol = mix(setCol, deep * 0.9, smoothstep(0.88, 0.98, black));
+          // (Weathering sooner, and lighter: black for its first seconds, basalt by half a minute, a light
+          // grey-brown by a minute, and gone in two and a half, so the world stays airy, the newest the darkest.)
+          setCol = mix(vec3(0.27, 0.235, 0.2), vec3(0.06, 0.044, 0.034), smoothstep(0.3, 0.6, black)) * uCrustTint;
+          setCol = mix(setCol, vec3(0.035, 0.026, 0.021) * uCrustTint, smoothstep(0.65, 0.85, black));
+          setCol = mix(setCol, deep * 0.55, smoothstep(0.93, 0.99, black)); // (a dark red for its first seconds only: brighter and longer, a thin sheet just set flashed orange)
         }` : `vec3 setCol = mix(vec3(0.24, 0.22, 0.21), deep, smoothstep(0.6 - sb, 0.6 + sb, black));
         setCol = mix(setCol, verm, smoothstep(0.8 - sb, 0.8 + sb, black));`}
         // (Pressed as the running ink is; and skinning over with crust as it cools, the plates now still.)
@@ -586,9 +599,9 @@ const PRINT = (q: boolean) => /* glsl */ `
         ${q ? 'if (uDark < 0.5) ' : ''}setCol = mix(setCol, deep * mix(0.55, 1.0, smoothstep(0.8 - sb, 0.8 + sb, black)), sCrust * 0.9); // (not on dark lava: its red plates were blotches)
         setCol *= (0.82 + 0.3 * mottle) * mix(1.0, grain, 0.5);
         setCol = mix(setCol, mix(paper, setCol, 0.35), starve);
-        ${q ? `float setA = hs * (uDark > 0.5 ? 0.95 * smoothstep(0.02, 0.12, black) : 0.3 * smoothstep(0.006, 0.15, black) + 0.62 * smoothstep(0.45, 0.8, black)); // (dark: solid basalt for its first minute, then going cleanly, never a grey wash)
+        ${q ? `float setA = hs * (uDark > 0.5 ? 0.95 * smoothstep(0.04, 0.16, black) : 0.3 * smoothstep(0.006, 0.15, black) + 0.62 * smoothstep(0.45, 0.8, black)); // (dark: solid basalt for its first minute, then going cleanly, never a grey wash)
         col = mix(col, setCol * mix(vec3(1.0), col / paper, uDark > 0.5 ? 0.12 : 0.5), setA);
-        glowInk = max(glowInk, setA * (uDark > 0.5 ? smoothstep(0.88, 0.98, black) * 0.5 : sWarm * 0.4));` : `float setA = hs * smoothstep(0.33, 0.4, black) * 0.92;
+        glowInk = max(glowInk, setA * (uDark > 0.5 ? smoothstep(0.93, 0.99, black) * 0.35 : sWarm * 0.4));` : `float setA = hs * smoothstep(0.33, 0.4, black) * 0.92;
         col = mix(col, setCol, setA);
         glowInk = max(glowInk, setA * smoothstep(0.6 - sb, 0.6 + sb, black) * 0.7); // (still hot, it glows; gone grey, it's ground)`}
         // A burp: now and then while it erupts, gas swells under the crust at the vent, a dark lumpy dome

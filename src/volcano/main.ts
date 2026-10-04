@@ -299,6 +299,9 @@ material.onBeforeCompile = (shader) => {
   shader.uniforms.uFeeding = fed;
   shader.uniforms.uBuild = building;
   shader.uniforms.uDark = { value: DARK_LAVA ? 1 : 0 };
+  // Each world's own basalt, as a tint on the dark lava (a multiplier: 1 is a plain black-brown).
+  const CRUST: Record<string, [number, number, number]> = { mars: [1.35, 0.9, 0.75], io: [1.05, 1.08, 0.72], moon: [0.95, 0.98, 1.08], ocean: [0.88, 0.97, 1.08], deep: [0.85, 0.97, 1.12], spin: [0.9, 0.98, 1.12], asteroid: [1.05, 0.98, 0.92], young: [1.25, 0.92, 0.82], tumble: [1.0, 0.97, 0.95] };
+  shader.uniforms.uCrustTint = { value: new THREE.Vector3(...(CRUST[WORLD.id] ?? [1, 1, 1])) };
   shader.uniforms.uSpray = spray;
   shader.uniforms.uDrift = drift;
   shader.uniforms.uBurp = burp;
