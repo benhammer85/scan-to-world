@@ -35,6 +35,7 @@ import { GestureRecognizer } from '../interact/gestures';
 import { Stipple } from '../render/stipple';
 import { signSvg } from '../render/signs';
 import { Planet, VOLCANO, blobRadius, type Era } from './sim';
+import { AGES, ageBefore, ageKey, carried } from './ages';
 import { FineSurface } from './fine';
 import { Ecology, KINDS } from './ecology';
 import { Islands } from './islands';
@@ -175,7 +176,11 @@ function remember(key: string, value: string): void {
 // (A world of a solar system is new ground: it's a world of its own, not this kind's own world.)
 // (On a world drawn from its real heights, its ground is kept apart from what it was when made up.)
 const GROUND_KEY = WORLD.rules.real ? `${WORLD.id}-real` : WORLD.id;
-const GROUND = wanted || RUN !== null ? null : recallGround(GROUND_KEY, N);
+// (An age of Earth begins instead on the ground the age before it left: see ages.ts. And again on it
+// each time it's played, so an age is always this world, not the last try at it.)
+const AGE_BEFORE = RUN === null && !wanted ? ageBefore(WORLD.id) : null;
+const AGE_GROUND = AGE_BEFORE ? recallGround(ageKey(AGE_BEFORE), N) : null;
+const GROUND = wanted || RUN !== null || ageBefore(WORLD.id) || WORLD.id === AGES[0] ? null : recallGround(GROUND_KEY, N);
 const FIRES = GROUND?.fires ?? 0;
 const START = (() => {
   if (!GROUND) return nearest(0.1, 0.15, 0.98);
@@ -185,7 +190,7 @@ const START = (() => {
 })();
 /** Where lava has ever lain on this world (for those that keep the mark of it): the old seas, the old new ice. */
 const MARKED = GROUND?.marked ?? null;
-const planet = new Planet(topo, START, seed, WORLD.rules, GROUND?.rock);
+const planet = new Planet(topo, START, seed, WORLD.rules, AGE_GROUND && AGE_BEFORE ? carried(AGE_BEFORE, WORLD.id, AGE_GROUND.rock, WORLD.rules.floor ?? VOLCANO.floor) : GROUND?.rock);
 planet.stonesFall = WORLD.goal === 'gather'; // not until the first ideas have come in (see `lessons`), but on the first world, from the first, since they're its aim
 const ecology = new Ecology(planet, topo);
 const islands = new Islands(topo);
@@ -1738,7 +1743,8 @@ function theEnd(): void {
     // What this fire left is the ground the next one on this world rises through.
     let marked: Uint8Array | null = null;
     if (FL) { marked = new Uint8Array(N); for (let v = 0; v < N; v++) marked[v] = planet.age[v] < 1e5 || (MARKED?.[v] ?? 0) ? 1 : 0; }
-    if (RUN === null) keepGround(GROUND_KEY, { rock: planet.rock.slice(), fires: FIRES + 1, marked });
+    if (RUN === null && AGES.includes(WORLD.id)) keepGround(ageKey(WORLD.id), { rock: planet.rock.slice(), fires: 1, marked: null }); // (the ground the next age begins on)
+    else if (RUN === null) keepGround(GROUND_KEY, { rock: planet.rock.slice(), fires: FIRES + 1, marked });
     $('stage-name').textContent = ending.info.title;
     $('worlds').style.display = 'none'; // (the chart has its own title there)
     void forget(); // the world is finished: nothing to come back to
@@ -1997,7 +2003,8 @@ let begun = false;
 // (It carried about ten lines, twelve numerals, four links and seven inks.)
 ($('begin').querySelector('.world') as HTMLElement).textContent = WORLD.numeral;
 ($('begin').querySelector('.name') as HTMLElement).textContent = WORLD.title;
-($('begin').querySelector('.first') as HTMLElement).textContent = WORLD.first;
+// (An age of Earth begun on the ground the age before left says so: it's the world you made, an age on.)
+($('begin').querySelector('.first') as HTMLElement).textContent = AGE_GROUND ? `${WORLD.first} The world you made, an age later.` : WORLD.first;
 ($('begin').querySelector('.second') as HTMLElement).textContent = FREE ? 'No aim and no clock: the fire never cools.' : HOW[WORLD.goal] ?? WORLD.second;
 // The hands, the same on every card.
 ($('begin').querySelector('.hands') as HTMLElement).textContent = LAMP ? 'Keep it level to grow · tilt to let go · drag to turn' : 'Tilt to pour · hold a finger down, lift to burst · drag to turn';

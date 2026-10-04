@@ -5,6 +5,7 @@ import { Planet } from '../src/volcano/sim';
 import { Chain, CHAIN } from '../src/volcano/chain';
 import { WORLDS, worldOf, nextWorld } from '../src/volcano/worlds';
 import { stage } from '../src/volcano/ecology';
+import { ageBefore, carried } from '../src/volcano/ages';
 
 const topo = buildTopology(new THREE.IcosahedronGeometry(1, 24).attributes.position.array, null);
 const p = topo.basePositions;
@@ -580,5 +581,21 @@ describe('Triton', () => {
     expect(lit.counted).toBe(1);
     expect(lit.east).toBeGreaterThan(lit.west + 5);
     expect(dark.counted).toBe(0);
+  });
+});
+
+describe("Earth's ages", () => {
+  it('follow one another, and carry the ground on, the oceans filling between the dry ages and the wet', () => {
+    expect(ageBefore('first')).toBe(null);
+    expect(ageBefore('young')).toBe('first');
+    expect(ageBefore('ocean')).toBe('snowball');
+    expect(ageBefore('mars')).toBe(null);
+    // A young Earth's ground: low plains, and one mountain.
+    const rock = new Float32Array(1000).fill(0.05);
+    for (let i = 0; i < 30; i++) rock[i] = 0.4;
+    const wet = carried('young', 'archean', rock, -0.25);
+    expect(wet[500]).toBeCloseTo(-0.25);
+    expect(wet[0]).toBeGreaterThan(0); // (the mountain, an island)
+    expect(carried('archean', 'snowball', wet, -0.25)).toEqual(wet);
   });
 });
