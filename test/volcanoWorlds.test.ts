@@ -16,21 +16,21 @@ const run = (pl: Planet, seconds: number) => { for (let t = 0; t < seconds; t +=
 
 describe('the worlds', () => {
   it('come one after another, and each has its own aim', () => {
-    expect(WORLDS.map((w) => w.id)).toEqual(['ocean', 'moon', 'mars', 'ice', 'io', 'enceladus', 'asteroid', 'spin', 'lamp', 'tumble', 'deep', 'young']);
+    expect(WORLDS.map((w) => w.id)).toEqual(['mars', 'moon', 'ice', 'asteroid', 'ocean', 'young', 'io', 'enceladus', 'tumble', 'spin', 'deep', 'lamp']);
     expect(worldOf('moon').goal).toBe('basins');
-    expect(worldOf('nowhere').id).toBe('ocean');
-    expect(nextWorld(worldOf('ocean'))!.id).toBe('moon');
-    expect(nextWorld(worldOf('moon'))!.id).toBe('mars');
-    expect(nextWorld(worldOf('mars'))!.id).toBe('ice');
-    expect(nextWorld(worldOf('ice'))!.id).toBe('io');
+    expect(worldOf('nowhere').id).toBe('mars');
+    expect(nextWorld(worldOf('mars'))!.id).toBe('moon');
+    expect(nextWorld(worldOf('moon'))!.id).toBe('ice');
+    expect(nextWorld(worldOf('ice'))!.id).toBe('asteroid');
+    expect(nextWorld(worldOf('asteroid'))!.id).toBe('ocean');
+    expect(nextWorld(worldOf('ocean'))!.id).toBe('young');
+    expect(nextWorld(worldOf('young'))!.id).toBe('io');
     expect(nextWorld(worldOf('io'))!.id).toBe('enceladus');
-    expect(nextWorld(worldOf('enceladus'))!.id).toBe('asteroid');
-    expect(nextWorld(worldOf('asteroid'))!.id).toBe('spin');
-    expect(nextWorld(worldOf('spin'))!.id).toBe('lamp');
-    expect(nextWorld(worldOf('lamp'))!.id).toBe('tumble');
-    expect(nextWorld(worldOf('tumble'))!.id).toBe('deep');
-    expect(nextWorld(worldOf('deep'))!.id).toBe('young');
-    expect(nextWorld(worldOf('young'))).toBe(null);
+    expect(nextWorld(worldOf('enceladus'))!.id).toBe('tumble');
+    expect(nextWorld(worldOf('tumble'))!.id).toBe('spin');
+    expect(nextWorld(worldOf('spin'))!.id).toBe('deep');
+    expect(nextWorld(worldOf('deep'))!.id).toBe('lamp');
+    expect(nextWorld(worldOf('lamp'))).toBe(null);
   });
 });
 

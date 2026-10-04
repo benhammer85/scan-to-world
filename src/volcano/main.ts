@@ -1035,7 +1035,7 @@ const won = () => aimOf > 0 && aimDone >= aimOf && (WORLD.goal !== 'calm' || cal
 const HOW: Record<string, string> = {
   ring: 'The fire drifts along the bold dotted line. Pour as it goes, and keep a chain of living islands all along it.',
   basins: 'The vent creeps to whatever faces up. Drag a dotted basin to the top, and pour gently until it fills. Flood every one.',
-  height: `Pour in one place, again and again, until the mountain stands ${HEIGHT.target} km high.`,
+  height: `Tilt the phone to pour. Pour in one place, again and again, until the mountain stands ${HEIGHT.target} km high.`,
   cover: `The vent creeps to whatever faces up. Pour, drag somewhere grey to the top, and pour again, until ${COVER}% of the old ice is new.`,
   plumes: `At high tide, hold until the smoke turns grey, then lift to burst. Raise ${PLUMES} great plumes, each outside the dotted rings of the last.`,
   feed: "Hold until the smoke turns grey. Drag the world so the vent leans towards the giant, then lift to burst: its ice feeds the giant's ring. Fill the ring.",
@@ -1952,7 +1952,7 @@ function openAtlas(all: Page[]): void {
   for (const p of all.slice().reverse()) {
     const fig = document.createElement('figure'), img = new Image(), cap = document.createElement('figcaption'), when = document.createElement('small');
     img.src = p.image; img.alt = `${p.title}: ${p.summary}`;
-    cap.textContent = `${p.numeral} · ${p.title}`;
+    cap.textContent = `${p.world ? worldOf(p.world).numeral : p.numeral} · ${p.title}`;
     when.textContent = new Date(p.when).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
     cap.append(document.createElement('br'), when);
     fig.append(img, cap);
