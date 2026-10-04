@@ -63,7 +63,7 @@ The aim is drawn on the map in small dots, as a chart marks a route or a boundar
   * Pouring is a rumble of light taps, 7 to 16 a second as the world is tipped further.
   * A burst's thud is followed by what it threw, landing.
   * Each piece of the aim gained (a basin, a stretch, a plume, or a tenth) is a firm tap.
-  * All of it uses the haptic engine's taps; a continuous engine (Core Haptics) would need a native plugin.
+  * In the app these play on the phone's own haptic engine (Core Haptics) through a small plugin of the game's own (`ios/App/App/WarmHaptics.swift`). The pour is one continuous rumble whose strength and grain follow the tilt, the heartbeat is a soft thump and a softer one, and rock landing is crisp. Without the plugin (in a browser, or an older build) the same moments are felt as plain taps, and the rumble as a run of light ones.
 
 With these, following the card still wins every world, and the ocean wins sooner (4 to 7 minutes).
 

@@ -51,7 +51,7 @@ import { Chain, CHAIN } from './chain';
 import { measureSecond, type Second } from './second';
 import { loadSystem, saveSystem, worldFor, recordPlayed, madeCount } from './system';
 import { openSystem, closeSystem } from './systemChart';
-import { feel, keepImage, NATIVE, tap } from './native';
+import { feel, keepImage, NATIVE, rumble, rumbles, tap } from './native';
 import './fonts.css';
 import { LOOKS, PRINT_FUNCTIONS, LAMP_PRINT_FUNCTIONS, LAMP_PRINT, LAMP_QUIET, printFragment, type Look } from './print';
 
@@ -2059,27 +2059,33 @@ const clock = new THREE.Clock();
  */
 let beatAt = 0, rumbleAt = 0, wasReady = false, landing: { at: number; n: number } | null = null, aimFelt = -1;
 function inTheHand(): void {
-  if (!begun || ending || planet.over || replaying) return;
+  if (!begun || ending || planet.over || replaying) { rumble(0); return; }
   if (!LAMP && planet.clamped && planet.pressure > planet.k.least) {
     const ready = planet.k.great > 0 ? planet.throwOf(planet.pressure) / planet.k.great : planet.pressure / planet.k.explosive;
     const brink = planet.pressure > planet.capNow * 0.85;
-    if (ready >= 1 && !wasReady) { tap('medium'); setTimeout(() => tap('medium'), 130); beatAt = seconds; } // (ready: a double beat)
+    if (ready >= 1 && !wasReady) { tap({ strength: 0.75, sharpness: 0.4 }); setTimeout(() => tap({ strength: 0.75, sharpness: 0.4 }), 130); beatAt = seconds; } // (ready: a double beat)
     wasReady = ready >= 1;
     const every = brink ? 0.22 : THREE.MathUtils.lerp(1.1, 0.38, Math.min(1, ready));
-    if (seconds - beatAt >= every) { beatAt = seconds; tap(brink ? 'heavy' : ready >= 1 ? 'medium' : 'light'); }
+    if (seconds - beatAt >= every) {
+      // A heartbeat: a soft thump and a softer one after it, firmer as it gathers, hard at the brink.
+      beatAt = seconds;
+      const s = brink ? 1 : 0.22 + 0.4 * Math.min(1, ready);
+      tap({ strength: s, sharpness: brink ? 0.5 : 0.15 });
+      if (!brink) setTimeout(() => tap({ strength: s * 0.6, sharpness: 0.1 }), 150);
+    }
   } else wasReady = false;
-  if (planet.pouring && planet.pressure > 0.02) {
-    const strength = Math.min(1, Math.max(0, (planet.tip - planet.k.tipPour) / (1 - planet.k.tipPour)));
-    if (seconds - rumbleAt >= 1 / (7 + 9 * strength)) { rumbleAt = seconds; tap('light'); }
-  }
+  // Pouring: a rumble, deeper and stronger as it's tipped further (on the phone's engine, continuous; else in light taps).
+  const pourStrength = planet.pouring && planet.pressure > 0.02 ? Math.min(1, Math.max(0, (planet.tip - planet.k.tipPour) / (1 - planet.k.tipPour))) : -1;
+  if (rumbles()) rumble(pourStrength < 0 ? 0 : 0.25 + 0.55 * pourStrength, 0.15 + 0.2 * pourStrength);
+  else if (pourStrength >= 0 && seconds - rumbleAt >= 1 / (7 + 9 * pourStrength)) { rumbleAt = seconds; tap('light'); }
   if (landing) {
     const t = seconds - landing.at;
-    if (t > 0.5 + 0.18 * (9 - landing.n) && landing.n > 0) { landing.n--; landing.at += 0.14 + 0.12 * Math.random(); tap('light'); }
+    if (t > 0.5 + 0.18 * (9 - landing.n) && landing.n > 0) { landing.n--; landing.at += 0.14 + 0.12 * Math.random(); tap({ strength: 0.2 + 0.35 * Math.random(), sharpness: 0.75 }); }
     if (landing.n <= 0 || t > 3) landing = null;
   }
   // The aim gaining a piece: a basin, a stretch, a plume; or another tenth of it.
   const piece = ['ring', 'basins', 'plumes', 'ridge'].includes(WORLD.goal) ? Math.floor(aimDone) : Math.floor((aimDone / Math.max(1e-6, aimOf)) * 10);
-  if (aimFelt >= 0 && piece > aimFelt) tap('medium');
+  if (aimFelt >= 0 && piece > aimFelt) tap({ strength: 0.65, sharpness: 0.6 });
   aimFelt = Math.max(aimFelt, piece);
 }
 

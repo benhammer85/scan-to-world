@@ -85,7 +85,7 @@ In App Store Connect, on the app's page:
 
 ## What's native, and what isn't yet
 
-* **Haptics:** the phone's own engine (in Safari on an iPhone they did nothing at all).
+* **Haptics:** the phone's own engine (in Safari on an iPhone they did nothing at all). The continuous rumble, heartbeat and textured taps come from a small plugin in the app itself, `ios/App/App/WarmHaptics.swift` (Core Haptics), registered by `WarmBridgeViewController` (which `SceneDelegate.swift` makes the root view). If a build ever fails there, the game still runs without it: it falls back to plain taps.
 * **Keeping a plate:** the share sheet (save to Photos, send it on).
 * **iPhone only, portrait only, light only, no status bar** (`Info.plist`, `TARGETED_DEVICE_FAMILY = 1`).
 * **Permissions explained:** motion ("Tilt your phone to pour the lava.") and adding to Photos.
