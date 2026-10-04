@@ -37,6 +37,7 @@
  *   The orange Earth turn the sky blue, and past it: more oxygen than it needs.
  *   Europa          break the ice into chaos, and as much of it as can be: big fields cost time.
  *   Triton          lay the geyser streaks, and darken as much of the ice as can be: bigger geysers, held longer.
+ *   Mercury         raise the far side, and the near side as little: bursts heap ash here too.
  *   A lava world    make rock snow, and pile it deep in one place: snow spreads along all the edge
  *                   of night, and turning the world to pile it costs the molten pool.
  */
@@ -72,6 +73,7 @@ export function secondWords(goal: World['goal'], value: number): string {
     case 'outbuild': return `${value}% of it kept from the star`;
     case 'snow': return `drifts ${value} km deep`;
     case 'gather': return `${value} stones gathered`;
+    case 'antipode': return `the near side ${value} km high`;
     case 'oxygen': return `${value}% more oxygen than the sky needed`;
     case 'chaos': return `${value}% of the ice broken`;
     case 'streaks': return `${value}% of the ice streaked`;
@@ -140,6 +142,9 @@ export function measureSecond(world: World, pl: Planet, topo: Topology, islands:
   } else if (world.goal === 'outbuild') {
     const laid = Math.max(0, pl.grownBy) + pl.lost;
     value = laid > 0 ? Math.round((100 * Math.max(0, pl.grownBy)) / laid) : 0;
+  } else if (world.goal === 'antipode') {
+    // (The near mountain: the second aim is to keep it low, every burst sent through rather than heaped here.)
+    value = Math.round(Math.max(0, pl.summit) * (world.height?.kmPerUnit ?? 40));
   } else if (world.goal === 'gather') {
     value = pl.tally.caught;
   } else if (world.goal === 'oxygen') {

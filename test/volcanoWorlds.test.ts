@@ -18,7 +18,7 @@ const run = (pl: Planet, seconds: number) => { for (let t = 0; t < seconds; t +=
 
 describe('the worlds', () => {
   it('come one after another, and each has its own aim', () => {
-    expect(WORLDS.map((w) => w.id)).toEqual(['mars', 'moon', 'ice', 'asteroid', 'rogue', 'first', 'young', 'archean', 'snowball', 'ocean', 'io', 'europa', 'enceladus', 'triton', 'tumble', 'magma', 'dust', 'spin', 'deep', 'lamp']);
+    expect(WORLDS.map((w) => w.id)).toEqual(['mars', 'moon', 'ice', 'asteroid', 'rogue', 'first', 'young', 'archean', 'snowball', 'ocean', 'io', 'europa', 'enceladus', 'triton', 'tumble', 'mercury', 'magma', 'dust', 'spin', 'deep', 'lamp']);
     expect(worldOf('moon').goal).toBe('basins');
     expect(worldOf('nowhere').id).toBe('mars');
     expect(nextWorld(worldOf('mars'))!.id).toBe('moon');
@@ -35,7 +35,8 @@ describe('the worlds', () => {
     expect(nextWorld(worldOf('europa'))!.id).toBe('enceladus');
     expect(nextWorld(worldOf('enceladus'))!.id).toBe('triton');
     expect(nextWorld(worldOf('triton'))!.id).toBe('tumble');
-    expect(nextWorld(worldOf('tumble'))!.id).toBe('magma');
+    expect(nextWorld(worldOf('tumble'))!.id).toBe('mercury');
+    expect(nextWorld(worldOf('mercury'))!.id).toBe('magma');
     expect(nextWorld(worldOf('magma'))!.id).toBe('dust');
     expect(nextWorld(worldOf('dust'))!.id).toBe('spin');
     expect(nextWorld(worldOf('spin'))!.id).toBe('deep');
@@ -597,5 +598,19 @@ describe("Earth's ages", () => {
     expect(wet[500]).toBeCloseTo(-0.25);
     expect(wet[0]).toBeGreaterThan(0); // (the mountain, an island)
     expect(carried('archean', 'snowball', wet, -0.25)).toEqual(wet);
+  });
+});
+
+describe('Mercury', () => {
+  it("sends a burst's shock through the world, to erupt at the far side a moment later", () => {
+    const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('mercury').rules);
+    pl.stonesFall = false;
+    expect(pl.far!.z).toBeLessThan(-0.95);
+    pl.pressure = pl.k.explosive * 1.5; pl.erupt();
+    run(pl, pl.k.antipodeDelay - 1);
+    expect(pl.echoed).toBe(0);
+    run(pl, 15);
+    expect(pl.echoed).toBe(1);
+    expect(pl.farRaised).toBeGreaterThan(0.003);
   });
 });

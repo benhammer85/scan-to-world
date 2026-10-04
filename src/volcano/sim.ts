@@ -333,6 +333,14 @@ export const VOLCANO = {
    * 0: none.
    */
   streak: 0,
+  /**
+   * Mercury: a burst's shock goes through the world and meets again at the exact opposite point,
+   * the antipode, as the Caloris impact's did, breaking the ground there into the "weird terrain":
+   * after `antipodeDelay` seconds, this share of it erupts there, far more for a bigger burst (by the
+   * square of how far past the burst point it was held). 0: none.
+   */
+  antipode: 0,
+  antipodeDelay: 6,
   real: '' as '' | RealName,
   realScale: 0.04,
   realRadius: 1737,
@@ -465,6 +473,18 @@ export class Planet {
   greenhouse = 0;
   iceLine = 0;
   thawed = false;
+  /** Mercury: the far side, opposite where the heat began (with the width its mountain is measured across); what's on its way there; and how many have arrived. */
+  far: { x: number; y: number; z: number; r: number } | null = null;
+  private echoes: { at: number; volume: number }[] = [];
+  echoed = 0;
+  /** How high new ground stands at the far side, at its highest (in the world's height). */
+  get farRaised(): number {
+    const f = this.far, p = this.topo.basePositions;
+    if (!f) return 0;
+    let most = 0;
+    for (let v = 0; v < this.rock.length; v++) if (Math.hypot(p[v * 3] - f.x, p[v * 3 + 1] - f.y, p[v * 3 + 2] - f.z) < f.r) most = Math.max(most, this.rock[v] - this.start[v]);
+    return most;
+  }
   /** The orange Earth: the oxygen life has breathed into the sky so far. */
   oxygen = 0;
   /** Rock boiled away by the star, and rock snow fallen on the night side, so far (in the volume heat is reckoned in). */
@@ -554,6 +574,7 @@ export class Planet {
     if (ground && ground.length === n) this.rock.set(ground);
     if (this.k.terrain !== 'ocean') this.scar();
     if (this.k.magma > 0) for (let v = 0; v < n; v++) { this.lava[v] = this.k.magma; this.age[v] = 0; }
+    if (this.k.antipode > 0) this.far = { x: -this.plume.x, y: -this.plume.y, z: -this.plume.z, r: 0.16 };
     if (this.k.stormEvery[1] > 0) this.stormIn = this.between(this.k.stormEvery);
     // The deep ocean's bank: a seamount whose top is just under the sea, some way from the heat.
     if (this.k.bankFar > 0) {
@@ -841,6 +862,8 @@ export class Planet {
     const strength = this.throwOf(volume), far = this.k.ashRing > 0 ? Math.sqrt(strength / this.k.explosive) : 1;
     this.fallOfAsh(v, left * this.k.ashShare * s, (blast ? 3 : 1) * far);
     if (!blast) this.tally.bursts++;
+    // (Its shock on its way through the world: the bigger the burst, the more of it reaches the far side.)
+    if (!blast && this.k.antipode > 0) this.echoes.push({ at: this.seconds + this.k.antipodeDelay, volume: volume * this.k.antipode * Math.min(2.5, (volume / this.k.explosive) ** 2) });
     if (!blast && this.k.streak > 0 && this.star && this.dayAt(this.plumeVertex) > 0.2) this.geyser(left * this.k.ashShare * s);
     if (!blast && this.k.great > 0 && strength >= this.k.great) this.greatPlume(this.k.ashReach * this.k.ashRing * far);
     const lava = left * (1 - this.k.ashShare) * s;
@@ -1018,6 +1041,7 @@ export class Planet {
     this.flow(dt);
     this.cool(dt);
     this.skies(dt);
+    this.farSide();
     for (let v = 0; v < this.age.length; v++) { if (this.lava[v] < this.k.thin) this.age[v] += dt; this.laid[v] += dt; }
     // The slow forces every quarter second, and life the step after, so no one step carries both.
     this.slowIn -= dt;
@@ -1363,6 +1387,15 @@ export class Planet {
       this.rock[v] += solid;
       if (l > this.k.cover) { if (this.life[v] > 0.05) this.scorch[v] = 1; this.age[v] = 0; this.life[v] = 0; this.grown[v] = 0; this.ash[v] = 0; this.rich[v] = 0; }
     }
+  }
+
+  /** Mercury: a burst's shock arriving at the far side, and erupting there. */
+  private farSide(): void {
+    if (!this.far || !this.echoes.length || this.echoes[0].at > this.seconds) return;
+    const e = this.echoes.shift()!, v = this.vertexAt(this.far), a = e.volume * this.scale;
+    this.eruptions.push({ vertex: v, flank: v, left: a, rate: a / this.k.pour, total: a, t: 0, dur: this.k.pour * 1.5 });
+    this.echoed++;
+    this.tell('The far side breaks open');
   }
 
   /** How squarely the ground at a vertex faces the star: 0 on the night side and at the edge, to 1 under it. */

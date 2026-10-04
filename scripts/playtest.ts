@@ -51,6 +51,7 @@ function aim(): [number, number] {
     case 'outbuild': return [Math.max(0, (100 * pl.grownBy) / OUTBUILD), 100];
     case 'snow': return [(100 * pl.snow) / SNOWFALL, 100];
     case 'gather': return [pl.tally.caught, GATHER];
+    case 'antipode': return [pl.farRaised * HEIGHT.kmPerUnit, W.farKm ?? 0];
     case 'oxygen': return [(100 * pl.oxygen) / OXYGEN, 100];
     case 'chaos': case 'streaks': return [pl.plumes.length, FIELDS];
     default: return [pl.basins.filter((b) => pl.flooded(b) >= 0.7).length, pl.basins.length];
@@ -235,6 +236,8 @@ const card: Record<string, Bot> = {
     timer -= dt; turnTowards(focus, dt, 0.3);
     pourCycle(null, 0.45);
   },
+  // Hold until heavy, and lift: the shock goes through.
+  antipode: () => { if (!pl.clamped) clampOn(); level(); if (pl.pressure >= pl.k.explosive * 1.6) lift(); else if (pl.pressure > pl.capNow * 0.9) lift(); },
   // Hold, and lift while the smoke is light; then turn somewhere apart for the next.
   chaos: (dt) => {
     if (!focus) focus = vent();

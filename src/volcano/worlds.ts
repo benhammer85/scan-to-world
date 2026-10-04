@@ -31,7 +31,7 @@
  */
 import type { Rules } from './sim';
 
-export type WorldId = 'ocean' | 'moon' | 'mars' | 'ice' | 'io' | 'enceladus' | 'asteroid' | 'spin' | 'lamp' | 'tumble' | 'deep' | 'young' | 'rogue' | 'snowball' | 'dust' | 'magma' | 'first' | 'archean' | 'europa' | 'triton';
+export type WorldId = 'ocean' | 'moon' | 'mars' | 'ice' | 'io' | 'enceladus' | 'asteroid' | 'spin' | 'lamp' | 'tumble' | 'deep' | 'young' | 'rogue' | 'snowball' | 'dust' | 'magma' | 'first' | 'archean' | 'europa' | 'triton' | 'mercury';
 
 export interface Palette {
   /** The ground: bare old rock, fresh basalt, ash, lava as it runs (and where it lies thick), and, for worlds that keep a mark of it, rock that lava has flooded. */
@@ -62,7 +62,9 @@ export interface World {
   /** Its second aim, for the card: one that pulls against the first (see second.ts). */
   second: string;
   palette: Palette;
-  goal: 'ring' | 'basins' | 'height' | 'cover' | 'plumes' | 'feed' | 'round' | 'ridge' | 'lamp' | 'calm' | 'bank' | 'orbit' | 'hearth' | 'thaw' | 'outbuild' | 'snow' | 'gather' | 'oxygen' | 'chaos' | 'streaks';
+  goal: 'ring' | 'basins' | 'height' | 'cover' | 'plumes' | 'feed' | 'round' | 'ridge' | 'lamp' | 'calm' | 'bank' | 'orbit' | 'hearth' | 'thaw' | 'outbuild' | 'snow' | 'gather' | 'oxygen' | 'chaos' | 'streaks' | 'antipode';
+  /** For Mercury: how high (km) the far side's mountain must stand. */
+  farKm?: number;
   /** For a world whose star crosses its sky: how fast (radians a second, about the sky's up). */
   sunTurns?: number;
   /** For the first world: how many stones of the rubble to catch. */
@@ -458,9 +460,33 @@ export const WORLDS: World[] = [
     calm: 85,
   },
   {
+    id: 'mercury',
+    kind: 'A small scorched world',
+    numeral: 'XVI',
+    title: 'Mercury',
+    first: 'Small, scorched, and wrinkled as it cooled.',
+    then: 'When a great stone struck it, the shock went through the whole world and broke the ground on the far side.',
+    second: 'Burst here, and a moment later the far side breaks open.',
+    rules: {
+      terrain: 'moon', basins: 0, craters: 45, floor: 0.22, rough: 0.02,
+      waves: 0, rain: 0, sink: 0, swell: 0, life: false,
+      talus: 2.2, flow: 9, channel: 2, coolLand: 0.25,
+      drift: 0, rises: 0, heat: 420, rising: 1.3, steady: true,
+      antipode: 0.35, antipodeDelay: 6,
+      impactEvery: [60, 100], impactWarning: 12, impactHeat: 4, ageCraters: 0.08,
+    },
+    palette: {
+      paper: '#ddd8cf', basalt: '#948e85', ash: '#aaa49b', lava: '#b8563c', deepLava: '#8f3b28',
+      shallow: '#d4e3ec', deep: '#b1c8d8',
+      landInk: '#4d4943', landInkHigh: '#302d29', pencil: '#b2aca2', seaInk: '#5b82a3',
+    },
+    goal: 'antipode',
+    farKm: 30,
+  },
+  {
     id: 'magma',
     kind: 'A lava world',
-    numeral: 'XVI',
+    numeral: 'XVII',
     title: 'A lava world',
     first: 'One face always to its star, and that face molten.',
     then: 'On worlds like this, rock boils into the air on the day side and falls as rock snow in the night.',
@@ -484,7 +510,7 @@ export const WORLDS: World[] = [
   {
     id: 'dust',
     kind: 'A world boiling away',
-    numeral: 'XVII',
+    numeral: 'XVIII',
     title: 'A disintegrating planet',
     first: 'So close to its star that it is boiling away.',
     then: 'Worlds like this trail a tail of dust, like a comet, and grow smaller every orbit.',
@@ -509,7 +535,7 @@ export const WORLDS: World[] = [
   {
     id: 'spin',
     kind: 'A spinning world',
-    numeral: 'XVIII',
+    numeral: 'XIX',
     title: 'A spinning world',
     first: 'Turning fast, swollen at its middle.',
     then: 'Its spin flings whatever flows out toward its middle.',
@@ -533,7 +559,7 @@ export const WORLDS: World[] = [
   {
     id: 'deep',
     kind: 'A deep ocean world',
-    numeral: 'XIX',
+    numeral: 'XX',
     title: 'A deep ocean world',
     first: 'Cold, dark water, with fire on the sea floor.',
     then: 'Lava cools fast in deep water, but inside its own crust it stays hot and runs on.',
@@ -557,7 +583,7 @@ export const WORLDS: World[] = [
   {
     id: 'lamp',
     kind: 'A world of glass',
-    numeral: 'XX',
+    numeral: 'XXI',
     title: 'A world of glass',
     first: 'Glass, and glowing rock that rises.',
     then: 'Hot rock here is lighter than the deep, so it floats.',
