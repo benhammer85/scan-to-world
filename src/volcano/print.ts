@@ -33,8 +33,6 @@ export const PRINT_FUNCTIONS = /* glsl */ `
   varying vec3 vS;
   uniform float uFloodDots, uFloodRim, uFeeding, uBuild, uSpray, uDrift, uBurp, uBurpSize, uBurpSeed, uBurpDir, uGold, uDark;
   uniform vec3 uCrustTint; // (each world's own basalt: redder on Mars, olive on Io, grey on the Moon)
-  // A halftone dot, as a print screens a tone: whole at 1, gone at 0, on a fine grid on the screen.
-  float halftone(float t, float cell) { vec2 c = fract(gl_FragCoord.xy / cell) - 0.5; float r = sqrt(clamp(t, 0.0, 1.0)) * 0.62; return 1.0 - smoothstep(r - 0.12, r + 0.12, length(c)); }
   #define uFeedingGlow (0.4 + 0.6 * uFeeding)
   uniform vec3 uVent;
   // Craters, as the charts draw them (see 'Craters' below): each one's middle and width, how long since it was dug, and the light in the world's own frame.
@@ -197,7 +195,11 @@ export function printFragment(look: Look, sea: boolean): string {
       // And on the ocean world, where lava has lain under the sea (the hotspot's track), the same wash, lighter.
       float trk = vMarks.x + 0.14 * (b2 - 0.5), trw = max(fwidth(trk), 1e-4) * 1.6;
       shoal = max(shoal, ${sea ? '0.6 * smoothstep(0.5 - trw, 0.5 + trw, trk) * (1.0 - onLand)' : '0.0'});
-      col = mix(col, col * vec3(0.6, 0.78, 0.92), shoal * clamp(0.9 * (0.8 + 0.4 * b1) * grain, 0.0, 1.0));
+      // The sea itself, washed a pale blue as an atlas washes it, a little deeper out over the deep;
+      // and the shoals (the new rock rising, the hotspot's track) paler, as a chart pales its shallows.
+      ${sea ? `float seaWash = (1.0 - onLand) * clamp(0.75 + 0.3 * (b1 - 0.5), 0.0, 1.0) * grain;
+      col = mix(col, col * vec3(0.7, 0.84, 0.95), seaWash);
+      col = mix(col, paper * vec3(0.93, 0.97, 0.96), shoal * 0.75 * clamp(0.8 + 0.4 * b1, 0.0, 1.0));` : ''}
       // The land: life's washes and ash, as their tint over the land's paper; and loose ochre over parts of it, never all.
       // Life's washes (and ash, and fresh rock) come as a soft tint; laid as a hand-coloured map lays them,
       // each is an even wash with a ragged edge, a darker rim and grain, wherever it's more than a trace.
@@ -536,11 +538,13 @@ const PRINT = (q: boolean) => /* glsl */ `
           // dull red, orange, gold), each edge crisp and ragged, screened in halftone dots where one gives
           // way to the next (blended smoothly, it looked airbrushed beside the rest of the print).
           float heatV = max(G, T * 0.75) + 0.12 * (noise3(vDir * 30.0 + vec3(0.0, tq * 0.04, 0.0)) - 0.5) + 0.05 * (noise3(vDir * 90.0) - 0.5);
-          float hw = max(fwidth(heatV), 1e-4) * 0.8, cell = 4.0 * uPx;
-          float band1 = smoothstep(0.42 - hw, 0.42 + hw, heatV), band2 = smoothstep(0.6 - hw, 0.6 + hw, heatV), band3 = smoothstep(0.8 - hw, 0.8 + hw, heatV);
-          band2 = max(band2, halftone(smoothstep(0.5, 0.6, heatV), cell) * band1);
-          band3 = max(band3, halftone(smoothstep(0.7, 0.8, heatV), cell) * band2);
-          float open = band1 * (0.25 + 0.75 * exp(-far / 0.12));
+          float hw = max(fwidth(heatV), 1e-4) * 0.8;
+          // (Smaller than it was, so the heat is precious: a bright mouth, quickly crusting over.)
+          float band1 = smoothstep(0.5 - hw, 0.5 + hw, heatV), band2 = smoothstep(0.68 - hw, 0.68 + hw, heatV), band3 = smoothstep(0.86 - hw, 0.86 + hw, heatV);
+          // (Screened in the game's own stipple, scattered as by hand: a halftone on a grid read as pixels.)
+          band2 = max(band2, stipple(vDir, 260.0, 1.6 * smoothstep(0.56, 0.68, heatV), 0.55 * uPx, px) * band1);
+          band3 = max(band3, stipple(vDir, 260.0, 1.6 * smoothstep(0.74, 0.86, heatV), 0.55 * uPx, px) * band2);
+          float open = band1 * (0.2 + 0.8 * exp(-far / 0.08));
           vec3 glowCol = mix(deep * 1.15, verm, band2);
           glowCol = mix(glowCol, yel, band3);
           glowCol = mix(glowCol, uInkPale, smoothstep(0.95 - hw, 0.95 + hw, heatV) * step(far, 0.03));

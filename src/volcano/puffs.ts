@@ -154,8 +154,10 @@ export class Puffs {
             vec3 light = vTint < 0.5 ? vec3(0.72, 0.78, 0.8) : vTint < 1.5 ? vec3(0.26, 0.23, 0.21) : vec3(0.56, 0.5, 0.44);
             // (Calm, as the quiet print draws it: smoke the paper left bare, a cream a little lighter than
             // the page, darkening only at the brink; steam a pale blue-white; ash as it is.)
-            vec3 cShade = vTint < 0.5 ? vec3(0.72, 0.8, 0.86) : vTint < 1.5 ? shade : mix(vec3(0.82, 0.77, 0.69), vec3(0.16, 0.15, 0.14), vDark);
-            vec3 cLight = vTint < 0.5 ? vec3(0.92, 0.96, 0.98) : vTint < 1.5 ? light : mix(vec3(0.97, 0.94, 0.87), vec3(0.36, 0.33, 0.3), vDark);
+            // (The grey only once a puff has risen: at the vent, the newest piled into a grey ball over the glow.)
+            float darkNow = vDark * smoothstep(0.02, 0.09, vRise);
+            vec3 cShade = vTint < 0.5 ? vec3(0.72, 0.8, 0.86) : vTint < 1.5 ? shade : mix(vec3(0.82, 0.77, 0.69), vec3(0.16, 0.15, 0.14), darkNow);
+            vec3 cLight = vTint < 0.5 ? vec3(0.92, 0.96, 0.98) : vTint < 1.5 ? light : mix(vec3(0.97, 0.94, 0.87), vec3(0.36, 0.33, 0.3), darkNow);
             shade = mix(shade, cShade, uCalm); light = mix(light, cLight, uCalm);
             // (On the ice moons a burst's ash is frost, as the ground draws it.)
             if (vTint > 0.5 && vTint < 1.5) { shade = mix(shade, vec3(0.5, 0.62, 0.72), uIce); light = mix(light, vec3(0.86, 0.92, 0.96), uIce); }
@@ -235,7 +237,7 @@ export class Puffs {
       this.size[i] = p.size + p.grow * f;
       // Coming in quickly, then fading slowly as it thins; smoke the strongest, so a wisp is seen.
       // (Billows come in quickly and then hold their tone, breaking up at the end in the shader; dots fade.)
-      this.alpha[i] = (this.calm && p.kind !== 3 ? (p.kind === 2 ? 0.9 : 0.6) : 1) * (p.kind === 3 ? 0.95 * (1 - f) ** 0.7 : p.kind === 4 ? 0.7 * Math.min(1, f * 5) * (1 - f) ** 1.2 : (p.kind === 1 ? 0.85 : p.kind === 0 ? 0.6 : 0.72) * Math.min(1, f * (p.kind === 2 ? 3 : 8)) * (p.kind === 2 || p.kind === 0 ? 1 - Math.max(0, (f - 0.5) / 0.5) ** 1.6 : 1)); // (smoke leaves the vent a faint wisp, not a ball; and thins away over its second half)
+      this.alpha[i] = (this.calm && p.kind !== 3 ? (p.kind === 2 ? 0.9 : 0.6) : 1) * (p.kind === 3 ? 0.95 * (1 - f) ** 0.7 : p.kind === 4 ? 0.7 * Math.min(1, f * 5) * (1 - f) ** 1.2 : (p.kind === 1 ? 0.85 : p.kind === 0 ? 0.6 : 0.72) * (p.kind === 2 ? Math.min(1, f * 1.4) ** 1.5 : Math.min(1, f * 8)) * (p.kind === 2 || p.kind === 0 ? 1 - Math.max(0, (f - 0.5) / 0.5) ** 1.6 : 1)); // (smoke leaves the vent a faint wisp, not a ball; and thins away over its second half)
       this.tint[i] = p.kind;
       this.life[i] = f;
       this.warmth[i] = p.warm;
