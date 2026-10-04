@@ -33,6 +33,10 @@
  *                   as the fire ends.
  *   Boiling away    outgrow what the star boils, and lose as little to it as can be: pouring only
  *                   in the night is slower to turn to.
+ *   The first world gather the rubble, and as much as can be: each stone caught is heat, too.
+ *   The orange Earth turn the sky blue, and past it: more oxygen than it needs.
+ *   Europa          break the ice into chaos, and as much of it as can be: big fields cost time.
+ *   Triton          lay the geyser streaks, and darken as much of the ice as can be: bigger geysers, held longer.
  *   A lava world    make rock snow, and pile it deep in one place: snow spreads along all the edge
  *                   of night, and turning the world to pile it costs the molten pool.
  */
@@ -67,6 +71,10 @@ export function secondWords(goal: World['goal'], value: number): string {
     case 'thaw': return `${value}% open sea`;
     case 'outbuild': return `${value}% of it kept from the star`;
     case 'snow': return `drifts ${value} km deep`;
+    case 'gather': return `${value} stones gathered`;
+    case 'oxygen': return `${value}% more oxygen than the sky needed`;
+    case 'chaos': return `${value}% of the ice broken`;
+    case 'streaks': return `${value}% of the ice streaked`;
   }
 }
 
@@ -132,6 +140,18 @@ export function measureSecond(world: World, pl: Planet, topo: Topology, islands:
   } else if (world.goal === 'outbuild') {
     const laid = Math.max(0, pl.grownBy) + pl.lost;
     value = laid > 0 ? Math.round((100 * Math.max(0, pl.grownBy)) / laid) : 0;
+  } else if (world.goal === 'gather') {
+    value = pl.tally.caught;
+  } else if (world.goal === 'oxygen') {
+    value = Math.max(0, Math.round((100 * pl.oxygen) / (world.oxygen ?? 1)) - 100);
+  } else if (world.goal === 'chaos') {
+    let broken = 0;
+    for (let v = 0; v < n; v++) if (pl.age[v] < 1e5) broken++;
+    value = Math.round((100 * broken) / n);
+  } else if (world.goal === 'streaks') {
+    let dark = 0;
+    for (let v = 0; v < n; v++) if (pl.ash[v] > 0.3) dark++;
+    value = Math.round((100 * dark) / n);
   } else if (world.goal === 'snow') {
     let most = 0;
     for (let v = 0; v < n; v++) if (pl.ash[v] > 0.5) most = Math.max(most, pl.rock[v] - pl.start[v]);

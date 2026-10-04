@@ -23,7 +23,7 @@ const topo = buildTopology(new THREE.IcosahedronGeometry(1, 40).attributes.posit
 const P = topo.basePositions, N = topo.vertexCount;
 const nearest = (x: number, y: number, z: number) => { let b = 0, bd = Infinity; for (let v = 0; v < N; v++) { const d = (P[v * 3] - x) ** 2 + (P[v * 3 + 1] - y) ** 2 + (P[v * 3 + 2] - z) ** 2; if (d < bd) { bd = d; b = v; } } return b; };
 const pl = new Planet(topo, nearest(0.1, 0.15, 0.98), seed, RULES);
-pl.stonesFall = false;
+pl.stonesFall = W.goal === 'gather'; // (on the first world, the stones are the aim)
 const LIFE = pl.k.life;
 const eco = new Ecology(pl, topo);
 Object.assign(CHAIN, JSON.parse(process.env.CHAIN ?? '{}'));
@@ -32,7 +32,7 @@ const chain = W.goal === 'ring' ? new Chain(pl.plume, pl.driftDirection) : null;
 // The aim, reckoned as main.ts reckons it.
 const HEIGHT = W.height ?? { target: 0, kmPerUnit: 40 };
 const CALM = W.calm ?? 0, ISLAND = W.island ?? 0, POOL = W.pool ?? 0, ROUND = Math.round((W.round ?? 0) * 100), COVER = Math.round((W.cover ?? 0) * 100), PLUMES = W.plumes ?? 0, ORBIT = W.orbit ?? 0;
-const HEARTH = W.hearth ?? 0, OUTBUILD = W.outbuild ?? 0, SNOWFALL = W.snowfall ?? 0;
+const HEARTH = W.hearth ?? 0, OUTBUILD = W.outbuild ?? 0, SNOWFALL = W.snowfall ?? 0, GATHER = W.gather ?? 0, OXYGEN = W.oxygen ?? 0, FIELDS = W.fields ?? 0;
 let calmHeld = 0, calmAt = 0;
 function aim(): [number, number] {
   switch (W.goal) {
@@ -50,6 +50,9 @@ function aim(): [number, number] {
     case 'thaw': return [pl.thawed ? 100 : Math.min(99, (100 * pl.greenhouse) / pl.k.thawAt), 100];
     case 'outbuild': return [Math.max(0, (100 * pl.grownBy) / OUTBUILD), 100];
     case 'snow': return [(100 * pl.snow) / SNOWFALL, 100];
+    case 'gather': return [pl.tally.caught, GATHER];
+    case 'oxygen': return [(100 * pl.oxygen) / OXYGEN, 100];
+    case 'chaos': case 'streaks': return [pl.plumes.length, FIELDS];
     default: return [pl.basins.filter((b) => pl.flooded(b) >= 0.7).length, pl.basins.length];
   }
 }
@@ -220,6 +223,38 @@ const card: Record<string, Bot> = {
   },
   // Pour until the mountain stands above the sea, then hold and burst.
   thaw: () => { if (pl.rock[pl.plumeVertex] < 0.02) return pourCycle(null); if (!pl.clamped) clampOn(); level(); if (pl.pressure >= pl.k.explosive * 1.05) lift(); },
+  // Turn the place a stone will fall to the top, so the glow creeps under it; pour meanwhile.
+  gather: (dt) => {
+    if (pl.impact) { const v = pl.impact.vertex; turnTowards(V(P[v * 3], P[v * 3 + 1], P[v * 3 + 2]), dt, 1.5); level(); return; }
+    pourCycle(null);
+  },
+  // Pour gently, each time a different way, to spread shallows.
+  // Pour a shelf, then turn a little to the next, leaving each to life.
+  oxygen: (dt) => {
+    if (!focus || (phase === 'build' && timer <= 0)) { const v = vent(), t = V(0, 1, 0).cross(v).normalize(); focus = v.clone().addScaledVector(t.applyAxisAngle(v, pl.tally.flows * 1.3), 0.35).normalize(); timer = 30; }
+    timer -= dt; turnTowards(focus, dt, 0.3);
+    pourCycle(null, 0.45);
+  },
+  // Hold, and lift while the smoke is light; then turn somewhere apart for the next.
+  chaos: (dt) => {
+    if (!focus) focus = vent();
+    turnTowards(focus, dt);
+    if (!pl.clamped) clampOn();
+    level();
+    const fresh = pl.plumes.every((p) => angleBetween(p, vent()) > pl.k.plumesApart);
+    if (pl.pressure >= pl.k.chaos * 1.2 && fresh) { lift(); let c = vent(); for (let i = 0; i < 30; i++) { c = randomNear(vent(), 0.6 + rnd() * 0.4); if (pl.plumes.every((p) => angleBetween(p, c) > pl.k.plumesApart * 1.15)) break; } focus = c; }
+    else if (pl.pressure >= pl.k.explosive * 0.9) lift(); // (too long held: let it go)
+  },
+  // Hold until heavy, and lift when the sun is on the vent; then turn somewhere apart.
+  streaks: (dt) => {
+    if (!focus) focus = vent();
+    turnTowards(focus, dt);
+    if (!pl.clamped) clampOn();
+    level();
+    const fresh = pl.plumes.every((p) => angleBetween(p, vent()) > pl.k.plumesApart), lit = pl.dayAt(pl.plumeVertex) > 0.3;
+    if (pl.pressure >= pl.k.explosive * 1.05 && fresh && lit) { lift(); let c = vent(); for (let i = 0; i < 30; i++) { c = randomNear(vent(), 0.5 + rnd() * 0.4); if (pl.plumes.every((p) => angleBetween(p, c) > pl.k.plumesApart * 1.15)) break; } focus = c; }
+    else if (pl.pressure > pl.capNow * 0.93) lift();
+  },
   // Drag the vent round into the night, where it pours of itself.
   outbuild: (dt) => { bringVentTo(V(-0.55, 0.1, 0.83), dt); level(); },
   // Drag the vent round into the starlight, where it pours of itself.
@@ -253,6 +288,7 @@ let markAt = 0;
 let t = 0, best = 0, lastGain = 0, longestStill = 0, firstGain = -1, wonAt = -1, lastEco = 0;
 const trace: string[] = [];
 while (t < LIMIT) {
+  if (SUNV && W.sunTurns && !pl.over) SUNV.applyAxisAngle(V(0, 1, 0), W.sunTurns * dt); // (Triton's sun crosses the sky)
   bot(dt); setInputs();
   const before = vent();
   pl.step(dt); t += dt;

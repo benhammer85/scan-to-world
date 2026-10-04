@@ -31,7 +31,7 @@
  */
 import type { Rules } from './sim';
 
-export type WorldId = 'ocean' | 'moon' | 'mars' | 'ice' | 'io' | 'enceladus' | 'asteroid' | 'spin' | 'lamp' | 'tumble' | 'deep' | 'young' | 'rogue' | 'snowball' | 'dust' | 'magma';
+export type WorldId = 'ocean' | 'moon' | 'mars' | 'ice' | 'io' | 'enceladus' | 'asteroid' | 'spin' | 'lamp' | 'tumble' | 'deep' | 'young' | 'rogue' | 'snowball' | 'dust' | 'magma' | 'first' | 'archean' | 'europa' | 'triton';
 
 export interface Palette {
   /** The ground: bare old rock, fresh basalt, ash, lava as it runs (and where it lies thick), and, for worlds that keep a mark of it, rock that lava has flooded. */
@@ -62,7 +62,15 @@ export interface World {
   /** Its second aim, for the card: one that pulls against the first (see second.ts). */
   second: string;
   palette: Palette;
-  goal: 'ring' | 'basins' | 'height' | 'cover' | 'plumes' | 'feed' | 'round' | 'ridge' | 'lamp' | 'calm' | 'bank' | 'orbit' | 'hearth' | 'thaw' | 'outbuild' | 'snow';
+  goal: 'ring' | 'basins' | 'height' | 'cover' | 'plumes' | 'feed' | 'round' | 'ridge' | 'lamp' | 'calm' | 'bank' | 'orbit' | 'hearth' | 'thaw' | 'outbuild' | 'snow' | 'gather' | 'oxygen' | 'chaos' | 'streaks';
+  /** For a world whose star crosses its sky: how fast (radians a second, about the sky's up). */
+  sunTurns?: number;
+  /** For the first world: how many stones of the rubble to catch. */
+  gather?: number;
+  /** For the orange Earth: how much oxygen life must breathe into the sky. */
+  oxygen?: number;
+  /** For Europa and Triton: how many chaos fields, or streaks, each apart from the others. */
+  fields?: number;
   /** For a world with its star in the sky: which way it is, as seen (x right, y up, z towards us). */
   sun?: [number, number, number];
   /** For the rogue planet: how much living ground at once (in vertices of a planet of the drawn detail). */
@@ -219,44 +227,33 @@ export const WORLDS: World[] = [
     hearth: 2300,
   },
   {
-    id: 'ocean',
-    kind: 'An ocean world',
+    id: 'first',
+    kind: 'A world still forming',
     numeral: 'VI',
-    title: 'An ocean world',
-    first: 'Open water, and a fire far below.',
-    then: 'The sea floor drifts over the fire, leaving a trail of islands.',
-    second: 'Tip the world as the fire moves, and islands rise along the line.',
-    rules: { drift: 0.0125, rises: 0, heat: 740, rising: 1.4, steady: true, reseed: 15, floor: -0.22, sink: 0.00015, impactEvery: [60, 100], atolls: true },
-    palette: {
-      paper: '#ecdfc2', basalt: '#9a8a76', ash: '#b3ada2', lava: '#b8563c', deepLava: '#8f3b28',
-      shallow: '#d4e3ec', deep: '#b1c8d8',
-      landInk: '#6b4a2e', landInkHigh: '#4a2f1c', pencil: '#b9a68c', seaInk: '#5b82a3',
-    },
-    goal: 'ring',
-  },
-  {
-    id: 'snowball',
-    kind: 'A frozen world',
-    numeral: 'VII',
-    title: 'Snowball Earth',
-    first: 'Ice from pole to pole, as Earth once was.',
-    then: 'It thawed because volcanoes breathed out gas that warmed the sky, until the ice gave way.',
-    second: 'Build up through the ice, then let the gas out into the sky.',
+    title: 'The first world',
+    first: 'Molten all over, in a rain of rubble.',
+    then: 'Planets grow by gathering the rubble round them: what lands in the molten rock becomes the world.',
+    second: 'Turn the world so the glow is under each stone as it falls.',
     rules: {
-      drift: 0, rises: 0, heat: 420, rising: 1.3, steady: true, sink: 0,
-      gas: 1, gasPour: 0.35, drawdown: 0.012, thawAt: 100,
+      terrain: 'first', basins: 0, craters: 30, floor: 0.05, rough: 0.025,
+      waves: 0, rain: 0, sink: 0, swell: 0, life: false,
+      magma: 0.012, impactMelt: 0.02, // (molten at first, crusting over as it cools; each stone melts its crater again)
+      talus: 2.2, flow: 10, channel: 2, coolLand: 0.05,
+      drift: 0, rises: 0.07, heat: 300, rising: 1.0, steady: true,
+      impactEvery: [9, 15], impactWarning: 11, impactNear: 0.75, impactHeat: 3, crater: 0.07, craterDepth: 0.04,
     },
     palette: {
-      paper: '#e6e0d2', basalt: '#8a8478', ash: '#a39d92', lava: '#b8563c', deepLava: '#8f3b28',
-      shallow: '#c9dde8', deep: '#9fbcd0',
-      landInk: '#4f4a40', landInkHigh: '#332f28', pencil: '#b4ab9a', seaInk: '#4f7898',
+      paper: '#d9cbb8', basalt: '#8a7a6c', ash: '#a69888', lava: '#c25a36', deepLava: '#94402a',
+      shallow: '#d4e3ec', deep: '#b1c8d8',
+      landInk: '#4f3e30', landInkHigh: '#33271c', pencil: '#b9a892', seaInk: '#5b82a3',
     },
-    goal: 'thaw',
+    goal: 'gather',
+    gather: 10,
   },
   {
     id: 'young',
     kind: 'A young world',
-    numeral: 'VIII',
+    numeral: 'VII',
     title: 'A young Earth',
     first: 'Hot and new, with no moon yet.',
     then: 'Here, rock thrown fast enough doesn’t fall back, but circles and gathers.',
@@ -278,9 +275,64 @@ export const WORLDS: World[] = [
     orbit: 75,
   },
   {
+    id: 'archean',
+    kind: 'A young blue world, its sky still orange',
+    numeral: 'VIII',
+    title: 'The orange Earth',
+    first: 'Shallow green seas under an orange sky.',
+    then: 'For two billion years Earth had no oxygen, until life in the shallows breathed it out, and the sky turned blue.',
+    second: 'Pour a shallow shelf, then turn and pour the next, and leave each to life.',
+    rules: {
+      drift: 0, rises: 0.03, heat: 420, rising: 1.3, steady: true, sink: 0,
+      breathe: 0.02, arrives: 1, hearth: 1.2, // (mats drift in and settle on any shallows near the fire)
+    },
+    palette: {
+      paper: '#e2d6bd', basalt: '#8a8072', ash: '#a59a88', lava: '#b8563c', deepLava: '#8f3b28',
+      shallow: '#c8d8c4', deep: '#9fb8b0',
+      landInk: '#4f463a', landInkHigh: '#332d25', pencil: '#b4a891', seaInk: '#4f7a78',
+    },
+    goal: 'oxygen',
+    oxygen: 600,
+  },
+  {
+    id: 'snowball',
+    kind: 'A frozen world',
+    numeral: 'IX',
+    title: 'Snowball Earth',
+    first: 'Ice from pole to pole, as Earth once was.',
+    then: 'It thawed because volcanoes breathed out gas that warmed the sky, until the ice gave way.',
+    second: 'Build up through the ice, then let the gas out into the sky.',
+    rules: {
+      drift: 0, rises: 0, heat: 420, rising: 1.3, steady: true, sink: 0,
+      gas: 1, gasPour: 0.35, drawdown: 0.012, thawAt: 100,
+    },
+    palette: {
+      paper: '#e6e0d2', basalt: '#8a8478', ash: '#a39d92', lava: '#b8563c', deepLava: '#8f3b28',
+      shallow: '#c9dde8', deep: '#9fbcd0',
+      landInk: '#4f4a40', landInkHigh: '#332f28', pencil: '#b4ab9a', seaInk: '#4f7898',
+    },
+    goal: 'thaw',
+  },
+  {
+    id: 'ocean',
+    kind: 'An ocean world',
+    numeral: 'X',
+    title: 'An ocean world',
+    first: 'Open water, and a fire far below.',
+    then: 'The sea floor drifts over the fire, leaving a trail of islands.',
+    second: 'Tip the world as the fire moves, and islands rise along the line.',
+    rules: { drift: 0.0125, rises: 0, heat: 740, rising: 1.4, steady: true, reseed: 15, floor: -0.22, sink: 0.00015, impactEvery: [60, 100], atolls: true },
+    palette: {
+      paper: '#ecdfc2', basalt: '#9a8a76', ash: '#b3ada2', lava: '#b8563c', deepLava: '#8f3b28',
+      shallow: '#d4e3ec', deep: '#b1c8d8',
+      landInk: '#6b4a2e', landInkHigh: '#4a2f1c', pencil: '#b9a68c', seaInk: '#5b82a3',
+    },
+    goal: 'ring',
+  },
+  {
     id: 'io',
     kind: 'A tidal moon',
-    numeral: 'IX',
+    numeral: 'XI',
     title: 'Io',
     first: 'A yellow moon, never still.',
     then: 'The giant’s pull squeezes it as it circles, so its heat comes in tides.',
@@ -303,9 +355,34 @@ export const WORLDS: World[] = [
     plumes: 8,
   },
   {
+    id: 'europa',
+    kind: 'An ice moon with a sea beneath',
+    numeral: 'XII',
+    title: 'Europa',
+    first: 'Smooth ice over a deep salt sea.',
+    then: 'Where warm water rises beneath it, the ice breaks into rafts that drift and freeze again: chaos terrain.',
+    second: 'Hold, and lift before the smoke turns grey: the ice breaks into rafts.',
+    rules: {
+      terrain: 'ice', basins: 0, craters: 6, floor: 0.05, rough: 0.012,
+      waves: 0, rain: 0, sink: 0, life: false,
+      flow: 20, channel: 1, coolLand: 0.08,
+      drift: 0, rises: 0.03, heat: 380, rising: 1.4, ashShare: 0.75, explosive: 9,
+      chaos: 5, plumesApart: 0.55, // (let out between 5 and the burst point, the heat breaks the ice; a burst doesn't)
+      impactEvery: [80, 120], impactWarning: 12, impactHeat: 4,
+    },
+    palette: {
+      paper: '#e6dccb', basalt: '#f1f2ee', ash: '#f7f6f2', lava: '#8fb6c6', deepLava: '#6a98ae', flooded: '#f4f3ee',
+      shallow: '#d4e3ec', deep: '#b1c8d8',
+      landInk: '#7a5a46', landInkHigh: '#5a3e2e', pencil: '#c6b29c', seaInk: '#5b82a3',
+    },
+    goal: 'chaos',
+    fields: 10,
+    contour: 0.07,
+  },
+  {
     id: 'enceladus',
     kind: 'A small ice moon',
-    numeral: 'X',
+    numeral: 'XIII',
     title: 'Enceladus',
     first: 'A small moon of ice, circling a ringed giant.',
     then: 'Its ice drifts out to become the giant’s ring.',
@@ -329,9 +406,35 @@ export const WORLDS: World[] = [
     contour: 0.07,
   },
   {
+    id: 'triton',
+    kind: 'A frozen moon going round backwards',
+    numeral: 'XIV',
+    title: 'Triton',
+    first: 'Pink nitrogen ice, far from a faint sun.',
+    then: 'Where sunlight warms the ice, geysers rise, and thin winds blow their dark plumes into long streaks.',
+    second: 'Hold until the sun is over the vent, and lift: a geyser.',
+    rules: {
+      terrain: 'triton', basins: 0, craters: 8, floor: 0.05, rough: 0.02,
+      waves: 0, rain: 0, sink: 0, swell: 0, life: false,
+      talus: 2.2, flow: 9, channel: 2, coolLand: 0.3,
+      drift: 0, rises: 0.04, heat: 400, rising: 1.3, steady: true,
+      streak: 0.55, plumesApart: 0.35,
+      impactEvery: [90, 140], impactWarning: 14, impactHeat: 6,
+    },
+    palette: {
+      paper: '#ecd9d2', basalt: '#b09d98', ash: '#7d6a64', lava: '#9a6a5c', deepLava: '#6e4a40',
+      shallow: '#d4e3ec', deep: '#b1c8d8',
+      landInk: '#6a4a44', landInkHigh: '#4a302b', pencil: '#cdb3aa', seaInk: '#5b82a3',
+    },
+    sun: [0.75, 0.25, 0.6],
+    sunTurns: 0.05,
+    goal: 'streaks',
+    fields: 8,
+  },
+  {
     id: 'tumble',
     kind: 'A tumbling moon',
-    numeral: 'XI',
+    numeral: 'XV',
     title: 'A tumbling moon',
     first: 'A battered moon, rolling end over end.',
     then: 'Knocked askew long ago, it has never settled into a steady spin.',
@@ -355,33 +458,9 @@ export const WORLDS: World[] = [
     calm: 85,
   },
   {
-    id: 'spin',
-    kind: 'A spinning world',
-    numeral: 'XII',
-    title: 'A spinning world',
-    first: 'Turning fast, swollen at its middle.',
-    then: 'Its spin flings whatever flows out toward its middle.',
-    second: 'Pour, and a ridge rises all the way round its middle.',
-    rules: {
-      terrain: 'spin', basins: 0, craters: 25, floor: 0.05, rough: 0.015, bulge: 0.08, spin: 2.5, ridge: 0.07,
-      waves: 0, rain: 0, sink: 0, swell: 0, life: false,
-      flow: 10, channel: 2, coolLand: 0.12,
-      drift: 0, rises: 0.04, heat: 520, rising: 1.2, steady: true,
-      impactEvery: [55, 95], impactWarning: 14, impactHeat: 5,
-    },
-    palette: {
-      // Pale slate, as of a world of ice and rock; fresh lava grey.
-      paper: '#d9dce0', basalt: '#9ea4ad', ash: '#c4c8ce', lava: '#b8563c', deepLava: '#8f3b28',
-      shallow: '#d4e3ec', deep: '#b1c8d8',
-      landInk: '#4a5260', landInkHigh: '#2f3642', pencil: '#aab1bc', seaInk: '#5b82a3',
-    },
-    goal: 'ridge',
-    height: { target: 0, kmPerUnit: 40 },
-  },
-  {
     id: 'magma',
     kind: 'A lava world',
-    numeral: 'XIII',
+    numeral: 'XVI',
     title: 'A lava world',
     first: 'One face always to its star, and that face molten.',
     then: 'On worlds like this, rock boils into the air on the day side and falls as rock snow in the night.',
@@ -405,7 +484,7 @@ export const WORLDS: World[] = [
   {
     id: 'dust',
     kind: 'A world boiling away',
-    numeral: 'XIV',
+    numeral: 'XVII',
     title: 'A disintegrating planet',
     first: 'So close to its star that it is boiling away.',
     then: 'Worlds like this trail a tail of dust, like a comet, and grow smaller every orbit.',
@@ -428,9 +507,33 @@ export const WORLDS: World[] = [
     outbuild: 350,
   },
   {
+    id: 'spin',
+    kind: 'A spinning world',
+    numeral: 'XVIII',
+    title: 'A spinning world',
+    first: 'Turning fast, swollen at its middle.',
+    then: 'Its spin flings whatever flows out toward its middle.',
+    second: 'Pour, and a ridge rises all the way round its middle.',
+    rules: {
+      terrain: 'spin', basins: 0, craters: 25, floor: 0.05, rough: 0.015, bulge: 0.08, spin: 2.5, ridge: 0.07,
+      waves: 0, rain: 0, sink: 0, swell: 0, life: false,
+      flow: 10, channel: 2, coolLand: 0.12,
+      drift: 0, rises: 0.04, heat: 520, rising: 1.2, steady: true,
+      impactEvery: [55, 95], impactWarning: 14, impactHeat: 5,
+    },
+    palette: {
+      // Pale slate, as of a world of ice and rock; fresh lava grey.
+      paper: '#d9dce0', basalt: '#9ea4ad', ash: '#c4c8ce', lava: '#b8563c', deepLava: '#8f3b28',
+      shallow: '#d4e3ec', deep: '#b1c8d8',
+      landInk: '#4a5260', landInkHigh: '#2f3642', pencil: '#aab1bc', seaInk: '#5b82a3',
+    },
+    goal: 'ridge',
+    height: { target: 0, kmPerUnit: 40 },
+  },
+  {
     id: 'deep',
     kind: 'A deep ocean world',
-    numeral: 'XV',
+    numeral: 'XIX',
     title: 'A deep ocean world',
     first: 'Cold, dark water, with fire on the sea floor.',
     then: 'Lava cools fast in deep water, but inside its own crust it stays hot and runs on.',
@@ -454,7 +557,7 @@ export const WORLDS: World[] = [
   {
     id: 'lamp',
     kind: 'A world of glass',
-    numeral: 'XVI',
+    numeral: 'XX',
     title: 'A world of glass',
     first: 'Glass, and glowing rock that rises.',
     then: 'Hot rock here is lighter than the deep, so it floats.',

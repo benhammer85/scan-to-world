@@ -214,7 +214,7 @@ export const VOLCANO = {
    * What the world is like at the start: 'ocean', one sea over an even floor; or 'moon', airless
    * highland scarred by `basins` great old impact basins, and a scatter of smaller craters.
    */
-  terrain: 'ocean' as 'ocean' | 'moon' | 'mars' | 'ice' | 'io' | 'young' | 'asteroid' | 'spin' | 'glass' | 'rogue' | 'dust' | 'magma',
+  terrain: 'ocean' as 'ocean' | 'moon' | 'mars' | 'ice' | 'io' | 'young' | 'asteroid' | 'spin' | 'glass' | 'rogue' | 'dust' | 'magma' | 'first' | 'triton',
   /** On a lumpy asteroid: how far its ground rises and falls from round, in broad lumps (and one great crater). */
   lumps: 0,
   /**
@@ -312,6 +312,27 @@ export const VOLCANO = {
    * of the world's height (far steeper than life, as a relief globe is); and its basins, where they
    * really are (latitude, longitude, radius in km on a world `realRadius` km round). '': made up.
    */
+  /**
+   * The first world: it begins molten all over, magma this deep, crusting as it cools; and each
+   * stone of the rubble that falls melts this much of its crater again. 0: none.
+   */
+  magma: 0,
+  impactMelt: 0,
+  /** Stones fall within this far of the vent (radians; 0: half near it, the rest anywhere), so each can be reached in time. */
+  impactNear: 0,
+  /** The orange Earth: life in the shallows breathes out this much oxygen a second, at full strength over a planet of the drawn detail's worth of shallows. 0: none. */
+  breathe: 0,
+  /**
+   * Europa: let out held, between `chaos` and the burst point, the heat melts up through the ice
+   * and breaks it into rafts: a chaos field, counted if it's `plumesApart` from the last. 0: none.
+   */
+  chaos: 0,
+  /**
+   * Triton: a burst in sunlight is a geyser, its dark plume blown downwind (east, along the
+   * world's turning) into a streak this long (radians), counted if it's `plumesApart` from the last.
+   * 0: none.
+   */
+  streak: 0,
   real: '' as '' | RealName,
   realScale: 0.04,
   realRadius: 1737,
@@ -444,6 +465,8 @@ export class Planet {
   greenhouse = 0;
   iceLine = 0;
   thawed = false;
+  /** The orange Earth: the oxygen life has breathed into the sky so far. */
+  oxygen = 0;
   /** Rock boiled away by the star, and rock snow fallen on the night side, so far (in the volume heat is reckoned in). */
   lost = 0;
   snow = 0;
@@ -530,6 +553,7 @@ export class Planet {
     this.impactIn = this.between(this.k.impactEvery);
     if (ground && ground.length === n) this.rock.set(ground);
     if (this.k.terrain !== 'ocean') this.scar();
+    if (this.k.magma > 0) for (let v = 0; v < n; v++) { this.lava[v] = this.k.magma; this.age[v] = 0; }
     if (this.k.stormEvery[1] > 0) this.stormIn = this.between(this.k.stormEvery);
     // The deep ocean's bank: a seamount whose top is just under the sea, some way from the heat.
     if (this.k.bankFar > 0) {
@@ -788,6 +812,7 @@ export class Planet {
     const v = this.plumeVertex, s = this.scale;
     if (volume < this.k.explosive) {
       this.tally.flows++;
+      if (this.k.chaos > 0 && !blast && volume >= this.k.chaos) this.counted(Math.sqrt(volume / this.k.explosive) * 0.16, 'The ice breaks into rafts: a chaos field', 'Rafts, but too near an earlier chaos field');
       // (It lasts by its size, so lava comes out at much the same pace whatever the eruption: it
       // lasted the same whatever its size, so a small one dribbled and a big one gushed.)
       this.eruptions.push({ vertex: v, flank: this.flankOf(v), left: volume * s, rate: (volume * s) / this.k.pour, total: volume * s, t: 0, dur: this.k.pour * Math.min(3.2, 0.8 + volume * 0.16) });
@@ -816,6 +841,7 @@ export class Planet {
     const strength = this.throwOf(volume), far = this.k.ashRing > 0 ? Math.sqrt(strength / this.k.explosive) : 1;
     this.fallOfAsh(v, left * this.k.ashShare * s, (blast ? 3 : 1) * far);
     if (!blast) this.tally.bursts++;
+    if (!blast && this.k.streak > 0 && this.star && this.dayAt(this.plumeVertex) > 0.2) this.geyser(left * this.k.ashShare * s);
     if (!blast && this.k.great > 0 && strength >= this.k.great) this.greatPlume(this.k.ashReach * this.k.ashRing * far);
     const lava = left * (1 - this.k.ashShare) * s;
     this.eruptions.push({ vertex: v, flank: v, left: lava, rate: lava / this.k.pour, total: lava, t: 0, dur: this.k.pour * 1.5 });
@@ -1086,6 +1112,7 @@ export class Planet {
       this.rock[v] += this.k.craterDepth * (k < 1 ? -(1 - k * k) : 0.35 * Math.exp(-((k - 1.15) ** 2) / 0.08));
       this.life[v] *= Math.min(1, k / 2.5);
       if (k < 1.5) this.age[v] = 0;
+      if (this.k.impactMelt > 0 && k < 1) this.lava[v] += this.k.impactMelt * (1 - k * k);
     }
     // Its heat joins yours, and far more of it if the plume is there to take it in.
     const caught = this.warmthAt(at);
@@ -1177,6 +1204,34 @@ export class Planet {
   }
 
   /** A great plume has risen from the vent: counted if it's on fresh ground, far enough from the others. */
+  /** A field counted for the aim (a chaos field, a streak), kept with the great plumes: if far enough from the others. */
+  private counted(reach: number, said: string, tooNear: string): boolean {
+    const q = this.plume, apart = Math.cos(this.k.plumesApart);
+    if (this.plumes.some((o) => o.x * q.x + o.y * q.y + o.z * q.z > apart)) { this.tell(tooNear); return false; }
+    this.plumes.push({ x: q.x, y: q.y, z: q.z, reach });
+    this.tell(`${said}: ${this.plumes.length}`);
+    return true;
+  }
+
+  /** Triton: a geyser's plume, blown downwind into a long dark streak. */
+  private geyser(volume: number): void {
+    const p = this.topo.basePositions, q = this.plume, n = this.rock.length, len = this.k.streak;
+    // (Downwind: east, along the world's own turning about its north.)
+    const east = unit(cross({ x: 0, y: 1, z: 0 }, q));
+    if (!isFinite(east.x)) return;
+    const w = this.next;
+    let sum = 0;
+    for (let v = 0; v < n; v++) {
+      const dx = p[v * 3] - q.x, dy = p[v * 3 + 1] - q.y, dz = p[v * 3 + 2] - q.z;
+      const along = dx * east.x + dy * east.y + dz * east.z, side = Math.hypot(dx - along * east.x, dy - along * east.y, dz - along * east.z);
+      w[v] = along > 0 && along < len ? Math.exp(-((side / (0.018 + 0.022 * along / len)) ** 2)) * (1 - 0.6 * along / len) : 0;
+      sum += w[v];
+    }
+    if (!(sum > 0)) return;
+    for (let v = 0; v < n; v++) if (w[v]) { const add = (volume * w[v]) / sum; this.rock[v] += add * 0.3; this.ash[v] = Math.min(0.8, this.ash[v] + add * 45); }
+    this.counted(len, 'A geyser streaks the ice', 'A geyser, but its streak crosses an earlier one');
+  }
+
   private greatPlume(reach: number): void {
     const q = this.plume, apart = Math.cos(this.k.plumesApart);
     if (this.plumes.some((o) => o.x * q.x + o.y * q.y + o.z * q.z > apart)) { this.tell('A great plume, but too near an earlier one'); return; }
@@ -1337,6 +1392,11 @@ export class Planet {
 
   /** What the sky does: the gas warming Snowball Earth; a star boiling a world away, or raising its lava as vapour. */
   private skies(dt: number): void {
+    if (this.k.breathe > 0) {
+      let mats = 0;
+      for (let v = 0; v < this.rock.length; v++) if (this.rock[v] < 0 && this.rock[v] > this.k.reefDeep) mats += this.life[v];
+      this.oxygen += (mats / this.scale) * this.k.breathe * dt;
+    }
     if (this.k.gas > 0) {
       this.greenhouse -= this.greenhouse * this.k.drawdown * dt;
       const thaw = this.greenhouse / this.k.thawAt;
@@ -1573,12 +1633,12 @@ export class Planet {
     this.alive = alive;
   }
 
-  /** Somewhere for life to land: bare ground above the sea that could take it (near the vent, on a world with a hearth); or -1. */
+  /** Somewhere for life to land: bare ground above the sea (or, on the orange Earth, the shallows) that could take it (near the vent, on a world with a hearth); or -1. */
   private landing(): number {
     const n = this.rock.length;
     for (let tries = 0; tries < 400; tries++) {
       const v = this.k.hearth > 0 ? this.near(this.plume, this.k.hearth) : Math.floor(this.rand() * n);
-      if (this.rock[v] > 0 && this.life[v] < 0.1 && this.room(v) > 0.3) return v;
+      if (this.rock[v] > (this.k.breathe > 0 ? this.k.reefDeep : 0) && this.life[v] < 0.1 && this.room(v) > 0.3) return v; // (on the orange Earth, in the shallows too)
     }
     return -1;
   }
@@ -1664,6 +1724,7 @@ export class Planet {
       const v = Math.floor(this.rand() * this.rock.length);
       const d = Math.hypot(p[v * 3] - this.plume.x, p[v * 3 + 1] - this.plume.y, p[v * 3 + 2] - this.plume.z);
       if (d < 0.08) continue; // not on the vent itself
+      if (this.k.impactNear > 0) { if (d > 0.2 && d < this.k.impactNear) { this.impact = { vertex: v, in: this.k.impactWarning }; this.tell('A stone is coming'); return; } continue; }
       if (this.rand() < 0.5 || d < 0.5) { this.impact = { vertex: v, in: this.k.impactWarning }; this.tell('A stone is coming'); return; }
     }
   }

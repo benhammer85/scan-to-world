@@ -17,23 +17,27 @@ const run = (pl: Planet, seconds: number) => { for (let t = 0; t < seconds; t +=
 
 describe('the worlds', () => {
   it('come one after another, and each has its own aim', () => {
-    expect(WORLDS.map((w) => w.id)).toEqual(['mars', 'moon', 'ice', 'asteroid', 'rogue', 'ocean', 'snowball', 'young', 'io', 'enceladus', 'tumble', 'spin', 'magma', 'dust', 'deep', 'lamp']);
+    expect(WORLDS.map((w) => w.id)).toEqual(['mars', 'moon', 'ice', 'asteroid', 'rogue', 'first', 'young', 'archean', 'snowball', 'ocean', 'io', 'europa', 'enceladus', 'triton', 'tumble', 'magma', 'dust', 'spin', 'deep', 'lamp']);
     expect(worldOf('moon').goal).toBe('basins');
     expect(worldOf('nowhere').id).toBe('mars');
     expect(nextWorld(worldOf('mars'))!.id).toBe('moon');
     expect(nextWorld(worldOf('moon'))!.id).toBe('ice');
     expect(nextWorld(worldOf('ice'))!.id).toBe('asteroid');
     expect(nextWorld(worldOf('asteroid'))!.id).toBe('rogue');
-    expect(nextWorld(worldOf('rogue'))!.id).toBe('ocean');
-    expect(nextWorld(worldOf('ocean'))!.id).toBe('snowball');
-    expect(nextWorld(worldOf('snowball'))!.id).toBe('young');
-    expect(nextWorld(worldOf('young'))!.id).toBe('io');
-    expect(nextWorld(worldOf('io'))!.id).toBe('enceladus');
-    expect(nextWorld(worldOf('enceladus'))!.id).toBe('tumble');
-    expect(nextWorld(worldOf('tumble'))!.id).toBe('spin');
-    expect(nextWorld(worldOf('spin'))!.id).toBe('magma');
+    expect(nextWorld(worldOf('rogue'))!.id).toBe('first');
+    expect(nextWorld(worldOf('first'))!.id).toBe('young');
+    expect(nextWorld(worldOf('young'))!.id).toBe('archean');
+    expect(nextWorld(worldOf('archean'))!.id).toBe('snowball');
+    expect(nextWorld(worldOf('snowball'))!.id).toBe('ocean');
+    expect(nextWorld(worldOf('ocean'))!.id).toBe('io');
+    expect(nextWorld(worldOf('io'))!.id).toBe('europa');
+    expect(nextWorld(worldOf('europa'))!.id).toBe('enceladus');
+    expect(nextWorld(worldOf('enceladus'))!.id).toBe('triton');
+    expect(nextWorld(worldOf('triton'))!.id).toBe('tumble');
+    expect(nextWorld(worldOf('tumble'))!.id).toBe('magma');
     expect(nextWorld(worldOf('magma'))!.id).toBe('dust');
-    expect(nextWorld(worldOf('dust'))!.id).toBe('deep');
+    expect(nextWorld(worldOf('dust'))!.id).toBe('spin');
+    expect(nextWorld(worldOf('spin'))!.id).toBe('deep');
     expect(nextWorld(worldOf('deep'))!.id).toBe('lamp');
     expect(nextWorld(worldOf('lamp'))).toBe(null);
   });
@@ -526,5 +530,55 @@ describe('real terrain', () => {
     expect(imbrium.y).toBeGreaterThan(0.5); // (north)
     expect(imbrium.z).toBeGreaterThan(0.5); // (on the side we see)
     expect(inside / ni).toBeLessThan(highland / nh - 0.04);
+  });
+});
+
+describe('the first world', () => {
+  it('begins molten, and gathers a stone that falls on the glow', () => {
+    const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('first').rules);
+    expect(pl.lava[nearest(1, 0, 0)]).toBeGreaterThan(0);
+    pl.strike(pl.plumeVertex);
+    expect(pl.tally.caught).toBe(1);
+  });
+});
+
+describe('the orange Earth', () => {
+  it('breathes out oxygen from life in the shallows, and none without', () => {
+    const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('archean').rules);
+    pl.stonesFall = false;
+    run(pl, 20);
+    expect(pl.oxygen).toBe(0);
+    for (let v = 0; v < pl.rock.length; v++) if (p[v * 3] > 0.8) { pl.rock[v] = -0.03; pl.life[v] = 0.7; }
+    run(pl, 5);
+    expect(pl.oxygen).toBeGreaterThan(0);
+  });
+});
+
+describe('Europa', () => {
+  it('breaks the ice into a chaos field when let out before the burst point, and not after', () => {
+    const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('europa').rules);
+    pl.pressure = pl.k.chaos + 1; pl.erupt();
+    expect(pl.plumes.length).toBe(1);
+    const pl2 = new Planet(topo, nearest(0, 0, 1), 3, worldOf('europa').rules);
+    pl2.pressure = pl2.k.explosive + 1; pl2.erupt();
+    expect(pl2.plumes.length).toBe(0);
+  });
+});
+
+describe('Triton', () => {
+  it('lays a dark streak downwind from a geyser in sunlight, and none in the dark', () => {
+    const streak = (lit: boolean) => {
+      const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('triton').rules);
+      pl.star = lit ? { x: 0, y: 0, z: 1 } : { x: 0, y: 0, z: -1 };
+      pl.pressure = pl.k.explosive + 2; pl.erupt();
+      // (Downwind is east of the vent: +x here.)
+      let east = 0, west = 0;
+      for (let v = 0; v < pl.rock.length; v++) if (pl.ash[v] > 0.2) { if (p[v * 3] > 0.2) east++; if (p[v * 3] < -0.2) west++; }
+      return { counted: pl.plumes.length, east, west };
+    };
+    const lit = streak(true), dark = streak(false);
+    expect(lit.counted).toBe(1);
+    expect(lit.east).toBeGreaterThan(lit.west + 5);
+    expect(dark.counted).toBe(0);
   });
 });

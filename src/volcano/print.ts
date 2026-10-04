@@ -34,6 +34,7 @@ export const PRINT_FUNCTIONS = /* glsl */ `
   uniform float uFloodDots, uFloodRim, uFeeding, uBuild, uSpray, uDrift, uBurp, uBurpSize, uBurpSeed, uBurpDir, uGold, uDark;
   uniform vec3 uCrustTint; // (each world's own basalt: redder on Mars, olive on Io, grey on the Moon)
   uniform float uIceLine; // (Snowball Earth: the ice from this latitude's sine to the poles; below 0, no ice)
+  uniform float uHaze; // (the orange Earth: its orange haze, 1 at first, gone once the sky is blue)
   uniform vec4 uSky; // (its star's direction, as seen, and w: 0 no star in it, 1 a star, 2 none at all, a rogue planet)
   #define uFeedingGlow (0.4 + 0.6 * uFeeding)
   uniform vec3 uVent;
@@ -247,6 +248,10 @@ export function printFragment(look: Look, sea: boolean): string {
         col = mix(col, col * (uSky.w > 1.5 ? vec3(0.34, 0.37, 0.48) : vec3(0.36, 0.39, 0.5)), night * 0.9 * (1.0 - 0.85 * lives));
         col = mix(col, col * vec3(0.74, 0.9, 0.66), lives * 0.75); // (a soft moss green, in the dark)
       }
+
+      // The orange Earth's haze, over everything, clearing as life breathes out oxygen.
+      // (Toward a warm orange of the same lightness, not the blue sea dimmed to mud.)
+      if (uHaze > 0.0) col = mix(col, vec3(1.0, 0.74, 0.47) * dot(col, vec3(0.3, 0.59, 0.11)) * 1.08, uHaze * 0.72);
 
       // Lava's marks.
       float lv = vMarks.y * onLand, lw = max(fwidth(lv), 1e-4); // (under the sea it's hidden, as it always was)
