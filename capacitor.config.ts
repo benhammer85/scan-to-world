@@ -10,6 +10,8 @@ const config: CapacitorConfig = {
   appName: 'Warm to the Touch',
   webDir: 'dist-app',
   backgroundColor: '#f4efe4',
+  // (The page's host, which iOS names when it asks to read the tilt: it said "localhost".)
+  server: { hostname: 'warm' },
   ios: {
     contentInset: 'never',
     // (No bounce, no long-press menus: the world is all there is.)

@@ -242,13 +242,6 @@ export const VOLCANO = {
   blobSpeed: 0.05,
   blobHot: 30,
   /**
-   * Three suns (a three-body world): three suns wander round the planet under each other's pull and
-   * a weak hold that keeps them from flying apart. Each one's tide on the planet grows as the cube
-   * of its nearness, and the heat rises with their tides together, as does the sea's wear on the
-   * coasts. When one swings close the era turns chaotic; when they keep their distance, it's stable.
-   */
-  suns: false,
-  /**
    * A tumbling moon, as Hyperion tumbles: its spin wanders and grows of itself toward `tumble`
    * radians a second, its axis drifting, `tumbleGrow` a second; and every eruption pushes against
    * the spin where it breaks out, taking away `tumbleKick` of the spin across the vent for a burst
@@ -382,10 +375,6 @@ export class Planet {
   shore: { x: number; y: number; z: number; r: number } | null = null;
   pooled = 0;
   pooledBiggest = 0;
-  /** The three suns: where each is and how it moves, in their own plane, the planet at the middle. */
-  readonly stars: { x: number; y: number; vx: number; vy: number }[] = [];
-  /** Whether the era is chaotic now (a sun close), on a three-sun world. */
-  chaotic = false;
   /** The deep ocean's bank: where, and how wide. */
   bank: { x: number; y: number; z: number; r: number } | null = null;
   /** Seconds since lava last set into rock at each vertex (for its tubes). */
@@ -470,11 +459,6 @@ export class Planet {
         const dd = Math.hypot(p[v * 3] - b.x, p[v * 3 + 1] - b.y, p[v * 3 + 2] - b.z) / b.r;
         if (dd < 2.5) this.rock[v] = Math.max(this.rock[v], -0.035 + (this.k.floor + 0.035) * Math.min(1, dd * dd / 4));
       }
-    }
-    // The three suns, set going at random, about the planet.
-    if (this.k.suns) for (let i = 0; i < 3; i++) {
-      const a = (i / 3) * Math.PI * 2 + this.rand() * 0.8, r = 0.9 + this.rand() * 0.5, s = 0.6 + this.rand() * 0.3;
-      this.stars.push({ x: r * Math.cos(a), y: r * Math.sin(a), vx: -s * Math.sin(a) + (this.rand() - 0.5) * 0.4, vy: s * Math.cos(a) + (this.rand() - 0.5) * 0.4 });
     }
     this.laid = new Float32Array(n).fill(1e6);
     this.start = this.rock.slice();
@@ -678,45 +662,6 @@ export class Planet {
     const h = along(n), w = along(s), hl = Math.hypot(h.x, h.y, h.z), wl = Math.hypot(w.x, w.y, w.z);
     if (hl < 0.05 || wl < 1e-6) return false;
     return (h.x * w.x + h.y * w.y + h.z * w.z) / (hl * wl) > Math.cos(this.k.ringAim);
-  }
-
-  /** The suns' tides together (each as the cube of its nearness). */
-  private get rawTide(): number {
-    let t = 0;
-    for (const s of this.stars) { const c = 1 / Math.sqrt(s.x * s.x + s.y * s.y + 0.05); t += c * c * c; }
-    return t / 3;
-  }
-  /** The suns' tides, against this world's own usual: averaged over the last few seconds, and over the long run. */
-  private tideNear = -1;
-  private tideUsual = -1;
-  /** The suns' tides now, as a share of their usual: 1 in an ordinary while, more as one swings close. */
-  get sunTide(): number {
-    if (!this.stars.length || this.tideUsual <= 0) return 1;
-    return Math.max(0.3, Math.min(3, this.rawTide / this.tideUsual));
-  }
-
-  /** The three suns move: each pulled by the others, and gently back towards the middle so none flies off. In small steps, slowly. */
-  private sunsMove(dt: number): void {
-    const S = this.stars, steps = 4, h = (dt * 0.35) / steps;
-    for (let k = 0; k < steps; k++) {
-      for (const a of S) {
-        let ax = -0.4 * a.x, ay = -0.4 * a.y;
-        for (const b of S) {
-          if (a === b) continue;
-          const dx = b.x - a.x, dy = b.y - a.y, d2 = dx * dx + dy * dy + 0.04, f = 0.8 / (d2 * Math.sqrt(d2));
-          ax += dx * f; ay += dy * f;
-        }
-        a.vx += ax * h; a.vy += ay * h;
-      }
-      for (const a of S) { a.x += a.vx * h; a.y += a.vy * h; }
-    }
-    // An era is chaotic while the tides of the last few seconds run well above their long-run usual.
-    const raw = this.rawTide;
-    if (this.tideUsual < 0) this.tideNear = this.tideUsual = raw;
-    this.tideNear += (raw - this.tideNear) * Math.min(1, dt / 8);
-    this.tideUsual += (raw - this.tideUsual) * Math.min(1, dt / 90);
-    if (!this.chaotic && this.tideNear > this.tideUsual * 1.25) { this.chaotic = true; this.tell('A chaotic era begins'); }
-    else if (this.chaotic && this.tideNear < this.tideUsual) { this.chaotic = false; this.tell('A stable era begins'); }
   }
 
   /** How hard a burst of this much would throw now: more at high tide, less at low, on a tidal moon. */
@@ -925,8 +870,7 @@ export class Planet {
     // The heat rises out of its store: fast at first, slower as the planet cools, and then it is gone.
     // (Or, on a world whose heat rises evenly, at one pace until it's gone.)
     // (And on a tidal moon, faster at high tide and slower at low.)
-    if (this.k.suns) this.sunsMove(dt);
-    const rise = Math.min(this.reserve, this.k.rising * (this.k.steady ? 1 : Math.sqrt(Math.max(0, this.reserve) / this.k.heat)) * (1 + this.k.tide * this.tideNow) * (this.k.suns ? this.sunTide : 1) * dt + 1e-4 * dt);
+    const rise = Math.min(this.reserve, this.k.rising * (this.k.steady ? 1 : Math.sqrt(Math.max(0, this.reserve) / this.k.heat)) * (1 + this.k.tide * this.tideNow) * dt + 1e-4 * dt);
     if (!this.k.endless) this.reserve -= rise; // (in free play, the store never empties)
     this.pressure += rise;
     // (Pouring, the heat can still rise faster than it pours, as at Io's high tide: then it bursts,
@@ -1277,8 +1221,7 @@ export class Planet {
         // Open to deep water, the waves strike hard; behind shallows, or a reef, they have broken already.
         let sea = 0;
         for (let k = a; k < b; k++) { const w = t.nbrList[k]; if (r[w] < 0) sea += Math.min(1, -r[w] / this.k.breaks) * (1 - this.k.holds * this.life[w]); }
-        // (On a three-sun world the tides surge with the suns, and wear the coasts the harder.)
-        const worn = sea ? Math.min(r[v] - this.k.shallows, this.k.waves * (this.k.suns ? this.sunTide ** 2 : 1) * dt * (sea / (b - a)) * 2 * wear) : 0;
+        const worn = sea ? Math.min(r[v] - this.k.shallows, this.k.waves * dt * (sea / (b - a)) * 2 * wear) : 0;
         next[v] -= worn;
         this.wear[v] = worn / dt;
       } else this.wear[v] = 0;

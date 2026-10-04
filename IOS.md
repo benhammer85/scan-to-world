@@ -58,8 +58,8 @@ then **▶ Run** again in Xcode. (Or `npm run build:app && npx cap sync ios` if 
   by the game itself. `ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png` is
   1024 × 1024 with no transparency (the App Store refuses an icon with an alpha channel); iOS rounds
   the corners itself. The web page's own icons are `public/warm-180.png` and `public/warm-64.png`.
-* **Launch screen** (still a placeholder): the three PNGs in `ios/App/App/Assets.xcassets/Splash.imageset/` (2732 × 2732,
-  the paper colour `#f4efe4`). Keep it plain: the game fades in from the paper.
+* **Launch screen:** plain paper (`#f4efe4`), drawn by `ios/App/App/Base.lproj/LaunchScreen.storyboard`
+  with no image, so it fits every phone; the game fades in from the paper.
 
 ## TestFlight (friends play it before release)
 
@@ -76,7 +76,8 @@ Needs the paid Developer Program.
 
 In App Store Connect, on the app's page:
 
-* **Screenshots:** six are ready in `appstore/screenshots/`, at the 6.9" iPhone size (1320 × 2868), in this order: the Moon, Mars, an ice moon, the smoke, the world of glass, the start card. Each is a frame of the game under a night-blue band with one line in its voice.
+* **Screenshots:** still to make, at the 6.9" iPhone size (1320 × 2868): a panorama joined across
+  the screens, about a world growing quietly. (The first six in `appstore/screenshots/` were set aside.)
 * **Description, keywords, support URL, privacy policy URL.**
 * **App Privacy:** *Data Not Collected* (the game keeps everything on the phone).
 * **Age rating:** answer the questionnaire; it comes out 4+.
@@ -86,6 +87,11 @@ In App Store Connect, on the app's page:
 
 * **Haptics:** the phone's own engine (in Safari on an iPhone they did nothing at all).
 * **Keeping a plate:** the share sheet (save to Photos, send it on).
-* **Portrait only, no status bar, motion permission explained** (`Info.plist`).
+* **iPhone only, portrait only, light only, no status bar** (`Info.plist`, `TARGETED_DEVICE_FAMILY = 1`).
+* **Permissions explained:** motion ("Tilt your phone to pour the lava.") and adding to Photos.
+* **Privacy manifest** (`ios/App/App/PrivacyInfo.xcprivacy`): no tracking, nothing collected; it
+  declares the one "required reason" API the web view's storage uses (file timestamps, C617.1).
+* **The app's address** inside the web view is `capacitor://warm` (`server.hostname`). Saves belong
+  to that address, so changing it starts every save afresh; leave it.
 * **Saves** are still in the web view's storage. Inside an app that isn't cleared as Safari's can
   be, but moving them to native storage (and iCloud) is a later step, as is **Game Center**.

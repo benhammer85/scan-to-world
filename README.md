@@ -27,9 +27,11 @@ Every world you make, what grew on it, the railways between worlds, which way ea
 * **Starting over:** open the cabinet (tap the paper round the world) and tap *Begin a new atlas* twice.
 * **Not kept:** a scan's photo texture. Its vertex colours are kept, and the paper look uses only a little of either.
 
-## Volcano (a prototype beside it)
+## Warm to the Touch (the volcano game, beside it)
 
 **On an iPhone:** the game is also a native iOS app (Capacitor, in `ios/`), with the phone's own haptics and share sheet. See [IOS.md](IOS.md) for running it from Xcode, TestFlight and the App Store.
+
+**Gentler settings:** with *Reduce Motion* on (iOS or the browser), the camera no longer pulls back at an eruption and the legend doesn't pulse; the goal line and messages are read out by VoiceOver as they change.
 
 `volcano.html` (`src/volcano/`) is a separate prototype, and Atlas Minor is untouched by it. You are the heat beneath a world, and there are worlds in sequence (`worlds.ts`). Each has the same single control and its own physics, aim and colours, as each has its own kind of volcanism:
 

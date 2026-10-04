@@ -55,10 +55,6 @@
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
 	</array>
-	<key>UISupportedInterfaceOrientations~ipad</key>
-	<array>
-		<string>UIInterfaceOrientationPortrait</string>
-	</array>
 	<key>UIRequiresFullScreen</key>
 	<true/>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
@@ -66,7 +62,11 @@
 	<key>UIStatusBarHidden</key>
 	<true/>
 	<key>NSMotionUsageDescription</key>
-	<string>The world is played by tilting your phone: held level, the heat gathers; tipped, the lava pours.</string>
+	<string>Tilt your phone to pour the lava.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Save the charts you keep to your photos.</string>
+	<key>UIUserInterfaceStyle</key>
+	<string>Light</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 </dict>

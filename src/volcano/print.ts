@@ -39,7 +39,7 @@ export const PRINT_FUNCTIONS = /* glsl */ `
   uniform float uCraterAge[64];
   uniform int uCraterCount;
   uniform vec3 uLightObj;
-  uniform vec3 uBlock, uBlockDeep, uBlockHot; // the woodblock's colours: vermilion, or on the ice moons, water's blues
+  uniform vec3 uBlock, uBlockDeep; // the woodblock's colours: vermilion, or on the ice moons, water's blues
   uniform vec3 uInkDeep, uInkMid, uInkHot, uInkOver, uInkPale, uInkCold, uInkAsh; // the print's inks (linear): its dark, middle and hot bands, the two overprinted, the palest, what a burp's clots cool to, and its ash
   // (Hashed without sin: phones' GPUs work sin out roughly for large numbers, which turns "random"
   // into regular patterns.)
@@ -331,20 +331,13 @@ const WATER = /* glsl */ `
         col *= mix(vec3(1.0), vec3(1.0, 0.82, 0.66), near * 0.55 * uFeedingGlow);
       }`;
 
-/** The lava lamp's blobs, as woodblock prints too: a flat block, hot orange at a hot heart, cut with gouges, in a black outline. */
+/** The lava lamp's blobs, as woodblock prints too: a flat block, hot orange at a hot heart, in a black outline. */
 export const LAMP_PRINT_FUNCTIONS = /* glsl */ `
   float hash3(vec3 p) { p = fract(p * 0.1031); p += dot(p, p.zyx + 31.32); return fract((p.x + p.y) * p.z); }
   float noise3(vec3 p) {
     vec3 i = floor(p), f = fract(p), s = f * f * (3.0 - 2.0 * f);
     return mix(mix(mix(hash3(i), hash3(i + vec3(1, 0, 0)), s.x), mix(hash3(i + vec3(0, 1, 0)), hash3(i + vec3(1, 1, 0)), s.x), s.y),
                mix(mix(hash3(i + vec3(0, 0, 1)), hash3(i + vec3(1, 0, 1)), s.x), mix(hash3(i + vec3(0, 1, 1)), hash3(i + vec3(1, 1, 1)), s.x), s.y), s.z);
-  }
-  float gouges(float phase, float taper) {
-    float fw = max(fwidth(phase), 1e-5), k = floor(phase + 0.5);
-    float dpx = abs(phase - k) / fw;
-    float w = (0.35 + 1.1 * noise3(vDir * 38.0 + vec3(k * 1.37))) * uPx * taper;
-    float stroke = smoothstep(0.24, 0.36, noise3(vDir * 60.0 + vec3(k * 2.1, 0.0, k)));
-    return (1.0 - smoothstep(w - 0.5, w + 0.5, dpx)) * stroke * (1.0 - smoothstep(0.12, 0.3, fw)) * smoothstep(0.004, 0.02, fw);
   }
 `;
 /**

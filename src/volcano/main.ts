@@ -304,7 +304,6 @@ material.onBeforeCompile = (shader) => {
   // (Engraved, the lines are inks: red-brown, deeper at the edge; on the ice moons, where the lava is water, blues.)
   shader.uniforms.uBlock = { value: new THREE.Color(ICE ? '#3f7fa6' : '#ce4622') };
   shader.uniforms.uBlockDeep = { value: new THREE.Color(ICE ? '#2a5674' : '#802216') };
-  shader.uniforms.uBlockHot = { value: ICE ? new THREE.Color('#b9dbe8') : new THREE.Color(0.95, 0.55, 0.17) };
   // The print's inks, as printed (sRGB), made linear: on the ice moons, water's blues.
   const ink = (r: number, g: number, b: number) => ({ value: new THREE.Vector3(r ** 2.2, g ** 2.2, b ** 2.2) });
   // (Quiet: softer, a warm vermilion like the engraving's, a rust, an ochre; and paler blues.)
@@ -953,31 +952,7 @@ function lamping(): void {
   for (const b of planet.blobs) put(b.x, b.y, b.z, b.area, Math.max(0, b.heat));
   blobCount.value = n;
 }
-/**
- * The three suns, engraved in the sky above the world: each where it is in its wandering, side to
- * side, and larger the nearer it is to the world. Fixed in the sky, as the giant is on Enceladus.
- */
 const TUMBLE = new THREE.Quaternion(), TUMBLE_AXIS = new THREE.Vector3();
-const SUNS = !!WORLD.rules.suns, sunMarks: THREE.Sprite[] = [];
-if (SUNS) {
-  const cv = document.createElement('canvas');
-  cv.width = cv.height = 128;
-  const g = cv.getContext('2d')!;
-  g.fillStyle = '#efdca8'; g.strokeStyle = P.landInkHigh; g.lineWidth = 3; g.lineCap = 'round';
-  g.beginPath(); g.arc(64, 64, 30, 0, Math.PI * 2); g.fill(); g.stroke();
-  for (let i = 0; i < 12; i++) { const a = (i / 12) * Math.PI * 2; g.beginPath(); g.moveTo(64 + 40 * Math.cos(a), 64 + 40 * Math.sin(a)); g.lineTo(64 + 54 * Math.cos(a), 64 + 54 * Math.sin(a)); g.stroke(); }
-  const tex = new THREE.CanvasTexture(cv);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  for (let i = 0; i < 3; i++) { const m = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true })); scene.add(m); sunMarks.push(m); }
-}
-/** Each frame: the suns, where they are now. */
-function sunning(): void {
-  planet.stars.forEach((st, i) => {
-    const d = Math.hypot(st.x, st.y), near = 1 / Math.max(0.35, d);
-    sunMarks[i].position.set(THREE.MathUtils.clamp(st.x * 0.8, -1.25, 1.25), 2.2 + THREE.MathUtils.clamp(st.y * 0.12, -0.15, 0.15), -4.8);
-    sunMarks[i].scale.setScalar(0.14 + 0.12 * Math.min(2, near));
-  });
-}
 let orbitShown = -1;
 /** The ring turns slowly; it's inked as far as the rock thrown up goes, and in the long age the rock gathers into the moon. */
 function orbiting(dt: number): void {
@@ -1348,7 +1323,7 @@ function lessons(): void {
 
 // ---------------------------------------------------------------- words, and the key
 /** What's worth saying: the turns in the world's story, not every happening in it. */
-const QUIET_WORDS = /^(A chaotic era begins|A stable era begins|The plume reaches the ring|A great plume, but too near|Wanted where|A stone is coming|Land breaks|Life begins in|The first|Moss grows|[A-Z][a-z]+( [a-z]+)? took hold|Held too long|Stone caught|The fire is out|The heat is nearly|A dust storm|The storm passes)/;
+const QUIET_WORDS = /^(The plume reaches the ring|A great plume, but too near|Wanted where|A stone is coming|Land breaks|Life begins in|The first|Moss grows|[A-Z][a-z]+( [a-z]+)? took hold|Held too long|Stone caught|The fire is out|The heat is nearly|A dust storm|The storm passes)/;
 const ERAS: Record<Era, string> = { young: 'A young fire', burning: 'Burning strong', cooling: 'Cooling', embers: 'Last embers', out: 'The fire is out' };
 // (In free play the heat never runs low, so the title says what kind of play it is.)
 if (FREE) ERAS.young = 'Free play';
@@ -1380,8 +1355,6 @@ const kindEls = KINDS.map((k) => {
 function words(): void {
   const era = planet.era;
   if (era !== shownEra && !ending) { shownEra = era; eraFrom.push({ name: ERAS[era], from: planet.seconds }); }
-  // Under three suns, the title is the era the suns make: stable or chaotic.
-  if (SUNS && !ending && !FREE) $('stage-name').textContent = planet.chaotic ? 'A chaotic era' : 'A stable era';
   for (const text of planet.news.splice(0)) {
     // Only the few things worth a word are said, quietly, at the foot of the page.
     if (!ending && QUIET_WORDS.test(text)) announce(text);
@@ -1675,7 +1648,7 @@ function plate(): HTMLCanvasElement {
   return cv;
 }
 $('keep').addEventListener('click', () => {
-  void keepImage(plate(), `volcano-${seed}`);
+  void keepImage(plate(), `warm-to-the-touch-${WORLD.id}-${seed}`);
 });
 /** Once the chart is drawn, it goes into the atlas: a small picture of the plate, and what it says. */
 let paged = false;
@@ -1916,6 +1889,8 @@ void resume().then((back) => {
  * the whole of what you've made is in view; a pinch takes over for a while.
  */
 let zoomedAt = -100, lastReach = -10, reachDist = 3.2;
+/** Asked for less motion: no sudden step back at a burst (the slow breathing of the view stays). */
+const STILL = matchMedia('(prefers-reduced-motion: reduce)').matches;
 function breathe(dt: number): void {
   if (seconds - lastReach > 2) {
     lastReach = seconds;
@@ -1924,12 +1899,12 @@ function breathe(dt: number): void {
     let least = 1;
     for (let v = 0; v < N; v += 3) if (planet.rock[v] > 0) least = Math.min(least, base[v * 3] * q.x + base[v * 3 + 1] * q.y + base[v * 3 + 2] * q.z);
     // (Further back on a young Earth, to leave room for the moon's ring round it.)
-    reachDist = THREE.MathUtils.clamp(3.4 + 2 * Math.acos(least), 3.4, 4.8) * (WORLD.goal === 'orbit' ? 1.3 : WORLD.goal === 'feed' || SUNS ? 1.15 : 1);
+    reachDist = THREE.MathUtils.clamp(3.4 + 2 * Math.acos(least), 3.4, 4.8) * (WORLD.goal === 'orbit' ? 1.3 : WORLD.goal === 'feed' ? 1.15 : 1);
   }
   // At the end, the world steps back and up the page, leaving the foot for the chart.
   const moment = !ending && seconds - momentAt < 4.5;
   document.body.classList.toggle('hush', moment);
-  const want = ending?.shown ? farthest * 0.92 : reachDist * (moment ? 1.16 : 1), wantLift = ending?.shown ? 0.09 : 0;
+  const want = ending?.shown ? farthest * 0.92 : reachDist * (moment && !STILL ? 1.16 : 1), wantLift = ending?.shown ? 0.09 : 0;
   if (!ending?.shown && seconds - zoomedAt < 10) return;
   const d = dist + (want - dist) * Math.min(1, (moment ? 0.9 : 0.15) * dt), l = lift + (wantLift - lift) * Math.min(1, 0.6 * dt);
   if (Math.abs(d - dist) > 1e-4 || Math.abs(l - lift) > 1e-5) { dist = d; lift = l; look(); }
@@ -2026,7 +2001,6 @@ renderer.setAnimationLoop(() => {
   aimNext.update(dt);
   if (WORLD.goal === 'orbit') orbiting(dt);
   if (LAMP) lamping();
-  if (SUNS) sunning();
   if (WORLD.goal === 'feed') feeding(dt);
   if (WORLD.goal === 'height' || WORLD.goal === 'cover' || WORLD.goal === 'round' || WORLD.goal === 'calm') {
     // The ring follows the heat, eased, so it glides as the heat creeps.
