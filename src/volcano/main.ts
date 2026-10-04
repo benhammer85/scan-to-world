@@ -51,7 +51,7 @@ import { Chain, CHAIN } from './chain';
 import { measureSecond, type Second } from './second';
 import { loadSystem, saveSystem, worldFor, recordPlayed, madeCount } from './system';
 import { openSystem, closeSystem } from './systemChart';
-import { feel, keepImage, NATIVE } from './native';
+import { feel, keepImage, NATIVE, tap } from './native';
 import './fonts.css';
 import { LOOKS, PRINT_FUNCTIONS, LAMP_PRINT_FUNCTIONS, LAMP_PRINT, LAMP_QUIET, printFragment, type Look } from './print';
 
@@ -1396,6 +1396,7 @@ function effects(dt: number): void {
     // A burst is a moment: the view eases back and holds, and the words fall quiet, so it has the screen.
     momentAt = seconds;
     feel(torn ? [40, 60, 90] : 25);
+    landing = { at: seconds, n: torn ? 9 : 6 }; // (and then what it threw, coming down)
     spray.value = 1; // (a burst throws its splatter, whatever the ink)
     // The column of ash: many puffs from the vent, rising and spreading.
     // And a fountain of embers, thrown up and falling back glowing.
@@ -2049,6 +2050,39 @@ cardView();
 drawNow();
 redrawLines(0);
 const clock = new THREE.Clock();
+// ---------------------------------------------------------------- in the hand
+/**
+ * What's felt while it's played, not only at its moments: a heartbeat under a finger holding the
+ * heat in, quickening as it gathers, firmer once a burst is ready and urgent at the brink; a
+ * rumble while it pours, more as it's tipped further; what a burst throws, landing; and a tap each
+ * time the aim gains a piece.
+ */
+let beatAt = 0, rumbleAt = 0, wasReady = false, landing: { at: number; n: number } | null = null, aimFelt = -1;
+function inTheHand(): void {
+  if (!begun || ending || planet.over || replaying) return;
+  if (!LAMP && planet.clamped && planet.pressure > planet.k.least) {
+    const ready = planet.k.great > 0 ? planet.throwOf(planet.pressure) / planet.k.great : planet.pressure / planet.k.explosive;
+    const brink = planet.pressure > planet.capNow * 0.85;
+    if (ready >= 1 && !wasReady) { tap('medium'); setTimeout(() => tap('medium'), 130); beatAt = seconds; } // (ready: a double beat)
+    wasReady = ready >= 1;
+    const every = brink ? 0.22 : THREE.MathUtils.lerp(1.1, 0.38, Math.min(1, ready));
+    if (seconds - beatAt >= every) { beatAt = seconds; tap(brink ? 'heavy' : ready >= 1 ? 'medium' : 'light'); }
+  } else wasReady = false;
+  if (planet.pouring && planet.pressure > 0.02) {
+    const strength = Math.min(1, Math.max(0, (planet.tip - planet.k.tipPour) / (1 - planet.k.tipPour)));
+    if (seconds - rumbleAt >= 1 / (7 + 9 * strength)) { rumbleAt = seconds; tap('light'); }
+  }
+  if (landing) {
+    const t = seconds - landing.at;
+    if (t > 0.5 + 0.18 * (9 - landing.n) && landing.n > 0) { landing.n--; landing.at += 0.14 + 0.12 * Math.random(); tap('light'); }
+    if (landing.n <= 0 || t > 3) landing = null;
+  }
+  // The aim gaining a piece: a basin, a stretch, a plume; or another tenth of it.
+  const piece = ['ring', 'basins', 'plumes', 'ridge'].includes(WORLD.goal) ? Math.floor(aimDone) : Math.floor((aimDone / Math.max(1e-6, aimOf)) * 10);
+  if (aimFelt >= 0 && piece > aimFelt) tap('medium');
+  aimFelt = Math.max(aimFelt, piece);
+}
+
 let seconds = 0, lastWords = 0, lastDraw = 0, lastIslands = 0, lastEcology = 0;
 /** In development, how long each frame's own work took (before drawing), to find what stutters. */
 const frameCost: number[] = [];
@@ -2133,6 +2167,7 @@ renderer.setAnimationLoop(() => {
   for (const s of [...kindDots, foam]) s.update(dt);
   puffs.update(dt * speed);
   if (begun) breathe(dt);
+  inTheHand();
   // While the card is up, the world turns slowly above it; begun, it settles back to how it was turned.
   if (!begun && !$('begin').classList.contains('loading')) {
     if (!cardTurned) { CARD_TURN.copy(group.quaternion); cardTurned = true; }

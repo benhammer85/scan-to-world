@@ -54,6 +54,19 @@ The aim is drawn on the map in small dots, as a chart marks a route or a boundar
 
 **Lava, dark as it mostly is (October).** By default, running lava is a black-brown crust. Its heat shows only where it's fresh: at the vent's mouth (pale gold), down the stream still arriving, as a thin bright edge along the front while it's fed, and in a few long, fine cracks while it's hot. Set lava is solid basalt for about its first minute, then goes cleanly to the ground (it went through a grey wash at first, which read as a smudge). A soft warm glow lights the ground close to fresh lava while it's fed. The ice moons keep their blues, since their lava is water, and `?lava=quiet` brings back the coloured inks.
 
+**Lava that builds, and is felt (October).**
+* **Steering:** the lava mostly follows the ground; the way the world is held only nudges it (`selfGravity` 0.6 by default). Tipped, it no longer slides off over the world's edge. The deep ocean keeps the full pull of the tilt, since there you aim at the bank.
+* **Levees:** a flow's thin margin, next to bare ground, sets three times faster than its body (`levee`). A flow walls itself in and runs on down its own channel, so pouring builds.
+* **Breakouts:** at its front (where it lies thinner than 0.012), lava swells and holds, then breaks out, each place at its own moment (`breakout` 0.75). Fronts bud out in lobes, here and then there, as pahoehoe's toes do. Not on the deep ocean, where the lava runs on in its tubes.
+* **In the hand** (`inTheHand`):
+  * A finger holding the heat in feels a heartbeat that quickens as the pressure gathers (from 1.1 s to 0.38 s), with a double beat when a burst is ready and heavy, quick beats at the brink.
+  * Pouring is a rumble of light taps, 7 to 16 a second as the world is tipped further.
+  * A burst's thud is followed by what it threw, landing.
+  * Each piece of the aim gained (a basin, a stretch, a plume, or a tenth) is a firm tap.
+  * All of it uses the haptic engine's taps; a continuous engine (Core Haptics) would need a native plugin.
+
+With these, following the card still wins every world, and the ocean wins sooner (4 to 7 minutes).
+
 **The fire again, quickly.** Every 4 seconds of the fire, the world is kept in small form (heights and lava as whole numbers, at most 100 moments). When the fire is done, the whole of it plays again in 8 seconds, from bare ground to what was made, before the long age and the chart. Contours, the aim's dots and life's signs hide meanwhile, since they show the world as it is now. The chart now says what was made in a sentence ("A mountain 28 km high, three times the height of Everest"), rather than as a score.
 
 **Rebalanced with player-like bots (October).** Bots now play through the same three inputs a player has: turning the globe, tilting the phone and holding a finger. One does what the card says; one is skilled; one plays at random. Before, following the card won only half the worlds. On Mars, pouring spread the lava too thin, and only bursting reached 28 km. Spin, the deep ocean, the asteroid and the young Earth couldn't be won. The ice moon and the tumbling moon were over in about a minute. The changes:

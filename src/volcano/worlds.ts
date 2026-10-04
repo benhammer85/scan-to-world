@@ -334,7 +334,7 @@ export const WORLDS: World[] = [
     rules: {
       terrain: 'ocean', floor: -0.45, life: false, sink: 0, swell: 0,
       drift: 0, rises: 0, heat: 450, rising: 1.2, steady: true,
-      tubes: 0.02, tubeFresh: 40, bankFar: 0.6,
+      tubes: 0.02, tubeFresh: 40, bankFar: 0.6, selfGravity: 0, breakout: 0, // (here the tilt steers, aimed at the bank; and the lava runs on in its tubes, without breaking out)
       impactEvery: [60, 100],
     },
     palette: {

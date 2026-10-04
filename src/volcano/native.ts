@@ -34,6 +34,12 @@ export function feel(pattern: number | number[]): void {
   });
 }
 
+/** One tap in the hand, light, firm or heavy: the beats and the rumble are made of these. (In a browser, a short buzz where there's one.) */
+export function tap(weight: 'light' | 'medium' | 'heavy'): void {
+  if (!NATIVE) { try { navigator.vibrate?.(weight === 'light' ? 6 : weight === 'medium' ? 14 : 26); } catch { /* none */ } return; }
+  void Haptics.impact({ style: weight === 'heavy' ? ImpactStyle.Heavy : weight === 'medium' ? ImpactStyle.Medium : ImpactStyle.Light }).catch(() => {});
+}
+
 /** Keep a plate: in the app, by the share sheet; in a browser, as a download. */
 export async function keepImage(canvas: HTMLCanvasElement, name: string): Promise<void> {
   if (!NATIVE) {

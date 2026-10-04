@@ -221,7 +221,17 @@ export const VOLCANO = {
    * 1: on a body as small as an asteroid, down is towards its own middle, so lava finds its own
    * hollows, and the hand only nudges it.
    */
-  selfGravity: 0,
+  selfGravity: 0.6,
+  /**
+   * Levees: a flow's thin margin, next to bare ground, sets this many times faster than its body, so
+   * a flow walls itself in and runs on down its own channel, as basalt does. 1: no levees.
+   */
+  levee: 3,
+  /**
+   * Breakouts: a flow's front doesn't creep evenly but swells and holds, then breaks out in a new
+   * lobe, here and then there (pahoehoe's toes). How much it holds back between: 0, not at all.
+   */
+  breakout: 0.75,
   /**
    * A world spinning so fast it bulges (as Haumea does): lava is flung towards its equator this
    * strongly, whatever the ground's slope, and the equator stands this much higher to begin with.
@@ -381,6 +391,8 @@ export class Planet {
   private onBank: Uint8Array | null = null;
   /** Seconds since lava last set into rock at each vertex (for its tubes). */
   readonly laid: Float32Array;
+  /** Each place's own moment for breaking out (see `breakout`). */
+  private readonly breakPhase: Float32Array;
   /** Whether stones fall at all: off until the player has been shown them. */
   stonesFall = true;
   seconds = 0;
@@ -465,6 +477,8 @@ export class Planet {
       for (let v = 0; v < n; v++) if (Math.hypot(p[v * 3] - b.x, p[v * 3 + 1] - b.y, p[v * 3 + 2] - b.z) < b.r) this.onBank[v] = 1;
     }
     this.laid = new Float32Array(n).fill(1e6);
+    this.breakPhase = new Float32Array(n);
+    for (let v = 0; v < n; v++) { const x = Math.sin(v * 12.9898 + 78.233) * 43758.5453; this.breakPhase[v] = (x - Math.floor(x)) * Math.PI * 2; }
     this.start = this.rock.slice();
     // The lava lamp's far shore: two radians round the world from where the heat is, some way.
     if (this.k.lamp) {
@@ -1178,7 +1192,14 @@ export class Planet {
       // flux rising as its depth to the power two and a half, nearly as a Bingham fluid's does down a slope), so a
       // flow's thick core pushes its thin margin ahead of it in blunt, rounded lobes.
       // (As a rate, at lava's own pace, so a step's length doesn't change how far it gets.)
-      const lv = l * Math.sqrt(l), rate = Math.min(RUN_MOST, (this.k.flow * sum * lv) / (lv + VISCOUS_15) / l);
+      const lv = l * Math.sqrt(l);
+      let rate = Math.min(RUN_MOST, (this.k.flow * sum * lv) / (lv + VISCOUS_15) / l);
+      // At the front (where it lies thin), it swells and holds, then breaks out: each place in its own
+      // time, so a front buds out here and then there rather than creeping evenly.
+      if (this.k.breakout > 0 && l < 0.012) {
+        const ph = this.breakPhase[v], pulse = 0.5 + 0.5 * Math.sin(this.seconds * LAVA_PACE * 0.9 + ph);
+        rate *= 1 - this.k.breakout * (1 - pulse * pulse * pulse) * (1 - l / 0.012);
+      }
       const out = l * (1 - Math.exp(-rate * LAVA_PACE * dt));
       next[v] -= out;
       for (let q = a; q < b; q++) {
@@ -1199,7 +1220,13 @@ export class Planet {
       // (In a tube of its own fresh crust, lava in the sea cools far slower.)
       const tube = sea && this.k.tubes < 1 && this.laid[v] < this.k.tubeFresh && !this.onBank?.[v] ? this.k.tubes : 1;
       // (A trace too small to matter is rock at once, or it lingers for ever, costing a step each time.)
-      const solid = l < 1e-7 ? l : l * (1 - Math.exp(-(l < this.k.thin ? THIN_SETS : sea ? this.k.coolSea * tube : this.k.coolLand) * LAVA_PACE * dt));
+      // (At a flow's margin, next to bare ground, it sets faster: its levees.)
+      let edge = 1;
+      if (!sea && this.k.levee > 1 && l < 0.004) {
+        const t = this.topo;
+        for (let q = t.nbrOffsets[v]; q < t.nbrOffsets[v + 1]; q++) if (this.lava[t.nbrList[q]] < this.k.thin) { edge = this.k.levee; break; }
+      }
+      const solid = l < 1e-7 ? l : l * (1 - Math.exp(-(l < this.k.thin ? THIN_SETS : sea ? this.k.coolSea * tube : this.k.coolLand * edge) * LAVA_PACE * dt));
       if (solid > 0) this.laid[v] = 0;
       this.lava[v] -= solid;
       this.rock[v] += solid;
