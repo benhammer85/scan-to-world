@@ -174,6 +174,14 @@ export function printFragment(look: Look, sea: boolean): string {
       float seaRim = exp(-max(0.0, 1.0 - reach) / 0.09) * 0.9;
       float aSea = ${sea ? 'clamp(0.32 * (0.25 + b2 * b2 + 0.3 * b1 + seaRim) * grain, 0.0, 1.0) * inSea' : '0.0'};
       col *= 1.0 - aSea * (1.0 - vec3(0.36, 0.55, 0.59));
+      // Shoal water, as a sea chart tints it: the sea floor raised towards the surface (new rock from the
+      // fire, a seamount, a sunken island) under a pale blue wash, deeper as it nears the surface, so what
+      // the fire builds under the sea shows before it breaks the surface. (It was hidden until then.)
+      float shoal = ${sea ? 'smoothstep(0.08, 0.7, 1.0 - (vH + 0.02 * (b2 - 0.5)) / uSeaFloor) * (1.0 - onLand)' : '0.0'};
+      // And on the ocean world, where lava has lain under the sea (the hotspot's track), the same wash, lighter.
+      float trk = vMarks.x + 0.14 * (b2 - 0.5), trw = max(fwidth(trk), 1e-4) * 1.6;
+      shoal = max(shoal, ${sea ? '0.6 * smoothstep(0.5 - trw, 0.5 + trw, trk) * (1.0 - onLand)' : '0.0'});
+      col = mix(col, col * vec3(0.6, 0.78, 0.92), shoal * clamp(0.9 * (0.8 + 0.4 * b1) * grain, 0.0, 1.0));
       // The land: life's washes and ash, as their tint over the land's paper; and loose ochre over parts of it, never all.
       // Life's washes (and ash, and fresh rock) come as a soft tint; laid as a hand-coloured map lays them,
       // each is an even wash with a ragged edge, a darker rim and grain, wherever it's more than a trace.
@@ -259,7 +267,7 @@ export function printFragment(look: Look, sea: boolean): string {
 
       ${sea ? `// The coast: one crisp line.
       float coastPx = abs(vH) / max(fwidth(vH), 1e-6);
-      col = mix(col, ink, (1.0 - smoothstep(0.55 * uPx - 0.5, 0.55 * uPx + 0.5, coastPx)) * ${look === 6 ? '0.4' : '0.95'} * edgeOn); // (quiet: soft, not an outline)` : ''}
+      col = mix(col, ink, (1.0 - smoothstep(0.55 * uPx - 0.5, 0.55 * uPx + 0.5, coastPx)) * ${look === 6 ? '0.6' : '0.95'} * edgeOn); // (quiet: soft, not an outline; but enough that a small new island reads as land)` : ''}
       diffuseColor.rgb *= col * (1.0 - glowInk);
       totalEmissiveRadiance += col * glowInk;`;
 }

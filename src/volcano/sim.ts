@@ -1158,9 +1158,13 @@ export class Planet {
         // Held like a globe: how far down the neighbour is along gravity, the ground raised as it
         // is drawn, counted back into the ground's own heights. Near the top the relief is all of
         // it; further round, the curve of the world pulls the lava down its side.
+        // (The ground's own heights count as they would facing up, at least in part, however the ground
+        // faces: on the world's underside, "down" points out of the ground, and a pile of lava counted as
+        // lower than its neighbours, drew in more, and grew into a needle tens of times the tallest mountain.)
         ? (w: number) => {
-          const sw = this.rock[w] + this.lava[w], kv = 1 + R * s, kw = 1 + R * sw;
-          return ((p[w * 3] * kw - p[v * 3] * kv) * G.x + (p[w * 3 + 1] * kw - p[v * 3 + 1] * kv) * G.y + (p[w * 3 + 2] * kw - p[v * 3 + 2] * kv) * G.z) / R;
+          const sw = this.rock[w] + this.lava[w], up = -(p[w * 3] * G.x + p[w * 3 + 1] * G.y + p[w * 3 + 2] * G.z);
+          const round = ((p[w * 3] - p[v * 3]) * G.x + (p[w * 3 + 1] - p[v * 3 + 1]) * G.y + (p[w * 3 + 2] - p[v * 3 + 2]) * G.z) * (1 + R * s) / R;
+          return round + Math.max(0.3, up) * (s - sw);
         }
         : own;
       const base = selfG > 0 && G ? (w: number) => selfG * own(w) + (1 - selfG) * held(w) : held, spin = this.k.spin;

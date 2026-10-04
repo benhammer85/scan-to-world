@@ -100,7 +100,7 @@ function look(): void {
 const pens: PlotterLines[] = [];
 /** Half the drawing's size in device pixels (for lines a set number of pixels wide). */
 const halfScreen = { value: new THREE.Vector2(1, 1) };
-addEventListener('resize', fit);
+addEventListener('resize', () => { fit(); cardView(); });
 new ResizeObserver(fit).observe(stage);
 
 // ---------------------------------------------------------------- the planet
@@ -149,7 +149,9 @@ const LOOK_ID = ASKED.get('look') ?? remembered(OWN_LOOK) ?? 'quiet';
 const LOOK: Look = LOOKS.find((l) => l.id === LOOK_ID)?.look ?? 6; // (an ink not known any more: the quiet print)
 /** The quiet print: lava the one warm accent on a calm map; burps only at the brink, splatter only when it bursts, the smoke lighter. */
 const QUIET = LOOK === 6;
-const SEA = WORLD.rules.terrain === 'ocean';
+// (The ocean world leaves its terrain to the simulation's default, which is ocean: read as given it
+// was undefined, and the first world was drawn as a dry one, with no sea, coast or shallows.)
+const SEA = (WORLD.rules.terrain ?? 'ocean') === 'ocean';
 const P = WORLD.palette, LIFE = WORLD.rules.life !== false, ICE = WORLD.rules.terrain === 'ice';
 /** On Io, the plumes' sulphur is drawn as the flood mark is elsewhere: in a clean-edged band, as a geological map draws a unit. */
 const SULPHUR = (WORLD.rules.ashRing ?? 0) > 0;
@@ -284,6 +286,7 @@ material.onBeforeCompile = (shader) => {
   shader.uniforms.uShallow = { value: SHALLOW };
   shader.uniforms.uDeep = { value: DEEP };
   shader.uniforms.uLandPaper = { value: PAPER };
+  shader.uniforms.uSeaFloor = { value: Math.min(-0.05, planet.k.floor) }; // (shoals are tinted by how far they've risen from it)
   shader.uniforms.uFloodDots = { value: WORLD.id === 'moon' ? 0.35 : 0 };
   shader.uniforms.uCrater = { value: craterAt };
   shader.uniforms.uCraterAge = { value: craterAge };
@@ -316,7 +319,7 @@ material.onBeforeCompile = (shader) => {
   shader.uniforms.uInkCold = ICE ? ink(0.9, 0.95, 0.98) : QUIET ? ink(0.4, 0.37, 0.35) : ink(0.2, 0.19, 0.18);
   shader.uniforms.uInkAsh = ICE ? ink(0.62, 0.74, 0.82) : QUIET ? ink(0.58, 0.55, 0.52) : ink(0.42, 0.4, 0.38);
   shader.fragmentShader = shader.fragmentShader
-    .replace('void main() {', `uniform vec3 uShallow;\nuniform vec3 uDeep;\nuniform vec3 uFlooded;\nuniform float uFloodStrength;\nuniform vec3 uLava;\nuniform vec3 uDeepLava;\nuniform vec3 uHot;\nuniform vec3 uCrust;\nuniform float uTime;\nuniform float uPx;\nuniform vec3 uLandPaper;\nvarying float vH;\nvarying vec4 vMarks;\nvarying vec3 vDir;\nvarying vec3 vN;
+    .replace('void main() {', `uniform vec3 uShallow;\nuniform vec3 uDeep;\nuniform vec3 uFlooded;\nuniform float uFloodStrength;\nuniform vec3 uLava;\nuniform vec3 uDeepLava;\nuniform vec3 uHot;\nuniform vec3 uCrust;\nuniform float uTime;\nuniform float uPx;\nuniform vec3 uLandPaper;\nuniform float uSeaFloor;\nvarying float vH;\nvarying vec4 vMarks;\nvarying vec3 vDir;\nvarying vec3 vN;
       // (Without sin, which phones' GPUs work out roughly for large numbers, turning noise into patterns.)
       float hash3(vec3 p) { p = fract(p * 0.1031); p += dot(p, p.zyx + 31.32); return fract((p.x + p.y) * p.z); }
       float noise3(vec3 p) {
@@ -532,7 +535,8 @@ function coarse(): void {
     const hot = lava > 0.002 ? Math.min(1, lava * 40) : 0;
     // Where a world keeps the mark of it (the Moon's seas), ground lava has lain on stays dark: this
     // fire's fully, an earlier one's a little faded. And the lava itself, by how thick it lies.
-    coarseMarks[v * 4] = FL ? (planet.age[v] < 1e5 ? 1 : 0) : SULPHUR && planet.ash[v] > 0.6 ? 1 : 0;
+    // (On the ocean world, drawn as a print: where lava has lain under the sea, the hotspot's track, a shoal's wash.)
+    coarseMarks[v * 4] = FL ? (planet.age[v] < 1e5 ? 1 : 0) : SULPHUR && planet.ash[v] > 0.6 ? 1 : SEA && QUIET && planet.age[v] < 1e5 && planet.rock[v] < 0 ? 1 : 0;
     // Where lava lies, by how deep: whole where it's a little deep, thinning to nothing at its
     // margins. So its edge falls between the vertices, wherever its depth says, and slides
     // smoothly as it spreads, as a liquid's does, rather than stepping from vertex to vertex.
@@ -1291,7 +1295,6 @@ const CUES: { ready: () => boolean; say?: string; begin?: () => void; done: (sin
   ...(WORLD.rules.rises ? [{ ready: () => true, say: 'The vent creeps to whatever faces up: drag the world to move it', done: (s: number) => s > 20 }] : []),
   ...(WORLD.goal === 'ridge' ? [{ ready: () => planet.tally.flows + planet.tally.bursts > 0, say: 'The spin carries the lava to the equator', done: (s: number) => s > 25 }] : []),
   { ready: () => !LAMP && (planet.k.great > 0 ? planet.throwOf(planet.pressure) >= planet.k.great : planet.pressure >= planet.k.explosive) && !planet.pouring, say: WORLD.goal === 'feed' ? 'The smoke has turned grey: lean the vent towards the giant, and let it out to burst' : 'The smoke has turned grey: let it out now, and it bursts', done: (s) => planet.tally.bursts > 0 || s > 40 },
-  ...(LIFE ? [{ ready: () => ecology.held.length > 0, say: 'Six kinds of life, each needing its own ground', begin: () => { $('legend').classList.add('new'); }, done: (s: number) => ecology.kept > 0 || s > 60 }] : []),
   ...(WORLD.goal === 'plumes' ? [
     { ready: () => planet.tideNow > 0.6, say: 'High tide: the heat comes fast. Hold until the smoke turns grey', done: (s: number) => s > 20 },
     { ready: () => planet.tideNow < -0.6, say: 'Low tide: the heat comes slowly. Move it somewhere new', done: (s: number) => s > 20 },
@@ -1809,7 +1812,7 @@ if (RUN === null) for (const w of WORLDS) {
 const more = $('begin').querySelector('.more') as HTMLElement;
 {
   const toggle = $('begin').querySelector('.more-toggle') as HTMLElement;
-  toggle.addEventListener('pointerdown', (e) => { e.stopPropagation(); more.hidden = !more.hidden; toggle.textContent = more.hidden ? 'more' : 'less'; });
+  toggle.addEventListener('pointerdown', (e) => { e.stopPropagation(); more.hidden = !more.hidden; toggle.textContent = more.hidden ? 'more' : 'less'; cardView(); });
   more.addEventListener('pointerdown', (e) => e.stopPropagation());
 }
 const moreLink = (text: string, act: () => void): HTMLElement => {
@@ -1881,15 +1884,21 @@ $('atlas').querySelector('.close')!.addEventListener('click', () => $('atlas').c
 // A world with a past can be begun afresh, on new ground.
 if (FIRES) moreLink('Begin this world on new ground', () => { forgetGround(WORLD.id); void forget(); setTimeout(() => location.reload(), 200); });
 // A world without life has no key of its kinds.
-if (!LIFE) $('legend').style.display = 'none';
+// (The key to life's signs is not shown: the aim is the chain, not the kinds, and the key was one more thing to read.)
+$('legend').style.display = 'none';
 $('begin').addEventListener('pointerdown', () => {
   if (begun) return;
   begun = true;
+  begunAt = seconds;
+  document.body.classList.remove('carding');
   askForTilt();
   $('begin').classList.add('gone');
   if (FREE) $('finish').classList.add('shown');
 });
+// The card shows once its words are in (a kept world's included), so it never flashes half-made.
+const cardReady = () => requestAnimationFrame(() => { cardView(); $('begin').classList.remove('loading'); });
 void resume().then((back) => {
+  cardReady();
   if (!back) return;
   ($('begin').querySelector('.first') as HTMLElement).textContent = 'Your world, as you left it.';
   ($('begin').querySelector('.second') as HTMLElement).textContent = `However you hold the phone now counts as level. ${HOW[WORLD.goal] ?? ''}`;
@@ -1902,6 +1911,25 @@ void resume().then((back) => {
  * the whole of what you've made is in view; a pinch takes over for a while.
  */
 let zoomedAt = -100, lastReach = -10, reachDist = 3.2;
+/** When the world was begun (it glides from the card's view to the playing view, a little quicker at first). */
+let begunAt = -100;
+/** The card's view: the world whole and small, high on the page, above the card's words. */
+function cardView(): void {
+  if (begun) return;
+  // Sized and placed in the room above the card's words, however tall the phone (and whatever the card says).
+  const w = stage.clientWidth || innerWidth, h = stage.clientHeight || innerHeight;
+  const words = ($('begin').querySelector('.world') as HTMLElement).getBoundingClientRect().top;
+  const above = 56, room = Math.max(80, words - 22 - above);
+  const r = Math.min(room, w * 0.7) / 2, middle = above + room / 2;
+  dist = (1.08 * (h / 2)) / (r * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
+  lift = (h / 2 - middle) / h;
+  look();
+  // The paper comes up under the words, and the world is clear above them.
+  $('begin').style.background = `linear-gradient(to bottom, rgba(244, 239, 228, 0) 0px, rgba(244, 239, 228, 0) ${Math.max(0, words - 34)}px, #f4efe4 ${Math.max(0, words - 6)}px)`;
+}
+/** How the world was turned when the card came up: it turns slowly while the card is up, and settles back on beginning. */
+const CARD_TURN = new THREE.Quaternion();
+let cardTurned = false;
 /** Asked for less motion: no sudden step back at a burst (the slow breathing of the view stays). */
 const STILL = matchMedia('(prefers-reduced-motion: reduce)').matches;
 function breathe(dt: number): void {
@@ -1919,7 +1947,8 @@ function breathe(dt: number): void {
   document.body.classList.toggle('hush', moment);
   const want = ending?.shown ? farthest * 0.92 : reachDist * (moment && !STILL ? 1.16 : 1), wantLift = ending?.shown ? 0.09 : 0;
   if (!ending?.shown && seconds - zoomedAt < 10) return;
-  const d = dist + (want - dist) * Math.min(1, (moment ? 0.9 : 0.15) * dt), l = lift + (wantLift - lift) * Math.min(1, 0.6 * dt);
+  const gliding = seconds - begunAt < 5; // (from the card's view: quicker, so the world comes to hand)
+  const d = dist + (want - dist) * Math.min(1, (moment ? 0.9 : gliding ? 0.9 : 0.15) * dt), l = lift + (wantLift - lift) * Math.min(1, (gliding ? 1.2 : 0.6) * dt);
   if (Math.abs(d - dist) > 1e-4 || Math.abs(l - lift) > 1e-5) { dist = d; lift = l; look(); }
 }
 /** If the phone can't keep up, draw a little less finely: the pixel ratio comes down a half at a time, but never below two to a point (see FINEST). */
@@ -1940,6 +1969,7 @@ function pace(raw: number): void {
 // ---------------------------------------------------------------- the loop
 const INVERSE = new THREE.Quaternion(), GRAV = new THREE.Vector3(), SLIDE = new THREE.Quaternion(), GIANT_DIR = new THREE.Vector3();
 fit();
+cardView();
 drawNow();
 redrawLines(0);
 const clock = new THREE.Clock();
@@ -2025,6 +2055,11 @@ renderer.setAnimationLoop(() => {
   for (const s of [...kindDots, foam]) s.update(dt);
   puffs.update(dt * speed);
   if (begun) breathe(dt);
+  // While the card is up, the world turns slowly above it; begun, it settles back to how it was turned.
+  if (!begun && !$('begin').classList.contains('loading')) {
+    if (!cardTurned) { CARD_TURN.copy(group.quaternion); cardTurned = true; }
+    if (!STILL) rotate(dt * 0.05, 0);
+  } else if (begun && cardTurned && seconds - begunAt < 3) group.quaternion.slerp(CARD_TURN, Math.min(1, dt * 3));
   if (begun && seconds - lastWords > 0.5) { lastWords = seconds; words(); theEnd(); lessons(); }
   if (begun && seconds - keptAt > 15) { keptAt = seconds; chores.push(save); }
   doChore(heavy, performance.now() - began0);

@@ -36,7 +36,11 @@
       #stage-name, #legend { transition: opacity 1.2s ease; }
       body.hush #event, body.hush #stage-name, body.hush #goal, body.hush #legend { opacity: 0.12 !important; transition: opacity 0.6s ease; }
       /* The card the world begins from: one touch, which lets the phone share how it's held. */
-      #begin { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; background: #f4efe4; transition: opacity 1.5s; cursor: pointer; }
+      /* The card: the world itself above (seen whole, turning slowly), the words beneath on the paper. */
+      #begin { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 14px; padding-bottom: calc(18px + env(safe-area-inset-bottom)); box-sizing: border-box; background: transparent; transition: opacity 1.5s; cursor: pointer; }
+      #begin > * { transition: opacity 0.9s ease; }
+      #begin.loading > * { opacity: 0 !important; }
+      body.carding #stage-name, body.carding #goal, body.carding #event, body.carding #worlds, body.carding #finish { opacity: 0 !important; pointer-events: none; }
       #begin.gone { opacity: 0; pointer-events: none; }
       #begin p { margin: 0; text-align: center; }
       #begin .world { font-size: 13px; letter-spacing: 0.2em; opacity: 0.65; }
@@ -46,7 +50,7 @@
       #begin .second { text-wrap: pretty; font-size: 16px; max-width: 21em; line-height: 1.55; padding: 0 28px; opacity: 0.9; }
       #begin button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
       #begin .touch { font-size: 16px; letter-spacing: 0.08em; margin-top: 10px; padding: 12px 34px; border: 1px solid rgba(46, 33, 24, 0.35); border-radius: 999px; }
-      #begin .worlds { display: flex; flex-wrap: wrap; justify-content: center; max-width: min(100%, 30em); padding: 0 12px; box-sizing: border-box; gap: 0 4px; margin-top: 18px; }
+      #begin .worlds { display: flex; flex-wrap: wrap; justify-content: center; max-width: min(100%, 30em); padding: 0 12px; box-sizing: border-box; gap: 0 4px; margin-top: 6px; }
       #begin .worlds button { font-size: 14px; letter-spacing: 0.08em; opacity: 0.65; min-width: 36px; min-height: 40px; padding: 6px; }
       #begin .worlds button.here { opacity: 0.95; text-decoration: underline; text-underline-offset: 6px; cursor: default; }
       #begin .more-toggle { font-size: 14px; opacity: 0.6; padding: 10px 16px; }
@@ -91,7 +95,7 @@
       #worlds { position: fixed; top: calc(22px + env(safe-area-inset-top)); left: 20px; font: 12px "Newsreader", "Iowan Old Style", Georgia, serif; letter-spacing: 0.12em; color: #2e2118; background: none; border: none; opacity: 0.6; cursor: pointer; padding: 12px; min-width: 44px; min-height: 44px; }
     </style>
   </head>
-  <body>
+  <body class="carding">
     <div id="stage"></div>
     <canvas id="frame"></canvas>
     <div id="stage-name" class="engraved"></div>
@@ -104,7 +108,7 @@
     <button id="worlds" aria-label="All worlds"></button>
     <div id="atlas" class="engraved"><div class="head"><h2>The atlas</h2><button class="close">back</button></div><div class="pages"></div><div class="view"><img alt=""></div></div>
     <div id="system" class="engraved"><div class="head"><h2>A solar system</h2><button class="close">back</button></div><p class="about"></p><div class="plate"></div><div class="foot"></div></div>
-    <div id="begin" class="engraved"><p class="world"></p><h1 class="name"></h1><p class="first"></p><p class="second"></p><p class="hands"></p><button class="touch">Begin</button><p class="worlds"></p><button class="more-toggle">more</button><div class="more" hidden></div></div>
+    <div id="begin" class="engraved loading"><p class="world"></p><h1 class="name"></h1><p class="first"></p><p class="second"></p><p class="hands"></p><button class="touch">Begin</button><p class="worlds"></p><button class="more-toggle">more</button><div class="more" hidden></div></div>
     <script type="module" src="/src/volcano/main.ts"></script>
   </body>
 </html>
