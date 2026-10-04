@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { buildTopology } from '../src/mesh/topology';
 import { Planet } from '../src/volcano/sim';
 import { Chain, CHAIN } from '../src/volcano/chain';
-import { WORLDS, worldOf, nextWorld } from '../src/volcano/worlds';
+import { WORLDS, worldOf, nextWorld, CHAPTERS, chapterOf } from '../src/volcano/worlds';
 import { stage } from '../src/volcano/ecology';
 import { ageBefore, carried } from '../src/volcano/ages';
 
@@ -614,5 +614,12 @@ describe('Mercury', () => {
     run(pl, 15);
     expect(pl.echoed).toBe(1);
     expect(pl.farRaised).toBeGreaterThan(0.003);
+  });
+});
+
+describe('the chapters', () => {
+  it('hold every world once, in the order they come', () => {
+    expect(CHAPTERS.flatMap((c) => c.worlds)).toEqual(WORLDS.map((w) => w.id));
+    expect(chapterOf('mercury').title).toBe('Pressure');
   });
 });

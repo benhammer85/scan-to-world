@@ -620,6 +620,22 @@ export const WORLDS: World[] = [
   },
 ];
 
+/**
+ * The worlds in four chapters, each teaching one thing (see the README): pouring and turning; one
+ * world through its ages (ages.ts); bursts; and placing and steering, last the lava lamp.
+ */
+export const CHAPTERS: { numeral: string; title: string; worlds: WorldId[] }[] = [
+  { numeral: 'I', title: 'Our neighbours', worlds: ['mars', 'moon', 'ice', 'asteroid', 'rogue'] },
+  { numeral: 'II', title: 'One world, through time', worlds: ['first', 'young', 'archean', 'snowball', 'ocean'] },
+  { numeral: 'III', title: 'Pressure', worlds: ['io', 'europa', 'enceladus', 'triton', 'tumble', 'mercury'] },
+  { numeral: 'IV', title: 'Far worlds', worlds: ['magma', 'dust', 'spin', 'deep', 'lamp'] },
+];
+
+/** The chapter a world is in. */
+export function chapterOf(id: WorldId): (typeof CHAPTERS)[number] {
+  return CHAPTERS.find((c) => c.worlds.includes(id)) ?? CHAPTERS[0];
+}
+
 export function worldOf(id: string | null | undefined): World {
   return WORLDS.find((w) => w.id === id) ?? WORLDS[0];
 }

@@ -47,7 +47,7 @@ import { handleDrafts } from './drafts';
 import { handleSurface } from './surface';
 import { offThread } from './offthread';
 import { snapshotOf, restoreInto, keep, recall, forget, keepGround, recallGround, forgetGround, keepPage, pages, type Page } from './save';
-import { worldOf, nextWorld, WORLDS } from './worlds';
+import { worldOf, nextWorld, WORLDS, CHAPTERS, chapterOf } from './worlds';
 import { Chain, CHAIN } from './chain';
 import { measureSecond, type Second } from './second';
 import { loadSystem, saveSystem, worldFor, recordPlayed, madeCount } from './system';
@@ -1821,7 +1821,9 @@ function drawEnding(): void {
   }
   if (progress >= 1) {
     const next = ending.won ? nextWorld(WORLD) : null;
-    $('again').textContent = RUN !== null ? 'touch to go back to the solar system' : next ? `touch to go on to ${next.title.replace(/^An? /, 'an ').replace(/^The /, 'the ')}` : ending.won ? 'touch to start again' : 'touch to try again';
+    // (Into a new chapter, its name: the last world of one is a threshold.)
+    const newChapter = next && chapterOf(next.id) !== chapterOf(WORLD.id) ? chapterOf(next.id) : null;
+    $('again').textContent = RUN !== null ? 'touch to go back to the solar system' : newChapter ? `${chapterOf(WORLD.id).title}: done. Touch to begin chapter ${newChapter.numeral}, ${newChapter.title.toLowerCase()}` : next ? `touch to go on to ${next.title.replace(/^An? /, 'an ').replace(/^The /, 'the ')}` : ending.won ? 'Every world made. Touch to start again' : 'touch to try again';
     $('again').classList.add('shown');
     intoTheAtlas();
     // The chart can be kept as a picture where the page may hand over a file: not inside a frame (as a hosted preview), which can't.
@@ -2019,6 +2021,8 @@ let begun = false;
 // Everything else (a voyage, wandering, the ink, the atlas, new ground) is under "more".
 // (It carried about ten lines, twelve numerals, four links and seven inks.)
 ($('begin').querySelector('.world') as HTMLElement).textContent = WORLD.numeral;
+// (And its chapter, above it: not for a world of a solar system, which has its own place.)
+($('begin').querySelector('.chapter') as HTMLElement).textContent = RUN === null ? `Chapter ${chapterOf(WORLD.id).numeral} · ${chapterOf(WORLD.id).title}` : '';
 ($('begin').querySelector('.name') as HTMLElement).textContent = WORLD.title;
 // (An age of Earth begun on the ground the age before left says so: it's the world you made, an age on.)
 ($('begin').querySelector('.first') as HTMLElement).textContent = AGE_GROUND ? `${WORLD.first} The world you made, an age later.` : WORLD.first;
@@ -2027,6 +2031,15 @@ let begun = false;
 ($('begin').querySelector('.hands') as HTMLElement).textContent = LAMP ? 'Keep it level to grow · tilt to let go · drag to turn' : 'Tilt to pour · hold a finger down, lift to burst · drag to turn';
 // The worlds, along the card's foot, as an atlas lists its plates: touch another to go to it.
 // (Not for a world of a solar system: it's reached from the system's chart.)
+// (A row to each chapter, its name small above it.)
+const rowOf = new Map<string, HTMLElement>();
+if (RUN === null) for (const c of CHAPTERS) {
+  const label = document.createElement('span'), row = document.createElement('span');
+  label.className = 'chapter-name'; label.textContent = `${c.numeral} · ${c.title}`;
+  row.className = 'chapter-row';
+  $('begin').querySelector('.worlds')!.append(label, row);
+  for (const id of c.worlds) rowOf.set(id, row);
+}
 if (RUN === null) for (const w of WORLDS) {
   const b = document.createElement('button');
   b.textContent = w.numeral;
@@ -2038,7 +2051,7 @@ if (RUN === null) for (const w of WORLDS) {
     if (remembered('volcano.world') === w.id) location.reload();
     else location.search = `?world=${w.id}`;
   });
-  $('begin').querySelector('.worlds')!.appendChild(b);
+  (rowOf.get(w.id) ?? $('begin').querySelector('.worlds')!).appendChild(b);
 }
 const more = $('begin').querySelector('.more') as HTMLElement;
 {
