@@ -132,18 +132,21 @@ export class Puffs {
             float d = length(q), ang = atan(q.y, q.x), t = vLife * 4.0;
             vec2 ca = vec2(cos(ang), sin(ang));
             float lump = n2(ca * 1.3 + vSeed * 17.0 + t * 0.3) * 0.7 + n2(ca * 3.6 + vSeed * 5.0 - t * 0.5) * 0.3; // (broad lobes, as a cauliflower's)
-            float edge = 0.45 + 0.5 * lump, aa = 2.5 / max(vPx, 1.0);
+            // (Its edge softening as it ages and spreads, as smoke's does.)
+            float edge = 0.45 + 0.5 * lump, aa = 2.5 / max(vPx, 1.0) + 0.16 * smoothstep(0.2, 1.0, vLife);
             float cover = 1.0 - smoothstep(edge - aa, edge + aa, d);
             // A fringe of halftone dots beyond its edge, thinning outward, so it's vapour and not a stone.
             vec2 cell = gl_PointCoord * vPx / 3.2, cf = fract(cell) - 0.5;
             float fr = (d - edge) / max(1.0 - edge, 0.05), dotR = 0.42 * (1.0 - fr) * step(0.0, fr);
             float fringe = (1.0 - smoothstep(dotR - 0.15, dotR + 0.15, length(cf))) * step(h2(floor(cell) + vSeed * 13.0), 0.6) * 0.7;
-            cover = max(cover, fringe * 0.8);
+            cover = max(cover, fringe * 0.8 * (1.0 - smoothstep(0.3, 0.8, vLife)));
             // Lit from above and to the left (as the world is), shadowed beneath: two flat tones.
             float lit = 1.0 - smoothstep(edge * 0.74 - aa, edge * 0.74 + aa, length(q - vec2(-0.2, -0.28)) + 0.18 * (n2(q * 3.0 + vSeed * 9.0) - 0.5));
-            // Old, it breaks up into specks of paper, as worn ink does, rather than fading.
-            float g = h2(floor(gl_PointCoord * vPx / 1.7) + vSeed * 91.0);
-            cover *= step(smoothstep(0.45, 1.0, vLife) * 0.97, g);
+            // Old, it thins: soft holes open in it and widen, drifting a little, until it's gone. (It broke
+            // up into hard specks of paper, which read as noise, and a puff seemed to pop rather than go.)
+            float wisp = n2(q * 2.4 + vSeed * 31.0 + vec2(t * 0.15, -t * 0.1)) * 0.65 + n2(q * 5.5 + vSeed * 7.0 - t * 0.2) * 0.35;
+            float thin = smoothstep(0.35, 1.0, vLife);
+            cover *= smoothstep(thin - 0.18, thin + 0.18, wisp + 0.15 * (1.0 - thin));
             float a = vAlpha * cover;
             if (a <= 0.01) discard;
             ${shadow ? `// (Only once it has risen, sliding out from under it: at the vent, the shadows of the newest puffs piled up into a dark ball.)
@@ -232,7 +235,7 @@ export class Puffs {
       this.size[i] = p.size + p.grow * f;
       // Coming in quickly, then fading slowly as it thins; smoke the strongest, so a wisp is seen.
       // (Billows come in quickly and then hold their tone, breaking up at the end in the shader; dots fade.)
-      this.alpha[i] = (this.calm && p.kind !== 3 ? (p.kind === 2 ? 0.9 : 0.6) : 1) * (p.kind === 3 ? 0.95 * (1 - f) ** 0.7 : p.kind === 4 ? 0.7 * Math.min(1, f * 5) * (1 - f) ** 1.2 : (p.kind === 1 ? 0.85 : p.kind === 0 ? 0.6 : 0.72) * Math.min(1, f * (p.kind === 2 ? 3 : 8))); // (smoke leaves the vent a faint wisp, not a ball)
+      this.alpha[i] = (this.calm && p.kind !== 3 ? (p.kind === 2 ? 0.9 : 0.6) : 1) * (p.kind === 3 ? 0.95 * (1 - f) ** 0.7 : p.kind === 4 ? 0.7 * Math.min(1, f * 5) * (1 - f) ** 1.2 : (p.kind === 1 ? 0.85 : p.kind === 0 ? 0.6 : 0.72) * Math.min(1, f * (p.kind === 2 ? 3 : 8)) * (p.kind === 2 || p.kind === 0 ? 1 - Math.max(0, (f - 0.5) / 0.5) ** 1.6 : 1)); // (smoke leaves the vent a faint wisp, not a ball; and thins away over its second half)
       this.tint[i] = p.kind;
       this.life[i] = f;
       this.warmth[i] = p.warm;

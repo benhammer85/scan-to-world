@@ -381,7 +381,8 @@ for (const pen of [...landPens, ...seaPens]) { pen.width = 2; pens.push(pen); gr
 let frontPen = 0, fadeFrom = -1;
 const CROSS_FADE = 1.2;
 landPens[1].opacity = seaPens[1].opacity = 0;
-const CONTOURED = WORLD.id === 'mars' || WORLD.id === 'asteroid';
+// (Not the asteroid: its hollows are stippled, and its contours over the lumps were harsh lines.)
+const CONTOURED = WORLD.id === 'mars';
 /** Whether a contour is a small loop lying wholly inside a crater (drawn as a print, the crater is drawn as itself instead). */
 function inCrater(l: Polyline): boolean {
   if (!l.closed) return false;
@@ -1440,7 +1441,8 @@ function effects(dt: number): void {
       const ready = planet.k.great > 0 ? planet.throwOf(planet.pressure) / planet.k.great : planet.pressure / planet.k.explosive;
       const grey = 0.75 * THREE.MathUtils.smoothstep(ready, 0.88, 1);
       const dark = Math.max(grey, Math.min(1, Math.max(0, (share - 0.75) / 0.2))), lean = { x: up.x + 0.3 * INVERSE_RIGHT.x, y: up.y + 0.3 * INVERSE_RIGHT.y, z: up.z + 0.3 * INVERSE_RIGHT.z };
-      puffs.add('smoke', p[v0 * 3], p[v0 * 3 + 1], p[v0 * 3 + 2], 0.25 + 1.3 * share, Math.random, lean, 0, dark * dark);
+      // (Starting a little way off the vent, the way it leans, so the glow at the vent's mouth isn't under it.)
+      puffs.add('smoke', p[v0 * 3] + lean.x * 0.03, p[v0 * 3 + 1] + lean.y * 0.03, p[v0 * 3 + 2] + lean.z * 0.03, 0.25 + 1.3 * share, Math.random, lean, 0, dark * dark);
     }
   } else if (!LAMP && !planet.over && !planet.pouring && planet.pressure > 0.5 && smokeIn <= 0) {
     smokeIn = brink ? 0.14 : full ? 0.22 : 0.7 - 0.4 * Math.min(1, planet.pressure / VOLCANO.explosive);
