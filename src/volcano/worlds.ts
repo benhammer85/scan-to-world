@@ -113,9 +113,10 @@ export const WORLDS: World[] = [
     then: 'With gravity this light, a volcano can stand higher than any on Earth.',
     second: 'Pour in one place again and again, and the mountain rises.',
     rules: {
+      g: 0.38, // (Mars's gravity, Earth's being 1)
       terrain: 'mars', basins: 0, craters: 18, floor: 0.05, rough: 0.025,
       waves: 0, rain: 0, sink: 0, life: false,
-      talus: 2.2, flow: 8, channel: 2, coolLand: 1, // (sets fast, so poured lava stacks into a mountain rather than running off)
+      talus: 1.65, flow: 8, channel: 2, coolLand: 1, // (its gravity makes slopes stand steeper still; and it sets fast, so poured lava stacks into a mountain rather than running off)
       drift: 0, rises: 0, heat: 250, rising: 0.52, steady: true,
       impactEvery: [60, 100], impactWarning: 14, impactHeat: 6,
       stormEvery: [60, 100], stormWarning: 12, stormLasts: 22, stormWear: 0.006,
@@ -137,6 +138,7 @@ export const WORLDS: World[] = [
     then: 'These are its real basins. Lava flooded them once, and made the face we know.',
     second: 'Turn a basin uppermost and tip gently, and it fills dark.',
     rules: {
+      g: 0.17, // (the Moon's gravity, Earth's being 1)
       terrain: 'moon', basins: 9, floor: 0.4, rough: 0.008, craters: 0,
       // (Its real heights, and its real seas, where they are and as wide (latitude, longitude, km): Imbrium,
       // Serenitatis, Tranquillitatis, Crisium, Nectaris, Fecunditatis, Nubium, Humorum, and Orientale on the edge.)
@@ -163,6 +165,7 @@ export const WORLDS: World[] = [
     then: 'Here water is the lava, and it freezes into fresh white ice.',
     second: 'Tip the world to pour, and the old grey ice turns new.',
     rules: {
+      g: 0.15, // (an icy moon, as Ganymede's gravity, Earth's being 1)
       terrain: 'ice', basins: 0, craters: 40, floor: 0.05, rough: 0.015,
       waves: 0, rain: 0, sink: 0, life: false,
       flow: 20, channel: 1, coolLand: 0.08,
@@ -188,6 +191,7 @@ export const WORLDS: World[] = [
     then: 'Too small to pull itself round, it has stayed lumpy.',
     second: 'Turn a hollow uppermost and pour, and the world rounds.',
     rules: {
+      g: 0.025, // (Vesta's gravity, Earth's being 1)
       terrain: 'asteroid', basins: 0, craters: 25, floor: 0.3, rough: 0.015, lumps: 0.15, selfGravity: 1,
       waves: 0, rain: 0, sink: 0, swell: 0, life: false,
       flow: 14, channel: 1, coolLand: 0.08,
@@ -201,7 +205,7 @@ export const WORLDS: World[] = [
       landInk: '#4f463c', landInkHigh: '#342c24', pencil: '#b2a796', seaInk: '#5b82a3',
     },
     goal: 'round',
-    round: 0.34,
+    round: 0.31,
     contour: 0.05,
   },
   {
@@ -237,6 +241,7 @@ export const WORLDS: World[] = [
     then: 'Planets grow by gathering the rubble round them: what lands in the molten rock becomes the world.',
     second: 'Turn the world so the glow is under each stone as it falls.',
     rules: {
+      g: 0.6, // (a world still growing's gravity, Earth's being 1)
       terrain: 'first', basins: 0, craters: 30, floor: 0.05, rough: 0.025,
       waves: 0, rain: 0, sink: 0, swell: 0, life: false,
       magma: 0.012, impactMelt: 0.02, // (molten at first, crusting over as it cools; each stone melts its crater again)
@@ -340,6 +345,7 @@ export const WORLDS: World[] = [
     then: 'The giant’s pull squeezes it as it circles, so its heat comes in tides.',
     second: 'Tip at high tide, and a great plume rises.',
     rules: {
+      g: 0.18, // (Io's gravity, Earth's being 1)
       terrain: 'io', basins: 0, craters: 0, floor: 0.05, rough: 0.02,
       waves: 0, rain: 0, sink: 0, swell: 0, life: false,
       flow: 12, channel: 2, coolLand: 0.15,
@@ -365,6 +371,7 @@ export const WORLDS: World[] = [
     then: 'Where warm water rises beneath it, the ice breaks into rafts that drift and freeze again: chaos terrain.',
     second: 'Hold, and lift before the smoke turns grey: the ice breaks into rafts.',
     rules: {
+      g: 0.13, // (Europa's gravity, Earth's being 1)
       terrain: 'ice', basins: 0, craters: 6, floor: 0.05, rough: 0.012,
       waves: 0, rain: 0, sink: 0, life: false,
       flow: 20, channel: 1, coolLand: 0.08,
@@ -390,6 +397,7 @@ export const WORLDS: World[] = [
     then: 'Its ice drifts out to become the giant’s ring.',
     second: 'Tip toward the giant, and the ring grows.',
     rules: {
+      g: 0.011, // (Enceladus's gravity, Earth's being 1)
       terrain: 'ice', basins: 0, craters: 30, floor: 0.05, rough: 0.012,
       waves: 0, rain: 0, sink: 0, swell: 0, life: false,
       flow: 20, channel: 1, coolLand: 0.08,
@@ -416,6 +424,7 @@ export const WORLDS: World[] = [
     then: 'Where sunlight warms the ice, geysers rise, and thin winds blow their dark plumes into long streaks.',
     second: 'Hold until the sun is over the vent, and lift: a geyser.',
     rules: {
+      g: 0.08, // (Triton's gravity, Earth's being 1)
       terrain: 'triton', basins: 0, craters: 8, floor: 0.05, rough: 0.02,
       waves: 0, rain: 0, sink: 0, swell: 0, life: false,
       talus: 2.2, flow: 9, channel: 2, coolLand: 0.3,
@@ -442,6 +451,7 @@ export const WORLDS: World[] = [
     then: 'Knocked askew long ago, it has never settled into a steady spin.',
     second: 'Erupt where the ground sweeps past, and the tumbling slows.',
     rules: {
+      g: 0.002, // (Hyperion's gravity, Earth's being 1)
       // As Hyperion tumbles: slowly, but never settling. The heat rises to whatever is uppermost, so as
       // the moon rolls the vent wanders, and pours break out wherever it tips.
       terrain: 'moon', basins: 0, craters: 30, floor: 0.05, rough: 0.02,
@@ -468,6 +478,7 @@ export const WORLDS: World[] = [
     then: 'When a great stone struck it, the shock went through the whole world and broke the ground on the far side.',
     second: 'Burst here, and a moment later the far side breaks open.',
     rules: {
+      g: 0.38, // (Mercury's gravity, Earth's being 1)
       terrain: 'moon', basins: 0, craters: 45, floor: 0.22, rough: 0.02,
       waves: 0, rain: 0, sink: 0, swell: 0, life: false,
       talus: 2.2, flow: 9, channel: 2, coolLand: 0.25,
@@ -492,6 +503,7 @@ export const WORLDS: World[] = [
     then: 'On worlds like this, rock boils into the air on the day side and falls as rock snow in the night.',
     second: 'Drag the vent into the starlight, and its lava boils into rock snow.',
     rules: {
+      g: 2.3, // (55 Cancri e, a super-Earth's gravity, Earth's being 1)
       terrain: 'magma', basins: 0, craters: 8, floor: 0.1, rough: 0.02,
       waves: 0, rain: 0, sink: 0, swell: 0, life: false,
       flow: 14, channel: 1, coolLand: 0.3, dayCool: 0.04, vapour: 0.05,
@@ -516,6 +528,7 @@ export const WORLDS: World[] = [
     then: 'Worlds like this trail a tail of dust, like a comet, and grow smaller every orbit.',
     second: 'Drag the vent round into the night, and what it builds there lasts.',
     rules: {
+      g: 0.1, // (a small world boiling away's gravity, Earth's being 1)
       terrain: 'dust', basins: 0, craters: 10, floor: 0.3, rough: 0.02,
       waves: 0, rain: 0, sink: 0, swell: 0, life: false,
       talus: 2.2, flow: 9, channel: 2, coolLand: 0.3,
@@ -541,6 +554,7 @@ export const WORLDS: World[] = [
     then: 'Its spin flings whatever flows out toward its middle.',
     second: 'Pour, and a ridge rises all the way round its middle.',
     rules: {
+      g: 0.04, // (Haumea's gravity, Earth's being 1)
       terrain: 'spin', basins: 0, craters: 25, floor: 0.05, rough: 0.015, bulge: 0.08, spin: 2.5, ridge: 0.07,
       waves: 0, rain: 0, sink: 0, swell: 0, life: false,
       flow: 10, channel: 2, coolLand: 0.12,

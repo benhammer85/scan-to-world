@@ -164,6 +164,12 @@ export const VOLCANO = {
   breaks: 0.12,
   shallows: -0.03,
   rain: 0.0015,
+  /**
+   * The world's surface gravity, Earth's being 1. Weaker, slopes stand steeper, lava runs slower and
+   * a burst throws its ash further; each softened (by a small power) and held within bounds, so a
+   * tiny moon still plays: see `gravity`. The rules below are Earth's, and scaled by it.
+   */
+  g: 1,
   /** Ground steeper than this (height per unit distance, times its firmness) slumps, at this rate. */
   talus: 2,
   slump: 0.6,
@@ -379,6 +385,13 @@ export const VOLCANO = {
   dayCool: 1,
 };
 
+/** A world's rules as its gravity makes them: steeper, slower and further-thrown where it's weaker. */
+export function gravity(k: Rules): Rules {
+  if (k.g === 1) return k;
+  const by = (power: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, k.g ** power));
+  return { ...k, talus: k.talus * by(-0.3, 0.8, 2), flow: k.flow * by(0.3, 0.45, 1.3), ashReach: k.ashReach * by(-0.4, 0.8, 3) };
+}
+
 /** A world's settings: the same fields as VOLCANO, which are the ocean world's. */
 export type Rules = typeof VOLCANO;
 
@@ -537,7 +550,7 @@ export class Planet {
    *   plain (see `Ground` in main.ts): the geology of past games, with this fire rising through it.
    */
   constructor(private topo: Topology, start: number, seed = 1, rules: Partial<Rules> = {}, ground?: Float32Array) {
-    this.k = { ...VOLCANO, ...rules };
+    this.k = gravity({ ...VOLCANO, ...rules });
     this.reserve = this.k.heat;
     const n = topo.vertexCount, p = topo.basePositions;
     this.scale = n / REFERENCE;
@@ -860,11 +873,13 @@ export class Planet {
     // Where there's no air, the bigger the burst, the further its ash flies; and on a tidal moon,
     // further at high tide.
     const strength = this.throwOf(volume), far = this.k.ashRing > 0 ? Math.sqrt(strength / this.k.explosive) : 1;
-    this.fallOfAsh(v, left * this.k.ashShare * s, (blast ? 3 : 1) * far);
+    // (On Triton, a burst in sunlight is a geyser: all its plume blown downwind into a streak.)
+    const geysering = !blast && this.k.streak > 0 && !!this.star && this.dayAt(this.plumeVertex) > 0.2;
+    if (geysering) this.geyser(left * this.k.ashShare * s);
+    else this.fallOfAsh(v, left * this.k.ashShare * s, (blast ? 3 : 1) * far);
     if (!blast) this.tally.bursts++;
     // (Its shock on its way through the world: the bigger the burst, the more of it reaches the far side.)
     if (!blast && this.k.antipode > 0) this.echoes.push({ at: this.seconds + this.k.antipodeDelay, volume: volume * this.k.antipode * Math.min(2.5, (volume / this.k.explosive) ** 2) });
-    if (!blast && this.k.streak > 0 && this.star && this.dayAt(this.plumeVertex) > 0.2) this.geyser(left * this.k.ashShare * s);
     if (!blast && this.k.great > 0 && strength >= this.k.great) this.greatPlume(this.k.ashReach * this.k.ashRing * far);
     const lava = left * (1 - this.k.ashShare) * s;
     this.eruptions.push({ vertex: v, flank: v, left: lava, rate: lava / this.k.pour, total: lava, t: 0, dur: this.k.pour * 1.5 });
