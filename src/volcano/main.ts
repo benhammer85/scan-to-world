@@ -149,6 +149,9 @@ const LOOK_ID = ASKED.get('look') ?? remembered(OWN_LOOK) ?? 'quiet';
 const LOOK: Look = LOOKS.find((l) => l.id === LOOK_ID)?.look ?? 6; // (an ink not known any more: the quiet print)
 /** The quiet print: lava the one warm accent on a calm map; burps only at the brink, splatter only when it bursts, the smoke lighter. */
 const QUIET = LOOK === 6;
+/** Lava drawn dark, as it mostly is: a black crust, the heat showing only where it's fresh (?lava=dark, or kept). */
+// (The default, but not on the ice moons, where the lava is water; ?lava=quiet for the coloured inks.)
+const DARK_LAVA = WORLD.rules.terrain !== 'ice' && (() => { const asked = ASKED.get('lava'); if (asked) { try { localStorage.setItem('volcano.lava', asked); } catch { /* none */ } return asked !== 'quiet'; } try { return localStorage.getItem('volcano.lava') !== 'quiet'; } catch { return true; } })();
 // (The ocean world leaves its terrain to the simulation's default, which is ocean: read as given it
 // was undefined, and the first world was drawn as a dry one, with no sea, coast or shallows.)
 const SEA = (WORLD.rules.terrain ?? 'ocean') === 'ocean';
@@ -295,6 +298,7 @@ material.onBeforeCompile = (shader) => {
   shader.uniforms.uVent = { value: ventObj };
   shader.uniforms.uFeeding = fed;
   shader.uniforms.uBuild = building;
+  shader.uniforms.uDark = { value: DARK_LAVA ? 1 : 0 };
   shader.uniforms.uSpray = spray;
   shader.uniforms.uDrift = drift;
   shader.uniforms.uBurp = burp;
@@ -1481,6 +1485,58 @@ const LONG_AGE = 360, AGE_SPEED = 14, DRAWING = 7, TURN_AGAIN = 2.6;
  * Each aim's words: what the long age after the fire does (met or not), what's said when the aim
  * is met, the chart's title met and not, and how far it got, for the chart's summary.
  */
+// ---------------------------------------------------------------- the fire again, quickly
+/**
+ * The world every few seconds of the fire, kept small (heights and lava as whole numbers), so that
+ * when the fire is done the whole of it can be played again in a few seconds, from bare ground to
+ * what was made, before the long age and the chart.
+ */
+const REPLAY_EVERY = 4, REPLAY_MOST = 100, REPLAY_SECONDS = 8;
+const replayFrames: { rock: Int16Array; lava: Uint16Array; age: Uint16Array }[] = [];
+let replayKeptAt = -1e9, replayShown = -1;
+let replaying: { at: number; rock: Float32Array; lava: Float32Array; age: Float32Array } | null = null;
+function keepReplayFrame(): void {
+  if (planet.seconds - replayKeptAt < REPLAY_EVERY) return;
+  replayKeptAt = planet.seconds;
+  const n = planet.rock.length, rock = new Int16Array(n), lava = new Uint16Array(n), age = new Uint16Array(n);
+  for (let v = 0; v < n; v++) {
+    rock[v] = Math.max(-32767, Math.min(32767, Math.round(planet.rock[v] * 20000)));
+    lava[v] = Math.min(65535, Math.round(planet.lava[v] * 50000));
+    age[v] = planet.age[v] >= 1e5 ? 65535 : Math.min(65534, Math.round(planet.age[v]));
+  }
+  replayFrames.push({ rock, lava, age });
+  // (Too many: every other one goes, and they're kept half as often from now on.)
+  if (replayFrames.length > REPLAY_MOST) { for (let i = replayFrames.length - 1; i > 0; i -= 2) replayFrames.splice(i - 1, 1); }
+}
+/** Put one kept moment into the world, draw it, and take the world back as it is. */
+function showReplayFrame(i: number): void {
+  const f = replayFrames[i], n = planet.rock.length;
+  for (let v = 0; v < n; v++) { planet.rock[v] = f.rock[v] / 20000; planet.lava[v] = f.lava[v] / 50000; planet.age[v] = f.age[v] === 65535 ? 1e6 : f.age[v]; }
+  planet.lavaChanged();
+  draw();
+  planet.rock.set(replaying!.rock); planet.lava.set(replaying!.lava); planet.age.set(replaying!.age);
+  planet.lavaChanged();
+}
+/** What's drawn from the world as it is now, not as it was (the contours, the aim's dots, life's signs): hidden while it replays. */
+function replayHides(hide: boolean): void {
+  for (const pen of [...landPens, ...seaPens]) pen.object.visible = !hide;
+  for (const st of [aimInk, aimPencil, aimNext, ...kindDots]) st.object.visible = !hide;
+  gauge.visible = !hide;
+}
+function startReplay(): void {
+  if (replayFrames.length < 4 || STILL) return;
+  replaying = { at: seconds, rock: planet.rock.slice(), lava: planet.lava.slice(), age: planet.age.slice() };
+  replayShown = -1;
+  replayHides(true);
+}
+/** While it replays: the moment for now, if the last one has been drawn. Done, the world as it is again. */
+function replayStep(): void {
+  const f = (seconds - replaying!.at) / REPLAY_SECONDS;
+  if (f >= 1) { replaying = null; lastDraw = -1; replayHides(false); return; }
+  const i = Math.min(replayFrames.length - 1, Math.floor(f * replayFrames.length));
+  if (i !== replayShown && !shapeOut) { replayShown = i; showReplayFrame(i); }
+}
+
 const GOAL_WORDS: Record<typeof WORLD.goal, { age: (met: boolean) => string; done: string; title: [string, string]; got: () => string }> = {
   ring: { age: () => 'The islands sink, and coral rings them', done: 'An unbroken chain of living islands', title: ['A chain of islands', 'The chain is broken'], got: () => `${aimDone} of ${aimOf} stretches living` },
   basins: { age: () => 'Time passes, and small stones still fall', done: 'Every basin flooded', title: ['Every basin flooded', 'Not every basin flooded'], got: () => `${aimDone} of ${aimOf} basins flooded` },
@@ -1496,6 +1552,24 @@ const GOAL_WORDS: Record<typeof WORLD.goal, { age: (met: boolean) => string; don
   orbit: { age: (met) => (met ? 'Time passes, and the ring of rock gathers into a moon' : 'Time passes, and the rock in orbit falls back'), done: 'Enough rock in orbit for a moon', title: ['A moon is made', 'No moon yet'], got: () => `${Math.min(100, Math.round(aimDone))}% of a moon in orbit` },
 };
 const AGE_WORDS = (met: boolean) => GOAL_WORDS[WORLD.goal].age(met);
+/** What was made, in a sentence for the chart: what it is, not a score. */
+function tale(met: boolean): string {
+  const pct = Math.min(100, Math.round(aimDone));
+  switch (WORLD.goal) {
+    case 'ring': return met ? 'A chain of living islands half the world long, the oldest already sinking' : `Living islands along ${aimDone} of the ${aimOf} stretches; the sea took the rest`;
+    case 'basins': return met ? `All ${aimOf} old basins filled with new, dark seas` : `${aimDone} of ${aimOf} old basins filled with new seas`;
+    case 'height': { const km = Math.round(aimDone); return met ? `A mountain ${km} km high, three times the height of Everest` : `A mountain ${km} km high, still rising when the fire went out`; }
+    case 'cover': return `${Math.round(aimDone)}% of the old grey ice made new and white`;
+    case 'plumes': return `${aimDone} great plumes, their sulphur rings laid side by side`;
+    case 'calm': return met ? 'A moon that tumbled, now turning steadily' : `A moon still tumbling, ${aimDone}% calmer than it was`;
+    case 'bank': return met ? 'A new island standing on the bank, alone in deep water' : 'An island at the bank, not yet above the water';
+    case 'ridge': return met ? 'A ridge all the way round its middle, like a seam' : `A ridge round ${aimDone} of the ${aimOf} stretches of its middle`;
+    case 'lamp': return met ? 'Warm glass gathered on the far shore' : `The far shore ${pct}% filled with warm glass`;
+    case 'round': return `Its hollows filled with new rock: ${Math.round(aimDone)}% rounder than it was`;
+    case 'feed': return met ? "The giant's ring, full of this moon's ice" : `The giant's ring ${pct}% full of this moon's ice`;
+    case 'orbit': return met ? 'Enough rock thrown up to gather into a moon' : `${pct}% of a moon thrown up, and falling back`;
+  }
+}
 let ending: { from: number; shown: boolean; at: number; info: ChartInfo | null; turned: number; won: boolean } | null = null;
 let wonSeen = -1;
 const wonAt = () => (wonSeen < 0 ? (wonSeen = seconds) : wonSeen);
@@ -1506,6 +1580,7 @@ function theEnd(): void {
   // Done: the aim met, while the fire still burns; or not, and the fire out.
   if (!ending && begun && won() && !FREE) {
     ending = { from: planet.seconds, shown: false, at: 0, info: null, turned: 0, won: true };
+    startReplay();
     queue.length = 0;
     announce(GOAL_WORDS[WORLD.goal].done);
     feel([30, 50, 30]);
@@ -1516,6 +1591,7 @@ function theEnd(): void {
   }
   if (!ending && planet.over) {
     ending = { from: planet.seconds, shown: false, at: 0, info: null, turned: 0, won: FREE && won() };
+    startReplay();
     $('finish').classList.remove('shown');
     $('stage-name').textContent = ERAS.out;
     queue.length = 0;
@@ -1565,7 +1641,7 @@ function chartInfo(): ChartInfo {
     subtitle: `${WORLD.numeral} · ${WORLD.title} · ${FIRES ? `fire ${FIRES + 1} · ` : ''}${mm} of fire`,
     kinds: LIFE ? KINDS.map((k) => ({ name: k.name, ink: k.ink, sign: k.sign, living: living.has(k.kind) })) : [],
     // The first aim, how far it got; and the second, as the fire left it.
-    summary: words.got() + (second ? ` · ${second.words}` : ''),
+    summary: tale(met) + (second ? ` · ${second.words}` : ''),
     length,
     eras,
     events,
@@ -1997,11 +2073,13 @@ renderer.setAnimationLoop(() => {
   // Once the fire is out, the long age runs quickly, in small steps so the sea's work stays as it would be.
   const speed = ending && !ending.shown && (!ending.won || seconds - wonAt() > 4) ? AGE_SPEED : 1;
   // Nothing happens until the world is begun.
-  if (begun && !ending?.shown) {
+  if (replaying) replayStep();
+  else if (begun && !ending?.shown) {
     const before = new THREE.Vector3(planet.plume.x, planet.plume.y, planet.plume.z);
     // (In the long age, four larger steps rather than fourteen small ones: it was 14 to 43 ms a frame.)
     const steps = speed > 1 ? 4 : 1;
     for (let k = 0; k < steps; k++) planet.step((dt * speed) / steps);
+    if (!ending) keepReplayFrame();
     // A tumbling moon rolls of itself, about its spin's axis (in its own frame), as fast as it tumbles.
     if (planet.k.tumble > 0) {
       const w = planet.spinNow, r = Math.hypot(w.x, w.y, w.z);
@@ -2018,7 +2096,7 @@ renderer.setAnimationLoop(() => {
   // The surface is redrawn often while lava runs, and now and then while only the slow forces work.
   const flowing = planet.erupting || planet.molten > 0.01;
   let heavy = false;
-  if (seconds - lastDraw >= (flowing || speed > 1 ? 1 / 20 : 0.5)) { lastDraw = seconds; draw(); heavy = true; }
+  if (!replaying && seconds - lastDraw >= (flowing || speed > 1 ? 1 / 20 : 0.5)) { lastDraw = seconds; draw(); heavy = true; }
   if (LIFE && begun && seconds - lastEcology >= 1) { ecology.update((seconds - lastEcology) * speed); lastEcology = seconds; }
   if (LIFE && begun && seconds - lastIslands >= 2) {
     lastIslands = seconds;
@@ -2070,4 +2148,4 @@ renderer.setAnimationLoop(() => {
   turnedSince();
 });
 
-if (import.meta.env.DEV) (window as unknown as { volcano: unknown }).volcano = { planet, group, base, renderer, scene, camera, puffs, ecology, islands, rotate, draw, save, world, frameCost, kindDots, chain: () => chain, aim: () => aimInk, lines: () => { lastLines = -1; redrawLines(1e6); }, life: () => { lastLife = -10; redrawLife(1e6); } };
+if (import.meta.env.DEV) (window as unknown as { volcano: unknown }).volcano = { planet, group, base, renderer, scene, camera, puffs, ecology, islands, rotate, draw, save, world, frameCost, kindDots, chain: () => chain, aim: () => aimInk, lines: () => { lastLines = -1; redrawLines(1e6); }, life: () => { lastLife = -10; redrawLife(1e6); }, replayKeep: () => keepReplayFrame(), replayCount: () => replayFrames.length, replaying: () => (replaying ? replayShown : -1), settle: (d = 3.6) => { lift = 0; dist = d; begunAt = -100; zoomedAt = seconds; look(); } };

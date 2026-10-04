@@ -31,7 +31,7 @@ export const LOOKS: { id: string; look: Look; words: string }[] = [
 /** Declared before the shader's main(); uses its hash3, noise3 and uPx. */
 export const PRINT_FUNCTIONS = /* glsl */ `
   varying vec3 vS;
-  uniform float uFloodDots, uFloodRim, uFeeding, uBuild, uSpray, uDrift, uBurp, uBurpSize, uBurpSeed, uBurpDir, uGold;
+  uniform float uFloodDots, uFloodRim, uFeeding, uBuild, uSpray, uDrift, uBurp, uBurpSize, uBurpSeed, uBurpDir, uGold, uDark;
   #define uFeedingGlow (0.4 + 0.6 * uFeeding)
   uniform vec3 uVent;
   // Craters, as the charts draw them (see 'Craters' below): each one's middle and width, how long since it was dug, and the light in the world's own frame.
@@ -499,8 +499,23 @@ const PRINT = (q: boolean) => /* glsl */ `
         float starve = step(0.9, noise3(vDir * 240.0) * 0.55 + hash3(floor(vDir * 600.0)) * 0.45);
         inkCol = mix(inkCol, mix(paper, inkCol, 0.35), starve);
         ${q ? `// (Quiet: a wash on the paper, the ground showing through; only the hot core glows, a little.)
-        col = mix(col, inkCol * mix(vec3(1.0), col / paper, 0.5), cov * 0.92);
-        glowInk = cov * mix(0.4, 0.95, yelOn); // (a little of its own light, or the lighting dims the soft inks to mud; the gold, the one light)
+        float lit = 0.0;
+        if (uDark > 0.5) {
+          // Dark, as lava mostly is by day: a black-brown skin over all of it, the heat showing only where
+          // it's fresh: the lava still arriving (the gold), the hot core here and there, a thin bright edge
+          // along the front while it's fed, and cracks in the skin, glowing while it's hot.
+          vec3 crustInk = vec3(0.05, 0.036, 0.028) * (0.8 + 0.45 * mottle) * mix(1.0, grain, 0.5);
+          // (Few, long and fine, as cracks in a skin are: a crack where a slow noise crosses its middle, wavering a little.)
+          float cn = noise3(vec3(rid * 9.0, 3.0)) * 0.85 + noise3(vDir * 60.0) * 0.15, cfw = max(fwidth(cn), 1e-4);
+          float crack = (1.0 - smoothstep(0.004 + cfw * 0.6, 0.004 + cfw * 1.6, abs(cn - 0.5))) * smoothstep(0.25, 0.6, T) * smoothstep(0.3, 0.6, noise3(vDir * 20.0 + 11.0));
+          float frontPx = abs(lvR - 0.5) / max(fwidth(lvR), 1e-4);
+          float front = (1.0 - smoothstep(1.0 * uPx, 3.0 * uPx, frontPx)) * uFeeding * smoothstep(0.35, 0.65, noise3(vDir * 45.0 + tq * 0.05));
+          lit = clamp(max(max(yelOn, redOn * 0.85) * (0.25 + 0.75 * exp(-far / 0.12)), max(crack * 0.9, front * 0.9)), 0.0, 1.0); // (the heat at the vent and down the fresh stream; further out, crusted over but for its cracks)
+          vec3 heat = mix(verm, mix(verm, yel, 0.55 + 0.45 * exp(-far / 0.025)), max(yelOn, 0.35 * crack)); // (orange; pale gold only at the vent's mouth)
+          inkCol = mix(crustInk, heat, lit);
+        }
+        col = mix(col, inkCol * mix(vec3(1.0), col / paper, uDark > 0.5 ? 0.15 : 0.5), cov * (uDark > 0.5 ? 0.96 : 0.92));
+        glowInk = uDark > 0.5 ? cov * lit * 0.95 : cov * mix(0.4, 0.95, yelOn); // (a little of its own light, or the lighting dims the soft inks to mud; the gold, the one light)
         // As the pressure builds, a spot of gold warms the ground at the vent, widening, before anything pours.
         if (uBuild > 0.3) {
           float spotR = (0.004 + 0.018 * uBuild) * (0.8 + 0.4 * noise3(vDir * 90.0));
@@ -530,15 +545,17 @@ const PRINT = (q: boolean) => /* glsl */ `
         // hole inside newer lava.)
         float sHot = smoothstep(0.85, 0.97, black), sWarm = smoothstep(0.55, 0.85, black);
         vec3 setCol = mix(paper * vec3(0.95, 0.86, 0.78), deep, sWarm);
-        setCol = mix(setCol, verm, sHot);` : `vec3 setCol = mix(vec3(0.24, 0.22, 0.21), deep, smoothstep(0.6 - sb, 0.6 + sb, black));
+        setCol = mix(setCol, verm, sHot);
+        // (Dark: set, it's basalt: black-brown, a dull red for its first moments, greying slowly as it weathers.)
+        if (uDark > 0.5) setCol = mix(mix(vec3(0.085, 0.062, 0.046), vec3(0.045, 0.032, 0.025), smoothstep(0.2, 0.7, black)), deep * 0.8, sHot); // (warm basalt brown, never a grey wash)` : `vec3 setCol = mix(vec3(0.24, 0.22, 0.21), deep, smoothstep(0.6 - sb, 0.6 + sb, black));
         setCol = mix(setCol, verm, smoothstep(0.8 - sb, 0.8 + sb, black));`}
         // (Pressed as the running ink is; and skinning over with crust as it cools, the plates now still.)
         float sCrust = crustAt(vDir, 0.6 + 0.4 * (1.0 - smoothstep(0.6, 1.0, black)), 1.0) * smoothstep(${q ? '0.75, 0.8' : '0.55, 0.65'}, black)${q ? ' * 0.6' : ''};
         setCol = mix(setCol, deep * mix(0.55, 1.0, smoothstep(0.8 - sb, 0.8 + sb, black)), sCrust * 0.9);
         setCol *= (0.82 + 0.3 * mottle) * mix(1.0, grain, 0.5);
         setCol = mix(setCol, mix(paper, setCol, 0.35), starve);
-        ${q ? `float setA = hs * (0.3 * smoothstep(0.006, 0.15, black) + 0.62 * smoothstep(0.45, 0.8, black));
-        col = mix(col, setCol * mix(vec3(1.0), col / paper, 0.5), setA);
+        ${q ? `float setA = hs * (uDark > 0.5 ? 0.95 * smoothstep(0.03, 0.3, black) : 0.3 * smoothstep(0.006, 0.15, black) + 0.62 * smoothstep(0.45, 0.8, black)); // (dark: solid basalt for its first minute, then going cleanly, never a grey wash)
+        col = mix(col, setCol * mix(vec3(1.0), col / paper, uDark > 0.5 ? 0.12 : 0.5), setA);
         glowInk = max(glowInk, setA * sWarm * 0.4);` : `float setA = hs * smoothstep(0.33, 0.4, black) * 0.92;
         col = mix(col, setCol, setA);
         glowInk = max(glowInk, setA * smoothstep(0.6 - sb, 0.6 + sb, black) * 0.7); // (still hot, it glows; gone grey, it's ground)`}
@@ -547,6 +564,13 @@ const PRINT = (q: boolean) => /* glsl */ `
         // than another, landing hot and darkening to black, lying a while, then crumbling; and dark ash
         // blown out over the ground. Every one different (its size, its way, its shape: from main).
         // (A pale dome popping in a neat ring of drops looked like a cartoon.)
+        ${q ? `// A warm glow on the ground round fresh lava, and at the vent while it pours: the heat lighting what's near it.
+        {
+          // (Close to the fresh lava only, while it's fed: spread over a wide thin sheet, it tinted half the world.)
+          float halo = (1.0 - cov) * onLand * uFeeding * (smoothstep(0.1, 0.5, lvR) * exp(-far / 0.12) * 0.7 + exp(-far / 0.035) * 0.8);
+          col = mix(col, col * vec3(1.0, 0.82, 0.66), clamp(halo, 0.0, 1.0) * 0.45);
+          glowInk = max(glowInk, halo * 0.22);
+        }` : ''}
         if (uBurp >= 0.0) {
           float bt = uBurp, on = step(0.0, bt), S = uBurpSize;
           float sw = clamp(bt / 1.4, 0.0, 1.0);
