@@ -94,7 +94,7 @@ export const WORLDS: World[] = [
     first: 'Open water, and a fire far below.',
     then: 'The sea floor drifts over the fire, leaving a trail of islands.',
     second: 'Tip the world as the fire moves, and islands rise along the line.',
-    rules: { drift: 0.0125, rises: 0, heat: 740, rising: 1.4, steady: true, reseed: 15, floor: -0.22, impactEvery: [60, 100], atolls: true },
+    rules: { drift: 0.0125, rises: 0, heat: 740, rising: 1.4, steady: true, reseed: 15, floor: -0.22, sink: 0.00015, impactEvery: [60, 100], atolls: true },
     palette: {
       paper: '#ecdfc2', basalt: '#9a8a76', ash: '#b3ada2', lava: '#b8563c', deepLava: '#8f3b28',
       shallow: '#d4e3ec', deep: '#b1c8d8',
@@ -135,7 +135,7 @@ export const WORLDS: World[] = [
     rules: {
       terrain: 'mars', basins: 0, craters: 18, floor: 0.05, rough: 0.025,
       waves: 0, rain: 0, sink: 0, life: false,
-      talus: 2.2, flow: 8, channel: 2, coolLand: 0.25,
+      talus: 2.2, flow: 8, channel: 2, coolLand: 1, // (sets fast, so poured lava stacks into a mountain rather than running off)
       drift: 0, rises: 0, heat: 250, rising: 0.52, steady: true,
       impactEvery: [60, 100], impactWarning: 14, impactHeat: 6,
       stormEvery: [60, 100], stormWarning: 12, stormLasts: 22, stormWear: 0.006,
@@ -170,7 +170,7 @@ export const WORLDS: World[] = [
       landInk: '#5a7080', landInkHigh: '#3c5463', pencil: '#b3bfc6', seaInk: '#5b82a3',
     },
     goal: 'cover',
-    cover: 0.35,
+    cover: 0.7,
     contour: 0.07,
   },
   {
@@ -246,7 +246,7 @@ export const WORLDS: World[] = [
       landInk: '#4f463c', landInkHigh: '#342c24', pencil: '#b2a796', seaInk: '#5b82a3',
     },
     goal: 'round',
-    round: 0.45,
+    round: 0.34,
     contour: 0.05,
   },
   {
@@ -258,7 +258,7 @@ export const WORLDS: World[] = [
     then: 'Its spin flings whatever flows out toward its middle.',
     second: 'Pour, and a ridge rises all the way round its middle.',
     rules: {
-      terrain: 'spin', basins: 0, craters: 25, floor: 0.05, rough: 0.015, bulge: 0.08, spin: 2.5, ridge: 0.115,
+      terrain: 'spin', basins: 0, craters: 25, floor: 0.05, rough: 0.015, bulge: 0.08, spin: 2.5, ridge: 0.07,
       waves: 0, rain: 0, sink: 0, swell: 0, life: false,
       flow: 10, channel: 2, coolLand: 0.12,
       drift: 0, rises: 0.04, heat: 520, rising: 1.2, steady: true,
@@ -312,7 +312,7 @@ export const WORLDS: World[] = [
       // (Airless, as the other moons are: it grew life, a sea and rain without these.)
       waves: 0, rain: 0, sink: 0, swell: 0, life: false, drift: 0,
       rises: 0.03, heat: 560, rising: 1.3, steady: true, impactEvery: [70, 110],
-      tumble: 0.3, tumbleGrow: 0.0015, tumbleKick: 0.4,
+      tumble: 0.3, tumbleGrow: 0.0025, tumbleKick: 0.4,
     },
     palette: {
       // Pale, porous rock, a little warm.
@@ -321,7 +321,7 @@ export const WORLDS: World[] = [
       landInk: '#5e554a', landInkHigh: '#3f372e', pencil: '#b8ae9e', seaInk: '#5b82a3',
     },
     goal: 'calm',
-    calm: 75,
+    calm: 85,
   },
   {
     id: 'deep',
@@ -343,7 +343,7 @@ export const WORLDS: World[] = [
       landInk: '#5a4632', landInkHigh: '#3b2c1e', pencil: '#b3a68f', seaInk: '#3f6787',
     },
     goal: 'bank',
-    island: 70,
+    island: 90,
   },
   {
     id: 'young',
@@ -367,7 +367,7 @@ export const WORLDS: World[] = [
       landInk: '#4e3f33', landInkHigh: '#33271d', pencil: '#b8aa96', seaInk: '#5b82a3',
     },
     goal: 'orbit',
-    orbit: 100,
+    orbit: 75,
   },
 ];
 

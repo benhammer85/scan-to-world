@@ -42,6 +42,7 @@
       #begin .world { font-size: 13px; letter-spacing: 0.2em; opacity: 0.65; }
       #begin .name { font-size: 30px; font-weight: normal; margin: -8px 0 0; letter-spacing: 0.01em; text-align: center; }
       #begin .first { font-size: 17px; font-style: italic; max-width: 22em; line-height: 1.45; padding: 0 24px; opacity: 0.8; }
+      #begin .hands { font-size: 13px; letter-spacing: 0.02em; max-width: 24em; line-height: 1.5; padding: 0 24px; opacity: 0.7; margin-top: -4px; }
       #begin .second { text-wrap: pretty; font-size: 16px; max-width: 21em; line-height: 1.55; padding: 0 28px; opacity: 0.9; }
       #begin button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
       #begin .touch { font-size: 16px; letter-spacing: 0.08em; margin-top: 10px; padding: 12px 34px; border: 1px solid rgba(46, 33, 24, 0.35); border-radius: 999px; }
@@ -103,7 +104,7 @@
     <button id="worlds" aria-label="All worlds"></button>
     <div id="atlas" class="engraved"><div class="head"><h2>The atlas</h2><button class="close">back</button></div><div class="pages"></div><div class="view"><img alt=""></div></div>
     <div id="system" class="engraved"><div class="head"><h2>A solar system</h2><button class="close">back</button></div><p class="about"></p><div class="plate"></div><div class="foot"></div></div>
-    <div id="begin" class="engraved"><p class="world"></p><h1 class="name"></h1><p class="first"></p><p class="second"></p><button class="touch">Begin</button><p class="worlds"></p><button class="more-toggle">more</button><div class="more" hidden></div></div>
+    <div id="begin" class="engraved"><p class="world"></p><h1 class="name"></h1><p class="first"></p><p class="second"></p><p class="hands"></p><button class="touch">Begin</button><p class="worlds"></p><button class="more-toggle">more</button><div class="more" hidden></div></div>
     <script type="module" src="/src/volcano/main.ts"></script>
   </body>
 </html>

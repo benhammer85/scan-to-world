@@ -377,6 +377,8 @@ export class Planet {
   pooledBiggest = 0;
   /** The deep ocean's bank: where, and how wide. */
   bank: { x: number; y: number; z: number; r: number } | null = null;
+  /** Which vertices are on the bank's shallow top: lava crossing it sets there, tube or not. */
+  private onBank: Uint8Array | null = null;
   /** Seconds since lava last set into rock at each vertex (for its tubes). */
   readonly laid: Float32Array;
   /** Whether stones fall at all: off until the player has been shown them. */
@@ -452,13 +454,15 @@ export class Planet {
     if (this.k.bankFar > 0) {
       const q = this.plume, a = this.rand() * Math.PI * 2, t1 = unit(cross(q, Math.abs(q.y) < 0.9 ? { x: 0, y: 1, z: 0 } : { x: 1, y: 0, z: 0 })), t2 = cross(q, t1), far = this.k.bankFar;
       const d = { x: t1.x * Math.cos(a) + t2.x * Math.sin(a), y: t1.y * Math.cos(a) + t2.y * Math.sin(a), z: t1.z * Math.cos(a) + t2.z * Math.sin(a) };
-      const b = { ...unit({ x: q.x * Math.cos(far) + d.x * Math.sin(far), y: q.y * Math.cos(far) + d.y * Math.sin(far), z: q.z * Math.cos(far) + d.z * Math.sin(far) }), r: 0.16 };
+      const b = { ...unit({ x: q.x * Math.cos(far) + d.x * Math.sin(far), y: q.y * Math.cos(far) + d.y * Math.sin(far), z: q.z * Math.cos(far) + d.z * Math.sin(far) }), r: 0.24 };
       this.bank = b;
       const p = this.topo.basePositions;
       for (let v = 0; v < n; v++) {
         const dd = Math.hypot(p[v * 3] - b.x, p[v * 3 + 1] - b.y, p[v * 3 + 2] - b.z) / b.r;
-        if (dd < 2.5) this.rock[v] = Math.max(this.rock[v], -0.035 + (this.k.floor + 0.035) * Math.min(1, dd * dd / 4));
+        if (dd < 2.5) this.rock[v] = Math.max(this.rock[v], -0.014 + (this.k.floor + 0.014) * Math.min(1, dd * dd / 4));
       }
+      this.onBank = new Uint8Array(n);
+      for (let v = 0; v < n; v++) if (Math.hypot(p[v * 3] - b.x, p[v * 3 + 1] - b.y, p[v * 3 + 2] - b.z) < b.r) this.onBank[v] = 1;
     }
     this.laid = new Float32Array(n).fill(1e6);
     this.start = this.rock.slice();
@@ -715,7 +719,9 @@ export class Planet {
       this.tell('The plume reaches the ring');
     }
     if (!blast && this.k.orbitShare > 0 && volume > this.k.explosive) {
-      const thrown = (volume - this.k.explosive) * this.k.orbitShare;
+      // (Any burst throws some: counted from a little under the burst point, so a burst when the smoke
+      // is heavy makes a start, and a bigger one, held longer, throws more.)
+      const thrown = (volume - this.k.explosive * 0.6) * this.k.orbitShare;
       this.orbit += thrown;
       left -= thrown;
     }
@@ -749,13 +755,18 @@ export class Planet {
     if (this.k.lamp) {
       if (!this.pouring && tip >= this.k.tipPour) { this.pouring = true; this.erupt(); }
       else if (this.pouring && tip < this.k.tipPour * 0.7) this.pouring = false;
+      // Kept tipped (as while the far shore is turned up to watch a blob float there), each new bud
+      // lets go once it's grown a fair size, rather than growing on until it bursts apart.
+      else if (this.pouring && this.pressure >= this.capNow * 0.75) this.erupt();
       return;
     }
     if (!this.pouring && tip >= this.k.tipPour) {
       this.pouring = true;
       if (this.pressure >= this.k.explosive) { this.erupt(); return; }
       this.pourCounted = false;
-    } else if (this.pouring && tip < this.k.tipPour * 0.7) this.pouring = false;
+    // (It stops a little short of where it starts, so a shaking hand doesn't flicker it; but not so far
+    // short that the phone held level again, the vent a little off the top, keeps it trickling away.)
+    } else if (this.pouring && tip < this.k.tipPour * 0.9) this.pouring = false;
     if (!this.pouring) return;
     const rate = this.k.pourLeast + (this.k.pourMost - this.k.pourLeast) * Math.min(1, (tip - this.k.tipPour) / (1 - this.k.tipPour));
     const amount = Math.min(this.pressure, Math.max(0, rate) * dt);
@@ -1182,7 +1193,7 @@ export class Planet {
       if (l <= 0) continue;
       const sea = this.rock[v] + l < 0;
       // (In a tube of its own fresh crust, lava in the sea cools far slower.)
-      const tube = sea && this.k.tubes < 1 && this.laid[v] < this.k.tubeFresh ? this.k.tubes : 1;
+      const tube = sea && this.k.tubes < 1 && this.laid[v] < this.k.tubeFresh && !this.onBank?.[v] ? this.k.tubes : 1;
       // (A trace too small to matter is rock at once, or it lingers for ever, costing a step each time.)
       const solid = l < 1e-7 ? l : l * (1 - Math.exp(-(l < this.k.thin ? THIN_SETS : sea ? this.k.coolSea * tube : this.k.coolLand) * LAVA_PACE * dt));
       if (solid > 0) this.laid[v] = 0;

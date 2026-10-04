@@ -786,9 +786,15 @@ const FLOODED_ENOUGH = 0.7;
 // Small dots, as a chart marks a route or a boundary: pale where it's still to do, inked where it's done.
 // (Drawn as a print, the aim's dots are a little bolder and darker, to stand clear of the stipple.)
 const AIM_INK = LOOK === 6 ? (ICE ? '#2f6f96' : '#c0702e') : LOOK ? '#2b1d14' : P.landInkHigh, AIM_BIG = LOOK === 6 ? 1.7 : LOOK ? 1.3 : 1; // (quiet: amber, or on the ice moons blue, and bigger: the goal plain to see)
-const aimInk = new Stipple(AIM_INK, 'dot', 2.5 * AIM_BIG), aimPencil = new Stipple('#' + new THREE.Color(P.pencil).lerp(new THREE.Color(P.landInk), LOOK ? 0.8 : 0.6).getHexString(), 'dot', 1.6 * AIM_BIG);
+const aimInk = new Stipple(AIM_INK, 'dot', 2.5 * AIM_BIG), aimPencil = LOOK === 6
+  // (Quiet: what's still to do in a paler amber (or blue), as big as done, so it stands clear of the grey grid.)
+  ? new Stipple('#' + new THREE.Color(AIM_INK).lerp(new THREE.Color(P.paper), 0.35).getHexString(), 'dot', 2 * AIM_BIG)
+  : new Stipple('#' + new THREE.Color(P.pencil).lerp(new THREE.Color(P.landInk), LOOK ? 0.8 : 0.6).getHexString(), 'dot', 1.6 * AIM_BIG);
 /** On the ocean world, the stretch the heat is on and the next, still to do, a little stronger: where to build now. */
 const aimNext = new Stipple(LOOK ? AIM_INK : P.landInk, 'dot', 2.3 * AIM_BIG);
+// (Known by direction: keyed by where they stand, the ground's least change under them re-keyed them as new
+// dots each time they were set, every two seconds, so they never finished fading in and stayed faint.)
+aimInk.byDirection = aimPencil.byDirection = aimNext.byDirection = true;
 /**
  * On Mars and the ice moon, a ring of the same dots round the heat, drawn once about the pole and
  * turned to follow the heat smoothly, so it glides with it rather than stepping.
@@ -1004,7 +1010,9 @@ function reckonAim(): void {
   else { aimDone = planet.basins.filter((b) => planet.flooded(b) >= FLOODED_ENOUGH).length; aimOf = planet.basins.length; }
 }
 let calmHeld = 0, calmAt = 0;
-const won = () => aimOf > 0 && aimDone >= aimOf && (WORLD.goal !== 'calm' || calmHeld >= 20);
+/** How long the tumbling moon must be kept calm, in seconds. */
+const CALM_HOLD = 30;
+const won = () => aimOf > 0 && aimDone >= aimOf && (WORLD.goal !== 'calm' || calmHeld >= CALM_HOLD);
 
 /** The aim, in a line for the foot: said once the world has begun, and again if a long while passes with nothing gained. */
 /**
@@ -1013,18 +1021,18 @@ const won = () => aimOf > 0 && aimDone >= aimOf && (WORLD.goal !== 'calm' || cal
  * different verb on every world: tip, pour, erupt, burst, turn uppermost.)
  */
 const HOW: Record<string, string> = {
-  ring: 'The fire drifts along the dotted line. Pour as it goes, and keep the chain of islands unbroken.',
-  basins: 'Turn a dotted basin to the top, and the heat creeps there. Pour gently until it fills. Flood every one.',
+  ring: 'The fire drifts along the bold dotted line. Pour as it goes, and keep a chain of living islands all along it.',
+  basins: 'The vent creeps to whatever faces up. Drag a dotted basin to the top, and pour gently until it fills. Flood every one.',
   height: `Pour in one place, again and again, until the mountain stands ${HEIGHT.target} km high.`,
-  cover: `Pour across the old grey ice until ${COVER}% of it is new.`,
-  plumes: `At high tide, hold until the smoke darkens, then let it burst. Raise ${PLUMES} great plumes, each outside the dotted rings.`,
-  feed: "Turn the vent towards the giant and let it burst: its ice feeds the giant's ring. Fill the ring.",
-  round: `Turn a hollow to the top and pour into it, until the asteroid is ${ROUND}% rounder.`,
-  ridge: 'Pour anywhere: the spin carries the lava to the equator. Raise a ridge all the way round.',
-  lamp: 'Hold the world level to grow a glowing blob, and tilt to let it go. Turn the far shore to the top, and the blobs float there.',
-  calm: `Let it burst where the dotted ring sweeps past, and the tumbling slows. Calm it to ${CALM}%, and keep it there for twenty seconds.`,
-  bank: 'Pour towards the dotted bank, again and again, until an island rises there.',
-  orbit: 'Hold until the smoke is heavy, then let it burst. Throw up enough rock to make a moon.',
+  cover: `The vent creeps to whatever faces up. Pour, drag somewhere grey to the top, and pour again, until ${COVER}% of the old ice is new.`,
+  plumes: `At high tide, hold until the smoke turns grey, then lift to burst. Raise ${PLUMES} great plumes, each outside the dotted rings of the last.`,
+  feed: "Hold until the smoke turns grey. Drag the world so the vent leans towards the giant, then lift to burst: its ice feeds the giant's ring. Fill the ring.",
+  round: `The vent creeps to whatever faces up. Drag a hollow to the top and pour into it, until the asteroid is ${ROUND}% rounder.`,
+  ridge: 'The spin carries lava to the middle. Drag a bare stretch of the dotted middle to the top and pour, until a ridge runs all the way round.',
+  lamp: 'Keep the phone level, and a glowing blob grows; tilt it, and the blob lets go. Blobs float to whatever faces up: drag the dotted far shore to the top.',
+  calm: `Hold until the smoke turns grey, then lift to burst where the dotted ring crosses the vent: the tumbling slows. Calm it to ${CALM}%, and keep it there for ${CALM_HOLD} seconds.`,
+  bank: 'Tilt towards the dotted bank to pour that way, again and again, until an island rises there.',
+  orbit: 'Hold until the smoke turns grey, then lift to burst. Each burst throws rock up, and enough of it gathers into a moon.',
 };
 /** The aim and how far it's come, in a few words for the top of the screen, always there while it's played. */
 function goalLine(): string {
@@ -1039,7 +1047,7 @@ function goalLine(): string {
     case 'round': return `Rounder · ${Math.min(d, of)} of ${of}%`;
     case 'ridge': return `The ridge · ${d} of ${of} stretches`;
     case 'lamp': return `The far shore · ${pct}% full`;
-    case 'calm': return d >= of ? `Calm · held ${Math.min(20, Math.floor(calmHeld))} of 20 seconds` : `Calm · ${d} of ${of}%`;
+    case 'calm': return d >= of ? `Calm · held ${Math.min(CALM_HOLD, Math.floor(calmHeld))} of ${CALM_HOLD} seconds` : `Calm · ${d} of ${of}%`;
     case 'bank': return `The island at the bank · ${pct}%`;
     case 'orbit': return `A moon · ${pct}%`;
     default: return '';
@@ -1160,7 +1168,7 @@ function drawAim(now: number): void {
   }
   if (chain) {
     // The route in small dots round the world: pale across what's still to do, inked where held.
-    const per = 6, pts = chain.points(per), here = Math.floor(chain.where(planet.plume).round * CHAIN.stretches);
+    const per = 12, pts = chain.points(per), here = Math.floor((chain.where(planet.plume).round / CHAIN.arc) * CHAIN.stretches);
     chain.held.forEach((h, i) => onGround(pts.slice(i * per, (i + 1) * per), h ? inked : (i - here + CHAIN.stretches) % CHAIN.stretches <= 1 ? next : pencilled));
   } else if (WORLD.goal === 'ridge') {
     // The equator, in dots, round the spin's axis: a stretch inked once it's raised into ridge.
@@ -1276,16 +1284,16 @@ function arrows(dt: number): void {
  * and never over what the world is saying itself. Then nothing more, but the aim now and then.
  */
 const CUES: { ready: () => boolean; say?: string; begin?: () => void; done: (since: number) => boolean }[] = [
-  { ready: () => true, say: LAMP ? 'Hold the world level, and a glowing blob grows' : 'Hold the world level, and the heat gathers under the smoke', done: () => planet.pressure > planet.k.least * 2 },
-  { ready: () => !planet.pouring, say: LAMP ? 'Tilt the world, and the blob lets go' : 'Tilt the world to pour the lava out', done: (s) => planet.tally.flows + planet.tally.bursts > 0 || s > 40 },
+  { ready: () => true, say: LAMP ? 'Keep the phone level, and a glowing blob grows' : 'Keep the phone level, and the heat gathers under the smoke', done: () => planet.pressure > planet.k.least * 2 },
+  { ready: () => !planet.pouring, say: LAMP ? 'Tilt the phone, and the blob lets go' : 'Tilt the phone to pour', done: (s) => planet.tally.flows + planet.tally.bursts > 0 || s > 40 },
   // The touch, once the tilt is known: a finger held on the world holds the heat in; lifted, it lets it out.
-  { ready: () => !planet.pouring && planet.pressure > planet.k.least, say: LAMP ? 'Or keep a finger on the world to hold the blob, and lift it to let go' : 'Or keep a finger on the world to hold the heat in, and lift it to pour', done: (s: number) => s > 12 },
-  ...(WORLD.rules.rises ? [{ ready: () => true, say: 'The heat creeps to whatever is on top: turn the world to move it', done: (s: number) => s > 20 }] : []),
+  { ready: () => !planet.pouring && planet.pressure > planet.k.least, say: LAMP ? 'Or hold a finger on the world to keep the blob, and lift it to let go' : 'Or hold a finger on the world to keep the heat in, and lift it to let it out', done: (s: number) => s > 12 },
+  ...(WORLD.rules.rises ? [{ ready: () => true, say: 'The vent creeps to whatever faces up: drag the world to move it', done: (s: number) => s > 20 }] : []),
   ...(WORLD.goal === 'ridge' ? [{ ready: () => planet.tally.flows + planet.tally.bursts > 0, say: 'The spin carries the lava to the equator', done: (s: number) => s > 25 }] : []),
-  { ready: () => !LAMP && planet.pressure > planet.k.explosive * 0.9 && !planet.pouring, say: WORLD.goal === 'feed' ? 'The smoke is heavy: turn the vent towards the giant, and let it burst' : WORLD.goal === 'orbit' || WORLD.goal === 'plumes' || WORLD.goal === 'calm' ? 'The smoke is heavy: hold a little longer, and it bursts' : 'The smoke is heavy: pour now, or it bursts', done: (s) => planet.tally.bursts > 0 || s > 40 },
+  { ready: () => !LAMP && (planet.k.great > 0 ? planet.throwOf(planet.pressure) >= planet.k.great : planet.pressure >= planet.k.explosive) && !planet.pouring, say: WORLD.goal === 'feed' ? 'The smoke has turned grey: lean the vent towards the giant, and let it out to burst' : 'The smoke has turned grey: let it out now, and it bursts', done: (s) => planet.tally.bursts > 0 || s > 40 },
   ...(LIFE ? [{ ready: () => ecology.held.length > 0, say: 'Six kinds of life, each needing its own ground', begin: () => { $('legend').classList.add('new'); }, done: (s: number) => ecology.kept > 0 || s > 60 }] : []),
   ...(WORLD.goal === 'plumes' ? [
-    { ready: () => planet.tideNow > 0.6, say: 'High tide: the heat comes fast. Hold until the smoke darkens', done: (s: number) => s > 20 },
+    { ready: () => planet.tideNow > 0.6, say: 'High tide: the heat comes fast. Hold until the smoke turns grey', done: (s: number) => s > 20 },
     { ready: () => planet.tideNow < -0.6, say: 'Low tide: the heat comes slowly. Move it somewhere new', done: (s: number) => s > 20 },
   ] : []),
   ...(WORLD.goal === 'orbit' ? [
@@ -1417,10 +1425,13 @@ function effects(dt: number): void {
   const full = planet.k.great > 0 ? planet.throwOf(planet.pressure) >= planet.k.great : planet.bursting;
   if (QUIET) {
     // Quiet: the smoke reads the pressure. A thin wisp at rest; a taller, fuller column as it builds;
-    // dark only at the brink. Small puffs in a close stream, so it's one column, leaning with the breeze.
+    // grey once letting it out would burst (on Io, burst as a great plume); dark only at the brink.
+    // Small puffs in a close stream, so it's one column, leaning with the breeze.
     if (!LAMP && !planet.over && !planet.pouring && planet.pressure > 0.05 && smokeIn <= 0) {
       smokeIn = 0.14 + 0.22 * (1 - share);
-      const dark = Math.min(1, Math.max(0, (share - 0.75) / 0.2)), lean = { x: up.x + 0.3 * INVERSE_RIGHT.x, y: up.y + 0.3 * INVERSE_RIGHT.y, z: up.z + 0.3 * INVERSE_RIGHT.z };
+      const ready = planet.k.great > 0 ? planet.throwOf(planet.pressure) / planet.k.great : planet.pressure / planet.k.explosive;
+      const grey = 0.75 * THREE.MathUtils.smoothstep(ready, 0.88, 1);
+      const dark = Math.max(grey, Math.min(1, Math.max(0, (share - 0.75) / 0.2))), lean = { x: up.x + 0.3 * INVERSE_RIGHT.x, y: up.y + 0.3 * INVERSE_RIGHT.y, z: up.z + 0.3 * INVERSE_RIGHT.z };
       puffs.add('smoke', p[v0 * 3], p[v0 * 3 + 1], p[v0 * 3 + 2], 0.25 + 1.3 * share, Math.random, lean, 0, dark * dark);
     }
   } else if (!LAMP && !planet.over && !planet.pouring && planet.pressure > 0.5 && smokeIn <= 0) {
@@ -1468,7 +1479,7 @@ const LONG_AGE = 360, AGE_SPEED = 14, DRAWING = 7, TURN_AGAIN = 2.6;
  * is met, the chart's title met and not, and how far it got, for the chart's summary.
  */
 const GOAL_WORDS: Record<typeof WORLD.goal, { age: (met: boolean) => string; done: string; title: [string, string]; got: () => string }> = {
-  ring: { age: () => 'The islands sink, and coral rings them', done: 'Living islands all the way round', title: ['Ringed with islands', 'Not yet ringed'], got: () => `${aimDone} of ${aimOf} stretches living` },
+  ring: { age: () => 'The islands sink, and coral rings them', done: 'An unbroken chain of living islands', title: ['A chain of islands', 'The chain is broken'], got: () => `${aimDone} of ${aimOf} stretches living` },
   basins: { age: () => 'Time passes, and small stones still fall', done: 'Every basin flooded', title: ['Every basin flooded', 'Not every basin flooded'], got: () => `${aimDone} of ${aimOf} basins flooded` },
   height: { age: () => 'Time passes, and the storms go on', done: `The mountain reaches ${HEIGHT.target} km`, title: ['The great mountain', 'Not high enough yet'], got: () => `${Math.round(aimDone)} of ${aimOf} km high` },
   cover: { age: () => 'Time passes, and the new ice greys', done: `Done: ${COVER}% of the ice made new`, title: ['New ice', 'Not enough new ice'], got: () => `${Math.round(aimDone)}% of the ice new, of ${aimOf}%` },
@@ -1778,6 +1789,8 @@ let begun = false;
 ($('begin').querySelector('.name') as HTMLElement).textContent = WORLD.title;
 ($('begin').querySelector('.first') as HTMLElement).textContent = WORLD.first;
 ($('begin').querySelector('.second') as HTMLElement).textContent = FREE ? 'No aim and no clock: the fire never cools.' : HOW[WORLD.goal] ?? WORLD.second;
+// The hands, the same on every card.
+($('begin').querySelector('.hands') as HTMLElement).textContent = LAMP ? 'Keep it level to grow · tilt to let go · drag to turn' : 'Tilt to pour · hold a finger down, lift to burst · drag to turn';
 // The worlds, along the card's foot, as an atlas lists its plates: touch another to go to it.
 // (Not for a world of a solar system: it's reached from the system's chart.)
 if (RUN === null) for (const w of WORLDS) {
