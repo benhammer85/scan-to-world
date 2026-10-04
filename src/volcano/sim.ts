@@ -34,6 +34,7 @@
  * vertices and scale with the mesh, so a coarser test planet plays the same.
  */
 import type { Topology } from '../mesh/topology';
+import { realHeight, pointAt, type RealName } from './real';
 
 const REFERENCE = 16002; // an icosphere of detail 40
 /** The depth about which lava runs freely: much thinner, and it hardly moves (see `flow`). */
@@ -307,6 +308,16 @@ export const VOLCANO = {
   wishes: true,
 
   /**
+   * Real terrain: the world's own heights, from NASA's maps (see real/), each km of them `realScale`
+   * of the world's height (far steeper than life, as a relief globe is); and its basins, where they
+   * really are (latitude, longitude, radius in km on a world `realRadius` km round). '': made up.
+   */
+  real: '' as '' | RealName,
+  realScale: 0.04,
+  realRadius: 1737,
+  realBasins: [] as [number, number, number][],
+
+  /**
    * A rogue planet, with no star: life lives only on ground still warm from lava, for this many
    * seconds after it last set there, and dies as it cools (0: life needs no warmth). Life lands only within
    * `hearth` (radians) of the vent, the one warm place (0: anywhere).
@@ -507,7 +518,7 @@ export class Planet {
       this.grainOf[v] = 0.5 + (Math.sin(x * 23.1 + y * 9.7 + 0.7) + Math.sin(y * 21.3 - z * 11.9 + 1.9) + Math.sin(z * 24.7 + x * 8.3 - 2.3) + Math.sin((x + y - z) * 37.9)) / 8;
       const fine = (Math.sin(x * 13.1 + z * 7.3) + Math.sin(y * 11.7 - x * 9.1 + 2.1) + Math.sin(z * 12.3 + y * 8.9 - 1.3)) / 3;
       this.firmness[v] = 0.55 + 0.9 * (0.5 + 0.5 * Math.sin(x * 17.3 + y * 5.1 - z * 11.9) * Math.sin(y * 13.7 + z * 6.3 + 0.7));
-      this.rock[v] = this.k.floor + this.k.rough * fine;
+      this.rock[v] = this.k.floor + this.k.rough * fine + (this.k.real ? this.k.realScale * realHeight(this.k.real, x, y, z) : 0);
     }
     this.plume.x = p[start * 3]; this.plume.y = p[start * 3 + 1]; this.plume.z = p[start * 3 + 2];
     this.plumeVertex = start;
@@ -631,8 +642,10 @@ export class Planet {
       const z = this.rand() * 2 - 1, a = this.rand() * Math.PI * 2, s = Math.sqrt(1 - z * z);
       return { x: s * Math.cos(a), y: s * Math.sin(a), z };
     };
+    // On real ground, its own basins, where they are (and its craters are its own, in its heights).
+    for (const [lat, lon, km] of this.k.real ? this.k.realBasins : []) this.basins.push({ ...pointAt(lat, lon), r: km / this.k.realRadius });
     // The basins, well apart, one near where the heat begins so the first is in reach.
-    for (let tries = 0; this.basins.length < this.k.basins && tries < 400; tries++) {
+    if (!this.k.real) for (let tries = 0; this.basins.length < this.k.basins && tries < 400; tries++) {
       const c = this.basins.length === 0 ? unit({ x: this.plume.x + 0.25, y: this.plume.y - 0.2, z: this.plume.z }) : point();
       const r = 0.22 + this.rand() * 0.14;
       if (this.basins.some((b) => Math.hypot(b.x - c.x, b.y - c.y, b.z - c.z) < b.r + r + 0.15)) continue;

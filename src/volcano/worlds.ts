@@ -124,13 +124,17 @@ export const WORLDS: World[] = [
     numeral: 'II',
     title: 'The Moon',
     first: 'Old, airless, and nearly cold.',
-    then: 'Its dark seas are old basins that lava once flooded.',
+    then: 'These are its real basins. Lava flooded them once, and made the face we know.',
     second: 'Turn a basin uppermost and tip gently, and it fills dark.',
     rules: {
-      terrain: 'moon', basins: 4, floor: 0.22, rough: 0.02,
+      terrain: 'moon', basins: 9, floor: 0.4, rough: 0.008, craters: 0,
+      // (Its real heights, and its real seas, where they are and as wide (latitude, longitude, km): Imbrium,
+      // Serenitatis, Tranquillitatis, Crisium, Nectaris, Fecunditatis, Nubium, Humorum, and Orientale on the edge.)
+      real: 'moon', realScale: 0.04, realRadius: 1737,
+      realBasins: [[33, -16, 550], [27, 18, 330], [8.5, 31, 350], [17, 59, 280], [-15, 35, 170], [-8, 51, 300], [-21, -17, 350], [-24, -39, 190], [-19, -95, 320]],
       waves: 0, rain: 0, sink: 0, swell: 0, life: false,
       flow: 16, channel: 1, coolLand: 0.06,
-      drift: 0, rises: 0.035, heat: 400, rising: 1.48,
+      drift: 0, rises: 0.035, heat: 270, rising: 1.0, // (its seas lie close together, as the real ones do: less heat, so they're still a fire's work)
       impactEvery: [12, 22], impactWarning: 12, crater: 0.08, craterDepth: 0.05, impactHeat: 4, ageCraters: 0.12,
     },
     palette: {

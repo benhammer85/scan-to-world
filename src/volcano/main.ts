@@ -173,7 +173,9 @@ function remember(key: string, value: string): void {
  * the new fire starts somewhere new.
  */
 // (A world of a solar system is new ground: it's a world of its own, not this kind's own world.)
-const GROUND = wanted || RUN !== null ? null : recallGround(WORLD.id, N);
+// (On a world drawn from its real heights, its ground is kept apart from what it was when made up.)
+const GROUND_KEY = WORLD.rules.real ? `${WORLD.id}-real` : WORLD.id;
+const GROUND = wanted || RUN !== null ? null : recallGround(GROUND_KEY, N);
 const FIRES = GROUND?.fires ?? 0;
 const START = (() => {
   if (!GROUND) return nearest(0.1, 0.15, 0.98);
@@ -1706,7 +1708,7 @@ function theEnd(): void {
     // What this fire left is the ground the next one on this world rises through.
     let marked: Uint8Array | null = null;
     if (FL) { marked = new Uint8Array(N); for (let v = 0; v < N; v++) marked[v] = planet.age[v] < 1e5 || (MARKED?.[v] ?? 0) ? 1 : 0; }
-    if (RUN === null) keepGround(WORLD.id, { rock: planet.rock.slice(), fires: FIRES + 1, marked });
+    if (RUN === null) keepGround(GROUND_KEY, { rock: planet.rock.slice(), fires: FIRES + 1, marked });
     $('stage-name').textContent = ending.info.title;
     $('worlds').style.display = 'none'; // (the chart has its own title there)
     void forget(); // the world is finished: nothing to come back to
@@ -2057,7 +2059,7 @@ function openAtlas(all: Page[]): void {
 $('atlas').querySelector('.view')!.addEventListener('click', () => $('atlas').classList.remove('viewing'));
 $('atlas').querySelector('.close')!.addEventListener('click', () => $('atlas').classList.remove('open', 'viewing'));
 // A world with a past can be begun afresh, on new ground.
-if (FIRES) moreLink('Begin this world on new ground', () => { forgetGround(WORLD.id); void forget(); setTimeout(() => location.reload(), 200); });
+if (FIRES) moreLink('Begin this world on new ground', () => { forgetGround(GROUND_KEY); void forget(); setTimeout(() => location.reload(), 200); });
 // A world without life has no key of its kinds.
 // (The key to life's signs is not shown: the aim is the chain, not the kinds, and the key was one more thing to read.)
 $('legend').style.display = 'none';

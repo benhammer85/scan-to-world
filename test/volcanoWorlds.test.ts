@@ -73,7 +73,7 @@ describe('the Moon', () => {
 
   it('is dry highland scarred by great basins, with no life', () => {
     const pl = moon();
-    expect(pl.basins.length).toBe(4);
+    expect(pl.basins.length).toBe(9);
     expect(Math.min(...pl.rock)).toBeGreaterThan(0); // no sea anywhere
     run(pl, 120);
     expect(pl.lifeShare()).toBe(0);
@@ -510,5 +510,21 @@ describe('worlds under a star', () => {
     for (let v = 0; v < pl.rock.length; v++) { const d = p[v * 3 + 2], gain = pl.rock[v] - pl.start[v]; if (d < -0.1 && d > -0.25) edge = Math.max(edge, gain); if (d < -0.75) far = Math.max(far, gain); }
     expect(edge).toBeGreaterThan(0);
     expect(far).toBe(0);
+  });
+});
+
+describe('real terrain', () => {
+  it("lays the Moon's real heights, near side towards us, its seas low", () => {
+    const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('moon').rules);
+    const imbrium = pl.basins[0];
+    let inside = 0, ni = 0, highland = 0, nh = 0;
+    for (let v = 0; v < pl.rock.length; v++) {
+      const d = Math.hypot(p[v * 3] - imbrium.x, p[v * 3 + 1] - imbrium.y, p[v * 3 + 2] - imbrium.z);
+      if (d < imbrium.r * 0.6) { inside += pl.rock[v]; ni++; }
+      if (p[v * 3 + 1] < -0.6 && p[v * 3 + 2] > 0.3) { highland += pl.rock[v]; nh++; } // (the southern highlands, round Tycho)
+    }
+    expect(imbrium.y).toBeGreaterThan(0.5); // (north)
+    expect(imbrium.z).toBeGreaterThan(0.5); // (on the side we see)
+    expect(inside / ni).toBeLessThan(highland / nh - 0.04);
   });
 });
