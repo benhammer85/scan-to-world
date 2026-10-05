@@ -78,7 +78,7 @@ In App Store Connect, on the app's page:
 
 * **Screenshots:** still to make, at the 6.9" iPhone size (1320 × 2868): a panorama joined across
   the screens, about a world growing quietly. (The first six in `appstore/screenshots/` were set aside.)
-* **Description, keywords, support URL, privacy policy URL.**
+* **Description and keywords.** Support URL: `https://warmtothetouch.com/support/`. Privacy policy URL: `https://warmtothetouch.com/privacy/`. Marketing URL: `https://warmtothetouch.com`.
 * **App Privacy:** *Data Not Collected* (the game keeps everything on the phone).
 * **Age rating:** answer the questionnaire; it comes out 4+.
 * **Price**, then **Add for Review**. Review usually takes a day or two.
