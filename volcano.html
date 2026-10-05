@@ -50,10 +50,10 @@
       #begin .second { text-wrap: pretty; font-size: 16px; max-width: 21em; line-height: 1.55; padding: 0 28px; opacity: 0.9; }
       #begin button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
       #begin .touch { font-size: 16px; letter-spacing: 0.08em; margin-top: 10px; padding: 12px 34px; border: 1px solid rgba(46, 33, 24, 0.35); border-radius: 999px; }
-      #begin .chapter { font-size: 11px; letter-spacing: 0.14em; opacity: 0.5; font-style: italic; margin-bottom: -2px; }
+      #begin .chapter { font-size: 13px; opacity: 0.55; margin-bottom: -4px; }
       #begin .chapter:empty { display: none; }
       #begin .worlds { display: flex; flex-direction: column; align-items: center; max-width: min(100%, 30em); padding: 0 12px; box-sizing: border-box; margin-top: 4px; }
-      #begin .worlds .chapter-name { font-size: 10.5px; letter-spacing: 0.12em; opacity: 0.42; font-style: italic; margin-top: 4px; line-height: 1.1; }
+      #begin .worlds .chapter-name { font-size: 12px; opacity: 0.45; margin-top: 6px; line-height: 1.1; }
       #begin .worlds .chapter-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 0 4px; }
       /* (On a short screen, the rows alone, a little apart: the card names the chapter above its title.) */
       @media (max-height: 720px) { #begin .worlds .chapter-name { display: none; } #begin .worlds .chapter-row + .chapter-name + .chapter-row { margin-top: 2px; } #begin .worlds button { min-height: 30px; } }
@@ -95,7 +95,7 @@
       /* In free play, a quiet way to end the fire when you choose, where the chart's keep will be. */
       #finish { position: fixed; top: calc(22px + env(safe-area-inset-top)); right: 24px; font: italic 12px "Newsreader", "Iowan Old Style", Georgia, serif; color: #2e2118; background: none; border: none; opacity: 0; pointer-events: none; transition: opacity 2s; cursor: pointer; padding: 4px; }
       #finish.shown { opacity: 0.6; pointer-events: auto; }
-      #keep { position: fixed; top: calc(22px + env(safe-area-inset-top)); right: 24px; font: italic 12px "Newsreader", "Iowan Old Style", Georgia, serif; color: #2e2118; background: none; border: none; opacity: 0; pointer-events: none; transition: opacity 2s; cursor: pointer; padding: 4px; }
+      #keep { position: fixed; top: calc(116px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); font: italic 12px "Newsreader", "Iowan Old Style", Georgia, serif; color: #2e2118; background: none; border: none; opacity: 0; pointer-events: none; transition: opacity 2s; cursor: pointer; padding: 4px; }
       #keep.shown { opacity: 0.65; pointer-events: auto; }
       /* The worlds, in a corner off the world: back to the card that lists them. */
       #worlds { position: fixed; top: calc(22px + env(safe-area-inset-top)); left: 20px; font: 12px "Newsreader", "Iowan Old Style", Georgia, serif; letter-spacing: 0.12em; color: #2e2118; background: none; border: none; opacity: 0.6; cursor: pointer; padding: 12px; min-width: 44px; min-height: 44px; }

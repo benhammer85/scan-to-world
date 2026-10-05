@@ -814,7 +814,7 @@ let chain = WORLD.goal === 'ring' ? new Chain(planet.plume, planet.driftDirectio
 const FLOODED_ENOUGH = 0.7;
 // Small dots, as a chart marks a route or a boundary: pale where it's still to do, inked where it's done.
 // (Drawn as a print, the aim's dots are a little bolder and darker, to stand clear of the stipple.)
-const AIM_INK = LOOK === 6 ? (ICE ? '#2f6f96' : '#c0702e') : LOOK ? '#2b1d14' : P.landInkHigh, AIM_BIG = LOOK === 6 ? 1.7 : LOOK ? 1.3 : 1; // (quiet: amber, or on the ice moons blue, and bigger: the goal plain to see)
+const AIM_INK = LOOK === 6 ? (ICE ? '#2f6f96' : DARK_LAVA ? '#6a5646' : '#c0702e') : LOOK ? '#2b1d14' : P.landInkHigh, AIM_BIG = LOOK === 6 ? 1.7 : LOOK ? 1.3 : 1; // (quiet: amber, or on the ice moons blue, and bigger: the goal plain to see)
 const aimInk = new Stipple(AIM_INK, 'dot', 2.5 * AIM_BIG), aimPencil = LOOK === 6
   // (Quiet: what's still to do in a paler amber (or blue), as big as done, so it stands clear of the grey grid.)
   ? new Stipple('#' + new THREE.Color(AIM_INK).lerp(new THREE.Color(P.paper), 0.35).getHexString(), 'dot', 2 * AIM_BIG)
@@ -1171,31 +1171,32 @@ const won = () => aimOf > 0 && aimDone >= aimOf && (WORLD.goal !== 'calm' || cal
  * different verb on every world: tip, pour, erupt, burst, turn uppermost.)
  */
 const HOW: Record<string, string> = {
-  ring: 'The fire drifts along the bold dotted line. Pour as it goes, and keep a chain of living islands all along it.',
-  basins: 'The vent creeps to whatever faces up. Drag a dotted basin to the top, and pour gently until it fills. Flood every one.',
-  height: `Tilt the phone to pour. Pour in one place, again and again, until the mountain stands ${HEIGHT.target} km high.`,
-  cover: `The vent creeps to whatever faces up. Pour, drag somewhere grey to the top, and pour again, until ${COVER}% of the old ice is new.`,
-  plumes: `At high tide, hold until the smoke turns grey, then lift to burst. Raise ${PLUMES} great plumes, each outside the dotted rings of the last.`,
-  feed: "Hold until the smoke turns grey. Drag the world so the vent leans towards the giant, then lift to burst: its ice feeds the giant's ring. Fill the ring.",
-  round: `The vent creeps to whatever faces up. Drag a hollow to the top and pour into it, until the asteroid is ${ROUND}% rounder.`,
-  ridge: 'The spin carries lava to the middle. Drag a bare stretch of the dotted middle to the top and pour, until a ridge runs all the way round.',
-  lamp: 'Keep the phone level, and a glowing blob grows; tilt it, and the blob lets go. Blobs float to whatever faces up: drag the dotted far shore to the top.',
-  calm: `Hold until the smoke turns grey, then lift to burst where the dotted ring crosses the vent: the tumbling slows. Calm it to ${CALM}%, and keep it there for ${CALM_HOLD} seconds.`,
-  bank: 'Tilt towards the dotted bank to pour that way, again and again, until an island rises there.',
-  orbit: 'Hold until the smoke turns grey, then lift to burst. Each burst throws rock up, and enough of it gathers into a moon.',
-  hearth: 'Life gathers on new rock while it is warm, and fades as it cools. Pour, turn a little, and pour beside it, never on it, to keep enough alive at once.',
-  thaw: 'Under the ice the gas is lost. Pour until the mountain stands above the ice, then hold until the smoke turns grey and lift to burst: bursts warm the sky most.',
-  outbuild: 'Whatever faces the star boils away. Drag the vent round into the night side, where it pours of itself, and build more than the star takes.',
-  white: 'Its lava runs black and thin as oil, and turns white once it has set a while. Build the peak to its height, then hold a finger down, keep still, and watch the summit turn white.',
-  glow: 'At night its sulphur burns blue as it runs, and glows a while after it sets. Pour thin and wide, a different way each time, and keep the crater lit for two minutes in all.',
-  waves: 'Pour until the cone is just under the sea (the pale shoal shows it), then hold until grey and lift: a wave rings the whole world, and the cone is blown apart. Build it again for the next.',
-  antipode: 'Hold until the smoke turns grey, and lift: the burst\'s shock goes through the world, and a moment later the far side, ringed in dots, breaks open. The bigger the burst, the more reaches it. Turn the world over to watch.',
-  gather: 'Stones fall where a pencilled circle shows. Turn that place to the top before it lands, and the glow creeps under it to catch it. Catch enough, and the world is made.',
-  oxygen: 'Life grows in shallow, sunlit water and breathes out oxygen, but lava buries it. Pour a shallow shelf, then turn the world a little and pour the next, and leave each to life.',
-  chaos: 'Hold, and lift while the smoke is still light: the warmth melts up through the ice and breaks it into rafts. Too long, and it only bursts. Each field must be apart from the last.',
-  streaks: 'The sun moves slowly across the sky. Hold until the smoke turns grey and the sunlight is on the vent, and lift: a geyser, its dark streak blown downwind. Then turn somewhere new for the next.',
-  snow: 'Drag the vent round into the starlight, where it pours of itself. Lava there stays molten, boils into the air, and falls as rock snow along the edge of night.',
+  ring: 'The fire drifts slowly across the sea. Pour as it moves, and keep a line of living islands behind it.',
+  basins: 'Turn a dotted basin to the top of the world, then pour gently until it fills. Fill them all.',
+  height: `Tilt the phone to pour. Keep pouring in one place until the mountain is ${HEIGHT.target} km tall.`,
+  cover: `Pour across the old grey ice to make it new. Turn the world to reach fresh grey, until ${COVER}% is new.`,
+  plumes: `Hold until the smoke turns grey, then let go while the tide is high. Make ${PLUMES} great plumes, each outside the last one's rings.`,
+  feed: 'Hold until the smoke turns grey, lean the volcano towards the giant planet, and let go. The spray fills its ring.',
+  round: `Turn a hollow to the top and pour into it. Fill the hollows until the asteroid is ${ROUND}% rounder.`,
+  ridge: 'The spin flings lava to the equator. Turn a bare part of the dotted equator to the top and pour, until a ridge runs all the way round.',
+  lamp: 'Hold the phone level and a glowing blob grows. Tilt, and it lets go and floats up. Turn the dotted shore to the top to guide the blobs there.',
+  calm: `Hold until the smoke turns grey, then let go where the dotted ring crosses the volcano. Each burst slows the tumbling. Keep it calm for ${CALM_HOLD} seconds.`,
+  bank: 'Tilt towards the dotted bank to pour that way. Keep pouring until an island rises there.',
+  orbit: 'Hold until the smoke turns grey, then let go. Each burst throws rock into the sky, and enough of it becomes a moon.',
+  hearth: 'Life gathers on fresh, warm rock and fades as it cools. Pour beside it, never on top, and keep enough alive at once.',
+  thaw: 'Build the mountain up through the ice, then hold until the smoke turns grey and let go. The gas warms the sky until the ice gives way.',
+  outbuild: 'Anything facing the star boils away. Turn the volcano round into the night side, and build more than the star can take.',
+  white: 'This lava runs black and turns white as it cools. Build the peak, then hold still and watch the top turn white.',
+  glow: 'At night the sulphur burns blue as it flows. Pour thin and wide, a new way each time, and keep the crater glowing for two minutes.',
+  waves: 'Build the cone until it is just under the sea, then hold until the smoke turns grey and let go. A wave rings the whole world. Rebuild, and do it again.',
+  antipode: 'Hold until the smoke turns grey and let go. The shock travels through the planet and breaks open the far side. Turn the world over to watch it grow.',
+  gather: 'Stones fall where a circle appears. Turn that spot to the top before they land, and the glow will catch them.',
+  oxygen: 'Life in shallow water makes oxygen, but lava buries it. Pour a shallow shelf, turn a little, pour the next, and let life grow.',
+  chaos: 'Hold, then let go before the smoke turns grey. The warmth breaks the ice into rafts. Each new field must be away from the last.',
+  streaks: 'The sun slowly crosses the sky. Hold until the smoke turns grey, wait for sunlight on the volcano, then let go. Turn somewhere new for the next streak.',
+  snow: 'Turn the volcano into the starlight. The lava there boils into the air and falls as rock snow along the edge of night.',
 };
+
 /** The aim and how far it's come, in a few words for the top of the screen, always there while it's played. */
 function goalLine(): string {
   const d = Math.round(aimDone), of = aimOf, pct = Math.min(100, d);
@@ -1812,6 +1813,7 @@ function theEnd(): void {
     else if (RUN === null) keepGround(GROUND_KEY, { rock: planet.rock.slice(), fires: FIRES + 1, marked });
     $('stage-name').textContent = ending.info.title;
     $('worlds').style.display = 'none'; // (the chart has its own title there)
+    $('goal').style.opacity = '0'; // (and its own line under it: the goal's ran into it)
     void forget(); // the world is finished: nothing to come back to
   }
 }
@@ -2070,20 +2072,20 @@ let begun = false;
 // (It carried about ten lines, twelve numerals, four links and seven inks.)
 ($('begin').querySelector('.world') as HTMLElement).textContent = WORLD.numeral;
 // (And its chapter, above it: not for a world of a solar system, which has its own place.)
-($('begin').querySelector('.chapter') as HTMLElement).textContent = RUN === null ? `Chapter ${chapterOf(WORLD.id).numeral} · ${chapterOf(WORLD.id).title}` : '';
+($('begin').querySelector('.chapter') as HTMLElement).textContent = RUN === null ? chapterOf(WORLD.id).title : '';
 ($('begin').querySelector('.name') as HTMLElement).textContent = WORLD.title;
 // (An age of Earth begun on the ground the age before left says so: it's the world you made, an age on.)
 ($('begin').querySelector('.first') as HTMLElement).textContent = AGE_GROUND ? `${WORLD.first} The world you made, an age later.` : WORLD.first;
 ($('begin').querySelector('.second') as HTMLElement).textContent = FREE ? 'No aim and no clock: the fire never cools.' : HOW[WORLD.goal] ?? WORLD.second;
 // The hands, the same on every card.
-($('begin').querySelector('.hands') as HTMLElement).textContent = LAMP ? 'Keep it level to grow · tilt to let go · drag to turn' : 'Tilt to pour · hold a finger down, lift to burst · drag to turn';
+($('begin').querySelector('.hands') as HTMLElement).textContent = LAMP ? 'Keep it level to grow · tilt to let go · drag to turn' : 'Tilt to pour · hold, then let go to burst · drag to turn';
 // The worlds, along the card's foot, as an atlas lists its plates: touch another to go to it.
 // (Not for a world of a solar system: it's reached from the system's chart.)
 // (A row to each chapter, its name small above it.)
 const rowOf = new Map<string, HTMLElement>();
 if (RUN === null) for (const c of CHAPTERS) {
   const label = document.createElement('span'), row = document.createElement('span');
-  label.className = 'chapter-name'; label.textContent = `${c.numeral} · ${c.title}`;
+  label.className = 'chapter-name'; label.textContent = c.title;
   row.className = 'chapter-row';
   $('begin').querySelector('.worlds')!.append(label, row);
   for (const id of c.worlds) rowOf.set(id, row);
@@ -2210,7 +2212,7 @@ function cardView(): void {
   if (begun) return;
   // Sized and placed in the room above the card's words, however tall the phone (and whatever the card says).
   const w = stage.clientWidth || innerWidth, h = stage.clientHeight || innerHeight;
-  const words = ($('begin').querySelector('.world') as HTMLElement).getBoundingClientRect().top;
+  const words = (($('begin').querySelector('.chapter') as HTMLElement).textContent ? ($('begin').querySelector('.chapter') as HTMLElement) : ($('begin').querySelector('.world') as HTMLElement)).getBoundingClientRect().top; // (above the chapter's name, when there is one)
   const above = 56, room = Math.max(80, words - 22 - above);
   const r = Math.min(room, w * 0.7) / 2, middle = above + room / 2;
   dist = (1.08 * (h / 2)) / (r * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));

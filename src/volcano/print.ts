@@ -542,7 +542,7 @@ const PRINT = (q: boolean) => /* glsl */ `
         inkCol *= (0.82 + 0.3 * mottle) * mix(1.0, grain, 0.5) * (1.0 - squeeze);
         // Starved ink: the paper shows through in specks.
         float starve = step(0.9, noise3(vDir * 240.0) * 0.55 + hash3(floor(vDir * 600.0)) * 0.45);
-        inkCol = mix(inkCol, mix(paper, inkCol, 0.35), starve);
+        inkCol = mix(inkCol, mix(paper, inkCol, 0.35), starve * (1.0 - uDark)); // (not on dark lava: specks of paper read as stars on it)
         ${q ? `// (Quiet: a wash on the paper, the ground showing through; only the hot core glows, a little.)
         float lit = 0.0;
         if (uDark > 0.5) {
@@ -551,14 +551,23 @@ const PRINT = (q: boolean) => /* glsl */ `
           // along the front while it's fed, and cracks in the skin, glowing while it's hot.
           // The crust breaks into plates, each its own shade, pulled apart where it's hot, so the heat
           // shows in seams between them: wider and brighter the hotter the lava under them, closing as it cools.
-          vec2 pl = plates(rid * 13.0);
+          // (The plates laid on the world itself, three ways blended, and warped: laid round the vent, in
+          // rings and spokes, they made a flower of it, and even polygons read as a tortoise's shell.)
+          vec3 wq = vDir * 46.0 + 0.9 * vec3(noise3(vDir * 9.0), noise3(vDir * 9.0 + 3.7), noise3(vDir * 9.0 + 7.1));
+          vec3 tw = abs(vDir); tw /= (tw.x + tw.y + tw.z);
+          vec2 pl = plates(wq.yz) * tw.x + plates(wq.zx) * tw.y + plates(wq.xy) * tw.z;
           float pfw = max(fwidth(pl.x), 1e-4), hot = smoothstep(0.2, 0.65, T);
-          float seamW = 0.02 + 0.09 * hot;
-          // (Only where it's hot, and mostly near the vent: everywhere, it read as cracked mud.)
-          float seam = (1.0 - smoothstep(seamW, seamW + pfw * 1.5, pl.x)) * smoothstep(0.3, 0.6, T) * (0.25 + 0.75 * exp(-far / 0.1));
-          vec3 crustInk = vec3(0.05, 0.036, 0.028) * uCrustTint * (0.72 + 0.5 * pl.y) * (0.85 + 0.3 * mottle) * mix(1.0, grain, 0.5); // (plates of their own shades, a little more apart: flat, it read as a hole)
+          float seamW = 0.01 + 0.04 * hot;
+          // (Only where it's hot, and near the vent: further out, and cooler, the skin closes.)
+          float seam = (1.0 - smoothstep(seamW, seamW + pfw * 1.5, pl.x)) * smoothstep(0.45, 0.8, T) * exp(-far / 0.06) * smoothstep(0.35, 0.6, noise3(vDir * 60.0));
+          // The skin itself: rough at two scales, as a'a is, and folded along the flow (the level lines of how
+          // deep it lies), as pahoehoe's ropes are, faintly, as an engraver would cut them.
+          float rough = noise3(vDir * 180.0) * 0.6 + noise3(vDir * 520.0 + 2.0) * 0.4;
+          float fold = abs(fract(lvR * 7.0 + 0.35 * noise3(vDir * 40.0)) - 0.5), foldW = max(fwidth(lvR * 7.0), 1e-4);
+          float folds = (1.0 - smoothstep(0.0, foldW * 1.2, fold)) * smoothstep(0.6, 1.2, lvR) * 0.22;
+          vec3 crustInk = vec3(0.058, 0.044, 0.035) * uCrustTint * (0.86 + 0.18 * pl.y) * (0.78 + 0.44 * rough) * (1.0 - folds);
           float frontPx = abs(lvR - 0.5) / max(fwidth(lvR), 1e-4);
-          float front = (1.0 - smoothstep(1.0 * uPx, 3.0 * uPx, frontPx)) * uFeeding * smoothstep(0.35, 0.65, noise3(vDir * 45.0 + tq * 0.05));
+          float front = (1.0 - smoothstep(0.6 * uPx, 2.2 * uPx, frontPx)) * uFeeding * smoothstep(0.45, 0.75, noise3(vDir * 45.0 + tq * 0.05)) * 0.7; // (thin, broken, and soft: a bright line all round looked drawn on)
           // The open heat at the vent and down the fresh stream, graded as incandescence is: pale gold
           // at the mouth, orange, then a dull red where the crust is closing over it; its edge ragged.
           // The open heat at the vent and down the fresh stream, as a print lays it: three flat inks (a
@@ -571,12 +580,18 @@ const PRINT = (q: boolean) => /* glsl */ `
           // (Screened in the game's own stipple, scattered as by hand: a halftone on a grid read as pixels.)
           band2 = max(band2, stipple(vDir, 260.0, 1.6 * smoothstep(0.56, 0.68, heatV), 0.55 * uPx, px) * band1);
           band3 = max(band3, stipple(vDir, 260.0, 1.6 * smoothstep(0.74, 0.86, heatV), 0.55 * uPx, px) * band2);
-          float open = band1 * (0.2 + 0.8 * exp(-far / 0.08));
+          band3 *= exp(-far / 0.025); band2 *= 0.4 + 0.6 * exp(-far / 0.05); // (the gold only at the mouth, the orange close by: a wide bright disc looked like a lamp)
+          float open = band1 * (0.2 + 0.8 * exp(-far / 0.06));
+          // A skin forming over the heat: dark plates closing over it from its edge in, the glow showing
+          // only in the cracks between them, wider nearer the mouth. (A bare blob of graded heat looked airbrushed.)
+          float skinW = 0.04 + 0.22 * smoothstep(0.6, 0.95, heatV);
+          float skinOver = smoothstep(skinW, skinW + pfw * 1.5, pl.x) * (1.0 - smoothstep(0.9, 0.97, heatV));
+          open *= 1.0 - skinOver * 0.92;
           vec3 glowCol = mix(deep * 1.15, verm, band2);
           glowCol = mix(glowCol, yel, band3);
-          glowCol = mix(glowCol, uInkPale, smoothstep(0.95 - hw, 0.95 + hw, heatV) * step(far, 0.03));
+          glowCol = mix(glowCol, uInkPale, smoothstep(0.97 - hw, 0.97 + hw, heatV) * step(far, 0.015)); // (the palest only right at the mouth)
           inkCol = crustInk;
-          inkCol = mix(inkCol, mix(deep * 1.2, verm, hot), seam * 0.9);
+          inkCol = mix(inkCol, mix(deep * 0.9, verm * 0.85, hot * 0.6), seam * 0.75); // (a dull red, not orange: the heat glimpsed, not drawn)
           inkCol = mix(inkCol, verm, front * 0.9);
           inkCol = mix(inkCol, glowCol, open);
           lit = clamp(max(open, max(seam * 0.85, front * 0.9)), 0.0, 1.0);
@@ -629,7 +644,7 @@ const PRINT = (q: boolean) => /* glsl */ `
         float sCrust = crustAt(vDir, 0.6 + 0.4 * (1.0 - smoothstep(0.6, 1.0, black)), 1.0) * smoothstep(${q ? '0.75, 0.8' : '0.55, 0.65'}, black)${q ? ' * 0.6' : ''};
         ${q ? 'if (uDark < 0.5) ' : ''}setCol = mix(setCol, deep * mix(0.55, 1.0, smoothstep(0.8 - sb, 0.8 + sb, black)), sCrust * 0.9); // (not on dark lava: its red plates were blotches)
         setCol *= (0.82 + 0.3 * mottle) * mix(1.0, grain, 0.5);
-        setCol = mix(setCol, mix(paper, setCol, 0.35), starve);
+        setCol = mix(setCol, mix(paper, setCol, 0.35), starve * (1.0 - uDark)); // (not on dark lava: specks of paper read as stars)
         ${q ? `float setA = hs * (uDark > 0.5 ? 0.95 * smoothstep(0.04, 0.16, black) : 0.3 * smoothstep(0.006, 0.15, black) + 0.62 * smoothstep(0.45, 0.8, black)); // (dark: solid basalt for its first minute, then going cleanly, never a grey wash)
         col = mix(col, setCol * mix(vec3(1.0), col / paper, uDark > 0.5 ? 0.12 : 0.5), setA);
         glowInk = max(glowInk, setA * (uDark > 0.5 ? smoothstep(0.93, 0.99, black) * 0.35 : sWarm * 0.4));` : `float setA = hs * smoothstep(0.33, 0.4, black) * 0.92;

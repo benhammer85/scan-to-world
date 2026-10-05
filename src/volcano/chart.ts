@@ -127,9 +127,26 @@ export function drawFrame(g: CanvasRenderingContext2D, w: number, h: number, k: 
   g.fillText(info.subtitle, w / 2, 70 * k);
   const foot = h - footRoom * k;
   g.font = `italic ${15 * k}px ${SERIF}`; g.fillStyle = INK;
-  g.fillText(info.summary, w / 2, foot - 140 * k);
+  // (Wrapped to the plate's width, a line to each part of it, the last line where the one line was:
+  // on a phone, one long line ran off both sides.)
+  const lines = wrap(g, info.summary, w - 72 * k);
+  lines.forEach((line, i) => g.fillText(line, w / 2, foot - 140 * k - (lines.length - 1 - i) * 21 * k));
   drawTimeline(g, info, 34 * k, w - 34 * k, foot - 44 * k, 0.62 * k);
   g.globalAlpha = 1;
+}
+
+/** Text broken into lines no wider than `width`: at its parts (" · ") first, then between words. */
+function wrap(g: CanvasRenderingContext2D, text: string, width: number): string[] {
+  const out: string[] = [];
+  for (const part of text.split(' · ')) {
+    let line = '';
+    for (const word of part.split(' ')) {
+      const next = line ? `${line} ${word}` : word;
+      if (line && g.measureText(next).width > width) { out.push(line); line = word; } else line = next;
+    }
+    if (line) out.push(line);
+  }
+  return out;
 }
 
 /** A kind's conventional sign, as the page draws it, at a size (half its width). */
