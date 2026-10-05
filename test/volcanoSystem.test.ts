@@ -18,7 +18,7 @@ describe('a solar system', () => {
     const sys = newSystem(1);
     sys.bodies[0] = { world: 'mars', twist: 'cold' };
     const w = worldFor(sys, 0);
-    expect(w.rules.rising).toBeCloseTo(0.52 * 0.8);
+    expect(w.rules.rising).toBeCloseTo(0.8 * 0.8);
     expect(w.rules.heat ?? 250).toBeCloseTo(250); // the same heat, only slower
     expect(w.then).toContain('A slow fire: the heat comes slowly');
     expect(w.title).toBe('A red world');

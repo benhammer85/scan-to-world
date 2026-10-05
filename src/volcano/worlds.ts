@@ -123,7 +123,7 @@ export const WORLDS: World[] = [
       terrain: 'mars', basins: 0, craters: 18, floor: 0.05, rough: 0.025,
       waves: 0, rain: 0, sink: 0, life: false,
       talus: 1.65, flow: 8, channel: 2, coolLand: 1, // (its gravity makes slopes stand steeper still; and it sets fast, so poured lava stacks into a mountain rather than running off)
-      drift: 0, rises: 0, heat: 250, rising: 0.52, steady: true,
+      drift: 0, rises: 0, heat: 250, rising: 0.8, steady: true, // (the heat comes back quickly: the first world, so waiting is short)
       impactEvery: [60, 100], impactWarning: 14, impactHeat: 6,
       stormEvery: [60, 100], stormWarning: 12, stormLasts: 22, stormWear: 0.006,
     },
@@ -133,7 +133,7 @@ export const WORLDS: World[] = [
       landInk: '#7a4a2e', landInkHigh: '#5a321c', pencil: '#cfae8e', seaInk: '#5b82a3',
     },
     goal: 'height',
-    height: { target: 28, kmPerUnit: 40 },
+    height: { target: 22, kmPerUnit: 40 }, // (as high as Olympus Mons)
   },
   {
     id: 'moon',

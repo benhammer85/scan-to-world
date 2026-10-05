@@ -556,10 +556,11 @@ const PRINT = (q: boolean) => /* glsl */ `
           vec3 wq = vDir * 46.0 + 0.9 * vec3(noise3(vDir * 9.0), noise3(vDir * 9.0 + 3.7), noise3(vDir * 9.0 + 7.1));
           vec3 tw = abs(vDir); tw /= (tw.x + tw.y + tw.z);
           vec2 pl = plates(wq.yz) * tw.x + plates(wq.zx) * tw.y + plates(wq.xy) * tw.z;
-          float pfw = max(fwidth(pl.x), 1e-4), hot = smoothstep(0.2, 0.65, T);
-          float seamW = 0.01 + 0.04 * hot;
+          float run = max(T, uFeeding * 0.62 * smoothstep(0.5, 0.9, lvR)); // (while the vent feeds it, all the running lava is molten under its skin, thin or deep)
+          float pfw = max(fwidth(pl.x), 1e-4), hot = smoothstep(0.2, 0.65, run);
+          float seamW = 0.015 + 0.07 * hot;
           // (Only where it's hot, and near the vent: further out, and cooler, the skin closes.)
-          float seam = (1.0 - smoothstep(seamW, seamW + pfw * 1.5, pl.x)) * smoothstep(0.45, 0.8, T) * exp(-far / 0.06) * smoothstep(0.35, 0.6, noise3(vDir * 60.0));
+          float seam = (1.0 - smoothstep(seamW, seamW + pfw * 1.5, pl.x)) * smoothstep(0.3, 0.6, run) * (0.35 + 0.65 * exp(-far / 0.16)) * (0.55 + 0.45 * uFeeding) * smoothstep(0.25, 0.5, noise3(vDir * 60.0)); // (all down the running flow: molten under its plates, the seams closing as it cools)
           // The skin itself: rough at two scales, as a'a is, and folded along the flow (the level lines of how
           // deep it lies), as pahoehoe's ropes are, faintly, as an engraver would cut them.
           float rough = noise3(vDir * 180.0) * 0.6 + noise3(vDir * 520.0 + 2.0) * 0.4;
@@ -570,7 +571,7 @@ const PRINT = (q: boolean) => /* glsl */ `
           // fresh crust, silver-blue, as new pahoehoe has; and the crest of each fold catching it too.)
           vec3 crustBase = mix(vec3(0.066, 0.046, 0.034), vec3(0.048, 0.047, 0.054), smoothstep(0.3, 0.8, pl.y));
           vec3 crustInk = crustBase * uCrustTint * (0.86 + 0.18 * pl.y) * (0.78 + 0.44 * rough) * (1.0 - folds);
-          crustInk = mix(crustInk, deep * 0.42, 0.32 * smoothstep(0.25, 0.8, T) * (0.6 + 0.4 * noise3(vDir * 24.0)));
+          crustInk = mix(crustInk, deep * 0.5, 0.45 * smoothstep(0.25, 0.8, T) * (0.6 + 0.4 * noise3(vDir * 24.0)));
           float foldHi = (1.0 - smoothstep(0.0, foldW * 1.6, abs(fold - 0.14))) * smoothstep(0.6, 1.2, lvR);
           float sheen = pow(max(0.0, dot(reflect(-L, Nn), V)), 9.0) * (0.35 + 0.65 * rough) + foldHi * 0.1 * smoothstep(0.4, 0.7, noise3(vDir * 14.0));
           crustInk += vec3(0.1, 0.11, 0.135) * sheen * (0.45 + 0.55 * smoothstep(0.15, 0.6, T));
@@ -588,21 +589,21 @@ const PRINT = (q: boolean) => /* glsl */ `
           // (Screened in the game's own stipple, scattered as by hand: a halftone on a grid read as pixels.)
           band2 = max(band2, stipple(vDir, 260.0, 1.6 * smoothstep(0.56, 0.68, heatV), 0.55 * uPx, px) * band1);
           band3 = max(band3, stipple(vDir, 260.0, 1.6 * smoothstep(0.74, 0.86, heatV), 0.55 * uPx, px) * band2);
-          band3 *= exp(-far / 0.025); band2 *= 0.4 + 0.6 * exp(-far / 0.05); // (the gold only at the mouth, the orange close by: a wide bright disc looked like a lamp)
-          float open = band1 * (0.2 + 0.8 * exp(-far / 0.06));
+          band3 *= exp(-far / 0.05); band2 *= 0.5 + 0.5 * exp(-far / 0.12); // (the gold only at the mouth, the orange close by: a wide bright disc looked like a lamp)
+          float open = band1 * (0.35 + 0.65 * exp(-far / 0.16)); // (the open heat reaches well down the stream)
           // A skin forming over the heat: dark plates closing over it from its edge in, the glow showing
           // only in the cracks between them, wider nearer the mouth. (A bare blob of graded heat looked airbrushed.)
           float skinW = 0.04 + 0.22 * smoothstep(0.6, 0.95, heatV);
           float skinOver = smoothstep(skinW, skinW + pfw * 1.5, pl.x) * (1.0 - smoothstep(0.9, 0.97, heatV));
-          open *= 1.0 - skinOver * 0.92;
+          open *= 1.0 - skinOver * 0.7;
           vec3 glowCol = mix(deep * 1.15, verm, band2);
           glowCol = mix(glowCol, yel, band3);
           glowCol = mix(glowCol, uInkPale, smoothstep(0.97 - hw, 0.97 + hw, heatV) * step(far, 0.015)); // (the palest only right at the mouth)
           inkCol = crustInk;
-          inkCol = mix(inkCol, mix(deep * 0.9, verm * 0.85, hot * 0.6), seam * 0.75); // (a dull red, not orange: the heat glimpsed, not drawn)
+          inkCol = mix(inkCol, mix(verm * 0.9, mix(verm, yel, 0.35), hot), seam * 0.9); // (molten orange in the seams, gold where it's hottest)
           inkCol = mix(inkCol, verm, front * 0.9);
           inkCol = mix(inkCol, glowCol, open);
-          lit = clamp(max(open, max(seam * 0.85, front * 0.9)), 0.0, 1.0);
+          lit = clamp(max(open, max(seam, front)), 0.0, 1.0);
         }
         col = mix(col, inkCol * mix(vec3(1.0), col / paper, uDark > 0.5 ? 0.15 : 0.5), cov * (uDark > 0.5 ? 0.96 : 0.92));
         glowInk = uDark > 0.5 ? cov * lit * 0.95 : cov * mix(0.4, 0.95, yelOn); // (a little of its own light, or the lighting dims the soft inks to mud; the gold, the one light)
@@ -619,7 +620,7 @@ const PRINT = (q: boolean) => /* glsl */ `
         float jets = 0.3 + 0.9 * smoothstep(0.35, 0.8, noise3(vec3(cos(ang) * 2.2, sin(ang) * 2.2, 4.0)));
         float thrown = uSpray * exp(-far / (0.035 + 0.11 * uSpray)) * jets * onLand; // (thrown wide, so the drops lie apart)
         float edgeSpray = smoothstep(0.06, 0.5, lv + 0.12 * (noise3(vDir * 30.0) - 0.5)) * (0.35 + 0.65 * uFeeding);
-        float spDens = clamp(thrown * 1.1 + edgeSpray * ${q ? '0.12 * uSpray' : '0.45'}, 0.0, 1.0); // (quiet: the edges spray only with a burst)
+        float spDens = ${q ? '0.0' : 'clamp(thrown * 1.1 + edgeSpray * 0.45, 0.0, 1.0)'}; // (quiet: no splatter at all; flicked ink didn't fit the calm map)
         float sp = spDens > 0.001 ? splat(vDir, spDens, px) * (1.0 - cov) : 0.0;
         vec3 spCol = mix(deep, verm, smoothstep(0.03, 0.0, far - 0.05 * uSpray) * 0.8 + 0.2 * uSpray);
         ${q ? 'if (uDark > 0.5) spCol = mix(vec3(0.045, 0.034, 0.027) * uCrustTint, spCol, smoothstep(0.35, 0.9, uSpray)); // (dark: drops glow as they land, and go black as the burst passes)' : ''}
@@ -645,7 +646,7 @@ const PRINT = (q: boolean) => /* glsl */ `
           // grey-brown by a minute, and gone in two and a half, so the world stays airy, the newest the darkest.)
           setCol = mix(vec3(0.27, 0.235, 0.2), vec3(0.06, 0.044, 0.034), smoothstep(0.3, 0.6, black)) * uCrustTint;
           setCol = mix(setCol, vec3(0.035, 0.026, 0.021) * uCrustTint, smoothstep(0.65, 0.85, black));
-          setCol = mix(setCol, deep * 0.55, smoothstep(0.93, 0.99, black)); // (a dark red for its first seconds only: brighter and longer, a thin sheet just set flashed orange)
+          setCol = mix(setCol, deep * 0.55, smoothstep(0.93, 0.99, black)); // (a dark red for its first seconds only: brighter and longer, a thin sheet just set flashed orange) // (a dark red for its first seconds only: brighter and longer, a thin sheet just set flashed orange)
         }` : `vec3 setCol = mix(vec3(0.24, 0.22, 0.21), deep, smoothstep(0.6 - sb, 0.6 + sb, black));
         setCol = mix(setCol, verm, smoothstep(0.8 - sb, 0.8 + sb, black));`}
         // (Pressed as the running ink is; and skinning over with crust as it cools, the plates now still.)
@@ -666,9 +667,9 @@ const PRINT = (q: boolean) => /* glsl */ `
         ${q ? `// A warm glow on the ground round fresh lava, and at the vent while it pours: the heat lighting what's near it.
         {
           // (Close to the fresh lava only, while it's fed: spread over a wide thin sheet, it tinted half the world.)
-          float halo = (1.0 - cov) * onLand * uFeeding * (smoothstep(0.1, 0.5, lvR) * exp(-far / 0.12) * 0.7 + exp(-far / 0.035) * 0.8);
-          col = mix(col, col * vec3(1.0, 0.82, 0.66), clamp(halo, 0.0, 1.0) * 0.45);
-          glowInk = max(glowInk, halo * 0.22);
+          float halo = (1.0 - cov) * onLand * uFeeding * (smoothstep(0.1, 0.5, lvR) * exp(-far / 0.2) * 0.85 + exp(-far / 0.05) * 0.8);
+          col = mix(col, col * vec3(1.0, 0.78, 0.58), clamp(halo, 0.0, 1.0) * 0.55);
+          glowInk = max(glowInk, halo * 0.3);
         }` : ''}
         if (uBurp >= 0.0) {
           float bt = uBurp, on = step(0.0, bt), S = uBurpSize;
@@ -693,6 +694,7 @@ const PRINT = (q: boolean) => /* glsl */ `
           float cth = mix(0.48, 0.76, smoothstep(0.0, reach + 1e-4, far)) + 0.1 * (1.0 - lop) + 0.25 * smoothstep(6.0, 11.0, ft) * noise3(vDir * 300.0);
           float hit = smoothstep(cth - cnw, cth + cnw, cn) * inReach * flown * onLand;
           if (flown > 0.0 && ft < 11.0) hit = max(hit, lattice(vDir * 150.0, 150.0, 0.45 * lop * inReach * (1.0 - smoothstep(6.0, 11.0, ft)), 0.7 * uPx, 41.0 + floor(uBurpSeed * 50.0), px * 150.0) * onLand);
+          ${q ? 'hit = 0.0; // (quiet: no clots flung about, which read as splatter)' : ''}
           vec3 clotCol = mix(yel, verm, smoothstep(0.0, 0.7, ft));
           clotCol = mix(clotCol, deep * 0.5, smoothstep(0.5, 2.5, ft));
           clotCol = mix(clotCol, uInkCold, smoothstep(2.0, 5.0, ft));
@@ -700,6 +702,6 @@ const PRINT = (q: boolean) => /* glsl */ `
           glowInk = max(glowInk, hit * (1.0 - smoothstep(1.0, 3.5, ft)) * 0.85);
           // Ash, blown out the way it burst, settling, then going.
           float ash = flown * exp(-far / (reach * 1.4 + 1e-3)) * (0.3 + 0.9 * lop) * smoothstep(0.0, 0.6, ft) * (1.0 - smoothstep(4.0, 12.0, ft)) * onLand * (1.0 - hit);
-          if (ash > 0.02) col = mix(col, uInkAsh, stipple(vDir, 300.0, ash * 1.3, 0.5 * uPx, px) * 0.85);
+          if (${q ? 'false' : 'ash > 0.02'}) col = mix(col, uInkAsh, stipple(vDir, 300.0, ash * 1.3, 0.5 * uPx, px) * 0.85);
         }
       }`;

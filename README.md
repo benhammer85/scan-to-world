@@ -37,7 +37,7 @@ Every world you make, what grew on it, the railways between worlds, which way ea
 
 | | World | What's different | The aim |
 | --- | --- | --- | --- |
-| I | **Mars** | No drift, so the heat stays in one place and the mountain rises over it, and the heat rises evenly rather than fast at first, so the mountain has to be built all game; weak gravity, so slopes stand steep. Thin air: dust storms, seen rising first, scour the heights, soft ash most. Craters, and a stone now and then. | **Raise the great mountain:** stand the summit 28 km above the plain. A dotted ring round the heat is inked round as it rises, and its height is told at the foot each time it stands two km higher. Cover soft ash with lava before a storm comes. |
+| I | **Mars** | No drift, so the heat stays in one place and the mountain rises over it, and the heat rises evenly rather than fast at first, so the mountain has to be built all game; weak gravity, so slopes stand steep. Thin air: dust storms, seen rising first, scour the heights, soft ash most. Craters, and a stone now and then. | **Raise the great mountain:** stand the summit 22 km above the plain, as high as Olympus Mons. A dotted ring round the heat is inked round as it rises, and its height is told at the foot each time it stands two km higher. Cover soft ash with lava before a storm comes. |
 | II | **The Moon** | No air, no water, no drift, no life, and stones falling all the while. Lava as thin as water, which floods low ground instead of building mountains. The heat rises to whatever you turn uppermost. | **Flood the seas:** fill each of its nine real seas (70% of its floor) before the heat is gone: Imbrium, Serenitatis, Tranquillitatis, Crisium, Nectaris, Fecunditatis, Nubium, Humorum, and Orientale on the edge. Flooded ground stays dark, so as they fill, the face we know appears. |
 | III | **An ice moon** | Water is the lava and ice the rock: no sea, no life, craters on old grey ice. Water runs thin and freezes fast; bursts throw frost far. The heat rises to whatever you turn uppermost, as on the Moon. | **Make the ice new:** cover 70% of the surface with fresh ice or frost, which stays white against the old grey. A dotted ring round the heat is inked round as the new ice spreads, and the share is told at the foot every 5%. |
 | IV | **A lumpy asteroid** | Broad lumps and hollows, and one great crater (as Vesta's south pole has), on a world not yet pulled round. On so small a body, down is towards its own middle: lava runs by the asteroid's own slopes wherever it comes out (`selfGravity`), and the way it's held only matters for where the heat goes and when it pours. | **Make it round:** fill the hollows until the asteroid is 34% rounder (its spread of heights from round 34% less than it began). Its deepest hollows are stippled in pencil, as old charts stippled a depression, and fade as they fill; a ring round the heat inks round as it rounds. |
@@ -95,6 +95,11 @@ With these, following the card still wins every world, and the ocean wins sooner
   * The orange Earth's shallows breathe faster (`breathe` 0.06).
   * The deep ocean's bank is a little nearer (0.52).
   * Following the card wins all 24 worlds again (two seeds each). In breathe mode, following the card wins the 15 worlds tried.
+
+**Calmer, warmer lava; an easier first world (October).**
+* **No splatter.** Flicked ink round the vent and along every running edge didn't fit the calm map; in the quiet print it's gone, and so are the clots and dark ash a burp threw. The burp's swelling dome at the brink stays.
+* **More molten.** While the vent feeds it, all the running lava is molten under its skin: orange seams, gold where hottest, open between dark plates all down the flow, not only at the mouth; the open heat reaches further down the stream, and the warm glow on the ground round it is warmer and wider. The seams close as the flow cools, and set lava goes black as before.
+* **Mars:** the heat comes back faster (`rising` 0.8, was 0.52), and the mountain to build is 22 km, as high as Olympus Mons (was 28). Following the card now wins in about three minutes, not seven and a half, with about 40% of the heat to spare.
 
 **The fire again, quickly.** Every 4 seconds of the fire, the world is kept in small form (heights and lava as whole numbers, at most 100 moments). When the fire is done, the whole of it plays again in 8 seconds, from bare ground to what was made, before the long age and the chart. Contours, the aim's dots and life's signs hide meanwhile, since they show the world as it is now. The chart now says what was made in a sentence ("A mountain 28 km high, three times the height of Everest"), rather than as a score.
 
@@ -169,7 +174,7 @@ So the order is the strategy. When every world has been played, the system's cha
 | --- | --- | --- | --- |
 | Ocean | ring the world | atolls: islands at least 30 vertices across when the fire ends | the crust keeps moving, so heat spent on a few big islands leaves gaps; a chain spread whole runs together into one |
 | Moon | flood the basins | the share of lava kept in the basins | flooding fast spills; flooding neatly is slower |
-| Mars | 28 km high | the base's width, 5 km up | a narrow peak rises fastest; a broad shield lasts through the storms |
+| Mars | 22 km high | the base's width, 5 km up | a narrow peak rises fastest; a broad shield lasts through the storms |
 | Ice moon | 70% new | the largest single sheet | new ice everywhere covers most; one sheet means staying |
 | Io | 8 great plumes | the widest plume's ring, in km across | the widest needs the pressure held deep into the tide, near where the cone blows apart |
 | Enceladus | the ring full | how much of the moon is frosted new | every burst aimed at the ring is frost the moon doesn't get |
