@@ -47,7 +47,8 @@ import { handleDrafts } from './drafts';
 import { handleSurface } from './surface';
 import { offThread } from './offthread';
 import { snapshotOf, restoreInto, keep, recall, forget, keepGround, recallGround, forgetGround, keepPage, pages, type Page } from './save';
-import { worldOf, nextWorld, WORLDS, CHAPTERS, chapterOf } from './worlds';
+import { worldOf, nextWorld, WORLDS, CHAPTERS, chapterOf, type WorldId } from './worlds';
+import { skySvg } from './atlasSky';
 import { Chain, CHAIN } from './chain';
 import { measureSecond, type Second } from './second';
 import { loadSystem, saveSystem, worldFor, recordPlayed, madeCount } from './system';
@@ -2158,10 +2159,20 @@ void pages().then((all) => {
   if (!all.length) return;
   moreLink(`The atlas · ${all.length} ${all.length === 1 ? 'chart' : 'charts'} kept`, () => openAtlas(all));
 });
-function openAtlas(all: Page[]): void {
+function openAtlas(all: Page[], only: string | null = null): void {
   const box = $('atlas'), list = box.querySelector('.pages')!, view = box.querySelector('.view img') as HTMLImageElement;
+  // The sky first: touch a world made to see its plates, one still to play to go and play it.
+  const sky = box.querySelector('.sky') as HTMLElement;
+  sky.innerHTML = skySvg(all, WORLD.id);
+  sky.querySelectorAll('[data-world]').forEach((el) => el.addEventListener('click', () => {
+    const id = (el as HTMLElement).dataset.world!;
+    if (all.some((p) => p.world === id)) { openAtlas(all, only === id ? null : id); return; }
+    remember('volcano.world', id);
+    location.search = `?world=${id}`;
+  }));
+  (box.querySelector('.plates-head') as HTMLElement).textContent = only ? `${worldOf(only as WorldId).title}: its plates (touch it again for all)` : 'The plates';
   list.innerHTML = '';
-  for (const p of all.slice().reverse()) {
+  for (const p of all.slice().reverse().filter((q) => !only || q.world === only)) {
     const fig = document.createElement('figure'), img = new Image(), cap = document.createElement('figcaption'), when = document.createElement('small');
     img.src = p.image; img.alt = `${p.title}: ${p.summary}`;
     cap.textContent = `${p.world ? worldOf(p.world).numeral : p.numeral} · ${p.title}`;
@@ -2408,4 +2419,4 @@ renderer.setAnimationLoop(() => {
   turnedSince();
 });
 
-if (import.meta.env.DEV) (window as unknown as { volcano: unknown }).volcano = { sky, haze, planet, group, base, renderer, scene, camera, puffs, ecology, islands, rotate, draw, save, world, frameCost, kindDots, chain: () => chain, aim: () => aimInk, lines: () => { lastLines = -1; redrawLines(1e6); }, life: () => { lastLife = -10; redrawLife(1e6); }, replayKeep: () => keepReplayFrame(), replayCount: () => replayFrames.length, replaying: () => (replaying ? replayShown : -1), settle: (d = 3.6) => { lift = 0; dist = d; begunAt = -100; zoomedAt = seconds; look(); } };
+if (import.meta.env.DEV) (window as unknown as { volcano: unknown }).volcano = { atlas: (all: Page[]) => openAtlas(all), sky, haze, planet, group, base, renderer, scene, camera, puffs, ecology, islands, rotate, draw, save, world, frameCost, kindDots, chain: () => chain, aim: () => aimInk, lines: () => { lastLines = -1; redrawLines(1e6); }, life: () => { lastLife = -10; redrawLife(1e6); }, replayKeep: () => keepReplayFrame(), replayCount: () => replayFrames.length, replaying: () => (replaying ? replayShown : -1), settle: (d = 3.6) => { lift = 0; dist = d; begunAt = -100; zoomedAt = seconds; look(); } };
