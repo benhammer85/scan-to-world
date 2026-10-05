@@ -37,6 +37,9 @@
  *   The orange Earth turn the sky blue, and past it: more oxygen than it needs.
  *   Europa          break the ice into chaos, and as much of it as can be: big fields cost time.
  *   Triton          lay the geyser streaks, and darken as much of the ice as can be: bigger geysers, held longer.
+ *   Ol Doinyo Lengai a white summit, and as much of the mountain white as can be: pours that build it blacken it.
+ *   Kawah Ijen      light the night, and as much of the crater, ever: pouring wide and pouring new pull apart.
+ *   Hunga Tonga     send the waves, and more: every one needs the cone built again.
  *   Mercury         raise the far side, and the near side as little: bursts heap ash here too.
  *   A lava world    make rock snow, and pile it deep in one place: snow spreads along all the edge
  *                   of night, and turning the world to pile it costs the molten pool.
@@ -74,6 +77,9 @@ export function secondWords(goal: World['goal'], value: number): string {
     case 'snow': return `drifts ${value} km deep`;
     case 'gather': return `${value} stones gathered`;
     case 'antipode': return `the near side ${value} km high`;
+    case 'white': return `${value}% of the mountain white`;
+    case 'glow': return `${value}% of the crater ever lit`;
+    case 'waves': return `${value} waves`;
     case 'oxygen': return `${value}% more oxygen than the sky needed`;
     case 'chaos': return `${value}% of the ice broken`;
     case 'streaks': return `${value}% of the ice streaked`;
@@ -142,6 +148,14 @@ export function measureSecond(world: World, pl: Planet, topo: Topology, islands:
   } else if (world.goal === 'outbuild') {
     const laid = Math.max(0, pl.grownBy) + pl.lost;
     value = laid > 0 ? Math.round((100 * Math.max(0, pl.grownBy)) / laid) : 0;
+  } else if (world.goal === 'white') {
+    value = Math.round(pl.whiteShare * 100);
+  } else if (world.goal === 'glow') {
+    let lit = 0;
+    for (let v = 0; v < n; v++) if (pl.age[v] < 1e5) lit++;
+    value = Math.round((100 * lit) / n);
+  } else if (world.goal === 'waves') {
+    value = pl.waves.length;
   } else if (world.goal === 'antipode') {
     // (The near mountain: the second aim is to keep it low, every burst sent through rather than heaped here.)
     value = Math.round(Math.max(0, pl.summit) * (world.height?.kmPerUnit ?? 40));

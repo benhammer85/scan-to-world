@@ -18,7 +18,7 @@ const run = (pl: Planet, seconds: number) => { for (let t = 0; t < seconds; t +=
 
 describe('the worlds', () => {
   it('come one after another, and each has its own aim', () => {
-    expect(WORLDS.map((w) => w.id)).toEqual(['mars', 'moon', 'ice', 'asteroid', 'rogue', 'first', 'young', 'archean', 'snowball', 'ocean', 'io', 'europa', 'enceladus', 'triton', 'tumble', 'mercury', 'magma', 'dust', 'spin', 'deep', 'lamp']);
+    expect(WORLDS.map((w) => w.id)).toEqual(['mars', 'moon', 'ice', 'asteroid', 'rogue', 'first', 'young', 'archean', 'snowball', 'ocean', 'lengai', 'ijen', 'tonga', 'io', 'europa', 'enceladus', 'triton', 'tumble', 'mercury', 'magma', 'dust', 'spin', 'deep', 'lamp']);
     expect(worldOf('moon').goal).toBe('basins');
     expect(worldOf('nowhere').id).toBe('mars');
     expect(nextWorld(worldOf('mars'))!.id).toBe('moon');
@@ -30,7 +30,10 @@ describe('the worlds', () => {
     expect(nextWorld(worldOf('young'))!.id).toBe('archean');
     expect(nextWorld(worldOf('archean'))!.id).toBe('snowball');
     expect(nextWorld(worldOf('snowball'))!.id).toBe('ocean');
-    expect(nextWorld(worldOf('ocean'))!.id).toBe('io');
+    expect(nextWorld(worldOf('ocean'))!.id).toBe('lengai');
+    expect(nextWorld(worldOf('lengai'))!.id).toBe('ijen');
+    expect(nextWorld(worldOf('ijen'))!.id).toBe('tonga');
+    expect(nextWorld(worldOf('tonga'))!.id).toBe('io');
     expect(nextWorld(worldOf('io'))!.id).toBe('europa');
     expect(nextWorld(worldOf('europa'))!.id).toBe('enceladus');
     expect(nextWorld(worldOf('enceladus'))!.id).toBe('triton');

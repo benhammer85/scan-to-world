@@ -33,7 +33,7 @@ const chain = W.goal === 'ring' ? new Chain(pl.plume, pl.driftDirection) : null;
 const HEIGHT = W.height ?? { target: 0, kmPerUnit: 40 };
 const CALM = W.calm ?? 0, ISLAND = W.island ?? 0, POOL = W.pool ?? 0, ROUND = Math.round((W.round ?? 0) * 100), COVER = Math.round((W.cover ?? 0) * 100), PLUMES = W.plumes ?? 0, ORBIT = W.orbit ?? 0;
 const HEARTH = W.hearth ?? 0, OUTBUILD = W.outbuild ?? 0, SNOWFALL = W.snowfall ?? 0, GATHER = W.gather ?? 0, OXYGEN = W.oxygen ?? 0, FIELDS = W.fields ?? 0;
-let calmHeld = 0, calmAt = 0;
+let calmHeld = 0, calmAt = 0, litFor = 0, litAt = 0;
 function aim(): [number, number] {
   switch (W.goal) {
     case 'ring': return [chain!.update(pl, topo), CHAIN.stretches];
@@ -52,6 +52,9 @@ function aim(): [number, number] {
     case 'snow': return [(100 * pl.snow) / SNOWFALL, 100];
     case 'gather': return [pl.tally.caught, GATHER];
     case 'antipode': return [pl.farRaised * HEIGHT.kmPerUnit, W.farKm ?? 0];
+    case 'white': { const km = Math.max(0, pl.summit * HEIGHT.kmPerUnit); return [km < HEIGHT.target ? (50 * km) / HEIGHT.target : 50 + 50 * Math.min(1, pl.whiteSummit / (W.whiteness ?? 1)), 100]; }
+    case 'glow': { if (pl.burning >= (W.glow ?? 1)) litFor += pl.seconds - litAt; litAt = pl.seconds; return [(100 * litFor) / 120, 100]; }
+    case 'waves': return [pl.waves.length, W.rings ?? 0];
     case 'oxygen': return [(100 * pl.oxygen) / OXYGEN, 100];
     case 'chaos': case 'streaks': return [pl.plumes.length, FIELDS];
     default: return [pl.basins.filter((b) => pl.flooded(b) >= 0.7).length, pl.basins.length];
@@ -236,6 +239,17 @@ const card: Record<string, Bot> = {
     timer -= dt; turnTowards(focus, dt, 0.3);
     pourCycle(null, 0.45);
   },
+  // Pour a little, each time a different way round the cone.
+  // Build the peak; then hold still while the summit whitens.
+  white: () => { if (pl.summit * HEIGHT.kmPerUnit < HEIGHT.target) return pourCycle(null); if (!pl.clamped) clampOn(); level(); if (pl.pressure > pl.capNow * 0.95) lift(); },
+  // Pour thin and wide, a new way each time.
+  glow: (dt) => {
+    if (!focus || (phase === 'build' && timer <= 0)) { const v = vent(), t = V(0, 1, 0).cross(v).normalize(); focus = v.clone().addScaledVector(t.applyAxisAngle(v, pl.tally.flows * 1.1), 0.35).normalize(); timer = 20; }
+    timer -= dt; turnTowards(focus, dt, 0.3);
+    pourCycle(null, 0.75);
+  },
+  // Build until just under the sea, then hold and burst.
+  waves: () => { if (pl.rock[pl.plumeVertex] < -pl.k.wave * 0.7) { if (pl.clamped) lift(); return pourCycle(null); } if (!pl.clamped) clampOn(); level(); if (pl.pressure >= pl.k.explosive * 1.05) lift(); },
   // Hold until heavy, and lift: the shock goes through.
   antipode: () => { if (!pl.clamped) clampOn(); level(); if (pl.pressure >= pl.k.explosive * 1.6) lift(); else if (pl.pressure > pl.capNow * 0.9) lift(); },
   // Hold, and lift while the smoke is light; then turn somewhere apart for the next.

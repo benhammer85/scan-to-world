@@ -347,6 +347,22 @@ export const VOLCANO = {
    */
   antipode: 0,
   antipodeDelay: 6,
+  /**
+   * Ol Doinyo Lengai's carbonatite: lava set this many seconds ago turns from black to white, as its
+   * soda lava does in a day or two (0: it doesn't); how white the cone is is reckoned within
+   * `whiteReach` (radians) of the vent.
+   */
+  whiteAt: 0,
+  whiteReach: 0.35,
+  /** Kawah Ijen: sulphur burning blue as it runs, and still glowing this many seconds after it sets (0: none). */
+  burns: 0,
+  /**
+   * Hunga Tonga: a burst from a vent just under the sea, no deeper than this, is the kind that shakes
+   * the air: a pressure wave rings the whole world. Any burst from as high or higher blows the cone
+   * apart, `waveDig` of it gone. 0: none.
+   */
+  wave: 0,
+  waveDig: 0.08,
   real: '' as '' | RealName,
   realScale: 0.04,
   realRadius: 1737,
@@ -486,6 +502,36 @@ export class Planet {
   greenhouse = 0;
   iceLine = 0;
   thawed = false;
+  /** Ol Doinyo Lengai: the share of the cone (within `whiteReach` of the vent) that its lava has turned white. */
+  get whiteShare(): number {
+    const p = this.topo.basePositions, q = this.plume;
+    let all = 0, white = 0;
+    for (let v = 0; v < this.rock.length; v++) {
+      if (Math.hypot(p[v * 3] - q.x, p[v * 3 + 1] - q.y, p[v * 3 + 2] - q.z) > this.k.whiteReach) continue;
+      all++;
+      if (this.laid[v] < 1e5 && this.laid[v] >= this.k.whiteAt && this.lava[v] < this.k.thin) white++; // (lava set there a while: ash doesn't whiten)
+    }
+    return all ? white / all : 0;
+  }
+  /** Ol Doinyo Lengai: the share of its summit (within 0.1 of the vent) turned white. */
+  get whiteSummit(): number {
+    const p = this.topo.basePositions, q = this.plume;
+    let all = 0, white = 0;
+    for (let v = 0; v < this.rock.length; v++) {
+      if (Math.hypot(p[v * 3] - q.x, p[v * 3 + 1] - q.y, p[v * 3 + 2] - q.z) > 0.1) continue;
+      all++;
+      if (this.laid[v] < 1e5 && this.laid[v] >= this.k.whiteAt && this.lava[v] < this.k.thin) white++;
+    }
+    return all ? white / all : 0;
+  }
+  /** Kawah Ijen: how much of the world its blue fire lights now (in vertices of a planet of the drawn detail): lava running, or set within `burns` seconds. */
+  get burning(): number {
+    let c = 0;
+    for (let v = 0; v < this.rock.length; v++) if (this.lava[v] > this.k.thin || (this.laid[v] < this.k.burns && this.age[v] < 1e5)) c++;
+    return c / this.scale;
+  }
+  /** Hunga Tonga: the pressure waves sent round the world: where they began, and when. */
+  readonly waves: { x: number; y: number; z: number; at: number }[] = [];
   /** Mercury: the far side, opposite where the heat began (with the width its mountain is measured across); what's on its way there; and how many have arrived. */
   far: { x: number; y: number; z: number; r: number } | null = null;
   private echoes: { at: number; volume: number }[] = [];
@@ -873,6 +919,16 @@ export class Planet {
     // Where there's no air, the bigger the burst, the further its ash flies; and on a tidal moon,
     // further at high tide.
     const strength = this.throwOf(volume), far = this.k.ashRing > 0 ? Math.sqrt(strength / this.k.explosive) : 1;
+    // Hunga Tonga (before its ash falls on the vent): a burst through shallow water shakes the air round the world, and blows the cone apart.
+    // (Above the sea too, the cone is blown apart, as the real island was; but only through shallow water does the wave go round.)
+    if (!blast && this.k.wave > 0 && this.rock[v] > -this.k.wave) {
+      const p = this.topo.basePositions, shallow = this.rock[v] < 0;
+      for (let w = 0; w < this.rock.length; w++) { const d = Math.hypot(p[w * 3] - p[v * 3], p[w * 3 + 1] - p[v * 3 + 1], p[w * 3 + 2] - p[v * 3 + 2]); if (d < 0.14) this.rock[w] -= this.k.waveDig * (1 - (d / 0.14) ** 2); }
+      if (shallow) {
+        this.waves.push({ x: p[v * 3], y: p[v * 3 + 1], z: p[v * 3 + 2], at: this.seconds });
+        this.tell(`The air shakes round the world: ${this.waves.length}`);
+      } else this.tell('The island is blown apart, but in the open air the shock dies away');
+    }
     // (On Triton, a burst in sunlight is a geyser: all its plume blown downwind into a streak.)
     const geysering = !blast && this.k.streak > 0 && !!this.star && this.dayAt(this.plumeVertex) > 0.2;
     if (geysering) this.geyser(left * this.k.ashShare * s);
@@ -1397,7 +1453,7 @@ export class Planet {
       // (On a lava world, facing its star, it hardly cools at all.)
       const baked = this.k.dayCool < 1 && this.star ? 1 + (this.k.dayCool - 1) * this.dayAt(v) : 1;
       const solid = l < 1e-7 ? l : l * (1 - Math.exp(-(l < this.k.thin ? THIN_SETS : (sea ? this.k.coolSea * tube : this.k.coolLand * edge) * baked) * LAVA_PACE * dt));
-      if (solid > 0) this.laid[v] = 0;
+      if (solid > 2e-5) this.laid[v] = 0; // (a layer, not a trace: a last trickle setting doesn't make it fresh again)
       this.lava[v] -= solid;
       this.rock[v] += solid;
       if (l > this.k.cover) { if (this.life[v] > 0.05) this.scorch[v] = 1; this.age[v] = 0; this.life[v] = 0; this.grown[v] = 0; this.ash[v] = 0; this.rich[v] = 0; }
