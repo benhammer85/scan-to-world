@@ -49,6 +49,7 @@ import { offThread } from './offthread';
 import { snapshotOf, restoreInto, keep, recall, forget, keepGround, recallGround, forgetGround, keepPage, pages, type Page } from './save';
 import { worldOf, nextWorld, WORLDS, chapterOf, type WorldId } from './worlds';
 import { openGlobe, type Globe } from './atlasGlobe';
+import { keepsakeOf, turningGlobe } from './keepsakeGlobe';
 import { Chain, CHAIN } from './chain';
 import { measureSecond, type Second } from './second';
 import { loadSystem, saveSystem, worldFor, recordPlayed, madeCount } from './system';
@@ -1979,7 +1980,7 @@ function intoTheAtlas(): void {
   small.width = 480; small.height = Math.round(480 * big.height / big.width);
   small.getContext('2d')!.drawImage(big, 0, 0, small.width, small.height);
   const i = ending.info;
-  void keepPage({ world: WORLD.id, numeral: WORLD.numeral, title: i.title, subtitle: i.subtitle, summary: i.summary, when: Date.now(), image: small.toDataURL('image/jpeg', 0.82), portrait: portrait || undefined });
+  void keepPage({ world: WORLD.id, numeral: WORLD.numeral, title: i.title, subtitle: i.subtitle, summary: i.summary, when: Date.now(), image: small.toDataURL('image/jpeg', 0.82), portrait: portrait || undefined, globe: keepsakeOf(planet) });
 }
 
 // ---------------------------------------------------------------- held like a globe
@@ -2199,7 +2200,8 @@ void pages().then((all) => {
   if (!all.length) return;
   moreLink(`The atlas · ${all.length} ${all.length === 1 ? 'chart' : 'charts'} kept`, () => openAtlas(all));
 });
-let globeView: Globe | null = null;
+let atlasPick: ((id: WorldId) => void) | null = null;
+let globeView: Globe | null = null, cardGlobe: { dispose(): void } | null = null;
 function openAtlas(all: Page[], only: string | null = null): void {
   const box = $('atlas'), list = box.querySelector('.pages')!, view = box.querySelector('.view img') as HTMLImageElement;
   // The sky first, as a celestial globe: touch any world on it, and a small card rises: the world as
@@ -2207,11 +2209,12 @@ function openAtlas(all: Page[], only: string | null = null): void {
   const sky = box.querySelector('.sky') as HTMLElement;
   const pick = box.querySelector('.pick') as HTMLElement;
   globeView?.dispose();
-  globeView = openGlobe(sky, all, WORLD.id, (id) => {
+  globeView = openGlobe(sky, all, WORLD.id, atlasPick = (id) => {
     const w = worldOf(id), made = all.filter((p) => p.world === id), last = made[made.length - 1];
+    // The world as a little globe, turning: as it was left, or (still to make) its ground untouched.
     const globe = pick.querySelector('.globe') as HTMLElement;
-    globe.className = last ? 'globe' : 'globe unmade';
-    globe.style.backgroundImage = last?.portrait ? `url(${last.portrait})` : '';
+    cardGlobe?.dispose();
+    cardGlobe = turningGlobe(globe, topo, id, last?.globe, () => new Planet(topo, START, 11, worldOf(id).rules));
     (pick.querySelector('.t') as HTMLElement).textContent = w.title;
     (pick.querySelector('.k') as HTMLElement).textContent = w.first;
     (pick.querySelector('.plates') as HTMLElement).hidden = !made.length;
@@ -2237,14 +2240,14 @@ $('atlas').querySelector('.view')!.addEventListener('click', () => $('atlas').cl
 {
   const pick = $('atlas').querySelector('.pick') as HTMLElement;
   // (Touching outside the card puts it away.)
-  pick.addEventListener('click', (e) => { if (e.target === pick) pick.classList.remove('shown'); });
+  pick.addEventListener('click', (e) => { if (e.target === pick) { pick.classList.remove('shown'); cardGlobe?.dispose(); cardGlobe = null; } });
   pick.querySelector('.go')!.addEventListener('click', () => { const id = pick.dataset.world!; remember('volcano.world', id); location.search = `?world=${id}`; });
   pick.querySelector('.plates')!.addEventListener('click', () => {
     pick.classList.remove('shown');
     void pages().then((all) => { openAtlas(all, pick.dataset.world!); $('atlas').querySelector('.plates-head')!.scrollIntoView({ behavior: 'smooth' }); });
   });
 }
-$('atlas').querySelector('.close')!.addEventListener('click', () => { $('atlas').classList.remove('open', 'viewing'); globeView?.dispose(); globeView = null; });
+$('atlas').querySelector('.close')!.addEventListener('click', () => { $('atlas').classList.remove('open', 'viewing'); globeView?.dispose(); globeView = null; cardGlobe?.dispose(); cardGlobe = null; $('atlas').querySelector('.pick')!.classList.remove('shown'); });
 // A world with a past can be begun afresh, on new ground.
 if (FIRES) moreLink('Begin this world on new ground', () => { forgetGround(GROUND_KEY); void forget(); setTimeout(() => location.reload(), 200); });
 // A world without life has no key of its kinds.
@@ -2484,4 +2487,4 @@ renderer.setAnimationLoop(() => {
   turnedSince();
 });
 
-if (import.meta.env.DEV) (window as unknown as { volcano: unknown }).volcano = { atlas: (all: Page[]) => openAtlas(all), sky, haze, planet, held, portrait: () => { renderer.render(scene, camera); return portraitOf(renderer.domElement); }, group, base, renderer, scene, camera, puffs, ecology, islands, rotate, draw, save, world, frameCost, kindDots, chain: () => chain, aim: () => aimInk, lines: () => { lastLines = -1; redrawLines(1e6); }, life: () => { lastLife = -10; redrawLife(1e6); }, replayKeep: () => keepReplayFrame(), replayCount: () => replayFrames.length, replaying: () => (replaying ? replayShown : -1), settle: (d = 3.6) => { lift = 0; dist = d; begunAt = -100; zoomedAt = seconds; look(); } };
+if (import.meta.env.DEV) (window as unknown as { volcano: unknown }).volcano = { atlas: (all: Page[]) => openAtlas(all), sky, haze, planet, held, keepsake: () => keepsakeOf(planet), pick: (id: WorldId) => atlasPick?.(id), portrait: () => { renderer.render(scene, camera); return portraitOf(renderer.domElement); }, group, base, renderer, scene, camera, puffs, ecology, islands, rotate, draw, save, world, frameCost, kindDots, chain: () => chain, aim: () => aimInk, lines: () => { lastLines = -1; redrawLines(1e6); }, life: () => { lastLife = -10; redrawLife(1e6); }, replayKeep: () => keepReplayFrame(), replayCount: () => replayFrames.length, replaying: () => (replaying ? replayShown : -1), settle: (d = 3.6) => { lift = 0; dist = d; begunAt = -100; zoomedAt = seconds; look(); } };

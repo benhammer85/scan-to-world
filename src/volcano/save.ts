@@ -116,7 +116,7 @@ export function forgetGround(world: string): void {
  * The atlas: every world's chart, kept as a page when it's drawn, to leaf through afterwards. A
  * small picture of the plate and what it says, oldest first; the last sixty kept.
  */
-export interface Page { world: string; numeral: string; title: string; subtitle: string; summary: string; when: number; image: string; /** The world itself, small and round, as it was left: for its star in the atlas. */ portrait?: string }
+export interface Page { world: string; numeral: string; title: string; subtitle: string; summary: string; when: number; image: string; /** The world itself, small and round, as it was left: for its star in the atlas. */ portrait?: string; /** Its ground as it was left, packed (keepsakeGlobe): for the little globe on its card. */ globe?: string }
 const ATLAS = 'atlas';
 
 export async function keepPage(page: Page): Promise<void> {
