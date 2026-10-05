@@ -255,7 +255,7 @@ export function printFragment(look: Look, sea: boolean): string {
 
       // Lava's marks.
       float lv = vMarks.y * onLand, lw = max(fwidth(lv), 1e-4); // (under the sea it's hidden, as it always was)
-      float here = vMarks.w + 0.1 * (b2 - 0.5) + 0.12 * (noise3(vDir * 38.0 + 5.0) - 0.5), hw = max(fwidth(here), 1e-4) * 1.6, setOn = smoothstep(0.5 - hw, 0.5 + hw, here) * onLand; // (a little wobble and a softer edge, so the mesh's triangles don't show as teeth)
+      float here = vMarks.w + 0.09 * (noise3(vDir * 21.0 + 5.0) - 0.5), hw = max(fwidth(here), 1e-4) * 1.6, setOn = smoothstep(0.5 - hw, 0.5 + hw, here) * onLand; // (a little wobble and a softer edge, so the mesh's triangles don't show as teeth)
       float black = here > 0.01 ? clamp(vMarks.z / here, 0.0, 1.0) : 0.0;
 
       // Stipple: crowded along the shore, thinning inland, gathering on slopes turned from the light,
@@ -494,9 +494,9 @@ const PRINT = (q: boolean) => /* glsl */ `
         float ang = atan(dot(vDir, vt2), dot(vDir, vt1));
         // (Its edges wobble irregularly, at about the size of the mesh's triangles, so what's left of
         // their teeth, seen close, doesn't line up into a saw.)
-        float wob = 0.16 * (noise3(vDir * 38.0 + vec3(0.0, tq * ${q ? '0.035' : '0.1'}, tq * ${q ? '0.025' : '0.07'})) - 0.5) + 0.07 * (noise3(vDir * 110.0 + 2.0) - 0.5); // (heaving slowly: a living surface, not a still one)
+        float wob = 0.12 * (noise3(vDir * 21.0 + vec3(0.0, tq * ${q ? '0.035' : '0.1'}, tq * ${q ? '0.025' : '0.07'})) - 0.5); // (heaving slowly, in broad rounded lobes, as a flow's toes are: a finer wobble made its edge ragged)
         float lvR = lv + wob;
-        float lwr = max(fwidth(lvR), 1e-4) * 0.8, cov = smoothstep(0.5 - lwr, 0.5 + lwr, lvR);
+        float lwr = max(fwidth(lvR), 1e-4) * 1.4, cov = smoothstep(0.5 - lwr, 0.5 + lwr, lvR); // (a soft edge a pixel or so wide: crisper, the mesh's steps showed as a fine saw along it)
         // Its heat: the core follows the deepest lava, down the flow (the vent warms it only a little,
         // or the core sat round the vent like a yolk), pinching and swelling along its length as it's carried.
         vec2 pol = vec2(cos(ang), sin(ang)) * far;
@@ -568,14 +568,16 @@ const PRINT = (q: boolean) => /* glsl */ `
           // (And for running lava, rafts rather than a net of plates: a slow, warped field carried down the
           // flow; where it's high, a raft of crust floats; few and small while it's hot, joining as it cools.)
           vec2 fr = rid * 30.0 + 1.6 * vec2(noise3(vDir * 6.0 + 1.3), noise3(vDir * 6.0 + 8.1));
-          float raftF = noise3(vec3(fr, tq * 0.05)) * 0.85 + noise3(vec3(fr * 2.3 + 4.0, tq * 0.08)) * 0.15; // (rounded rafts: more of the second scale made them jagged, like camouflage)
+          vec2 fr2 = mat2(0.8, -0.6, 0.6, 0.8) * fr * 0.75;
+          float raftF = 0.5 * (noise3(vec3(fr * 0.75, tq * 0.05)) + noise3(vec3(fr2 + 11.0, tq * 0.05 + 3.0))); // (one broad scale, twice, turned against each other: rounded rafts, as crust on running lava is; a finer scale tore their edges, and one alone left the noise's grid in square corners)
+          raftF = 0.5 + (raftF - 0.5) * 1.6;
           float run = max(T, uFeeding * 0.62 * smoothstep(0.5, 0.9, lvR)); // (while the vent feeds it, all the running lava is molten under its skin, thin or deep)
           float pfw = max(fwidth(pl.x), 1e-4), hot = smoothstep(0.2, 0.65, run);
           // Molten while it runs: the plates are islands of crust on a bright liquid, wide apart while the vent
           // feeds it and it's hot, closing into a skin as it slows and cools (as every game's lava that reads
           // as lava at a glance is: bright, moving, with dark crust floating on it).
           float molten = smoothstep(0.15, 0.55, run) * mix(0.45, 1.0, uFeeding) * (0.6 + 0.4 * exp(-far / 0.25));
-          float raftAt = mix(0.34, 0.84, molten), rfw = max(fwidth(raftF), 1e-4) * 1.2;
+          float raftAt = mix(0.34, 0.84, molten), rfw = max(fwidth(raftF), 1e-4) * 2.0;
           float seam = (1.0 - smoothstep(raftAt - rfw, raftAt + rfw, raftF)) * smoothstep(0.2, 0.5, run);
           // The skin itself: rough at two scales, as a'a is, and folded along the flow (the level lines of how
           // deep it lies), as pahoehoe's ropes are, faintly, as an engraver would cut them.
@@ -610,7 +612,7 @@ const PRINT = (q: boolean) => /* glsl */ `
           // A skin forming over the heat: dark plates closing over it from its edge in, the glow showing
           // only in the cracks between them, wider nearer the mouth. (A bare blob of graded heat looked airbrushed.)
           float skinW = 0.04 + 0.22 * smoothstep(0.6, 0.95, heatV);
-          float skinOver = smoothstep(skinW, skinW + pfw * 1.5, pl.x) * (1.0 - smoothstep(0.9, 0.97, heatV));
+          float skinOver = smoothstep(0.62 - 0.3 * smoothstep(0.6, 0.95, heatV) - rfw, 0.62 - 0.3 * smoothstep(0.6, 0.95, heatV) + rfw, raftF) * (1.0 - smoothstep(0.9, 0.97, heatV)); // (the skin closing over the heat in rounded rafts too: a net of plates there read as a honeycomb)
           open *= 1.0 - skinOver * 0.7;
           vec3 glowCol = mix(deep * 1.15, verm, band2);
           glowCol = mix(glowCol, yel, band3);
@@ -626,7 +628,7 @@ const PRINT = (q: boolean) => /* glsl */ `
           liquid = mix(liquid, vec3(1.0, 0.9, 0.62), smoothstep(0.82, 1.0, ripple) * hot * 0.45);
           // Darker veins swirling through it, carried with it: the skin of the liquid itself, cooling in threads.
           float vn = noise3(vec3(fr * 1.7 + 3.0, tq * 0.25)), vw = max(fwidth(vn), 1e-4) * 1.5;
-          float vein = (1.0 - smoothstep(0.012, 0.012 + vw, abs(vn - 0.5))) * (0.5 + 0.5 * (1.0 - hot)) * smoothstep(0.02, 0.07, far); // (not at the very mouth, where the flow's carrying squeezes them into rings)
+          float vein = (1.0 - smoothstep(0.0, 0.09, abs(vn - 0.5))) * (0.5 + 0.5 * (1.0 - hot)) * smoothstep(0.02, 0.07, far) * 0.6; // (broad and soft, a shading in the liquid: thin lines read as a maze; and not at the very mouth, where the carrying squeezes them into rings)
           liquid = mix(liquid, lRed * 0.7, vein * 0.6);
           // A raft's edge glows where the liquid meets it: a thin bright line, its crust's hot underside.
           float raftEdge = 1.0 - smoothstep(0.0, rfw * 2.5, abs(raftF - raftAt));
