@@ -1,7 +1,7 @@
 /**
  * The atlas as a night sky, engraved as the old star atlases were: each chapter a constellation,
- * its figure one of Johann Bayer's (Uranometria, 1603, engraved by Alexander Mair; from the 1655
- * edition), cleaned of its chart's grid and printed pale on night blue. Each world sits on one of the
+ * its figure one of Johann Bayer's (Uranometria, 1603, engraved by Alexander Mair; from the ETH
+ * Library Zurich's copy on e-rara.ch, marked public domain), cleaned of its chart's grid and printed pale on night blue. Each world sits on one of the
  * figure's own stars. The figure is a faint ghost until its worlds are made: each world made inks the
  * figure round it, and a chapter played through shows it whole. A world made is the world itself,
  * small and round as it was left; one still to play, a small pencilled circle.
@@ -23,8 +23,8 @@ interface Figure { name: string; src: string; w: number; h: number; stars: [numb
 const FIGURES: Record<string, Figure> = {
   // I · Our neighbours: the Great Bear, the most familiar figure in our sky; its worlds on the Dipper (η, ζ, ε, δ, α).
   I: { name: 'Ursa Major', src: ursa, w: 820, h: 672, stars: [[58, 93], [178, 50], [233, 93], [305, 140], [476, 173]] },
-  // II · One world, through time: the Hydra, the ancient sea-serpent, from its tail to its jaws.
-  II: { name: 'Hydra', src: hydra, w: 820, h: 417, stars: [[292, 297], [410, 232], [507, 206], [598, 291], [690, 172]] },
+  // II · One world, through time: the Hydra, the long water-serpent, from its tail to its head (γ, β, θ, α, ζ).
+  II: { name: 'Hydra', src: hydra, w: 820, h: 269, stars: [[117, 50], [270, 213], [412, 133], [580, 138], [712, 38]] },
   // III · Strange fires: the Dragon: its tail, its coil, its head.
   III: { name: 'Draco', src: draco, w: 677, h: 818, stars: [[80, 710], [182, 262], [293, 80]] },
   // IV · Pressure: Hercules, straining: club, face, shoulder, hip, knee and foot.
@@ -77,6 +77,7 @@ export function skySvg(pages: Page[], here: WorldId): string {
     starsOf(ci).forEach((p, i) => { if (all || latest.has(c.worlds[i])) parts.push(`<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${all ? 900 : 95}" fill="url(#reveal)"/>`); });
     parts.push('</mask>');
     starsOf(ci).forEach((p, i) => parts.push(`<clipPath id="w${ci}-${i}"><circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="12.5"/></clipPath>`));
+    starsOf(ci).forEach((p, i) => parts.push(`<clipPath id="u${ci}-${i}"><circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="8"/></clipPath>`));
   });
   parts.push('</defs>');
   CHAPTERS.forEach((c, ci) => {
@@ -104,12 +105,16 @@ export function skySvg(pages: Page[], here: WorldId): string {
         else parts.push(`<circle cx="${(p.x + 4).toFixed(1)}" cy="${(p.y + 3).toFixed(1)}" r="9" fill="${w.palette.basalt}" opacity="0.4" clip-path="url(#w${ci}-${i})"/>`);
         parts.push(`<circle cx="${x}" cy="${y}" r="13" fill="none" stroke="${GOLD}" stroke-width="1"/>`);
       } else {
-        // Still to play: a small gold star, ringed in pencil.
-        parts.push(`<circle cx="${x}" cy="${y}" r="7" fill="${NIGHT}" stroke="${PALE}" stroke-width="0.8" stroke-dasharray="1.5 2" opacity="0.8"/>`);
-        parts.push(`<circle cx="${x}" cy="${y}" r="1.8" fill="${GOLD}"/>`);
+        // Still to play: the world small, in its own colours, lit from the upper left, its night side
+        // shaded, ringed in pencil: so every star shows its world, made or not.
+        const P = w.palette;
+        parts.push(`<circle cx="${x}" cy="${y}" r="8" fill="${P.paper}" opacity="0.92"/>`);
+        parts.push(`<circle cx="${(p.x + 3).toFixed(1)}" cy="${(p.y + 2.5).toFixed(1)}" r="7" fill="${P.basalt}" opacity="0.45" clip-path="url(#u${ci}-${i})"/>`);
+        parts.push(`<circle cx="${(p.x + 5).toFixed(1)}" cy="${(p.y + 4).toFixed(1)}" r="7.5" fill="${NIGHT}" opacity="0.35" clip-path="url(#u${ci}-${i})"/>`);
+        parts.push(`<circle cx="${x}" cy="${y}" r="8.6" fill="none" stroke="${PALE}" stroke-width="0.7" stroke-dasharray="1.5 2" opacity="0.7"/>`);
       }
-      if (id === here) parts.push(`<circle cx="${x}" cy="${y}" r="${page ? 17 : 11}" fill="none" stroke="${GOLD}" stroke-width="0.7"/>`);
-      parts.push(`<text x="${x}" y="${(p.y + (page ? 25 : 19)).toFixed(1)}" font-size="9" text-anchor="middle" fill="${PALE}" opacity="${page ? 0.9 : 0.55}">${w.numeral}</text>`);
+      if (id === here) parts.push(`<circle cx="${x}" cy="${y}" r="${page ? 17 : 12}" fill="none" stroke="${GOLD}" stroke-width="0.7"/>`);
+      parts.push(`<text x="${x}" y="${(p.y + (page ? 25 : 20)).toFixed(1)}" font-size="9" text-anchor="middle" fill="${PALE}" opacity="${page ? 0.9 : 0.55}">${w.numeral}</text>`);
       parts.push('</g>');
     });
   });
