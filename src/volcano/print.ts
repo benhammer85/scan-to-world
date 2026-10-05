@@ -178,6 +178,14 @@ export const PRINT_FUNCTIONS = /* glsl */ `
 export function printFragment(look: Look, sea: boolean): string {
   return /* glsl */ `
       float px = max(length(dFdx(vDir)), length(dFdy(vDir)));
+      // How many pixels a field's level \`at\` lies from here, for an edge drawn along it. (The fields are
+      // carried a vertex at a time, so how fast they change jumps from triangle to triangle; an edge
+      // measured by it changed its width at every triangle, and every edge grew a saw of teeth. So a
+      // flow's margins, whose fields change about as fast everywhere, are measured by that, \`rate\` a
+      // radian: smooth across the triangles, whatever their slopes.)
+#define MARGIN_PX(f, at, rate) (abs((f) - (at)) / ((rate) * px))
+// (And for other levels, by their own slope, never taken as flatter than a margin.)
+#define PX_FROM(f, at) (abs((f) - (at)) / max(length(vec2(dFdx(f), dFdy(f))), 8.0 * px))
       float edge = max(fwidth(vH), 1e-5) * 0.7;
       float onLand = ${sea ? 'smoothstep(-edge, edge, vH)' : '1.0'};
       vec3 paper = vec3(0.957, 0.937, 0.89), ink = vec3(0.13, 0.12, 0.105);
@@ -255,7 +263,7 @@ export function printFragment(look: Look, sea: boolean): string {
 
       // Lava's marks.
       float lv = vMarks.y * onLand, lw = max(fwidth(lv), 1e-4); // (under the sea it's hidden, as it always was)
-      float here = vMarks.w + 0.09 * (noise3(vDir * 21.0 + 5.0) - 0.5), hw = max(fwidth(here), 1e-4) * 1.6, setOn = smoothstep(0.5 - hw, 0.5 + hw, here) * onLand; // (a little wobble and a softer edge, so the mesh's triangles don't show as teeth)
+      float here = vMarks.w + 0.09 * (noise3(vDir * 21.0 + 5.0) - 0.5), hw = 21.0 * px * 1.2, setOn = smoothstep(0.5 - hw, 0.5 + hw, here) * onLand; // (a little wobble and a softer edge, so the mesh's triangles don't show as teeth)
       float black = here > 0.01 ? clamp(vMarks.z / here, 0.0, 1.0) : 0.0;
 
       // Stipple: crowded along the shore, thinning inland, gathering on slopes turned from the light,
@@ -496,7 +504,7 @@ const PRINT = (q: boolean) => /* glsl */ `
         // their teeth, seen close, doesn't line up into a saw.)
         float wob = 0.12 * (noise3(vDir * 21.0 + vec3(0.0, tq * ${q ? '0.035' : '0.1'}, tq * ${q ? '0.025' : '0.07'})) - 0.5); // (heaving slowly, in broad rounded lobes, as a flow's toes are: a finer wobble made its edge ragged)
         float lvR = lv + wob;
-        float lwr = max(fwidth(lvR), 1e-4) * 1.4, cov = smoothstep(0.5 - lwr, 0.5 + lwr, lvR); // (a soft edge a pixel or so wide: crisper, the mesh's steps showed as a fine saw along it)
+        float lwr = 25.0 * px * 1.2, cov = smoothstep(0.5 - lwr, 0.5 + lwr, lvR); // (a soft edge a pixel or so wide, measured as MARGIN_PX does: by the slope from triangle to triangle, it stepped in a fine saw)
         // Its heat: the core follows the deepest lava, down the flow (the vent warms it only a little,
         // or the core sat round the vent like a yolk), pinching and swelling along its length as it's carried.
         vec2 pol = vec2(cos(ang), sin(ang)) * far;
@@ -545,7 +553,7 @@ const PRINT = (q: boolean) => /* glsl */ `
         // The ink as a press lays it: never quite even (heavier here, thinner there), the paper's grain
         // showing through, and a little built up along each colour's own edge, where the press squeezes it.
         float mottle = noise3(vDir * 80.0) * 0.6 + noise3(vDir * 230.0 + 4.0) * 0.4;
-        float dEdge = min(min(abs(T - 0.33) / max(fwidth(T), 1e-4), abs(Ty - 0.66) / max(fwidth(Ty), 1e-4)), abs(lvR - 0.5) / max(fwidth(lvR), 1e-4));
+        float dEdge = min(min(PX_FROM(T, 0.33), PX_FROM(Ty, 0.66)), MARGIN_PX(lvR, 0.5, 25.0));
         float squeeze = (1.0 - smoothstep(0.0, 2.5 * uPx, dEdge)) * 0.18;
         inkCol *= (0.82 + 0.3 * mottle) * mix(1.0, grain, 0.5) * (1.0 - squeeze);
         // Starved ink: the paper shows through in specks.
@@ -593,7 +601,7 @@ const PRINT = (q: boolean) => /* glsl */ `
           float foldHi = (1.0 - smoothstep(0.0, foldW * 1.6, abs(fold - 0.14))) * smoothstep(0.6, 1.2, lvR);
           float sheen = pow(max(0.0, dot(reflect(-L, Nn), V)), 9.0) * (0.35 + 0.65 * rough) + foldHi * 0.1 * smoothstep(0.4, 0.7, noise3(vDir * 14.0));
           crustInk += vec3(0.1, 0.11, 0.135) * sheen * (0.45 + 0.55 * smoothstep(0.15, 0.6, T));
-          float frontPx = abs(lvR - 0.5) / max(fwidth(lvR), 1e-4);
+          float frontPx = MARGIN_PX(lvR, 0.5, 25.0);
           float front = (1.0 - smoothstep(0.6 * uPx, 2.2 * uPx, frontPx)) * uFeeding * smoothstep(0.45, 0.75, noise3(vDir * 45.0 + tq * 0.05)) * 0.7; // (thin, broken, and soft: a bright line all round looked drawn on)
           // The open heat at the vent and down the fresh stream, graded as incandescence is: pale gold
           // at the mouth, orange, then a dull red where the crust is closing over it; its edge ragged.
@@ -669,7 +677,10 @@ const PRINT = (q: boolean) => /* glsl */ `
         // Set, it still glows a long while, cooling through the same inks, band by band: vermilion for
         // its first ten seconds or so, dark red till about twenty-five, then a flat grey-black till about
         // forty-five, which then breaks into the ground's stipple. (black is e^(-age/45).)
-        float hs = setOn * (1.0 - cov) * (1.0 - sp);
+        // (Reaching under the running lava's soft edge, and filling in where the two meet: each field's edge
+        // is eased its own way, and stopping where the lava starts, the paper showed between them in a ragged seam.)
+        float joinOn = smoothstep(0.42, 0.58, here + lvR) * smoothstep(0.03, 0.12, here) * onLand;
+        float hs = max(setOn, joinOn) * (1.0 - smoothstep(0.6, 1.0, cov)) * (1.0 - sp);
         float sb = max(fwidth(black), 1e-4) * 0.8;
         ${q ? `// (Quiet: red for its first few seconds, rust till about twelve, then a pale terracotta mark that
         // lingers a minute or two and goes; each change gradual, not in bands. Banded by its age, and fading
@@ -704,8 +715,8 @@ const PRINT = (q: boolean) => /* glsl */ `
         if (uDark > 0.5) {
           // Each flow's edge inked, finely, as the maps outline a lava flow; and the ground it built shaded by
           // the lamp, softly, so a shield it raised stands up off the page (the rest of the map stays flat).
-          float rimD = abs(here - 0.5) / max(fwidth(here), 1e-4);
-          float rimLine = (1.0 - smoothstep(0.5 * uPx, 1.7 * uPx, rimD)) * onLand * (1.0 - cov);
+          float rimD = MARGIN_PX(here, 0.5, 21.0);
+          float rimLine = (1.0 - smoothstep(0.3 * uPx, 1.1 * uPx, rimD)) * onLand * (1.0 - cov);
           col = mix(col, vec3(0.13, 0.11, 0.1) * uCrustTint, rimLine * 0.5);
           float shade = clamp(0.8 + 0.45 * dot(Nn, L), 0.62, 1.12);
           col *= mix(1.0, shade, setOn * (1.0 - cov) * 0.85);

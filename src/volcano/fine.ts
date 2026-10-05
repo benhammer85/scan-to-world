@@ -20,14 +20,14 @@ export class FineSurface {
   private weights: Float32Array;
 
   /** The carrying rules alone, to hand to a worker, which can make its own with `fromParts`. */
-  get parts(): { offsets: Uint32Array; from: Uint32Array; weights: Float32Array; vertexCount: number } {
-    return { offsets: this.offsets, from: this.from, weights: this.weights, vertexCount: this.fine.vertexCount };
+  get parts(): { offsets: Uint32Array; from: Uint32Array; weights: Float32Array; vertexCount: number; nbrOffsets: Uint32Array; nbrList: Uint32Array } {
+    return { offsets: this.offsets, from: this.from, weights: this.weights, vertexCount: this.fine.vertexCount, nbrOffsets: this.fine.nbrOffsets, nbrList: this.fine.nbrList };
   }
 
   /** A FineSurface from its carrying rules alone (see `parts`): enough to carry fields, with no mesh behind it. */
-  static fromParts(p: { offsets: Uint32Array; from: Uint32Array; weights: Float32Array; vertexCount: number }): FineSurface {
+  static fromParts(p: { offsets: Uint32Array; from: Uint32Array; weights: Float32Array; vertexCount: number; nbrOffsets: Uint32Array; nbrList: Uint32Array }): FineSurface {
     const f = Object.create(FineSurface.prototype) as FineSurface;
-    Object.assign(f, { offsets: p.offsets, from: p.from, weights: p.weights, fine: { vertexCount: p.vertexCount } });
+    Object.assign(f, { eased: [], offsets: p.offsets, from: p.from, weights: p.weights, fine: { vertexCount: p.vertexCount, nbrOffsets: p.nbrOffsets, nbrList: p.nbrList } });
     return f;
   }
 
@@ -111,6 +111,35 @@ export class FineSurface {
   nearestCoarse(f: number): number {
     return this.from[this.offsets[f]];
   }
+
+  /**
+   * Carry the marks (four a vertex), whose edges the shader draws where they cross a half: carried,
+   * then eased twice over the fine vertices. (One step of Loop's rules leaves the old vertices and the
+   * new a little apart wherever a field bends, as across a flow's margin it always does; the edge drawn
+   * through them rippled at the spacing of the simulation's vertices, in a fine saw.)
+   */
+  carryMarks(coarse: ArrayLike<number>, fine: Float32Array): void {
+    this.carry(coarse, fine, 4);
+    this.ease(fine, 4);
+  }
+
+  /** A field (of `stride` values a vertex) eased twice toward its fine neighbours (see `carryMarks`). */
+  ease(field: Float32Array, stride: number): void {
+    const o = this.fine.nbrOffsets, l = this.fine.nbrList, n = this.fine.vertexCount;
+    const next = (this.eased[stride] ??= new Float32Array(n * stride));
+    for (let pass = 0; pass < 2; pass++) {
+      for (let v = 0; v < n; v++) {
+        const by = 0.5 / Math.max(1, o[v + 1] - o[v]);
+        for (let s = 0; s < stride; s++) {
+          let sum = 0;
+          for (let k = o[v]; k < o[v + 1]; k++) sum += field[l[k] * stride + s];
+          next[v * stride + s] = field[v * stride + s] * 0.5 + sum * by;
+        }
+      }
+      field.set(next);
+    }
+  }
+  private eased: Float32Array[] = [];
 
   /** Carry a field (of `stride` values a vertex) from the coarse vertices onto the fine. */
   carry(coarse: ArrayLike<number>, fine: Float32Array, stride = 1): void {

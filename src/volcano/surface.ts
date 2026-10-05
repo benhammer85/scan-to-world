@@ -26,6 +26,7 @@ export const handleSurface: Handler = (message, post) => {
   const n = base.length / 3;
   const height = new Float32Array(n), land = new Float32Array(n * 3);
   fine.carryDrawn(ask.shape.height, ask.shape.land, height, land);
+  fine.ease(land, 3); // (the colours eased as the marks are, or the edges of their washes ripple in a saw)
   const position = new Float32Array(n * 3), normal = new Float32Array(n * 3);
   for (let v = 0; v < n; v++) {
     const r = 1 + relief * Math.max(0, height[v]);
@@ -47,6 +48,6 @@ export const handleSurface: Handler = (message, post) => {
   }
   // Where lava lies and where it has lain, carried as amounts, not colours: the shader draws their edges crisply.
   const marks = new Float32Array(n * 4);
-  fine.carry(ask.shape.marks, marks, 4);
+  fine.carryMarks(ask.shape.marks, marks);
   post({ height, land, position, normal, marks }, [height.buffer, land.buffer, position.buffer, normal.buffer, marks.buffer]);
 };

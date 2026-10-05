@@ -564,6 +564,12 @@ function coarse(): void {
       for (let v = 0; v < N; v++) { let m = glowField[v]; for (let k = o[v]; k < o[v + 1]; k++) m = Math.max(m, glowField[l[k]] * 0.74); glowNext[v] = m; }
       glowField.set(glowNext);
     }
+    // (Then eased, as the marks are: spread by the strongest neighbour alone, its edge stepped round the
+    // simulation's triangles, and the warm wash it lays on the ground had a saw-toothed edge.)
+    for (let pass = 0; pass < 4; pass++) {
+      for (let v = 0; v < N; v++) { let s = 0; for (let k = o[v]; k < o[v + 1]; k++) s += glowField[l[k]]; glowNext[v] = glowField[v] * 0.4 + (s / Math.max(1, o[v + 1] - o[v])) * 0.6; }
+      glowField.set(glowNext);
+    }
   }
   for (let v = 0; v < N; v++) {
     const h = drawnHeight[v], r = 1 + RELIEF * Math.max(0, h);
@@ -675,7 +681,8 @@ function draw(): void {
 function drawNow(): void {
   coarse();
   fine.carryDrawn(coarseHeight, coarseLand, fineHeight, landColour);
-  fine.carry(coarseMarks, fineMarks, 4);
+  fine.ease(landColour, 3);
+  fine.carryMarks(coarseMarks, fineMarks);
   const nm = ftopo.normals;
   for (let v = 0; v < FN; v++) {
     const r = 1 + RELIEF * Math.max(0, fineHeight[v]);
