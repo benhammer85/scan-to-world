@@ -195,6 +195,13 @@ const START = (() => {
 const MARKED = GROUND?.marked ?? null;
 const planet = new Planet(topo, START, seed, WORLD.rules, AGE_GROUND && AGE_BEFORE ? carried(AGE_BEFORE, WORLD.id, AGE_GROUND.rock, WORLD.rules.floor ?? VOLCANO.floor) : GROUND?.rock);
 planet.stonesFall = WORLD.goal === 'gather'; // not until the first ideas have come in (see `lessons`), but on the first world, from the first, since they're its aim
+/**
+ * Breathing, the calm way to play (chosen under "more"): no tipping the phone. The volcano breathes
+ * out by itself, a flow at a time, down the screen as it's seen, and the world is turned to say where
+ * it goes; a finger held down holds a breath, for a bigger one. (Not the lava lamp, whose tipping is its game.)
+ */
+const BREATHE = remembered('volcano.controls') === 'breathe' && !WORLD.rules.lamp;
+if (BREATHE) planet.k.pulse = planet.k.explosive * 0.55;
 const ecology = new Ecology(planet, topo);
 const islands = new Islands(topo);
 
@@ -1186,7 +1193,7 @@ const HOW: Record<string, string> = {
   orbit: 'Hold until the smoke turns grey, then let go. Each burst throws rock into the sky, and enough of it becomes a moon.',
   hearth: 'Life gathers on fresh, warm rock and fades as it cools. Pour beside it, never on top, and keep enough alive at once.',
   thaw: 'Build the mountain up through the ice, then hold until the smoke turns grey and let go. The gas warms the sky until the ice gives way.',
-  outbuild: 'Anything facing the star boils away. Turn the volcano round into the night side, and build more than the star can take.',
+  outbuild: 'Anything facing the star boils away. Turn the volcano round into the night side, pour there, and build more than the star can take.',
   white: 'This lava runs black and turns white as it cools. Build the peak, then hold still and watch the top turn white.',
   glow: 'At night the sulphur burns blue as it flows. Pour thin and wide, a new way each time, and keep the crater glowing for two minutes.',
   waves: 'Build the cone until it is just under the sea, then hold until the smoke turns grey and let go. A wave rings the whole world. Rebuild, and do it again.',
@@ -1195,7 +1202,7 @@ const HOW: Record<string, string> = {
   oxygen: 'Life in shallow water makes oxygen, but lava buries it. Pour a shallow shelf, turn a little, pour the next, and let life grow.',
   chaos: 'Hold, then let go before the smoke turns grey. The warmth breaks the ice into rafts. Each new field must be away from the last.',
   streaks: 'The sun slowly crosses the sky. Hold until the smoke turns grey, wait for sunlight on the volcano, then let go. Turn somewhere new for the next streak.',
-  snow: 'Turn the volcano into the starlight. The lava there boils into the air and falls as rock snow along the edge of night.',
+  snow: 'Turn the volcano into the starlight and pour. The lava there boils into the air and falls as rock snow along the edge of night.',
 };
 
 /** The aim and how far it's come, in a few words for the top of the screen, always there while it's played. */
@@ -1966,6 +1973,31 @@ function intoTheAtlas(): void {
  * table; with one, as the phone is held, smoothed so a shaking hand doesn't slop the lava about.
  */
 const LEVEL = new THREE.Vector3(0, -0.3, -1).normalize();
+const BREATH_DOWN = new THREE.Vector3(0, -0.62, -1).normalize(), TIP_V = new THREE.Vector3();
+/**
+ * The way a pour will go: a faint line of dots from the vent down the world as it's held, showing
+ * the steepest way while the phone is tipped (or, breathing, always), so a tip is a choice and not a guess.
+ */
+const WAY_MOST = 40, wayAt = new Float32Array(WAY_MOST * 3), wayGeo = new THREE.BufferGeometry();
+wayGeo.setAttribute('position', new THREE.BufferAttribute(wayAt, 3));
+const wayDots = new THREE.Points(wayGeo, new THREE.PointsMaterial({ color: new THREE.Color(P.landInkHigh), size: 0.012, transparent: true, opacity: 0, depthWrite: false }));
+let wayShown = 0, wayAtSec = -1;
+function showWay(): void {
+  if (!wayDots.parent) group.add(wayDots);
+  const want = !begun || ending || LAMP ? 0 : BREATHE ? 0.45 : Math.min(1, Math.max(0, (planet.tip - planet.k.tipPour * 0.45) / (planet.k.tipPour * 0.5))) * 0.6;
+  wayShown += (want - wayShown) * 0.12;
+  (wayDots.material as THREE.PointsMaterial).opacity = wayShown;
+  if (wayShown < 0.02 || seconds - wayAtSec < 0.15) return;
+  wayAtSec = seconds;
+  const path = planet.pathFrom(planet.plumeVertex, WAY_MOST * 2);
+  let k = 0;
+  for (let i = 2; i < path.length && k < WAY_MOST; i += 2, k++) {
+    const v = path[i], r = Math.hypot(topo.positions[v * 3], topo.positions[v * 3 + 1], topo.positions[v * 3 + 2]) + 0.006;
+    wayAt[k * 3] = base[v * 3] * r; wayAt[k * 3 + 1] = base[v * 3 + 1] * r; wayAt[k * 3 + 2] = base[v * 3 + 2] * r;
+  }
+  wayGeo.setDrawRange(0, k);
+  wayGeo.attributes.position.needsUpdate = true;
+}
 const held = LEVEL.clone();
 const sensed = new THREE.Vector3();
 /** However the phone was held when the game began counts as level: this turns that way of holding it to LEVEL. */
@@ -2079,10 +2111,12 @@ let begun = false;
 ($('begin').querySelector('.name') as HTMLElement).textContent = WORLD.title;
 // (An age of Earth begun on the ground the age before left says so: it's the world you made, an age on.)
 ($('begin').querySelector('.first') as HTMLElement).textContent = AGE_GROUND ? 'The world you made, an age later.' : '';
-($('begin').querySelector('.second') as HTMLElement).textContent = FREE ? 'No aim and no clock: the fire never cools.' : HOW[WORLD.goal] ?? WORLD.second;
+// (Breathing, there's no tipping: what the card says of tipping is said of turning instead.)
+const breathed = (t: string) => (BREATHE ? t.replace('Tilt the phone to pour. ', '').replace('Tilt towards the dotted bank to pour that way.', 'Turn the world so each breath runs towards the dotted bank.').replace(/ and pour(?=[ ,.])/g, '') : t);
+($('begin').querySelector('.second') as HTMLElement).textContent = FREE ? 'No aim and no clock: the fire never cools.' : breathed(HOW[WORLD.goal] ?? WORLD.second);
 // The hands, the same on every card.
 // (Only where the hands are new: the first world, and the lamp, where they work the other way round.)
-($('begin').querySelector('.hands') as HTMLElement).textContent = LAMP ? 'Keep it level to grow · tilt to let go · drag to turn' : WORLD === WORLDS[0] ? 'Tilt to pour · hold, then let go to burst · drag to turn' : '';
+($('begin').querySelector('.hands') as HTMLElement).textContent = LAMP ? 'Keep it level to grow · tilt to let go · drag to turn' : BREATHE ? 'It pours by itself, down the screen · drag to turn the world · hold for a bigger breath' : WORLD === WORLDS[0] ? 'Tilt to pour · hold, then let go to burst · drag to turn' : '';
 // The worlds, along the card's foot, as an atlas lists its plates: touch another to go to it.
 // (Not for a world of a solar system: it's reached from the system's chart.)
 // The worlds: one touch to the atlas's sky, where every world stands in its chapter's constellation.
@@ -2108,6 +2142,8 @@ const moreLink = (text: string, act: () => void): HTMLElement => {
 // The solar system: its worlds played as a run, in whatever order (see system.ts).
 moreLink(SYSTEM ? `Voyage · ${madeCount(SYSTEM)} of ${SYSTEM.bodies.length} worlds made` : 'Voyage · worlds one after another', () => openSystem());
 // Wandering: this world with no aim and no clock; or, wandering, back to the world with its aim.
+// The calm way to play, or tipping: kept for every world.
+moreLink(BREATHE ? 'Tip the phone to pour, as before' : 'Breathe · no tipping: it pours by itself, you turn the world', () => { remember('volcano.controls', BREATHE ? 'tip' : 'breathe'); location.reload(); });
 if (RUN === null) moreLink(FREE ? 'Play with the aim' : 'Wander · no aim, no clock', () => {
   const q = new URLSearchParams(location.search);
   q.delete('seed');
@@ -2328,8 +2364,14 @@ renderer.setAnimationLoop(() => {
   arrows(dt);
   // Gravity as the phone is held (or, without one, a little down the screen and into it), in the planet's frame.
   INVERSE.copy(group.quaternion).invert();
-  GRAV.copy(held).normalize().applyQuaternion(INVERSE);
+  // (Breathing, the world as if held a little tipped towards you, so each breath runs down the screen;
+  // tipping, how far the phone is from level is what pours, however the world has been turned.)
+  if (BREATHE) GRAV.copy(BREATH_DOWN).applyQuaternion(INVERSE);
+  else GRAV.copy(held).normalize().applyQuaternion(INVERSE);
   planet.gravity = { x: GRAV.x, y: GRAV.y, z: GRAV.z };
+  { const u = GIANT_DIR.copy(LEVEL).applyQuaternion(INVERSE); planet.upright = { x: u.x, y: u.y, z: u.z }; }
+  { const h = TIP_V.copy(held).normalize(), c = h.dot(LEVEL); planet.tilt = BREATHE ? 0 : Math.sqrt(Math.max(0, 1 - c * c)); }
+  showWay();
   // And which way the giant is, on a world that has one in its sky.
   if (WORLD.goal === 'feed') { const s = GIANT_DIR.copy(GIANT_AT).normalize().applyQuaternion(INVERSE); planet.giant = { x: s.x, y: s.y, z: s.z }; }
   if (SUN) { const s = GIANT_DIR.copy(SUN).applyQuaternion(INVERSE); planet.star = { x: s.x, y: s.y, z: s.z }; }
@@ -2414,4 +2456,4 @@ renderer.setAnimationLoop(() => {
   turnedSince();
 });
 
-if (import.meta.env.DEV) (window as unknown as { volcano: unknown }).volcano = { atlas: (all: Page[]) => openAtlas(all), sky, haze, planet, group, base, renderer, scene, camera, puffs, ecology, islands, rotate, draw, save, world, frameCost, kindDots, chain: () => chain, aim: () => aimInk, lines: () => { lastLines = -1; redrawLines(1e6); }, life: () => { lastLife = -10; redrawLife(1e6); }, replayKeep: () => keepReplayFrame(), replayCount: () => replayFrames.length, replaying: () => (replaying ? replayShown : -1), settle: (d = 3.6) => { lift = 0; dist = d; begunAt = -100; zoomedAt = seconds; look(); } };
+if (import.meta.env.DEV) (window as unknown as { volcano: unknown }).volcano = { atlas: (all: Page[]) => openAtlas(all), sky, haze, planet, held, group, base, renderer, scene, camera, puffs, ecology, islands, rotate, draw, save, world, frameCost, kindDots, chain: () => chain, aim: () => aimInk, lines: () => { lastLines = -1; redrawLines(1e6); }, life: () => { lastLife = -10; redrawLife(1e6); }, replayKeep: () => keepReplayFrame(), replayCount: () => replayFrames.length, replaying: () => (replaying ? replayShown : -1), settle: (d = 3.6) => { lift = 0; dist = d; begunAt = -100; zoomedAt = seconds; look(); } };

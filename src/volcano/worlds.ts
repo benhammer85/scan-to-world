@@ -225,9 +225,9 @@ export const WORLDS: World[] = [
     rules: {
       terrain: 'rogue', basins: 0, craters: 14, floor: 0.05, rough: 0.02,
       waves: 0, rain: 0, sink: 0, swell: 0,
-      origin: 1e9, arrives: 0.5, hearth: 0.6, warmLasts: 160, reef: 0, wishes: false, // (life lands only near the vent, and lives only while the rock is warm)
+      origin: 1e9, arrives: 0.5, hearth: 1.0, warmLasts: 160, reef: 0, wishes: false, // (life lands only near the vent, and lives only while the rock is warm)
       talus: 2.2, flow: 10, channel: 2, coolLand: 0.25,
-      drift: 0, rises: 0.035, heat: 420, rising: 1.2, steady: true,
+      drift: 0, rises: 0.035, heat: 520, rising: 1.2, steady: true,
       impactEvery: [90, 140], impactWarning: 14, impactHeat: 6,
     },
     palette: {
@@ -236,7 +236,7 @@ export const WORLDS: World[] = [
       landInk: '#3d4250', landInkHigh: '#262a35', pencil: '#a3a8b4', seaInk: '#5b82a3',
     },
     goal: 'hearth',
-    hearth: 2300,
+    hearth: 1850,
   },
   {
     id: 'first',
@@ -297,7 +297,7 @@ export const WORLDS: World[] = [
     second: 'Pour a shallow shelf, then turn and pour the next, and leave each to life.',
     rules: {
       drift: 0, rises: 0.03, heat: 420, rising: 1.3, steady: true, sink: 0,
-      breathe: 0.02, arrives: 1, hearth: 1.2, // (mats drift in and settle on any shallows near the fire)
+      breathe: 0.06, arrives: 1, hearth: 1.2, // (mats drift in and settle on any shallows near the fire)
     },
     palette: {
       paper: '#e2d6bd', basalt: '#8a8072', ash: '#a59a88', lava: '#b8563c', deepLava: '#8f3b28',
@@ -576,7 +576,7 @@ export const WORLDS: World[] = [
     title: 'A lava world',
     first: 'One face always to its star, and that face molten.',
     then: 'On worlds like this, rock boils into the air on the day side and falls as rock snow in the night.',
-    second: 'Drag the vent into the starlight, and its lava boils into rock snow.',
+    second: 'Turn the vent into the starlight, and pour.',
     rules: {
       g: 2.3, // (55 Cancri e, a super-Earth's gravity, Earth's being 1)
       terrain: 'magma', basins: 0, craters: 8, floor: 0.1, rough: 0.02,
@@ -601,7 +601,7 @@ export const WORLDS: World[] = [
     title: 'A disintegrating planet',
     first: 'So close to its star that it is boiling away.',
     then: 'Worlds like this trail a tail of dust, like a comet, and grow smaller every orbit.',
-    second: 'Drag the vent round into the night, and what it builds there lasts.',
+    second: 'Turn the vent into the night, and pour there.',
     rules: {
       g: 0.1, // (a small world boiling away's gravity, Earth's being 1)
       terrain: 'dust', basins: 0, craters: 10, floor: 0.3, rough: 0.02,
@@ -658,7 +658,7 @@ export const WORLDS: World[] = [
       // (Life comes to the island only once it's risen, as it came to Surtsey: from elsewhere, not at the vents; and no reefs.)
       origin: 1e9, arrives: 20, reef: 0, wishes: false,
       drift: 0, rises: 0, heat: 450, rising: 1.2, steady: true,
-      tubes: 0.02, tubeFresh: 40, bankFar: 0.6, selfGravity: 0, breakout: 0, // (here the tilt steers, aimed at the bank; and the lava runs on in its tubes, without breaking out)
+      tubes: 0.02, tubeFresh: 40, bankFar: 0.52, selfGravity: 0, breakout: 0, // (here the tilt steers, aimed at the bank; and the lava runs on in its tubes, without breaking out)
       impactEvery: [60, 100],
     },
     palette: {

@@ -243,15 +243,15 @@ describe('a young Earth', () => {
     expect(pl.capNow).toBeGreaterThan(before + 4);
   });
 
-  it('throws the biggest bursts\' rock into orbit, and a cone blown apart throws none', () => {
+  it('throws the biggest bursts\' rock into orbit, and a full vent that waits throws none', () => {
     const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('young').rules);
     pl.pressure = 6; pl.erupt();
     expect(pl.orbit).toBe(0); // a flow throws nothing
     pl.pressure = 11; pl.erupt();
     const one = pl.orbit;
     expect(one).toBeGreaterThan(0);
-    pl.pressure = pl.capNow + 1; pl.stonesFall = false; pl.step(1 / 20); // held too long
-    expect(pl.tally.calderas).toBe(1);
+    pl.pressure = pl.capNow + 1; pl.stonesFall = false; pl.step(1 / 20); // full: it waits
+    expect(pl.tally.calderas).toBe(0);
     expect(pl.orbit).toBe(one);
   });
 });

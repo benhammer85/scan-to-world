@@ -89,16 +89,17 @@ describe('the volcano', () => {
     expect(flow.ash).toBe(0);
   });
 
-  it('held too long, it bursts on its own and the summit falls in', () => {
+  it('full, it waits to be let out: nothing bursts by itself, and the summit stands', () => {
     const { planet: pl } = planet();
     run(pl, 120, 3);
     run(pl, 20); // everything set
     const at = pl.plumeVertex, summit = pl.rock[at];
     pl.pressure = VOLCANO.cap - 0.01;
-    pl.step(1 / 30);
-    expect(pl.pressure).toBeLessThan(1);
-    expect(pl.news.some((n) => n.includes('blew apart'))).toBe(true);
-    expect(pl.rock[at]).toBeLessThan(summit);
+    for (let i = 0; i < 60; i++) pl.step(1 / 30);
+    expect(pl.pressure).toBeCloseTo(pl.capNow, 5);
+    expect(pl.erupting).toBe(false);
+    expect(pl.tally.calderas).toBe(0);
+    expect(pl.rock[at]).toBeGreaterThan(summit - 0.01); // (no caldera)
   });
 
   it('the plume creeps on its own, and towards where you call it', () => {

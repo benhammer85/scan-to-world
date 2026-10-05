@@ -23,6 +23,7 @@ const topo = buildTopology(new THREE.IcosahedronGeometry(1, 40).attributes.posit
 const P = topo.basePositions, N = topo.vertexCount;
 const nearest = (x: number, y: number, z: number) => { let b = 0, bd = Infinity; for (let v = 0; v < N; v++) { const d = (P[v * 3] - x) ** 2 + (P[v * 3 + 1] - y) ** 2 + (P[v * 3 + 2] - z) ** 2; if (d < bd) { bd = d; b = v; } } return b; };
 const pl = new Planet(topo, nearest(0.1, 0.15, 0.98), seed, RULES);
+if (process.env.BREATHE && !pl.k.lamp) pl.k.pulse = pl.k.explosive * 0.55; // (breathe mode: it pours by itself)
 pl.stonesFall = W.goal === 'gather'; // (on the first world, the stones are the aim)
 const LIFE = pl.k.life;
 const eco = new Ecology(pl, topo);
@@ -67,7 +68,7 @@ const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const F = V(0, 0, 1), S = V(0, 1, 0), R = V();
 const ortho = () => { S.addScaledVector(F, -S.dot(F)); if (S.lengthSq() < 1e-6) S.set(1, 0, 0).addScaledVector(F, -F.x); S.normalize(); R.crossVectors(S, F).normalize(); };
 ortho();
-const LEVEL = V(0, -0.3, -1).normalize();
+const LEVEL = V(0, -0.3, -1).normalize(), BREATH_DOWN = V(0, -0.62, -1).normalize(); // (breathing, the world as held a little tipped towards you)
 const hold = LEVEL.clone(); // which way is down, in the camera's frame
 const toPlanet = (c: THREE.Vector3) => V().addScaledVector(R, c.x).addScaledVector(S, c.y).addScaledVector(F, c.z);
 const GIANT = V(-0.95, 2.6, -4.8).normalize(), SUNV = W.sun ? V(...(W.sun as [number, number, number])).normalize() : null;
@@ -90,30 +91,43 @@ function bringVentTo(view: THREE.Vector3, dt: number, pace = 1.2): void {
   F.applyQuaternion(part); S.applyQuaternion(part); ortho();
 }
 const level = () => hold.copy(LEVEL);
+let aimMemo: { p: THREE.Vector3; t: number; dx: number; dy: number } | null = null, clock = 0;
 /** Tilt the phone so lava runs towards `p` on the world (or a screen direction), by `amt`. */
 function tiltTowards(p: THREE.Vector3 | null, amt: number): void {
   let dx: number, dy: number;
-  if (p) { const d = p.clone().sub(vent()); dx = d.dot(R); dy = d.dot(S); const l = Math.hypot(dx, dy) || 1; dx /= l; dy /= l; }
+  if (p && aimMemo && aimMemo.p.equals(p) && Math.abs(aimMemo.t - clock) < 2) { dx = aimMemo.dx; dy = aimMemo.dy; }
+  else if (p) {
+    // As a player would by the faint way the lava will go: try each way of tipping, keep the one whose way ends nearest.
+    let best = Infinity; dx = 0; dy = 0;
+    for (let i = 0; i < 24; i++) {
+      const a = (i / 24) * Math.PI * 2, cx = Math.cos(a), cy = Math.sin(a);
+      const g = toPlanet(V(LEVEL.x + amt * cx, LEVEL.y + amt * cy, LEVEL.z).normalize()).normalize(); pl.gravity = { x: g.x, y: g.y, z: g.z };
+      const way = pl.pathFrom(pl.plumeVertex, 40);
+      let miss = Infinity; for (const w of way) miss = Math.min(miss, angleBetween({ x: P[w * 3], y: P[w * 3 + 1], z: P[w * 3 + 2] }, p)); // (the nearest it passes)
+      if (miss < best) { best = miss; dx = cx; dy = cy; }
+    }
+    aimMemo = { p: p.clone(), t: clock, dx, dy };
+  }
   else { const a = rnd() * Math.PI * 2; dx = Math.cos(a); dy = Math.sin(a); }
   hold.set(LEVEL.x + amt * dx, LEVEL.y + amt * dy, LEVEL.z).normalize();
 }
 let rs = seed * 9301 + 49297; const rnd = () => { rs = (rs * 9301 + 49297) % 233280; return rs / 233280; };
 const randomNear = (c: THREE.Vector3, ang: number) => { const t = V(rnd() - 0.5, rnd() - 0.5, rnd() - 0.5); t.addScaledVector(c, -t.dot(c)).normalize(); return c.clone().multiplyScalar(Math.cos(ang)).addScaledVector(t, Math.sin(ang)).normalize(); };
 const angleBetween = (a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }) => Math.acos(Math.max(-1, Math.min(1, (a.x * b.x + a.y * b.y + a.z * b.z) / Math.hypot(a.x, a.y, a.z) / Math.hypot(b.x, b.y, b.z))));
-const setInputs = () => { if (SUNV) { const s = toPlanet(SUNV).normalize(); pl.star = { x: s.x, y: s.y, z: s.z }; } if (botKind === 'nogravity') { pl.gravity = null; return; } const g = toPlanet(hold).normalize(); pl.gravity = { x: g.x, y: g.y, z: g.z }; if (W.goal === 'feed') { const s = toPlanet(GIANT).normalize(); pl.giant = { x: s.x, y: s.y, z: s.z }; } };
+const setInputs = () => { { const h = hold.clone().normalize(), c = h.dot(LEVEL); pl.tilt = process.env.BREATHE ? 0 : Math.sqrt(Math.max(0, 1 - c * c)); } if (SUNV) { const s = toPlanet(SUNV).normalize(); pl.star = { x: s.x, y: s.y, z: s.z }; } if (botKind === 'nogravity') { pl.gravity = null; return; } { const u = toPlanet(LEVEL).normalize(); pl.upright = { x: u.x, y: u.y, z: u.z }; } const g = toPlanet(process.env.BREATHE ? BREATH_DOWN : hold).normalize(); pl.gravity = { x: g.x, y: g.y, z: g.z }; if (W.goal === 'feed') { const s = toPlanet(GIANT).normalize(); pl.giant = { x: s.x, y: s.y, z: s.z }; } };
 function clampOn(): void { pl.clamped = true; }
 function lift(): void { if (pl.clamped) pl.unclamp(); }
 
 // ---------------------------------------------------------------- the bots
 type Bot = (dt: number) => void;
-let phase = 'build', dir: THREE.Vector3 | null = null, focus: THREE.Vector3 | null = null, timer = 0, pourAmt = 0.6;
-const SKILLED = botKind === 'skilled';
+let phase = 'build', dir: THREE.Vector3 | null = null, pourHold = new THREE.Vector3(), focus: THREE.Vector3 | null = null, timer = 0, pourAmt = 0.6;
+const SKILLED = botKind === 'skilled', BREATHE = !!process.env.BREATHE;
 const POUR_AT = Number(process.env.AT ?? (SKILLED ? 0.85 : 0.6)); // pours when the smoke is middling (a share of the burst point)
 /** The pour cycle: level while it gathers, tilted (towards `towards`, or anywhere) until it's spent. */
 function pourCycle(towards: THREE.Vector3 | null, amt = 0.6): void {
   if (SKILLED) amt = Number(process.env.AMT ?? 0.8);
-  if (phase === 'build') { level(); if (SKILLED && !focus) turnTowards(vent(), 1 / 20); if (pl.pressure >= pl.k.explosive * POUR_AT) { phase = 'pour'; dir = towards; pourAmt = amt; if (!towards) tiltTowards(null, amt); } }
-  if (phase === 'pour') { if (dir) tiltTowards(dir, pourAmt); if (pl.pressure < pl.k.least * 0.5) { phase = 'build'; level(); } }
+  if (phase === 'build') { level(); if (SKILLED && !focus) turnTowards(vent(), 1 / 20); if (pl.pressure >= pl.k.explosive * POUR_AT) { phase = 'pour'; dir = towards; pourAmt = amt; if (!towards) { tiltTowards(null, amt); pourHold.copy(hold); } } }
+  if (phase === 'pour') { if (dir) tiltTowards(dir, pourAmt); else hold.copy(pourHold); /* (it pours only while the phone is tipped) */ if (pl.pressure < pl.k.least * 0.5) { phase = 'build'; level(); } }
 }
 /** Hold a finger on it until `ready`, aim with `aimAt` meanwhile, then lift. */
 function holdAndLift(ready: () => boolean, aimAt?: (dt: number) => boolean): (dt: number) => void {
@@ -126,6 +140,8 @@ function holdAndLift(ready: () => boolean, aimAt?: (dt: number) => boolean): (dt
 }
 
 const plumesReach = () => pl.plumes;
+/** A place just beside the vent, a different way round after each pour: where to tip it next. */
+const beside = (turn: number) => { const v = vent(), t = V(0, 1, 0).cross(v).normalize(); return v.clone().addScaledVector(t.applyAxisAngle(v, pl.tally.flows * turn + 2), 0.3).normalize(); };
 const card: Record<string, Bot> = {
   // Pour as the fire goes (the world slides so the fire stays in view).
   ring: () => pourCycle(null),
@@ -136,7 +152,8 @@ const card: Record<string, Bot> = {
     const v = vent(); open.sort((a, b) => angleBetween(a, v) - angleBetween(b, v));
     const b = V(open[0].x, open[0].y, open[0].z).normalize();
     turnTowards(b, dt);
-    if (angleBetween(b, v) < open[0].r * 0.7) pourCycle(null, 0.45);
+    if (angleBetween(b, v) < open[0].r * 0.7) { if (BREATHE) lift(); pourCycle(null, 0.45); }
+    else if (BREATHE) clampOn(); // (breathing, hold the breath until the basin is there)
     else { level(); if (pl.pressure > pl.k.explosive * 0.9) { tiltTowards(b, 0.5); } }
   },
   height: () => pourCycle(null),
@@ -217,13 +234,14 @@ const card: Record<string, Bot> = {
     if (pl.pressure >= pl.k.explosive && near) lift(); else if (pl.pressure > pl.capNow * 0.93) lift();
   },
   // Pour towards the bank, again and again.
-  bank: () => { const b = V(pl.bank!.x, pl.bank!.y, pl.bank!.z); pourCycle(b, 0.6); },
+  // Turn the vent uppermost (so tipping any way pours as well), and pour along the way that crosses the bank.
+  bank: (dt) => { const b = V(pl.bank!.x, pl.bank!.y, pl.bank!.z); turnTowards(vent(), dt); pourCycle(b, 0.9); },
   // Pour, each time a little round from the last, never on what lives.
   // Turn a little after each pour, so the vent creeps on, and pour beside what lives, not on it.
   hearth: (dt) => {
     if (!focus || (phase === 'build' && timer <= 0)) { const v = vent(), t = V(0, 1, 0).cross(v).normalize(); focus = v.clone().addScaledVector(t.applyAxisAngle(v, pl.tally.flows * 1.1), 0.3).normalize(); timer = 25; }
     timer -= dt; turnTowards(focus, dt, 0.3);
-    pourCycle(null, 0.5);
+    pourCycle(beside(1.1), 0.5);
   },
   // Pour until the mountain stands above the sea, then hold and burst.
   thaw: () => { if (pl.rock[pl.plumeVertex] < 0.02) return pourCycle(null); if (!pl.clamped) clampOn(); level(); if (pl.pressure >= pl.k.explosive * 1.05) lift(); },
@@ -237,7 +255,7 @@ const card: Record<string, Bot> = {
   oxygen: (dt) => {
     if (!focus || (phase === 'build' && timer <= 0)) { const v = vent(), t = V(0, 1, 0).cross(v).normalize(); focus = v.clone().addScaledVector(t.applyAxisAngle(v, pl.tally.flows * 1.3), 0.35).normalize(); timer = 30; }
     timer -= dt; turnTowards(focus, dt, 0.3);
-    pourCycle(null, 0.45);
+    pourCycle(beside(1.3), 0.45);
   },
   // Pour a little, each time a different way round the cone.
   // Build the peak; then hold still while the summit whitens.
@@ -273,9 +291,9 @@ const card: Record<string, Bot> = {
     else if (pl.pressure > pl.capNow * 0.93) lift();
   },
   // Drag the vent round into the night, where it pours of itself.
-  outbuild: (dt) => { bringVentTo(V(-0.55, 0.1, 0.83), dt); level(); },
+  outbuild: (dt) => { bringVentTo(V(-0.55, 0.1, 0.83), dt); pourCycle(toPlanet(SUNV!).negate(), 0.6); },
   // Drag the vent round into the starlight, where it pours of itself.
-  snow: (dt) => { bringVentTo(V(0.62, 0.2, 0.76), dt); level(); },
+  snow: (dt) => { bringVentTo(V(0.62, 0.2, 0.76), dt); pourCycle(toPlanet(SUNV!), 0.6); },
   // Hold until the smoke is heavy, then let it burst.
   orbit: () => { if (!pl.clamped) clampOn(); level(); if (pl.pressure >= pl.k.explosive * 1.05) lift(); else if (pl.pressure > pl.capNow * 0.93) lift(); },
 };
@@ -308,7 +326,7 @@ while (t < LIMIT) {
   if (SUNV && W.sunTurns && !pl.over) SUNV.applyAxisAngle(V(0, 1, 0), W.sunTurns * dt); // (Triton's sun crosses the sky)
   bot(dt); setInputs();
   const before = vent();
-  pl.step(dt); t += dt;
+  pl.step(dt); t += dt; clock = t;
   if (pl.k.tumble > 0) { const w = pl.spinNow, r = Math.hypot(w.x, w.y, w.z); if (r > 1e-6) { const q = new THREE.Quaternion().setFromAxisAngle(V(w.x / r, w.y / r, w.z / r), -r * dt); F.applyQuaternion(q); S.applyQuaternion(q); ortho(); } }
   if (pl.k.rises <= 0 && pl.k.drift > 0) { const q = new THREE.Quaternion().setFromUnitVectors(before, vent()); F.applyQuaternion(q); S.applyQuaternion(q); ortho(); }
   if (LIFE && t - lastEco >= 1) { eco.update(t - lastEco); lastEco = t; }

@@ -228,7 +228,7 @@ export const VOLCANO = {
    * 1: on a body as small as an asteroid, down is towards its own middle, so lava finds its own
    * hollows, and the hand only nudges it.
    */
-  selfGravity: 0.6,
+  selfGravity: 0.35, // (less than it was, 0.6: the phone's tilt, which the player steers by, counts for more)
   /**
    * Levees: a flow's thin margin, next to bare ground, sets this many times faster than its body, so
    * a flow walls itself in and runs on down its own channel, as basalt does. 1: no levees.
@@ -363,6 +363,12 @@ export const VOLCANO = {
    */
   wave: 0,
   waveDig: 0.08,
+  /**
+   * Breathing, the calm way to play: the volcano lets its heat out by itself each time the pressure
+   * reaches this, as a flow down the world as it's held (0: only as the player tips it). A finger held
+   * down holds the breath, for a bigger one.
+   */
+  pulse: 0,
   real: '' as '' | RealName,
   realScale: 0.04,
   realRadius: 1737,
@@ -496,6 +502,13 @@ export class Planet {
   orbit = 0;
   /** Which way the giant planet is, in the planet's frame (a unit vector), on a world that has one in its sky. */
   giant: { x: number; y: number; z: number } | null = null;
+  /**
+   * How far the phone is tipped from level, 0 to 1, as the player holds it (null: reckoned from the
+   * vent's place, as held). Pouring goes by this, so turning the world never pours by itself.
+   */
+  tilt: number | null = null;
+  /** Which way is down when the phone is held level, in the planet's frame (null: as gravity is). The heat rises against this, so tipping to pour doesn't drag the vent the other way. */
+  upright: { x: number; y: number; z: number } | null = null;
   /** Which way its star is, in the planet's frame (a unit vector), on a world it boils or bakes. */
   star: { x: number; y: number; z: number } | null = null;
   /** Snowball Earth: the gas in the sky; how far from the equator the ice has let go (as the sine of the latitude); and whether it has given way of itself. */
@@ -895,7 +908,7 @@ export class Planet {
       if (this.k.chaos > 0 && !blast && volume >= this.k.chaos) this.counted(Math.sqrt(volume / this.k.explosive) * 0.16, 'The ice breaks into rafts: a chaos field', 'Rafts, but too near an earlier chaos field');
       // (It lasts by its size, so lava comes out at much the same pace whatever the eruption: it
       // lasted the same whatever its size, so a small one dribbled and a big one gushed.)
-      this.eruptions.push({ vertex: v, flank: this.flankOf(v), left: volume * s, rate: (volume * s) / this.k.pour, total: volume * s, t: 0, dur: this.k.pour * Math.min(3.2, 0.8 + volume * 0.16) });
+      this.eruptions.push({ vertex: v, flank: this.aimedFlank(v) ?? this.flankOf(v), left: volume * s, rate: (volume * s) / this.k.pour, total: volume * s, t: 0, dur: this.k.pour * Math.min(3.2, 0.8 + volume * 0.16) });
       this.kick(volume, 0.35);
       return 'flow';
     }
@@ -945,6 +958,7 @@ export class Planet {
 
   /** How far from level the world is at the vent, as held: 0 with the vent uppermost, 1 on its side. */
   get tip(): number {
+    if (this.tilt !== null) return this.tilt;
     const g = this.gravity;
     if (!g) return 0;
     const p = this.topo.basePositions, v = this.plumeVertex;
@@ -981,8 +995,9 @@ export class Planet {
     this.breathe(amount, false);
     // (Counted once it pours at all: a gentle pour, begun under the least, never counted.)
     if (!this.pourCounted) { this.pourCounted = true; this.tally.flows++; }
+    // (Most of it a few steps out the way it's tipped: a pour shows its way at once, as from a jug.)
     const v = this.plumeVertex, a = amount * this.scale;
-    this.eruptions.push({ vertex: v, flank: v, left: a, rate: a / dt });
+    this.eruptions.push({ vertex: v, flank: this.aimedFlank(v) ?? v, left: a, rate: a / dt });
   }
 
   // ------------------------------------------------------------------ the lava lamp
@@ -1094,6 +1109,9 @@ export class Planet {
     // (Pouring, the heat can still rise faster than it pours, as at Io's high tide: then it bursts,
     // as tipping when it's past the dashed ring does, rather than the mountain blowing apart.)
     if (this.pressure >= this.capNow && this.pouring && !this.k.lamp) this.erupt();
+    // Full, it waits: the heat stays below till it's let out (it used to blow the mountain apart, which
+    // forced the pace). The lamp's blob still bursts, held too long: that's its own rule.
+    else if (this.pressure >= this.capNow && !this.k.lamp) { this.reserve += this.pressure - this.capNow; this.pressure = this.capNow; }
     else if (this.pressure >= this.capNow) {
       if (!this.k.lamp) this.collapse();
       this.erupt(true);
@@ -1104,6 +1122,7 @@ export class Planet {
     if (this.reserve < 0.01 && this.pressure >= this.k.least && !this.erupting) { this.erupt(); this.tell('The last of the heat escapes'); }
     if (this.reserve < 0.01 && this.pressure < this.k.least) this.pressure = 0;
     if (this.gravity) this.tipped(dt);
+    if (this.k.pulse > 0 && !this.clamped && !this.k.lamp && this.pressure >= this.k.pulse && (!this.erupting || (this.pressure >= this.k.explosive * 0.9 && this.rock[this.plumeVertex] > 0))) this.erupt(); // (and again before the last is done, rather than let it build to a burst; under the sea it may, as Surtsey did)
     if (this.k.lamp) this.lampStep(dt);
     // A giant's ring thins away, unless it's fed.
     if (this.k.ringThins > 0) this.orbit -= this.orbit * this.k.ringThins * dt;
@@ -1242,8 +1261,8 @@ export class Planet {
   private movePlume(dt: number): void {
     const q = this.plume;
     // Held like a globe, the heat rises towards whatever is uppermost, slowly.
-    const g = this.gravity;
-    if (g && this.k.rises > 0 && !this.called) this.target = unit({ x: -g.x, y: -g.y, z: -g.z });
+    const g = this.gravity, u = this.upright ?? g;
+    if (u && g && this.k.rises > 0 && !this.called) this.target = unit({ x: -u.x, y: -u.y, z: -u.z });
     // On its own, slowly one way; towards where it's called, faster, until it gets there.
     // (Once the fire is out there is nothing to carry: the world is still, for its long age.)
     const drift = this.over ? 0 : this.k.drift;
@@ -1273,6 +1292,51 @@ export class Planet {
   }
 
   // ------------------------------------------------------------------ eruptions
+
+  /** Where lava poured the way the world is held breaks out: a few steps from the vent, down the tip; null if it's held level. */
+  private aimedFlank(vent: number): number | null {
+    const g = this.gravity, p = this.topo.basePositions, t = this.topo;
+    if (!g) return null;
+    const n = { x: p[vent * 3], y: p[vent * 3 + 1], z: p[vent * 3 + 2] }, along = g.x * n.x + g.y * n.y + g.z * n.z;
+    const dx = g.x - along * n.x, dy = g.y - along * n.y, dz = g.z - along * n.z, l = Math.hypot(dx, dy, dz);
+    if (l < 0.08) return null;
+    let v = vent;
+    for (let k = 0; k < 3; k++) {
+      let best = v, score = -Infinity;
+      for (let q = t.nbrOffsets[v]; q < t.nbrOffsets[v + 1]; q++) {
+        const w = t.nbrList[q], ex = p[w * 3] - p[v * 3], ey = p[w * 3 + 1] - p[v * 3 + 1], ez = p[w * 3 + 2] - p[v * 3 + 2];
+        const sc = (ex * dx + ey * dy + ez * dz) / l / (Math.hypot(ex, ey, ez) || 1);
+        if (sc > score) { score = sc; best = w; }
+      }
+      v = best;
+    }
+    return v;
+  }
+
+  /**
+   * Where lava would run from a vertex, the world held as it is: the steepest way down, step by step,
+   * as far as `steps` or until nowhere is lower. For the faint line that shows a pour's way before it goes.
+   */
+  pathFrom(from: number, steps: number): number[] {
+    const t = this.topo, p = t.basePositions, G = this.gravity, R = this.k.relief, out = [from];
+    let v = from;
+    const seen = new Set([from]);
+    for (let k = 0; k < steps; k++) {
+      const s = this.rock[v] + this.lava[v];
+      let best = -1, drop = 0;
+      for (let q = t.nbrOffsets[v]; q < t.nbrOffsets[v + 1]; q++) {
+        const w = t.nbrList[q];
+        if (seen.has(w)) continue;
+        const own = s - (this.rock[w] + this.lava[w]);
+        const round = G ? ((p[w * 3] - p[v * 3]) * G.x + (p[w * 3 + 1] - p[v * 3 + 1]) * G.y + (p[w * 3 + 2] - p[v * 3 + 2]) * G.z) * (1 + R * s) / R : 0;
+        const d = this.k.selfGravity * own + (1 - this.k.selfGravity) * (round + own);
+        if (d > drop) { drop = d; best = w; }
+      }
+      if (best < 0) break;
+      v = best; seen.add(v); out.push(v);
+    }
+    return out;
+  }
 
   /**
    * Where a flow breaks out on the flank: a few steps from the vent, in a direction of its own,
