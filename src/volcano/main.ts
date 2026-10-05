@@ -48,7 +48,7 @@ import { handleSurface } from './surface';
 import { offThread } from './offthread';
 import { snapshotOf, restoreInto, keep, recall, forget, keepGround, recallGround, forgetGround, keepPage, pages, type Page } from './save';
 import { worldOf, nextWorld, WORLDS, chapterOf, type WorldId } from './worlds';
-import { skySvg } from './atlasSky';
+import { openGlobe, type Globe } from './atlasGlobe';
 import { Chain, CHAIN } from './chain';
 import { measureSecond, type Second } from './second';
 import { loadSystem, saveSystem, worldFor, recordPlayed, madeCount } from './system';
@@ -2199,15 +2199,16 @@ void pages().then((all) => {
   if (!all.length) return;
   moreLink(`The atlas · ${all.length} ${all.length === 1 ? 'chart' : 'charts'} kept`, () => openAtlas(all));
 });
+let globeView: Globe | null = null;
 function openAtlas(all: Page[], only: string | null = null): void {
   const box = $('atlas'), list = box.querySelector('.pages')!, view = box.querySelector('.view img') as HTMLImageElement;
-  // The sky first: touch a world made to see its plates, one still to play to go and play it.
+  // The sky first, as a celestial globe: touch any world on it, and a small card rises: the world as
+  // you left it (or still to make), its name, and Play.
   const sky = box.querySelector('.sky') as HTMLElement;
-  sky.innerHTML = skySvg(all, WORLD.id);
-  // Touch any world: a small card rises, the world as you left it (or still to make), its name, and Play.
   const pick = box.querySelector('.pick') as HTMLElement;
-  sky.querySelectorAll('[data-world]').forEach((el) => el.addEventListener('click', () => {
-    const id = (el as HTMLElement).dataset.world! as WorldId, w = worldOf(id), made = all.filter((p) => p.world === id), last = made[made.length - 1];
+  globeView?.dispose();
+  globeView = openGlobe(sky, all, WORLD.id, (id) => {
+    const w = worldOf(id), made = all.filter((p) => p.world === id), last = made[made.length - 1];
     const globe = pick.querySelector('.globe') as HTMLElement;
     globe.className = last ? 'globe' : 'globe unmade';
     globe.style.backgroundImage = last?.portrait ? `url(${last.portrait})` : '';
@@ -2216,7 +2217,7 @@ function openAtlas(all: Page[], only: string | null = null): void {
     (pick.querySelector('.plates') as HTMLElement).hidden = !made.length;
     pick.dataset.world = id;
     pick.classList.add('shown');
-  }));
+  });
   const head = box.querySelector('.plates-head') as HTMLElement;
   head.textContent = only ? worldOf(only as WorldId).title : all.length ? 'The plates' : '';
   list.innerHTML = '';
@@ -2243,7 +2244,7 @@ $('atlas').querySelector('.view')!.addEventListener('click', () => $('atlas').cl
     void pages().then((all) => { openAtlas(all, pick.dataset.world!); $('atlas').querySelector('.plates-head')!.scrollIntoView({ behavior: 'smooth' }); });
   });
 }
-$('atlas').querySelector('.close')!.addEventListener('click', () => $('atlas').classList.remove('open', 'viewing'));
+$('atlas').querySelector('.close')!.addEventListener('click', () => { $('atlas').classList.remove('open', 'viewing'); globeView?.dispose(); globeView = null; });
 // A world with a past can be begun afresh, on new ground.
 if (FIRES) moreLink('Begin this world on new ground', () => { forgetGround(GROUND_KEY); void forget(); setTimeout(() => location.reload(), 200); });
 // A world without life has no key of its kinds.

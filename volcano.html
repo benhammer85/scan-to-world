@@ -83,6 +83,8 @@
       #atlas .head { display: flex; justify-content: space-between; align-items: baseline; margin: 0 4px 18px; }
       #atlas h2 { margin: 0; font-weight: normal; font-style: italic; font-size: 22px; letter-spacing: 0.04em; }
       #atlas .close { font: italic 14px "Newsreader", "Iowan Old Style", Georgia, serif; color: #efe7d3; background: none; border: none; opacity: 0.6; padding: 6px; cursor: pointer; }
+      #atlas .sky { position: relative; height: min(calc(100svh - 110px - env(safe-area-inset-top)), 120vw, 900px); margin: 0 -16px 8px; }
+      #atlas .credit { text-align: center; font-style: italic; font-size: 11px; opacity: 0.45; margin: 0 0 30px; }
       #atlas .plates-head { text-align: center; font-style: italic; font-size: 14px; opacity: 0.7; margin: 0 0 14px; }
       #atlas .pages { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 20px 14px; max-width: 900px; margin: 0 auto; }
       #atlas figure { margin: 0; cursor: pointer; }
@@ -126,7 +128,7 @@
     <button id="keep">keep the plate</button>
     <button id="finish">end the fire</button>
     <button id="worlds" aria-label="All worlds"></button>
-    <div id="atlas" class="engraved"><div class="head"><h2>The atlas</h2><button class="close">back</button></div><div class="sky"></div><p class="plates-head"></p><div class="pages"></div><div class="view"><img alt=""></div><div class="pick"><div class="card"><div class="globe"></div><p class="t"></p><p class="k"></p><div class="acts"><button class="go">Play</button><button class="plates">its plates</button></div></div></div></div>
+    <div id="atlas" class="engraved"><div class="head"><h2>The atlas</h2><button class="close">back</button></div><div class="sky"></div><p class="credit">The figures after Johann Bayer's Uranometria, engraved by Alexander Mair, 1603</p><p class="plates-head"></p><div class="pages"></div><div class="view"><img alt=""></div><div class="pick"><div class="card"><div class="globe"></div><p class="t"></p><p class="k"></p><div class="acts"><button class="go">Play</button><button class="plates">its plates</button></div></div></div></div>
     <div id="system" class="engraved"><div class="head"><h2>A solar system</h2><button class="close">back</button></div><p class="about"></p><div class="plate"></div><div class="foot"></div></div>
     <div id="begin" class="engraved loading"><p class="chapter"></p><p class="world"></p><h1 class="name"></h1><p class="first"></p><p class="second"></p><p class="hands"></p><button class="touch">Begin</button><div class="worlds"></div><button class="more-toggle">more</button><div class="more" hidden></div></div>
     <script type="module" src="/src/volcano/main.ts"></script>
