@@ -47,7 +47,7 @@ import { handleDrafts } from './drafts';
 import { handleSurface } from './surface';
 import { offThread } from './offthread';
 import { snapshotOf, restoreInto, keep, recall, forget, keepGround, recallGround, forgetGround, keepPage, pages, type Page } from './save';
-import { worldOf, nextWorld, WORLDS, CHAPTERS, chapterOf, type WorldId } from './worlds';
+import { worldOf, nextWorld, WORLDS, chapterOf, type WorldId } from './worlds';
 import { skySvg } from './atlasSky';
 import { Chain, CHAIN } from './chain';
 import { measureSecond, type Second } from './second';
@@ -2073,36 +2073,24 @@ let begun = false;
 // (It carried about ten lines, twelve numerals, four links and seven inks.)
 ($('begin').querySelector('.world') as HTMLElement).textContent = WORLD.numeral;
 // (And its chapter, above it: not for a world of a solar system, which has its own place.)
-($('begin').querySelector('.chapter') as HTMLElement).textContent = RUN === null ? chapterOf(WORLD.id).title : '';
+// (As little as can be: its number and name, what to do, and begin. Its chapter, its mood and the
+// list of worlds went to the atlas, which is where worlds are picked now.)
+($('begin').querySelector('.chapter') as HTMLElement).textContent = '';
 ($('begin').querySelector('.name') as HTMLElement).textContent = WORLD.title;
 // (An age of Earth begun on the ground the age before left says so: it's the world you made, an age on.)
-($('begin').querySelector('.first') as HTMLElement).textContent = AGE_GROUND ? `${WORLD.first} The world you made, an age later.` : WORLD.first;
+($('begin').querySelector('.first') as HTMLElement).textContent = AGE_GROUND ? 'The world you made, an age later.' : '';
 ($('begin').querySelector('.second') as HTMLElement).textContent = FREE ? 'No aim and no clock: the fire never cools.' : HOW[WORLD.goal] ?? WORLD.second;
 // The hands, the same on every card.
-($('begin').querySelector('.hands') as HTMLElement).textContent = LAMP ? 'Keep it level to grow · tilt to let go · drag to turn' : 'Tilt to pour · hold, then let go to burst · drag to turn';
+// (Only where the hands are new: the first world, and the lamp, where they work the other way round.)
+($('begin').querySelector('.hands') as HTMLElement).textContent = LAMP ? 'Keep it level to grow · tilt to let go · drag to turn' : WORLD === WORLDS[0] ? 'Tilt to pour · hold, then let go to burst · drag to turn' : '';
 // The worlds, along the card's foot, as an atlas lists its plates: touch another to go to it.
 // (Not for a world of a solar system: it's reached from the system's chart.)
-// (A row to each chapter, its name small above it.)
-const rowOf = new Map<string, HTMLElement>();
-if (RUN === null) for (const c of CHAPTERS) {
-  const label = document.createElement('span'), row = document.createElement('span');
-  label.className = 'chapter-name'; label.textContent = c.title;
-  row.className = 'chapter-row';
-  $('begin').querySelector('.worlds')!.append(label, row);
-  for (const id of c.worlds) rowOf.set(id, row);
-}
-if (RUN === null) for (const w of WORLDS) {
+// The worlds: one touch to the atlas's sky, where every world stands in its chapter's constellation.
+if (RUN === null) {
   const b = document.createElement('button');
-  b.textContent = w.numeral;
-  b.setAttribute('aria-label', `${w.numeral}: ${w.title}`);
-  if (w === WORLD) b.className = 'here';
-  else b.addEventListener('pointerdown', (e) => {
-    e.stopPropagation();
-    remember('volcano.world', w.id);
-    if (remembered('volcano.world') === w.id) location.reload();
-    else location.search = `?world=${w.id}`;
-  });
-  (rowOf.get(w.id) ?? $('begin').querySelector('.worlds')!).appendChild(b);
+  b.textContent = 'all worlds';
+  b.addEventListener('pointerdown', (e) => { e.stopPropagation(); void pages().then((all) => openAtlas(all)); });
+  $('begin').querySelector('.worlds')!.appendChild(b);
 }
 const more = $('begin').querySelector('.more') as HTMLElement;
 {
@@ -2170,7 +2158,14 @@ function openAtlas(all: Page[], only: string | null = null): void {
     remember('volcano.world', id);
     location.search = `?world=${id}`;
   }));
-  (box.querySelector('.plates-head') as HTMLElement).textContent = only ? `${worldOf(only as WorldId).title}: its plates (touch it again for all)` : 'The plates';
+  const head = box.querySelector('.plates-head') as HTMLElement;
+  head.textContent = only ? `${worldOf(only as WorldId).title} · ` : all.length ? 'The plates' : '';
+  if (only) {
+    const go = document.createElement('button');
+    go.className = 'play'; go.textContent = 'play it';
+    go.addEventListener('click', () => { remember('volcano.world', only); location.search = `?world=${only}`; });
+    head.appendChild(go);
+  }
   list.innerHTML = '';
   for (const p of all.slice().reverse().filter((q) => !only || q.world === only)) {
     const fig = document.createElement('figure'), img = new Image(), cap = document.createElement('figcaption'), when = document.createElement('small');

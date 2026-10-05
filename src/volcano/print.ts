@@ -563,9 +563,17 @@ const PRINT = (q: boolean) => /* glsl */ `
           // The skin itself: rough at two scales, as a'a is, and folded along the flow (the level lines of how
           // deep it lies), as pahoehoe's ropes are, faintly, as an engraver would cut them.
           float rough = noise3(vDir * 180.0) * 0.6 + noise3(vDir * 520.0 + 2.0) * 0.4;
-          float fold = abs(fract(lvR * 7.0 + 0.35 * noise3(vDir * 40.0)) - 0.5), foldW = max(fwidth(lvR * 7.0), 1e-4);
-          float folds = (1.0 - smoothstep(0.0, foldW * 1.2, fold)) * smoothstep(0.6, 1.2, lvR) * 0.22;
-          vec3 crustInk = vec3(0.058, 0.044, 0.035) * uCrustTint * (0.86 + 0.18 * pl.y) * (0.78 + 0.44 * rough) * (1.0 - folds);
+          float fold = abs(fract(lvR * 3.5 + 0.35 * noise3(vDir * 40.0)) - 0.5), foldW = max(fwidth(lvR * 3.5), 1e-4);
+          float folds = (1.0 - smoothstep(0.0, foldW * 1.2, fold)) * smoothstep(0.6, 1.2, lvR) * 0.12 * smoothstep(0.4, 0.7, noise3(vDir * 14.0)); // (here and there, not everywhere: everywhere, they read as contour lines)
+          // (Richer: plates a little warmer or cooler, brown to slate; the heat under the skin showing
+          // through it as a faint red where it's thick and hot; a glassy sheen where the light catches
+          // fresh crust, silver-blue, as new pahoehoe has; and the crest of each fold catching it too.)
+          vec3 crustBase = mix(vec3(0.066, 0.046, 0.034), vec3(0.048, 0.047, 0.054), smoothstep(0.3, 0.8, pl.y));
+          vec3 crustInk = crustBase * uCrustTint * (0.86 + 0.18 * pl.y) * (0.78 + 0.44 * rough) * (1.0 - folds);
+          crustInk = mix(crustInk, deep * 0.42, 0.32 * smoothstep(0.25, 0.8, T) * (0.6 + 0.4 * noise3(vDir * 24.0)));
+          float foldHi = (1.0 - smoothstep(0.0, foldW * 1.6, abs(fold - 0.14))) * smoothstep(0.6, 1.2, lvR);
+          float sheen = pow(max(0.0, dot(reflect(-L, Nn), V)), 9.0) * (0.35 + 0.65 * rough) + foldHi * 0.1 * smoothstep(0.4, 0.7, noise3(vDir * 14.0));
+          crustInk += vec3(0.1, 0.11, 0.135) * sheen * (0.45 + 0.55 * smoothstep(0.15, 0.6, T));
           float frontPx = abs(lvR - 0.5) / max(fwidth(lvR), 1e-4);
           float front = (1.0 - smoothstep(0.6 * uPx, 2.2 * uPx, frontPx)) * uFeeding * smoothstep(0.45, 0.75, noise3(vDir * 45.0 + tq * 0.05)) * 0.7; // (thin, broken, and soft: a bright line all round looked drawn on)
           // The open heat at the vent and down the fresh stream, graded as incandescence is: pale gold
