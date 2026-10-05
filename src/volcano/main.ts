@@ -249,7 +249,7 @@ const lavaClock = { value: 0 }, pxRatio = { value: 1 };
 /** The craters for the print's shader (the latest 64 of them), and the light in the world's own frame, so a crater's shadow falls the right way however it's turned. */
 const CRATERS = 64, craterAt = Array.from({ length: CRATERS }, () => new THREE.Vector4()), craterAge = new Float32Array(CRATERS), craterCount = { value: 0 };
 /** Where the vent is (the world's own frame), and whether it's feeding lava (the engraving's dashes stream while it is). */
-const ventObj = new THREE.Vector3(0, 0, 1), fed = { value: 0 }, building = { value: 0 }, spray = { value: 0 }, drift = { value: 0 }, burp = { value: -1 }, burpSize = { value: 1 }, burpSeed = { value: 0 }, burpDir = { value: 0 }, gold = { value: 0 };
+const flash = { value: 0 }, ventObj = new THREE.Vector3(0, 0, 1), fed = { value: 0 }, building = { value: 0 }, spray = { value: 0 }, drift = { value: 0 }, burp = { value: -1 }, burpSize = { value: 1 }, burpSeed = { value: 0 }, burpDir = { value: 0 }, gold = { value: 0 };
 let driftAt = 0, burpAt = -1, nextBurp = 0, burst = true;
 const LIGHT_VIEW = new THREE.Vector3(-0.55, 0.6, 0.6).normalize(), lightObj = new THREE.Vector3(), unturn = new THREE.Quaternion();
 function cratering(): void {
@@ -318,6 +318,7 @@ material.onBeforeCompile = (shader) => {
   shader.uniforms.uVent = { value: ventObj };
   shader.uniforms.uFeeding = fed;
   shader.uniforms.uBuild = building;
+  shader.uniforms.uFlash = flash;
   shader.uniforms.uDark = { value: DARK_LAVA ? 1 : 0 };
   shader.uniforms.uIceLine = iceLine;
   shader.uniforms.uSky = sky;
@@ -509,6 +510,9 @@ const [PA, BA, AS] = [PAPER, BASALT, ASH].map(rgb);
 const FL = FLOODED ? rgb(FLOODED) : null;
 /** Scorched ground: charcoal, a little warm. */
 const CHAR = [0.27, 0.2, 0.16];
+/** The light fresh lava throws on the ground round it: warm, and stronger on the dark worlds, where it's the light. */
+const GLOW_C = rgb(new THREE.Color('#ffae6a')), GLOW_BY = ICE ? 0 : DARK_LAVA ? 0.5 : 0.32; // (not on the ice moons: their lava is water)
+const glowField = new Float32Array(N), glowNext = new Float32Array(N);
 /**
  * Life's own wash: where something lives, the ground takes its kind's colour, as the hand-coloured
  * maps washed woods green, in a thin watercolour over the paper, stronger the more there is.
@@ -551,6 +555,16 @@ function coarse(): void {
       drawnHeight.set(heightEase);
     }
   }
+  // How much the heat of lava near it lights each point: from lava running or only just set, spread a few
+  // rings out over the ground and weakening as it goes, so the light falls round the lava, not only on it.
+  {
+    const o = topo.nbrOffsets, l = topo.nbrList;
+    for (let v = 0; v < N; v++) { const lv = planet.lava[v]; glowField[v] = lv > 0.002 ? Math.min(1, lv * 60) : planet.age[v] < 25 && planet.ash[v] < 0.25 ? Math.exp(-planet.age[v] / 8) * 0.7 : 0; }
+    for (let pass = 0; pass < 5; pass++) {
+      for (let v = 0; v < N; v++) { let m = glowField[v]; for (let k = o[v]; k < o[v + 1]; k++) m = Math.max(m, glowField[l[k]] * 0.74); glowNext[v] = m; }
+      glowField.set(glowNext);
+    }
+  }
   for (let v = 0; v < N; v++) {
     const h = drawnHeight[v], r = 1 + RELIEF * Math.max(0, h);
     topo.positions[v * 3] = base[v * 3] * r; topo.positions[v * 3 + 1] = base[v * 3 + 1] * r; topo.positions[v * 3 + 2] = base[v * 3 + 2] * r;
@@ -587,7 +601,8 @@ function coarse(): void {
     // (And where life has taken it, less: moss greens black lava as it takes hold.)
     // (Ol Doinyo Lengai's black lava stays black only until it whitens.)
     // (Kept for good, dark lava drawn: the flow stays as a field of basalt, the record of where the fire went.)
-    const set = !ICE && lava <= LAVA_WHOLE / 4 && planet.age[v] < (planet.k.whiteAt || (DARK_LAVA ? 1e5 : 240)) ? 1 - (LIFE ? Math.min(1, planet.life[v] * 3) : 0) : 0;
+    const set = !ICE && lava <= LAVA_WHOLE / 4 && planet.age[v] < (planet.k.whiteAt || (DARK_LAVA ? 1e5 : 240)) && planet.ash[v] < 0.25 ? // (lava only: thick ash marks the ground new too, and kept, it drew a dark ring round each burst)
+      1 - (LIFE ? Math.min(1, planet.life[v] * 3) : 0) : 0;
     coarseMarks[v * 4 + 3] = set;
     coarseMarks[v * 4 + 2] = set * Math.exp(-planet.age[v] / (planet.k.whiteAt ? planet.k.whiteAt * 0.6 : 45));
     // (As it's drawn, by how grown it is; just come, faint.)
@@ -603,6 +618,7 @@ function coarse(): void {
       x += (washTint[v3 + i] - x) * washWeight[v];
       // Where lava has just burned what lived, the ground is scorched a while before it's buried or greys.
       if (planet.scorch[v] > 0.01) x += (CHAR[i] - x) * Math.min(0.85, planet.scorch[v] * 0.9);
+      if (glowField[v] > 0.01 && lava < 0.002) x += (GLOW_C[i] - x) * glowField[v] * GLOW_BY;
       coarseLand[v3 + i] = x;
     }
   }
@@ -1568,7 +1584,7 @@ function words(): void {
 
 // ---------------------------------------------------------------- what happens, seen and felt
 const tallied = { ...planet.tally };
-let steamIn = 0, smokeIn = 0, momentAt = -100, wasBrink = false;
+let steamIn = 0, sparkIn = 0, smokeIn = 0, momentAt = -100, wasBrink = false;
 const UPWARD = new THREE.Vector3(), INVERSE_RIGHT = new THREE.Vector3();
 function effects(dt: number): void {
   const p = topo.positions, v0 = planet.plumeVertex;
@@ -1584,13 +1600,27 @@ function effects(dt: number): void {
     feel(torn ? [40, 60, 90] : 25);
     landing = { at: seconds, n: torn ? 9 : 6 }; // (and then what it threw, coming down)
     spray.value = 1; // (a burst throws its splatter, whatever the ink)
+    flash.value = torn ? 1.3 : 1; // (and the mouth flares white-gold for a moment: the burst plain to see)
     // The column of ash: many puffs from the vent, rising and spreading.
     // And a fountain of embers, thrown up and falling back glowing.
-    for (let i = 0; i < (torn ? 70 : 40); i++) puffs.add('ember', p[v0 * 3], p[v0 * 3 + 1], p[v0 * 3 + 2], torn ? 1.4 : 1);
+    for (let i = 0; i < (torn ? 110 : 70); i++) puffs.add('ember', p[v0 * 3], p[v0 * 3 + 1], p[v0 * 3 + 2], (torn ? 1.5 : 1.15) * (0.7 + 0.6 * Math.random()));
     for (let i = 0; i < (torn ? 26 : 14); i++) puffs.add('ash', p[v0 * 3], p[v0 * 3 + 1], p[v0 * 3 + 2], torn ? 1.5 : 1, Math.random, up, 1); // (fewer: each is a billow now)
   }
   Object.assign(tallied, planet.tally);
   // Steam where lava runs into the sea, as much as there is lava there.
+  // Over open lava: a few sparks lifted on the heat, and a faint warm haze rising: heat you can see, kept sparse.
+  flash.value *= Math.exp(-dt * 1.8);
+  sparkIn -= dt;
+  if (sparkIn <= 0 && (planet.pouring || planet.erupting) && !LAMP) {
+    sparkIn = 0.22;
+    for (let tries = 0; tries < 30; tries++) {
+      const v = Math.floor(Math.random() * N);
+      if (planet.lava[v] < 0.006) continue;
+      puffs.add(Math.random() < 0.7 ? 'spark' : 'haze', p[v * 3], p[v * 3 + 1], p[v * 3 + 2]);
+      break;
+    }
+    if (Math.random() < 0.6) puffs.add(Math.random() < 0.5 ? 'spark' : 'haze', p[v0 * 3], p[v0 * 3 + 1], p[v0 * 3 + 2]);
+  }
   steamIn -= dt;
   if (steamIn <= 0) {
     steamIn = 0.6;
@@ -2278,7 +2308,7 @@ void resume().then((back) => {
  * The camera breathes with the land: close while there's little, easing out as it spreads, so
  * the whole of what you've made is in view; a pinch takes over for a while.
  */
-let zoomedAt = -100, lastReach = -10, reachDist = 3.2;
+let zoomedAt = -100, lastReach = -10, reachDist = 3.2, lean = 1;
 /** When the world was begun (it glides from the card's view to the playing view, a little quicker at first). */
 let begunAt = -100;
 /** The card's view: the world whole and small, high on the page, above the card's words. */
@@ -2313,10 +2343,13 @@ function breathe(dt: number): void {
   // At the end, the world steps back and up the page, leaving the foot for the chart.
   const moment = !ending && seconds - momentAt < 4.5;
   document.body.classList.toggle('hush', moment);
-  const want = ending?.shown ? farthest * 0.92 : reachDist * (moment && !STILL ? 1.16 : 1), wantLift = ending?.shown ? 0.09 : 0;
+  // While lava runs, the view leans in a little, so the flow is big when it matters; and eases back after.
+  const running = !ending && !moment && (planet.pouring || (planet.erupting && planet.molten > 0.01)) && !STILL;
+  lean += ((running ? 0.82 : 1) - lean) * Math.min(1, dt * (running ? 0.9 : 0.45));
+  const want = ending?.shown ? farthest * 0.92 : reachDist * (moment && !STILL ? 1.16 : 1) * lean, wantLift = ending?.shown ? 0.09 : 0;
   if (!ending?.shown && seconds - zoomedAt < 10) return;
   const gliding = seconds - begunAt < 5; // (from the card's view: quicker, so the world comes to hand)
-  const d = dist + (want - dist) * Math.min(1, (moment ? 0.9 : gliding ? 0.9 : 0.15) * dt), l = lift + (wantLift - lift) * Math.min(1, (gliding ? 1.2 : 0.6) * dt);
+  const d = dist + (want - dist) * Math.min(1, (moment ? 0.9 : gliding ? 0.9 : Math.abs(lean - 1) > 0.01 ? 1.4 : 0.15) * dt), l = lift + (wantLift - lift) * Math.min(1, (gliding ? 1.2 : 0.6) * dt);
   if (Math.abs(d - dist) > 1e-4 || Math.abs(l - lift) > 1e-5) { dist = d; lift = l; look(); }
 }
 /** If the phone can't keep up, draw a little less finely: the pixel ratio comes down a half at a time, but never below two to a point (see FINEST). */

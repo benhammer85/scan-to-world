@@ -31,7 +31,7 @@ export const LOOKS: { id: string; look: Look; words: string }[] = [
 /** Declared before the shader's main(); uses its hash3, noise3 and uPx. */
 export const PRINT_FUNCTIONS = /* glsl */ `
   varying vec3 vS;
-  uniform float uFloodDots, uFloodRim, uFeeding, uBuild, uSpray, uDrift, uBurp, uBurpSize, uBurpSeed, uBurpDir, uGold, uDark;
+  uniform float uFlash, uFloodDots, uFloodRim, uFeeding, uBuild, uSpray, uDrift, uBurp, uBurpSize, uBurpSeed, uBurpDir, uGold, uDark;
   uniform vec3 uCrustTint; // (each world's own basalt: redder on Mars, olive on Io, grey on the Moon)
   uniform float uIceLine; // (Snowball Earth: the ice from this latitude's sine to the poles; below 0, no ice)
   uniform float uHaze; // (the orange Earth: its orange haze, 1 at first, gone once the sky is blue)
@@ -626,7 +626,7 @@ const PRINT = (q: boolean) => /* glsl */ `
           liquid = mix(liquid, vec3(1.0, 0.9, 0.62), smoothstep(0.82, 1.0, ripple) * hot * 0.45);
           // Darker veins swirling through it, carried with it: the skin of the liquid itself, cooling in threads.
           float vn = noise3(vec3(fr * 1.7 + 3.0, tq * 0.25)), vw = max(fwidth(vn), 1e-4) * 1.5;
-          float vein = (1.0 - smoothstep(0.012, 0.012 + vw, abs(vn - 0.5))) * (0.5 + 0.5 * (1.0 - hot));
+          float vein = (1.0 - smoothstep(0.012, 0.012 + vw, abs(vn - 0.5))) * (0.5 + 0.5 * (1.0 - hot)) * smoothstep(0.02, 0.07, far); // (not at the very mouth, where the flow's carrying squeezes them into rings)
           liquid = mix(liquid, lRed * 0.7, vein * 0.6);
           // A raft's edge glows where the liquid meets it: a thin bright line, its crust's hot underside.
           float raftEdge = 1.0 - smoothstep(0.0, rfw * 2.5, abs(raftF - raftAt));
@@ -638,6 +638,13 @@ const PRINT = (q: boolean) => /* glsl */ `
         }
         col = mix(col, inkCol * mix(vec3(1.0), col / paper, uDark > 0.5 ? 0.15 : 0.5), cov * (uDark > 0.5 ? 0.96 : 0.92));
         glowInk = uDark > 0.5 ? cov * lit * 0.95 : cov * mix(0.4, 0.95, yelOn); // (a little of its own light, or the lighting dims the soft inks to mud; the gold, the one light)
+        // A burst: the mouth flares white-gold for a moment, a wide soft light round it fading as the ash rises.
+        if (uFlash > 0.02) {
+          float fr2 = 0.018 + 0.06 * (1.0 - min(1.0, uFlash));
+          float core = (1.0 - smoothstep(fr2 * 0.6, fr2, far)) * min(1.0, uFlash), ring = exp(-far / (0.04 + 0.1 * (1.0 - min(1.0, uFlash)))) * min(1.0, uFlash) * 0.75;
+          col = mix(col, mix(vec3(1.0, 0.62, 0.22), vec3(1.0, 0.95, 0.8), core), clamp(max(core, ring * onLand), 0.0, 1.0));
+          glowInk = max(glowInk, max(core, ring * 0.7));
+        }
         // As the pressure builds, a spot of gold warms the ground at the vent, widening, before anything pours.
         if (uBuild > 0.3) {
           float spotR = (0.004 + 0.018 * uBuild) * (0.8 + 0.4 * noise3(vDir * 90.0));
