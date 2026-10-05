@@ -586,7 +586,8 @@ function coarse(): void {
     // (Lava too thin to be drawn running is drawn set: a thin margin chills first.)
     // (And where life has taken it, less: moss greens black lava as it takes hold.)
     // (Ol Doinyo Lengai's black lava stays black only until it whitens.)
-    const set = !ICE && lava <= LAVA_WHOLE / 4 && planet.age[v] < (planet.k.whiteAt || 240) ? 1 - (LIFE ? Math.min(1, planet.life[v] * 3) : 0) : 0;
+    // (Kept for good, dark lava drawn: the flow stays as a field of basalt, the record of where the fire went.)
+    const set = !ICE && lava <= LAVA_WHOLE / 4 && planet.age[v] < (planet.k.whiteAt || (DARK_LAVA ? 1e5 : 240)) ? 1 - (LIFE ? Math.min(1, planet.life[v] * 3) : 0) : 0;
     coarseMarks[v * 4 + 3] = set;
     coarseMarks[v * 4 + 2] = set * Math.exp(-planet.age[v] / (planet.k.whiteAt ? planet.k.whiteAt * 0.6 : 45));
     // (As it's drawn, by how grown it is; just come, faint.)

@@ -500,7 +500,7 @@ const PRINT = (q: boolean) => /* glsl */ `
         // Its heat: the core follows the deepest lava, down the flow (the vent warms it only a little,
         // or the core sat round the vent like a yolk), pinching and swelling along its length as it's carried.
         vec2 pol = vec2(cos(ang), sin(ang)) * far;
-        vec2 rid = pol * (1.0 - uDrift * 0.004 / max(far, 0.02)); // (carried outward from the vent)
+        vec2 rid = pol * (1.0 - uDrift * 0.011 / max(far, 0.02)); // (carried outward from the vent: fast enough to see it flow)
         float pinch = noise3(vec3(rid * 12.0, 7.0 + tq * 0.08));
         float T = clamp(smoothstep(0.55, 2.1, lvR) * 0.85 + exp(-far / 0.06) * 0.2 + 0.1 * (pinch - 0.5), 0.0, 1.0) * smoothstep(0.5, 0.85, lvR);
         // While it's fed, the core breathes: widening and narrowing all together (it was rings pulsing outward, which striped long flows).
@@ -561,14 +561,22 @@ const PRINT = (q: boolean) => /* glsl */ `
           // shows in seams between them: wider and brighter the hotter the lava under them, closing as it cools.
           // (The plates laid on the world itself, three ways blended, and warped: laid round the vent, in
           // rings and spokes, they made a flower of it, and even polygons read as a tortoise's shell.)
-          vec3 wq = vDir * 46.0 + 0.9 * vec3(noise3(vDir * 9.0), noise3(vDir * 9.0 + 3.7), noise3(vDir * 9.0 + 7.1));
-          vec3 tw = abs(vDir); tw /= (tw.x + tw.y + tw.z);
-          vec2 pl = plates(wq.yz) * tw.x + plates(wq.zx) * tw.y + plates(wq.xy) * tw.z;
+          // (The plates ride the flow: laid out round the vent and carried outward while it's fed, as crust
+          // floats on running lava; warped, so they don't read as rings or a tortoise's shell.)
+          vec2 pr = rid * 46.0 + 0.9 * vec2(noise3(vDir * 9.0), noise3(vDir * 9.0 + 3.7));
+          vec2 pl = plates(pr);
+          // (And for running lava, rafts rather than a net of plates: a slow, warped field carried down the
+          // flow; where it's high, a raft of crust floats; few and small while it's hot, joining as it cools.)
+          vec2 fr = rid * 30.0 + 1.6 * vec2(noise3(vDir * 6.0 + 1.3), noise3(vDir * 6.0 + 8.1));
+          float raftF = noise3(vec3(fr, tq * 0.05)) * 0.85 + noise3(vec3(fr * 2.3 + 4.0, tq * 0.08)) * 0.15; // (rounded rafts: more of the second scale made them jagged, like camouflage)
           float run = max(T, uFeeding * 0.62 * smoothstep(0.5, 0.9, lvR)); // (while the vent feeds it, all the running lava is molten under its skin, thin or deep)
           float pfw = max(fwidth(pl.x), 1e-4), hot = smoothstep(0.2, 0.65, run);
-          float seamW = 0.015 + 0.07 * hot;
-          // (Only where it's hot, and near the vent: further out, and cooler, the skin closes.)
-          float seam = (1.0 - smoothstep(seamW, seamW + pfw * 1.5, pl.x)) * smoothstep(0.3, 0.6, run) * (0.35 + 0.65 * exp(-far / 0.16)) * (0.55 + 0.45 * uFeeding) * smoothstep(0.25, 0.5, noise3(vDir * 60.0)); // (all down the running flow: molten under its plates, the seams closing as it cools)
+          // Molten while it runs: the plates are islands of crust on a bright liquid, wide apart while the vent
+          // feeds it and it's hot, closing into a skin as it slows and cools (as every game's lava that reads
+          // as lava at a glance is: bright, moving, with dark crust floating on it).
+          float molten = smoothstep(0.15, 0.55, run) * mix(0.45, 1.0, uFeeding) * (0.6 + 0.4 * exp(-far / 0.25));
+          float raftAt = mix(0.34, 0.84, molten), rfw = max(fwidth(raftF), 1e-4) * 1.2;
+          float seam = (1.0 - smoothstep(raftAt - rfw, raftAt + rfw, raftF)) * smoothstep(0.2, 0.5, run);
           // The skin itself: rough at two scales, as a'a is, and folded along the flow (the level lines of how
           // deep it lies), as pahoehoe's ropes are, faintly, as an engraver would cut them.
           float rough = noise3(vDir * 180.0) * 0.6 + noise3(vDir * 520.0 + 2.0) * 0.4;
@@ -608,10 +616,25 @@ const PRINT = (q: boolean) => /* glsl */ `
           glowCol = mix(glowCol, yel, band3);
           glowCol = mix(glowCol, uInkPale, smoothstep(0.97 - hw, 0.97 + hw, heatV) * step(far, 0.015)); // (the palest only right at the mouth)
           inkCol = crustInk;
-          inkCol = mix(inkCol, mix(verm * 0.9, mix(verm, yel, 0.35), hot), seam * 0.9); // (molten orange in the seams, gold where it's hottest)
+          // The liquid between: orange to gold, brightest where hottest, rippling as it's carried down the flow.
+          float ripple = noise3(vec3(fr * 1.1, tq * 0.35)) * 0.65 + noise3(vec3(fr * 2.6 + 7.0, tq * 0.6)) * 0.35;
+          // (Its own inks, saturated: the print's soft vermilion read as paint, not as something glowing.)
+          vec3 lRed = vec3(0.72, 0.1, 0.02) * mix(vec3(1.0), uInkMid / max(uInkMid.r, 1e-3), 0.25), lOrange = vec3(1.0, 0.36, 0.04), lGold = vec3(1.0, 0.72, 0.22);
+          float heatL = clamp(0.25 + 0.5 * hot + 0.5 * (ripple - 0.45) + 0.2 * molten, 0.0, 1.0);
+          vec3 liquid = mix(lRed, lOrange, smoothstep(0.0, 0.55, heatL));
+          liquid = mix(liquid, lGold, smoothstep(0.55, 1.0, heatL));
+          liquid = mix(liquid, vec3(1.0, 0.9, 0.62), smoothstep(0.82, 1.0, ripple) * hot * 0.45);
+          // Darker veins swirling through it, carried with it: the skin of the liquid itself, cooling in threads.
+          float vn = noise3(vec3(fr * 1.7 + 3.0, tq * 0.25)), vw = max(fwidth(vn), 1e-4) * 1.5;
+          float vein = (1.0 - smoothstep(0.012, 0.012 + vw, abs(vn - 0.5))) * (0.5 + 0.5 * (1.0 - hot));
+          liquid = mix(liquid, lRed * 0.7, vein * 0.6);
+          // A raft's edge glows where the liquid meets it: a thin bright line, its crust's hot underside.
+          float raftEdge = 1.0 - smoothstep(0.0, rfw * 2.5, abs(raftF - raftAt));
+          crustInk = mix(crustInk, deep * 0.8, raftEdge * 0.5 * smoothstep(0.2, 0.5, run));
+          inkCol = mix(inkCol, liquid, seam);
           inkCol = mix(inkCol, verm, front * 0.9);
           inkCol = mix(inkCol, glowCol, open);
-          lit = clamp(max(open, max(seam, front)), 0.0, 1.0);
+          lit = clamp(max(open, max(seam * (0.75 + 0.25 * hot), front)), 0.0, 1.0);
         }
         col = mix(col, inkCol * mix(vec3(1.0), col / paper, uDark > 0.5 ? 0.15 : 0.5), cov * (uDark > 0.5 ? 0.96 : 0.92));
         glowInk = uDark > 0.5 ? cov * lit * 0.95 : cov * mix(0.4, 0.95, yelOn); // (a little of its own light, or the lighting dims the soft inks to mud; the gold, the one light)
@@ -654,7 +677,7 @@ const PRINT = (q: boolean) => /* glsl */ `
           // grey-brown by a minute, and gone in two and a half, so the world stays airy, the newest the darkest.)
           setCol = mix(vec3(0.27, 0.235, 0.2), vec3(0.06, 0.044, 0.034), smoothstep(0.3, 0.6, black)) * uCrustTint;
           setCol = mix(setCol, vec3(0.035, 0.026, 0.021) * uCrustTint, smoothstep(0.65, 0.85, black));
-          setCol = mix(setCol, deep * 0.55, smoothstep(0.93, 0.99, black)); // (a dark red for its first seconds only: brighter and longer, a thin sheet just set flashed orange) // (a dark red for its first seconds only: brighter and longer, a thin sheet just set flashed orange)
+          setCol = mix(setCol, mix(deep * 0.45, vec3(0.05, 0.035, 0.028) * uCrustTint, 0.4), smoothstep(0.85, 0.99, black)); // (a dark red for its first seconds only, eased in: sharp, neighbouring points cooling a moment apart blotched it) // (a dark red for its first seconds only: brighter and longer, a thin sheet just set flashed orange)
         }` : `vec3 setCol = mix(vec3(0.24, 0.22, 0.21), deep, smoothstep(0.6 - sb, 0.6 + sb, black));
         setCol = mix(setCol, verm, smoothstep(0.8 - sb, 0.8 + sb, black));`}
         // (Pressed as the running ink is; and skinning over with crust as it cools, the plates now still.)
@@ -662,9 +685,22 @@ const PRINT = (q: boolean) => /* glsl */ `
         ${q ? 'if (uDark < 0.5) ' : ''}setCol = mix(setCol, deep * mix(0.55, 1.0, smoothstep(0.8 - sb, 0.8 + sb, black)), sCrust * 0.9); // (not on dark lava: its red plates were blotches)
         setCol *= (0.82 + 0.3 * mottle) * mix(1.0, grain, 0.5);
         setCol = mix(setCol, mix(paper, setCol, 0.35), starve * (1.0 - uDark)); // (not on dark lava: specks of paper read as stars)
-        ${q ? `float setA = hs * (uDark > 0.5 ? 0.95 * smoothstep(0.04, 0.16, black) : 0.3 * smoothstep(0.006, 0.15, black) + 0.62 * smoothstep(0.45, 0.8, black)); // (dark: solid basalt for its first minute, then going cleanly, never a grey wash)
+        ${q ? `// (Dark: solid basalt for its first minute, then settling, not going: the flow stays on the map as a
+        // field of darker rock, a lasting record of where the fire went, as a geological map keeps every flow.)
+        float weathered = 1.0 - smoothstep(0.04, 0.16, black);
+        if (uDark > 0.5) setCol = mix(setCol, mix(vec3(0.27, 0.235, 0.2), vec3(0.17, 0.15, 0.135), 0.55) * uCrustTint, weathered);
+        float setA = hs * (uDark > 0.5 ? 0.95 * smoothstep(0.04, 0.16, black) + 0.55 * weathered : 0.3 * smoothstep(0.006, 0.15, black) + 0.62 * smoothstep(0.45, 0.8, black));
         col = mix(col, setCol * mix(vec3(1.0), col / paper, uDark > 0.5 ? 0.12 : 0.5), setA);
-        glowInk = max(glowInk, setA * (uDark > 0.5 ? smoothstep(0.93, 0.99, black) * 0.35 : sWarm * 0.4));` : `float setA = hs * smoothstep(0.33, 0.4, black) * 0.92;
+        glowInk = max(glowInk, setA * (uDark > 0.5 ? smoothstep(0.93, 0.99, black) * 0.35 : sWarm * 0.4));
+        if (uDark > 0.5) {
+          // Each flow's edge inked, finely, as the maps outline a lava flow; and the ground it built shaded by
+          // the lamp, softly, so a shield it raised stands up off the page (the rest of the map stays flat).
+          float rimD = abs(here - 0.5) / max(fwidth(here), 1e-4);
+          float rimLine = (1.0 - smoothstep(0.5 * uPx, 1.7 * uPx, rimD)) * onLand * (1.0 - cov);
+          col = mix(col, vec3(0.13, 0.11, 0.1) * uCrustTint, rimLine * 0.5);
+          float shade = clamp(0.8 + 0.45 * dot(Nn, L), 0.62, 1.12);
+          col *= mix(1.0, shade, setOn * (1.0 - cov) * 0.85);
+        }` : `float setA = hs * smoothstep(0.33, 0.4, black) * 0.92;
         col = mix(col, setCol, setA);
         glowInk = max(glowInk, setA * smoothstep(0.6 - sb, 0.6 + sb, black) * 0.7); // (still hot, it glows; gone grey, it's ground)`}
         // A burp: now and then while it erupts, gas swells under the crust at the vent, a dark lumpy dome

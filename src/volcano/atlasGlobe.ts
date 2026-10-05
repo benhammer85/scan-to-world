@@ -16,6 +16,13 @@ import hydra from './figures/hydra.webp';
 import draco from './figures/draco.webp';
 import hercules from './figures/hercules.webp';
 import pegasus from './figures/pegasus.webp';
+import cygnus from './figures/cygnus.webp';
+import lyra from './figures/lyra.webp';
+import cassiopeia from './figures/cassiopeia.webp';
+import andromeda from './figures/andromeda.webp';
+import perseus from './figures/perseus.webp';
+import orion from './figures/orion.webp';
+import canis from './figures/canis.webp';
 
 const NIGHT = new THREE.Color('#1b2341'), PALE = '#efe7d3', GOLD = '#e2c27a';
 
@@ -37,6 +44,20 @@ const FIGURES: Record<string, Figure> = {
   // V · Far worlds: Pegasus, flying: muzzle, neck, wing, wingtip, cloud.
   V: { name: 'Pegasus', src: pegasus, w: 820, h: 573, stars: [[57, 232], [265, 158], [372, 186], [616, 72], [671, 292]], ra: 22.6, dec: 17, span: 52 },
 };
+
+/**
+ * The rest of the sky: more of Bayer's figures, never a chapter, so the globe is as full as the old
+ * ones were. Fainter than the chapters' figures, and never inked: there to come across as it turns.
+ */
+const BACKGROUND: Figure[] = [
+  { name: 'Cygnus', src: cygnus, w: 359, h: 559, stars: [], ra: 20.5, dec: 42, span: 22 },
+  { name: 'Lyra', src: lyra, w: 560, h: 560, stars: [], ra: 18.9, dec: 37, span: 15 },
+  { name: 'Cassiopeia', src: cassiopeia, w: 560, h: 405, stars: [], ra: 1.0, dec: 61, span: 32 },
+  { name: 'Andromeda', src: andromeda, w: 560, h: 520, stars: [], ra: 1.1, dec: 33, span: 28 },
+  { name: 'Perseus', src: perseus, w: 383, h: 559, stars: [], ra: 3.5, dec: 44, span: 20 },
+  { name: 'Orion', src: orion, w: 536, h: 559, stars: [], ra: 5.6, dec: 4, span: 26 },
+  { name: 'Canis Major', src: canis, w: 462, h: 559, stars: [], ra: 6.9, dec: -22, span: 22 },
+];
 
 const RAD = Math.PI / 180;
 /** A place in the sky as a point on the globe (y towards the north pole; right ascension increasing to the right, seen from outside). */
@@ -155,12 +176,9 @@ export function openGlobe(box: HTMLElement, pages: Page[], here: WorldId, pick: 
   // ---- the figures, laid on the globe where they stand in the sky
   const loader = new THREE.TextureLoader();
   const markers: { id: WorldId; at: THREE.Vector3; sprite: THREE.Sprite; made: boolean }[] = [];
-  const labels: { at: THREE.Vector3; sprite: THREE.Sprite }[] = [];
-  CHAPTERS.forEach((c) => {
-    const f = FIGURES[c.numeral];
-    if (!f) return;
-    const all = c.worlds.every((w) => latest.has(w));
-    const lit = c.worlds.map((w, i) => new THREE.Vector3(f.stars[i][0] / f.w, f.stars[i][1] / f.h, latest.has(w) ? 1 : 0));
+  const labels: { at: THREE.Vector3; sprite: THREE.Sprite; weight: number }[] = [];
+  /** A figure laid on the globe: `lit` the stars to ink it round, `base` how strongly it shows uninked. */
+  const layFigure = (f: Figure, lit: THREE.Vector3[], all: boolean, base: number) => {
     while (lit.length < 6) lit.push(new THREE.Vector3(0, 0, 0));
     // The picture as a gore: a grid of points on the globe, its texture the engraving.
     const S = 48, geo = keep(new THREE.BufferGeometry()), pos: number[] = [], uv: number[] = [], idx: number[] = [];
@@ -170,12 +188,12 @@ export function openGlobe(box: HTMLElement, pages: Page[], here: WorldId, pick: 
     const tex = keep(loader.load(f.src)); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
     const mat = keep(new THREE.ShaderMaterial({
       transparent: true, depthWrite: false,
-      uniforms: { map: { value: tex }, uLit: { value: lit }, uAll: { value: all ? 1 : 0 }, uLight: { value: LIGHT }, uAspect: { value: f.w / f.h } },
+      uniforms: { map: { value: tex }, uLit: { value: lit }, uAll: { value: all ? 1 : 0 }, uLight: { value: LIGHT }, uAspect: { value: f.w / f.h }, uBase: { value: base } },
       vertexShader: /* glsl */ `
         varying vec2 vUv; varying vec3 vN;
         void main() { vUv = uv; vN = normalize(normalMatrix * normalize(position)); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
       fragmentShader: /* glsl */ `
-        uniform sampler2D map; uniform vec3 uLit[6]; uniform float uAll, uAspect; uniform vec3 uLight; varying vec2 vUv; varying vec3 vN;
+        uniform sampler2D map; uniform vec3 uLit[6]; uniform float uAll, uAspect, uBase; uniform vec3 uLight; varying vec2 vUv; varying vec3 vN;
         void main() {
           vec4 t = texture2D(map, vUv);
           // Inked round each world made: a soft circle of the figure; all of it, once the chapter is played through.
@@ -183,12 +201,26 @@ export function openGlobe(box: HTMLElement, pages: Page[], here: WorldId, pick: 
           vec2 q = vec2(vUv.x, 1.0 - vUv.y);
           for (int i = 0; i < 6; i++) { if (uLit[i].z > 0.5) { vec2 d = (q - uLit[i].xy) * vec2(uAspect, 1.0); shown = max(shown, 1.0 - smoothstep(0.1, 0.28, length(d) / max(uAspect, 1.0) * 1.6)); } }
           float lam = max(dot(normalize(vN), uLight), 0.0);
-          float a = clamp(t.a * 1.6, 0.0, 1.0) * mix(0.42, 1.0, shown) * (0.62 + 0.55 * lam);
+          float a = clamp(t.a * 1.6, 0.0, 1.0) * mix(uBase, 1.0, shown) * (0.62 + 0.55 * lam);
           gl_FragColor = vec4(t.rgb * (0.85 + 0.25 * lam), a);
           #include <colorspace_fragment>
         }`,
     }));
     globe.add(new THREE.Mesh(geo, mat));
+  };
+  // The rest of the sky first, faint, its names lettered small.
+  for (const f of BACKGROUND) {
+    layFigure(f, [], false, 0.3);
+    const top = onFigure(f, 0.5, -0.05, 1.004), label = new THREE.Sprite(keep(new THREE.SpriteMaterial({ map: keep(labelTexture(f.name, '')), depthTest: false, depthWrite: false, transparent: true })));
+    label.scale.set(0.42, 0.105, 1); label.position.copy(top); label.center.set(0.5, 0.1);
+    globe.add(label);
+    labels.push({ at: top, sprite: label, weight: 0.55 });
+  }
+  CHAPTERS.forEach((c) => {
+    const f = FIGURES[c.numeral];
+    if (!f) return;
+    const all = c.worlds.every((w) => latest.has(w));
+    layFigure(f, c.worlds.map((w, i) => new THREE.Vector3(f.stars[i][0] / f.w, f.stars[i][1] / f.h, latest.has(w) ? 1 : 0)), all, 0.42);
     // Its worlds joined, star to star, along the globe: dashed in gold.
     for (let i = 1; i < c.worlds.length; i++) {
       const a = onFigure(f, f.stars[i - 1][0] / f.w, f.stars[i - 1][1] / f.h), b = onFigure(f, f.stars[i][0] / f.w, f.stars[i][1] / f.h), pts: THREE.Vector3[] = [];
@@ -214,7 +246,7 @@ export function openGlobe(box: HTMLElement, pages: Page[], here: WorldId, pick: 
       label = new THREE.Sprite(keep(new THREE.SpriteMaterial({ map: keep(labelTexture(f.name, `${c.numeral} · ${c.title}`)), depthTest: false, depthWrite: false, transparent: true })));
     label.scale.set(0.62, 0.155, 1); label.position.copy(top); label.center.set(0.5, 0.2);
     globe.add(label);
-    labels.push({ at: top, sprite: label });
+    labels.push({ at: top, sprite: label, weight: 0.95 });
   });
 
   // ---- turning it
@@ -305,7 +337,7 @@ export function openGlobe(box: HTMLElement, pages: Page[], here: WorldId, pick: 
     camera.position.z += (dist - camera.position.z) * (1 - Math.exp(-dt * 8));
     // Worlds and names fade as they turn away, and are gone before the rim.
     for (const m of markers) { const z = tmp.copy(m.at).applyQuaternion(q).z; (m.sprite.material as THREE.SpriteMaterial).opacity = THREE.MathUtils.smoothstep(z, 0.12, 0.42); }
-    for (const l of labels) { const z = tmp.copy(l.at).applyQuaternion(q).z; (l.sprite.material as THREE.SpriteMaterial).opacity = THREE.MathUtils.smoothstep(z, 0.25, 0.6) * 0.95; }
+    for (const l of labels) { const z = tmp.copy(l.at).applyQuaternion(q).z; (l.sprite.material as THREE.SpriteMaterial).opacity = THREE.MathUtils.smoothstep(z, 0.25, 0.6) * l.weight; }
     renderer.render(scene, camera);
   };
   raf = requestAnimationFrame(frame);
