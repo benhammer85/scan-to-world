@@ -70,7 +70,7 @@
       #begin .more .ink button.here { opacity: 1; text-decoration: underline; text-underline-offset: 5px; cursor: default; }
       /* The atlas: every chart kept, as pages to leaf through; one opened fills the page. */
       /* The solar system's chart, over the card: its worlds round the star, to choose the next. */
-      #system { position: fixed; inset: 0; z-index: 10; display: none; overflow-y: auto; background: #f4efe4; padding: calc(20px + env(safe-area-inset-top)) 16px 40px; box-sizing: border-box; touch-action: pan-y; }
+      #system { position: fixed; inset: 0; z-index: 10; display: none; overflow-y: auto; background: #1b2341; color: #efe7d3; padding: calc(20px + env(safe-area-inset-top)) 16px 40px; box-sizing: border-box; touch-action: pan-y; }
       #system.open { display: block; }
       #system .head { display: flex; justify-content: space-between; align-items: baseline; margin: 0 4px 6px; }
       #system h2 { margin: 0; font-weight: normal; font-style: italic; font-size: 22px; letter-spacing: 0.04em; }
@@ -78,20 +78,20 @@
       #system .about { margin: 0 4px 10px; font-size: 13px; font-style: italic; opacity: 0.7; line-height: 1.45; }
       #system .foot { text-align: center; font-size: 14px; font-style: italic; margin-top: 8px; }
       #system .foot .again { opacity: 0.55; font-size: 13px; cursor: pointer; padding: 8px; }
-      #atlas { position: fixed; inset: 0; z-index: 10; display: none; overflow-y: auto; background: #f4efe4; padding: calc(20px + env(safe-area-inset-top)) 16px 40px; box-sizing: border-box; touch-action: pan-y; }
+      #atlas { position: fixed; inset: 0; z-index: 10; display: none; overflow-y: auto; background: #1b2341; color: #efe7d3; padding: calc(20px + env(safe-area-inset-top)) 16px 40px; box-sizing: border-box; touch-action: pan-y; }
       #atlas.open { display: block; }
       #atlas .head { display: flex; justify-content: space-between; align-items: baseline; margin: 0 4px 18px; }
       #atlas h2 { margin: 0; font-weight: normal; font-style: italic; font-size: 22px; letter-spacing: 0.04em; }
-      #atlas .close { font: italic 14px "Newsreader", "Iowan Old Style", Georgia, serif; color: #2e2118; background: none; border: none; opacity: 0.6; padding: 6px; cursor: pointer; }
+      #atlas .close { font: italic 14px "Newsreader", "Iowan Old Style", Georgia, serif; color: #efe7d3; background: none; border: none; opacity: 0.6; padding: 6px; cursor: pointer; }
       #atlas .plates-head { text-align: center; font-style: italic; font-size: 14px; opacity: 0.7; margin: 0 0 14px; }
       #atlas .pages { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 20px 14px; max-width: 900px; margin: 0 auto; }
       #atlas figure { margin: 0; cursor: pointer; }
-      #atlas figure img { width: 100%; display: block; box-shadow: 0 1px 4px rgba(46, 33, 24, 0.18); }
+      #atlas figure img { width: 100%; display: block; box-shadow: 0 1px 6px rgba(0, 0, 0, 0.35); }
       #atlas figcaption { font-size: 13px; font-style: italic; text-align: center; margin-top: 6px; opacity: 0.85; }
       #atlas figcaption small { font-size: 11px; opacity: 0.6; }
       #atlas .pick { position: fixed; inset: 0; display: none; align-items: flex-end; justify-content: center; padding: 16px 16px calc(24px + env(safe-area-inset-bottom)); box-sizing: border-box; }
       #atlas .pick.shown { display: flex; }
-      #atlas .pick .card { width: 100%; max-width: 360px; background: #f4efe4; border: 1px solid rgba(46, 33, 24, 0.22); box-shadow: 0 6px 24px rgba(46, 33, 24, 0.16); padding: 22px 20px 16px; text-align: center; box-sizing: border-box; animation: rise 0.35s ease-out; }
+      #atlas .pick .card { width: 100%; max-width: 360px; background: #f4efe4; color: #2e2118; border: 1px solid rgba(46, 33, 24, 0.22); box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45); padding: 22px 20px 16px; text-align: center; box-sizing: border-box; animation: rise 0.35s ease-out; }
       @keyframes rise { from { transform: translateY(14px); opacity: 0; } to { transform: none; opacity: 1; } }
       #atlas .pick .globe { width: 76px; height: 76px; margin: 0 auto 12px; border-radius: 50%; border: 1px solid #2e2118; background: #f4efe4 center / cover no-repeat; }
       #atlas .pick .globe.unmade { border: 1px dashed #a8987f; width: 40px; height: 40px; margin: 18px auto 30px; }
@@ -100,7 +100,7 @@
       #atlas .pick .acts { display: flex; justify-content: center; align-items: baseline; gap: 22px; }
       #atlas .pick .go { font: 17px "Newsreader", "Iowan Old Style", Georgia, serif; color: #f4efe4; background: #2e2118; border: none; padding: 9px 30px; cursor: pointer; }
       #atlas .pick .plates { font: italic 14px "Newsreader", "Iowan Old Style", Georgia, serif; color: #2e2118; background: none; border: none; text-decoration: underline; text-underline-offset: 4px; opacity: 0.75; padding: 6px; cursor: pointer; }
-      #atlas .view { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: #f4efe4; padding: 16px; cursor: pointer; }
+      #atlas .view { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: #1b2341; padding: 16px; cursor: pointer; }
       #atlas.viewing .view { display: flex; }
       #atlas .view img { max-width: 100%; max-height: 100%; box-shadow: 0 2px 10px rgba(46, 33, 24, 0.2); }
       /* After the chart: a word on beginning again, and a way to keep it. */

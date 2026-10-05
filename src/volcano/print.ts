@@ -280,12 +280,20 @@ export function printFragment(look: Look, sea: boolean): string {
         vec3 lt = uLightObj - dot(uLightObj, c.xyz) * c.xyz; lt /= max(length(lt), 1e-4);
         float side = dot(t, lt) * smoothstep(0.0, 0.25, q); // +1 on the side towards the light (and nothing at the very middle)
         float wall = smoothstep(0.3, 0.9, q) * (1.0 - smoothstep(0.96, 1.04, q));
-        crDark += wall * smoothstep(-0.15, 0.65, side) * (0.75 + 0.3 * b3) + (1.0 - smoothstep(0.45, 0.75, q)) * 0.06;
-        litWall = max(litWall, wall * smoothstep(0.05, -0.55, side));
+        // How low the light stands over this crater, as the lamp sees it: facing the lamp, it's noon there
+        // and the crater all but shadowless; turned towards the world's edge, the light grazes it and the
+        // rim's shadow reaches across the floor, as the Moon's craters do near the terminator. So turning
+        // the world, the craters' shadows lengthen and shorten.
+        float low = 1.0 - smoothstep(0.2, 0.92, dot(c.xyz, uLightObj));
+        low *= low; // (eased: a crescent in the middle of the world, a long shadow only near its edge)
+        float u = dot(t, lt) * q, reach = mix(0.04, 0.95, low); // (u: +1 at the rim nearest the light, -1 at the far one)
+        float rimShade = smoothstep(1.0 - 2.0 * reach - 0.12, 1.0 - 2.0 * reach + 0.12, u) * (1.0 - smoothstep(0.92, 1.0, q));
+        crDark += rimShade * mix(0.1, 0.75, low) + wall * smoothstep(-0.15, 0.65, side) * (0.75 + 0.3 * b3) * mix(0.35, 1.0, low) + (1.0 - smoothstep(0.45, 0.75, q)) * 0.06;
+        litWall = max(litWall, wall * smoothstep(0.05, -0.55, side) * mix(0.5, 1.0, low));
         // The rim, in stipple rather than a line: a band of close dots just outside the wall, heavier on
         // the side away from the light, as the charts dot a crater's lip.
         float band = 1.0 - smoothstep(0.0, 0.16, abs(q - 1.06));
-        crDark += band * (0.55 + 0.9 * smoothstep(0.35, -0.85, side)) * edgeOn;
+        crDark += band * (0.55 + 0.9 * smoothstep(0.35, -0.85, side) * mix(0.4, 1.0, low)) * edgeOn;
         float fresh = exp(-uCraterAge[i] / 120.0);
         if (fresh > 0.02 && q > 1.05) {
           vec3 u2 = cross(c.xyz, lt);

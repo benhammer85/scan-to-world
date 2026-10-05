@@ -96,6 +96,14 @@ With these, following the card still wins every world, and the ocean wins sooner
   * The deep ocean's bank is a little nearer (0.52).
   * Following the card wins all 24 worlds again (two seeds each). In breathe mode, following the card wins the 15 worlds tried.
 
+**The atlas as a night sky (October).** The atlas is an engraved star chart on night blue, after the old celestial globes and plates.
+* **Each chapter is a real constellation**, its figure one of Johann Bayer's (*Uranometria*, 1603, engraved by Alexander Mair; scanned from the 1655 edition in the David Rumsey Map Collection): I, the Great Bear; II, the Hydra; III, the Dragon; IV, Hercules; V, Pegasus. Each plate was cleaned of its chart's straight grid lines (some faint curves, such as the ecliptic, are left, as old charts show them) and printed pale on the night. The cleaned figures are kept in `src/volcano/figures/`.
+* **Each world sits on one of the figure's own stars** (the neighbours on the Big Dipper). A figure is a faint ghost until its worlds are made; each world made prints the figure round it, and a chapter played through shows it whole.
+* **A world made is the world itself**, small and round as it was left (a portrait kept with its page when its chart is drawn); one still to play is a small gold star in a pencilled ring.
+* **Touching any world** raises a card: the world, its name and one line, Play, and its plates if it has any.
+
+**Crater shadows follow the light (October).** The light is a lamp over the desk, as an atlas globe is lit (from the upper left), but now a crater's shadow depends on how high that lamp stands over it: facing the lamp it's noon there and the crater is almost shadowless; turned towards the world's edge, the light grazes it and the rim's shadow reaches across its floor. So turning the world, the shadows lengthen and shorten.
+
 **Calmer, warmer lava; an easier first world (October).**
 * **No splatter.** Flicked ink round the vent and along every running edge didn't fit the calm map; in the quiet print it's gone, and so are the clots and dark ash a burp threw. The burp's swelling dome at the brink stays.
 * **More molten.** While the vent feeds it, all the running lava is molten under its skin: orange seams, gold where hottest, open between dark plates all down the flow, not only at the mouth; the open heat reaches further down the stream, and the warm glow on the ground round it is warmer and wider. The seams close as the flow cools, and set lava goes black as before.
