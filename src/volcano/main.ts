@@ -1946,6 +1946,7 @@ function plate(): HTMLCanvasElement {
   lift = 0; look();
   group.updateMatrixWorld(true);
   renderer.render(scene, camera);
+  portrait = portraitOf(renderer.domElement);
   const cv = drawChart(renderer.domElement, ending!.info!);
   group.quaternion.copy(was);
   lift = lifted; look();
@@ -1954,6 +1955,21 @@ function plate(): HTMLCanvasElement {
 $('keep').addEventListener('click', () => {
   void keepImage(plate(), `warm-to-the-touch-${WORLD.id}-${seed}`);
 });
+/** The world, cut out round from the picture just drawn, small, for its star in the atlas. */
+let portrait = '';
+function portraitOf(from: HTMLCanvasElement): string {
+  // (Measured across and up separately: the drawing's pixels aren't always square.)
+  const c = new THREE.Vector3(0, 0, 0).project(camera);
+  const e = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0).multiplyScalar(1.04).project(camera);
+  const u = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1).multiplyScalar(1.04).project(camera);
+  const cx = (c.x + 1) / 2 * from.width, cy = (1 - c.y) / 2 * from.height, rx = Math.abs(e.x - c.x) / 2 * from.width, ry = Math.abs(u.y - c.y) / 2 * from.height;
+  if (!(rx > 4 && ry > 4)) return '';
+  const out = document.createElement('canvas'); out.width = out.height = 120;
+  const g = out.getContext('2d')!;
+  g.fillStyle = '#f4efe4'; g.fillRect(0, 0, 120, 120);
+  g.drawImage(from, cx - rx, cy - ry, rx * 2, ry * 2, 0, 0, 120, 120);
+  return out.toDataURL('image/jpeg', 0.86);
+}
 /** Once the chart is drawn, it goes into the atlas: a small picture of the plate, and what it says. */
 let paged = false;
 function intoTheAtlas(): void {
@@ -1963,7 +1979,7 @@ function intoTheAtlas(): void {
   small.width = 480; small.height = Math.round(480 * big.height / big.width);
   small.getContext('2d')!.drawImage(big, 0, 0, small.width, small.height);
   const i = ending.info;
-  void keepPage({ world: WORLD.id, numeral: WORLD.numeral, title: i.title, subtitle: i.subtitle, summary: i.summary, when: Date.now(), image: small.toDataURL('image/jpeg', 0.82) });
+  void keepPage({ world: WORLD.id, numeral: WORLD.numeral, title: i.title, subtitle: i.subtitle, summary: i.summary, when: Date.now(), image: small.toDataURL('image/jpeg', 0.82), portrait: portrait || undefined });
 }
 
 // ---------------------------------------------------------------- held like a globe
@@ -2188,20 +2204,21 @@ function openAtlas(all: Page[], only: string | null = null): void {
   // The sky first: touch a world made to see its plates, one still to play to go and play it.
   const sky = box.querySelector('.sky') as HTMLElement;
   sky.innerHTML = skySvg(all, WORLD.id);
+  // Touch any world: a small card rises, the world as you left it (or still to make), its name, and Play.
+  const pick = box.querySelector('.pick') as HTMLElement;
   sky.querySelectorAll('[data-world]').forEach((el) => el.addEventListener('click', () => {
-    const id = (el as HTMLElement).dataset.world!;
-    if (all.some((p) => p.world === id)) { openAtlas(all, only === id ? null : id); return; }
-    remember('volcano.world', id);
-    location.search = `?world=${id}`;
+    const id = (el as HTMLElement).dataset.world! as WorldId, w = worldOf(id), made = all.filter((p) => p.world === id), last = made[made.length - 1];
+    const globe = pick.querySelector('.globe') as HTMLElement;
+    globe.className = last ? 'globe' : 'globe unmade';
+    globe.style.backgroundImage = last?.portrait ? `url(${last.portrait})` : '';
+    (pick.querySelector('.t') as HTMLElement).textContent = w.title;
+    (pick.querySelector('.k') as HTMLElement).textContent = w.first;
+    (pick.querySelector('.plates') as HTMLElement).hidden = !made.length;
+    pick.dataset.world = id;
+    pick.classList.add('shown');
   }));
   const head = box.querySelector('.plates-head') as HTMLElement;
-  head.textContent = only ? `${worldOf(only as WorldId).title} · ` : all.length ? 'The plates' : '';
-  if (only) {
-    const go = document.createElement('button');
-    go.className = 'play'; go.textContent = 'play it';
-    go.addEventListener('click', () => { remember('volcano.world', only); location.search = `?world=${only}`; });
-    head.appendChild(go);
-  }
+  head.textContent = only ? worldOf(only as WorldId).title : all.length ? 'The plates' : '';
   list.innerHTML = '';
   for (const p of all.slice().reverse().filter((q) => !only || q.world === only)) {
     const fig = document.createElement('figure'), img = new Image(), cap = document.createElement('figcaption'), when = document.createElement('small');
@@ -2216,6 +2233,16 @@ function openAtlas(all: Page[], only: string | null = null): void {
   box.classList.add('open');
 }
 $('atlas').querySelector('.view')!.addEventListener('click', () => $('atlas').classList.remove('viewing'));
+{
+  const pick = $('atlas').querySelector('.pick') as HTMLElement;
+  // (Touching outside the card puts it away.)
+  pick.addEventListener('click', (e) => { if (e.target === pick) pick.classList.remove('shown'); });
+  pick.querySelector('.go')!.addEventListener('click', () => { const id = pick.dataset.world!; remember('volcano.world', id); location.search = `?world=${id}`; });
+  pick.querySelector('.plates')!.addEventListener('click', () => {
+    pick.classList.remove('shown');
+    void pages().then((all) => { openAtlas(all, pick.dataset.world!); $('atlas').querySelector('.plates-head')!.scrollIntoView({ behavior: 'smooth' }); });
+  });
+}
 $('atlas').querySelector('.close')!.addEventListener('click', () => $('atlas').classList.remove('open', 'viewing'));
 // A world with a past can be begun afresh, on new ground.
 if (FIRES) moreLink('Begin this world on new ground', () => { forgetGround(GROUND_KEY); void forget(); setTimeout(() => location.reload(), 200); });
@@ -2456,4 +2483,4 @@ renderer.setAnimationLoop(() => {
   turnedSince();
 });
 
-if (import.meta.env.DEV) (window as unknown as { volcano: unknown }).volcano = { atlas: (all: Page[]) => openAtlas(all), sky, haze, planet, held, group, base, renderer, scene, camera, puffs, ecology, islands, rotate, draw, save, world, frameCost, kindDots, chain: () => chain, aim: () => aimInk, lines: () => { lastLines = -1; redrawLines(1e6); }, life: () => { lastLife = -10; redrawLife(1e6); }, replayKeep: () => keepReplayFrame(), replayCount: () => replayFrames.length, replaying: () => (replaying ? replayShown : -1), settle: (d = 3.6) => { lift = 0; dist = d; begunAt = -100; zoomedAt = seconds; look(); } };
+if (import.meta.env.DEV) (window as unknown as { volcano: unknown }).volcano = { atlas: (all: Page[]) => openAtlas(all), sky, haze, planet, held, portrait: () => { renderer.render(scene, camera); return portraitOf(renderer.domElement); }, group, base, renderer, scene, camera, puffs, ecology, islands, rotate, draw, save, world, frameCost, kindDots, chain: () => chain, aim: () => aimInk, lines: () => { lastLines = -1; redrawLines(1e6); }, life: () => { lastLife = -10; redrawLife(1e6); }, replayKeep: () => keepReplayFrame(), replayCount: () => replayFrames.length, replaying: () => (replaying ? replayShown : -1), settle: (d = 3.6) => { lift = 0; dist = d; begunAt = -100; zoomedAt = seconds; look(); } };

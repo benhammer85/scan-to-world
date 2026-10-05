@@ -89,6 +89,17 @@
       #atlas figure img { width: 100%; display: block; box-shadow: 0 1px 4px rgba(46, 33, 24, 0.18); }
       #atlas figcaption { font-size: 13px; font-style: italic; text-align: center; margin-top: 6px; opacity: 0.85; }
       #atlas figcaption small { font-size: 11px; opacity: 0.6; }
+      #atlas .pick { position: fixed; inset: 0; display: none; align-items: flex-end; justify-content: center; padding: 16px 16px calc(24px + env(safe-area-inset-bottom)); box-sizing: border-box; }
+      #atlas .pick.shown { display: flex; }
+      #atlas .pick .card { width: 100%; max-width: 360px; background: #f4efe4; border: 1px solid rgba(46, 33, 24, 0.22); box-shadow: 0 6px 24px rgba(46, 33, 24, 0.16); padding: 22px 20px 16px; text-align: center; box-sizing: border-box; animation: rise 0.35s ease-out; }
+      @keyframes rise { from { transform: translateY(14px); opacity: 0; } to { transform: none; opacity: 1; } }
+      #atlas .pick .globe { width: 76px; height: 76px; margin: 0 auto 12px; border-radius: 50%; border: 1px solid #2e2118; background: #f4efe4 center / cover no-repeat; }
+      #atlas .pick .globe.unmade { border: 1px dashed #a8987f; width: 40px; height: 40px; margin: 18px auto 30px; }
+      #atlas .pick .t { margin: 0; font-size: 21px; }
+      #atlas .pick .k { margin: 4px 0 16px; font-style: italic; font-size: 15px; opacity: 0.7; }
+      #atlas .pick .acts { display: flex; justify-content: center; align-items: baseline; gap: 22px; }
+      #atlas .pick .go { font: 17px "Newsreader", "Iowan Old Style", Georgia, serif; color: #f4efe4; background: #2e2118; border: none; padding: 9px 30px; cursor: pointer; }
+      #atlas .pick .plates { font: italic 14px "Newsreader", "Iowan Old Style", Georgia, serif; color: #2e2118; background: none; border: none; text-decoration: underline; text-underline-offset: 4px; opacity: 0.75; padding: 6px; cursor: pointer; }
       #atlas .view { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: #f4efe4; padding: 16px; cursor: pointer; }
       #atlas.viewing .view { display: flex; }
       #atlas .view img { max-width: 100%; max-height: 100%; box-shadow: 0 2px 10px rgba(46, 33, 24, 0.2); }
@@ -115,7 +126,7 @@
     <button id="keep">keep the plate</button>
     <button id="finish">end the fire</button>
     <button id="worlds" aria-label="All worlds"></button>
-    <div id="atlas" class="engraved"><div class="head"><h2>The atlas</h2><button class="close">back</button></div><div class="sky"></div><p class="plates-head"></p><div class="pages"></div><div class="view"><img alt=""></div></div>
+    <div id="atlas" class="engraved"><div class="head"><h2>The atlas</h2><button class="close">back</button></div><div class="sky"></div><p class="plates-head"></p><div class="pages"></div><div class="view"><img alt=""></div><div class="pick"><div class="card"><div class="globe"></div><p class="t"></p><p class="k"></p><div class="acts"><button class="go">Play</button><button class="plates">its plates</button></div></div></div></div>
     <div id="system" class="engraved"><div class="head"><h2>A solar system</h2><button class="close">back</button></div><p class="about"></p><div class="plate"></div><div class="foot"></div></div>
     <div id="begin" class="engraved loading"><p class="chapter"></p><p class="world"></p><h1 class="name"></h1><p class="first"></p><p class="second"></p><p class="hands"></p><button class="touch">Begin</button><div class="worlds"></div><button class="more-toggle">more</button><div class="more" hidden></div></div>
     <script type="module" src="/src/volcano/main.ts"></script>

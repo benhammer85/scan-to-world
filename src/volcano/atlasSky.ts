@@ -26,6 +26,40 @@ function constellation(c: number, n: number): { x: number; y: number }[] {
   return out;
 }
 
+/**
+ * A chapter's figure, as the old star atlases engraved one behind each constellation: a creature
+ * whose body the chapter's worlds lie along, in the band's own frame (360 wide, 168 high). Drawn
+ * faint, in pencil; each world made inks the figure round it, so a chapter played through shows
+ * its creature whole.
+ */
+interface Figure { stars: { x: number; y: number }[]; art: string }
+const FIGURES: Record<string, Figure> = {
+  // III · Strange fires: the Salamander, which in legend lives in fire. Head, shoulder, tail's tip.
+  III: {
+    stars: [{ x: 74, y: 84 }, { x: 168, y: 78 }, { x: 326, y: 91 }],
+    art: [
+      // Its body, snout to tail's tip and back along the belly.
+      'M 46 86 C 50 72 72 64 94 71 C 102 74 106 73 114 71 C 142 63 182 61 216 69 C 250 77 274 95 300 97 C 316 98 328 92 338 82',
+      'C 334 95 318 107 298 107 C 270 107 246 94 216 90 C 182 96 142 99 114 93 C 102 91 92 99 72 99 C 58 99 48 95 46 86 Z',
+      // Its legs, splayed as a salamander's are, and its toes.
+      'M 124 69 Q 120 54 104 49 M 104 49 l -9 -3 M 104 49 l -7 -7 M 104 49 l 0 -9',
+      'M 124 95 Q 120 110 104 116 M 104 116 l -9 3 M 104 116 l -7 7 M 104 116 l 0 9',
+      'M 202 66 Q 208 50 224 45 M 224 45 l 9 -3 M 224 45 l 7 -7 M 224 45 l 0 -9',
+      'M 202 92 Q 208 108 224 114 M 224 114 l 9 3 M 224 114 l 7 7 M 224 114 l 0 9',
+    ].join(' '),
+  },
+};
+/** The figure's engraving: its outline, a little hatching along the belly, spots down the back, an eye. */
+function figureArt(id: string, f: Figure): string {
+  const out = [`<path d="${f.art}" fill="none" stroke="${INK}" stroke-width="0.8" stroke-linecap="round" stroke-linejoin="round"/>`];
+  if (id === 'III') {
+    for (let x = 120; x <= 290; x += 7) { const y = x < 216 ? 92 + (x - 120) * -0.02 : 90 + (x - 216) * 0.19; out.push(`<line x1="${x}" y1="${(y - 4).toFixed(1)}" x2="${x - 3}" y2="${(y + 1).toFixed(1)}" stroke="${INK}" stroke-width="0.45"/>`); }
+    for (const [x, y, r] of [[132, 74, 2.2], [150, 70, 1.6], [186, 70, 2.4], [206, 74, 1.7], [238, 83, 2], [262, 92, 1.5], [284, 97, 1.3]]) out.push(`<ellipse cx="${x}" cy="${y}" rx="${r * 1.4}" ry="${r}" fill="none" stroke="${INK}" stroke-width="0.5"/>`);
+    out.push(`<circle cx="60" cy="81" r="1.6" fill="${INK}"/>`);
+  }
+  return out.join('');
+}
+
 /** The chart, as SVG markup: worlds carry `data-world` to be touched. */
 export function skySvg(pages: Page[], here: WorldId): string {
   const latest = new Map<string, Page>();
@@ -44,10 +78,26 @@ export function skySvg(pages: Page[], here: WorldId): string {
     if (s > 1.4) for (const a of [0, Math.PI / 2]) parts.push(`<line x1="${(x - Math.cos(a) * s * 3).toFixed(1)}" y1="${(y - Math.sin(a) * s * 3).toFixed(1)}" x2="${(x + Math.cos(a) * s * 3).toFixed(1)}" y2="${(y + Math.sin(a) * s * 3).toFixed(1)}" stroke="${INK}" stroke-width="0.5" opacity="0.4"/>`);
   }
   parts.push('<defs>');
-  CHAPTERS.forEach((c, ci) => constellation(ci, c.worlds.length).forEach((p, i) => parts.push(`<clipPath id="w${ci}-${i}"><circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="13"/></clipPath>`)));
+  const starsOf = (ci: number) => { const f = FIGURES[CHAPTERS[ci].numeral], y0 = TOP + ci * ROW; return f && f.stars.length === CHAPTERS[ci].worlds.length ? f.stars.map((p) => ({ x: p.x, y: p.y + y0 })) : constellation(ci, CHAPTERS[ci].worlds.length); };
+  CHAPTERS.forEach((c, ci) => {
+    const f = FIGURES[c.numeral]; if (!f) return;
+    // (Each world made inks the figure round it: a soft circle of the figure, wider than the globe.)
+    parts.push(`<mask id="m${ci}" maskUnits="userSpaceOnUse" x="0" y="${TOP + ci * ROW - 30}" width="${W}" height="${ROW + 40}"><rect x="0" y="${TOP + ci * ROW - 30}" width="${W}" height="${ROW + 40}" fill="black"/>`);
+    const all = c.worlds.every((w) => latest.has(w));
+    starsOf(ci).forEach((p, i) => { if (all || latest.has(c.worlds[i])) parts.push(`<circle cx="${p.x}" cy="${p.y}" r="${all ? 400 : 82}" fill="url(#reveal)"/>`); });
+    parts.push('</mask>');
+  });
+  parts.push(`<radialGradient id="reveal"><stop offset="0.55" stop-color="white"/><stop offset="1" stop-color="white" stop-opacity="0"/></radialGradient>`);
+  CHAPTERS.forEach((_c, ci) => starsOf(ci).forEach((p, i) => parts.push(`<clipPath id="w${ci}-${i}"><circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${latest.get(CHAPTERS[ci].worlds[i])?.portrait ? 14.5 : 13}"/></clipPath>`)));
   parts.push('</defs>');
   CHAPTERS.forEach((c, ci) => {
-    const at = constellation(ci, c.worlds.length);
+    const at = starsOf(ci), f = FIGURES[c.numeral];
+    // Its figure: faint in pencil all along, inked where its worlds are made.
+    if (f) {
+      const art = figureArt(c.numeral, f), y0 = TOP + ci * ROW;
+      parts.push(`<g transform="translate(0 ${y0})" opacity="0.16">${art}</g>`);
+      parts.push(`<g mask="url(#m${ci})"><g transform="translate(0 ${y0})" opacity="0.6">${art}</g></g>`);
+    }
     // Its name, small, by its first star; its lines, fine, from star to star.
     parts.push(`<text x="18" y="${TOP + ci * ROW + 16}" font-size="12" font-style="italic" fill="${INK}" opacity="0.7">${c.numeral} · ${c.title}</text>`);
     for (let i = 1; i < at.length; i++) parts.push(`<line x1="${at[i - 1].x.toFixed(1)}" y1="${at[i - 1].y.toFixed(1)}" x2="${at[i].x.toFixed(1)}" y2="${at[i].y.toFixed(1)}" stroke="${INK}" stroke-width="0.6" opacity="${latest.has(c.worlds[i]) && latest.has(c.worlds[i - 1]) ? 0.55 : 0.2}"/>`);
@@ -55,8 +105,13 @@ export function skySvg(pages: Page[], here: WorldId): string {
       const p = at[i], page = latest.get(id), w = worldOf(id), x = p.x.toFixed(1), y = p.y.toFixed(1);
       parts.push(`<g data-world="${id}" style="cursor:pointer">`);
       parts.push(`<circle cx="${x}" cy="${y}" r="22" fill="transparent"/>`); // (a touch's width)
-      if (page) {
-        // Made: a small engraved globe in its own colours, a line of latitude across it, its night
+      if (page?.portrait) {
+        // Made, and kept as it was left: the world itself, small and round, inked round.
+        parts.push(`<circle cx="${x}" cy="${y}" r="15" fill="#f4efe4"/>`);
+        parts.push(`<image href="${page.portrait}" x="${(p.x - 15).toFixed(1)}" y="${(p.y - 15).toFixed(1)}" width="30" height="30" clip-path="url(#w${ci}-${i})" preserveAspectRatio="xMidYMid slice"/>`);
+        parts.push(`<circle cx="${x}" cy="${y}" r="15" fill="none" stroke="${INK}" stroke-width="1"/>`);
+      } else if (page) {
+        // Made, before worlds were kept so (or not caught): a small engraved globe in its own colours, a line of latitude across it, its night
         // side hatched. (Its plate, shrunk this small, read as nothing.)
         const P = w.palette, cx = p.x, cy = p.y;
         parts.push(`<circle cx="${x}" cy="${y}" r="13" fill="${P.paper}"/>`);
@@ -68,8 +123,8 @@ export function skySvg(pages: Page[], here: WorldId): string {
         parts.push('</g>');
         parts.push(`<circle cx="${x}" cy="${y}" r="13" fill="none" stroke="${INK}" stroke-width="1"/>`);
       } else parts.push(`<circle cx="${x}" cy="${y}" r="6" fill="#f4efe4" stroke="${PENCIL}" stroke-width="0.9" stroke-dasharray="1.5 2"/>`);
-      if (id === here) parts.push(`<circle cx="${x}" cy="${y}" r="${page ? 17 : 10}" fill="none" stroke="${INK}" stroke-width="0.6"/>`);
-      parts.push(`<text x="${x}" y="${(p.y + (page ? 27 : 19)).toFixed(1)}" font-size="9" text-anchor="middle" fill="${INK}" opacity="${page ? 0.85 : 0.45}">${w.numeral}</text>`);
+      if (id === here) parts.push(`<circle cx="${x}" cy="${y}" r="${page?.portrait ? 19 : page ? 17 : 10}" fill="none" stroke="${INK}" stroke-width="0.6"/>`);
+      parts.push(`<text x="${x}" y="${(p.y + (page?.portrait ? 29 : page ? 27 : 19)).toFixed(1)}" font-size="9" text-anchor="middle" fill="${INK}" opacity="${page ? 0.85 : 0.45}">${w.numeral}</text>`);
       parts.push('</g>');
     });
   });
