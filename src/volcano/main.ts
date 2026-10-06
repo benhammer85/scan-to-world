@@ -914,6 +914,12 @@ const aimNext = new Stipple(LOOK ? AIM_INK : P.landInk, 'dot', 2.3 * AIM_BIG);
 // (Known by direction: keyed by where they stand, the ground's least change under them re-keyed them as new
 // dots each time they were set, every two seconds, so they never finished fading in and stayed faint.)
 aimInk.byDirection = aimPencil.byDirection = aimNext.byDirection = true;
+// (The lava world's line lies just inside the night, on dark ground: there it's pale as the rock snow it waits
+// for, and bigger, or its dots were lost in the shadow.)
+if (WORLD.goal === 'snow') {
+  const u = (st: Stipple, ink: string, size: number) => { const m = (st.object.material as THREE.ShaderMaterial).uniforms; m.uInk.value.set(ink); m.uInk2.value.set(ink); m.uSize.value = size * Math.min(2, window.devicePixelRatio || 1); };
+  u(aimInk, '#f6f1e6', 3.6 * AIM_BIG); u(aimPencil, '#cfc6b6', 2.8 * AIM_BIG);
+}
 /**
  * On Mars and the ice moon, a ring of the same dots round the heat, drawn once about the pole and
  * turned to follow the heat smoothly, so it glides with it rather than stepping.
@@ -1242,6 +1248,11 @@ function lamping(): void {
   if (!planet.over) put(q.x, q.y, q.z, planet.pressure, 1);
   for (const b of planet.blobs) put(b.x, b.y, b.z, b.area * Math.min(1, Math.max(0, b.heat) / 0.12), Math.max(0, b.heat)); // (a cold one shrinks away as it goes, rather than vanishing)
   blobCount.value = n;
+  const g = planet.gravity;
+  if (upMark && g) {
+    upMark.visible = begun && !ending && !planet.over;
+    if (upMark.visible) { setMark(upMark, nearestAbove(new THREE.Vector3(-g.x, -g.y, -g.z).normalize()), 0.03); upMark.material.color.set(INK); upMark.material.opacity = 0.6; }
+  }
 }
 const TUMBLE = new THREE.Quaternion(), TUMBLE_AXIS = new THREE.Vector3();
 let orbitShown = -1;
@@ -1605,6 +1616,8 @@ function onWorld(x: number, y: number): THREE.Vector3 | null {
 }
 /** Where the heat has been called to, by a tap: a small pencilled ring, until it gets there. */
 const callMark = mark((g) => { g.lineWidth = 3; g.setLineDash([4, 4]); g.beginPath(); g.arc(32, 32, 20, 0, Math.PI * 2); g.stroke(); });
+/** The glass world: where the warm blobs are rising to (whatever is uppermost as it's held), a small open ring and a dot, so it isn't guessed. */
+const upMark = WORLD.rules.lamp ? mark((g) => { g.lineWidth = 2.5; g.beginPath(); g.arc(32, 32, 16, 0, Math.PI * 2); g.stroke(); g.beginPath(); g.arc(32, 32, 3.5, 0, Math.PI * 2); g.fill(); }) : null;
 /** Whether a finger is holding the vent shut. */
 let holding = false;
 function holdShut(): void {
@@ -2423,9 +2436,11 @@ function openAtlas(all: Page[], only: string | null = null): void {
     pick.classList.add('shown');
   });
   const head = box.querySelector('.plates-head') as HTMLElement;
-  head.textContent = only ? worldOf(only as WorldId).title : all.length ? 'The plates' : '';
+  // (The plates only for one world, asked for from its card: the sky itself shows every world made, so
+  // a grid of all of them under it said it twice.)
+  head.textContent = only ? worldOf(only as WorldId).title : '';
   list.innerHTML = '';
-  for (const p of all.slice().reverse().filter((q) => !only || q.world === only)) {
+  for (const p of all.slice().reverse().filter((q) => !!only && q.world === only)) {
     const fig = document.createElement('figure'), img = new Image(), cap = document.createElement('figcaption'), when = document.createElement('small');
     img.src = p.image; img.alt = `${p.title}: ${p.summary}`;
     cap.textContent = `${p.world ? worldOf(p.world).numeral : p.numeral} · ${p.title}`;
@@ -2665,6 +2680,9 @@ renderer.setAnimationLoop(() => {
   if (LAMP) lamping();
   if (WORLD.goal === 'feed') feeding(dt);
   skyNow(dt);
+  // (Breathing on Lengai: once the peak is tall enough, it stops breathing out, so its summit can rest and whiten;
+  // pouring on by itself, the top never cooled and the world never ended.)
+  if (BREATHE && WORLD.goal === 'white') planet.k.pulse = planet.summit * HEIGHT.kmPerUnit >= HEIGHT.target ? 0 : planet.k.explosive * 0.55;
   if (WORLD.goal === 'height' || WORLD.goal === 'cover' || WORLD.goal === 'round' || WORLD.goal === 'calm') {
     // The ring follows the heat, eased, so it glides as the heat creeps.
     gaugeAt.lerp(new THREE.Vector3(planet.plume.x, planet.plume.y, planet.plume.z), 1 - Math.exp(-dt / 1.5)).normalize();

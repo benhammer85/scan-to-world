@@ -514,7 +514,7 @@ const PRINT = (q: boolean) => /* glsl */ `
         vec2 pol = vec2(cos(ang), sin(ang)) * far;
         vec2 rid = pol * (1.0 - uDrift * 0.011 / max(far, 0.02)); // (carried outward from the vent: fast enough to see it flow)
         float pinch = noise3(vec3(rid * 12.0, 7.0 + tq * 0.08));
-        float T = clamp(smoothstep(0.55, 2.1, lvR) * 0.85 + exp(-far / 0.06) * 0.2 + 0.1 * (pinch - 0.5), 0.0, 1.0) * smoothstep(0.5, 0.85, lvR);
+        float T = clamp(smoothstep(0.55, 2.1, lvR) * 0.85 + exp(-far / 0.025) * 0.2 + 0.1 * (pinch - 0.5), 0.0, 1.0) * smoothstep(0.5, 0.85, lvR);
         // While it's fed, the core breathes: widening and narrowing all together (it was rings pulsing outward, which striped long flows).
         ${q ? '' : 'T += 0.06 * uFeeding * (0.5 + 0.5 * sin(tq * 1.3)) * smoothstep(0.35, 0.6, T);'}
         T += 0.04 * (noise3(vDir * 9.0 + vec3(0.0, tq * 0.05, 0.0)) - 0.5);
@@ -629,7 +629,7 @@ const PRINT = (q: boolean) => /* glsl */ `
           band2 = max(band2, stipple(vDir, 260.0, 1.6 * smoothstep(0.56, 0.68, heatV), 0.55 * uPx, px) * band1);
           band3 = max(band3, stipple(vDir, 260.0, 1.6 * smoothstep(0.74, 0.86, heatV), 0.55 * uPx, px) * band2);
           band3 *= exp(-far / 0.05); band2 *= 0.5 + 0.5 * exp(-far / 0.12); // (the gold only at the mouth, the orange close by: a wide bright disc looked like a lamp)
-          float open = band1 * (0.35 + 0.65 * exp(-far / 0.16)); // (the open heat reaches well down the stream)
+          float open = band1 * (0.35 + 0.65 * exp(-far / 0.16)) * mix(smoothstep(0.9, 1.5, lvR), 1.0, exp(-far / 0.012)); // (the open heat reaches well down the stream, along its deep channel: all round the vent, it was a round orange patch)
           // A skin forming over the heat: dark plates closing over it from its edge in, the glow showing
           // only in the cracks between them, wider nearer the mouth. (A bare blob of graded heat looked airbrushed.)
           float skinW = 0.04 + 0.22 * smoothstep(0.6, 0.95, heatV);
