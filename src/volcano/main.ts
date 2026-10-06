@@ -1398,7 +1398,7 @@ const won = () => aimOf > 0 && aimDone >= aimOf && (WORLD.goal !== 'calm' || cal
  * that said only if the player seems stuck.
  */
 const AIM: Record<string, string> = {
-  ring: 'Leave a chain of living islands across the sea.',
+  ring: `Keep living islands on all ${CHAIN.stretches} stretches of the dotted line at once.`,
   basins: 'Fill every dotted basin.',
   height: `Build a volcano ${HEIGHT.target} km tall.`,
   cover: `Make ${COVER}% of the old grey ice new.`,
@@ -1406,52 +1406,57 @@ const AIM: Record<string, string> = {
   feed: "Fill the giant planet's ring.",
   round: `Make the asteroid ${ROUND}% rounder.`,
   ridge: 'Build a ridge all the way round the equator.',
-  lamp: 'Fill the far shore with glowing glass.',
-  calm: `Calm the tumbling for ${CALM_HOLD} seconds.`,
+  lamp: 'Fill the dotted shore with warm blobs.',
+  calm: `Slow the tumbling to ${CALM}% calm, and hold it there for ${CALM_HOLD} seconds.`,
   bank: 'Raise an island on the dotted bank.',
   orbit: 'Throw up enough rock to make a moon.',
-  hearth: 'Keep enough life alive at once.',
-  thaw: 'Thaw the frozen world.',
-  outbuild: 'Build more than the star boils away.',
-  white: 'Turn the summit white.',
-  glow: 'Keep the crater glowing blue for two minutes.',
-  waves: 'Send waves round the world.',
-  antipode: 'Break open the far side of the planet.',
-  gather: 'Catch 10 falling stones in the glow.',
-  oxygen: 'Clear the sky with oxygen.',
-  chaos: 'Break the ice into chaos fields.',
-  streaks: 'Lay dark streaks across the ice.',
+  hearth: 'Grow a wide patch of life, all alive at once.',
+  thaw: 'Warm the sky until the ice melts.',
+  outbuild: "Add new rock that the star can't boil away.",
+  white: `Build a peak ${HEIGHT.target} km tall, then let its top turn white.`,
+  glow: 'Keep lots of blue fire burning, for two minutes in all.',
+  waves: `Send ${RINGS} shock waves round the world.`,
+  antipode: `Raise the far side ${FAR_KM} km.`,
+  gather: `Catch ${GATHER} falling stones in the glow.`,
+  oxygen: 'Turn the orange sky blue.',
+  chaos: `Break the ice into ${FIELDS} chaos fields.`,
+  streaks: `Make ${FIELDS} dark geyser streaks.`,
   snow: 'Fill the dotted line with rock snow.',
 };
+// (How a burst is let out, as it's being played: tipping, or breathing. "Erupt when the smoke is grey" read the
+// same both ways, and breathing it means hold, then let go.)
+const BURST = BREATHE ? 'hold until the smoke is grey, then let go' : 'keep level until the smoke is grey, then tilt';
+const BURST_ = BURST[0].toUpperCase() + BURST.slice(1);
 const TIP: Record<string, string> = {
-  ring: 'The vent drifts slowly. Pour as it goes.',
+  ring: 'The sea floor slides over the volcano. Pour as it moves along the dotted line. Old islands sink, so keep going.',
   basins: 'Turn a basin to the top and pour into it.',
-  height: BREATHE ? 'Lava falls on its own. Turn the planet to keep it landing in one spot.' : 'Keep pouring in one spot.',
-  cover: 'Pour over the grey, turning the planet to reach more of it.',
-  plumes: "Erupt when the smoke is grey and the tide is high, each time outside the last one's rings.",
-  feed: 'Erupt when the smoke is grey, with the volcano leaning towards the giant.',
-  round: 'Turn a pencilled hollow to the top and pour into it.',
-  ridge: 'The spin carries lava to the dotted equator. Fill its bare stretches.',
-  lamp: 'Warm blobs float to whatever is on top. Turn the dotted shore up.',
-  calm: 'Erupt when the smoke is grey, as the dotted ring passes over the volcano.',
-  bank: 'Keep the lava running towards the bank.',
-  orbit: 'Erupt when the smoke is grey. A taller cone throws further.',
+  height: BREATHE ? 'Lava pours out by itself, down the screen. Turn the planet now and then, so it builds up on every side.' : 'Tip gently, a different way each time, so it builds up on every side.',
+  cover: 'Pour over the grey ice, turning the planet to reach more of it. Bursts spread frost that counts too.',
+  plumes: `Wait for high tide. Then ${BURST}. Each time, move outside the old rings.`,
+  feed: `The giant is at the top left. Lean the volcano towards it until its ring darkens. ${BURST_}. The ring fades, so keep feeding it.`,
+  round: 'Turn a speckled hollow to the top and pour into it. Lava on high ground makes it lumpier.',
+  ridge: 'The spin carries lava to the dotted equator. Turn a bare stretch to the top: the volcano creeps there.',
+  lamp: 'Blobs float to the small ring, which marks the top. Turn the dotted shore up there. Let blobs grow big, but not too big, or they burst.',
+  calm: `Turn the dotted ring to the top so the volcano sits on it. Then ${BURST}. The tumbling builds again, so keep going.`,
+  bank: BREATHE ? 'Turn the world so the dotted bank is below the volcano. Pour the same way again and again: fresh crust lets lava run further.' : 'Tilt towards the dotted bank, the same way again and again: fresh crust lets lava run further.',
+  orbit: BREATHE ? 'Let it pour to build a tall cone. Then hold until the smoke turns dark, and let go. The longer you hold, the more rock flies up.' : 'Pour first to build a tall cone. Then keep level until the smoke turns dark, and tilt. The longer you wait, the more rock flies up.',
   hearth: 'Life gathers on warm new rock and fades as it cools. Pour beside the green, never on it.',
-  thaw: 'Build up through the ice, then erupt when the smoke is grey. The gas warms the sky.',
-  outbuild: 'The sunlit side boils away. Pour on the night side.',
-  white: 'Build the peak, then rest. This black lava turns white as it cools.',
-  glow: 'At night the sulphur burns blue as it flows. Pour thin streams, a new way each time.',
-  waves: 'Build the cone to just under the sea, then erupt when the smoke is grey.',
-  antipode: 'Erupt when the smoke is grey. The shock travels through; turn the planet over to watch.',
-  gather: 'A dotted circle shows where each stone will land. Turn the world so the circle is on top: the glow under your volcano follows it, and catches the stone. No need to pour.',
-  oxygen: 'Life in shallow water makes it, but lava buries it. Pour a shelf, then move on.',
-  chaos: 'Erupt before the smoke turns grey, each time away from the last.',
-  streaks: 'Erupt when the smoke is grey and sunlight is on the volcano. Move on for the next.',
+  thaw: `Build the volcano up above the ice. Then ${BURST}. Bursts warm the sky most, and it cools again if you stop.`,
+  outbuild: 'The star boils away new rock on the sunlit side. Turn the volcano into the night and pour there.',
+  white: BREATHE ? 'Once the peak is tall enough, it rests by itself. This black lava turns white after half a minute without new lava on it.' : 'Then keep the phone level, with no new lava, for half a minute: this black lava turns white as it sits.',
+  glow: 'Keep lava flowing all the time, over fresh ground. Set lava soon stops glowing.',
+  waves: `Build the cone until it is just under the sea, not above it. Then ${BURST}. Each burst knocks the cone down, so build it up again.`,
+  antipode: `${BURST_}. Hold longer for more. Turn the world over to see the dotted ring on the far side rise.`,
+  gather: 'A pale dotted circle shows where each stone will land. Turn it to the top: the gold ring follows, and a stone landing inside the gold ring is caught. No need to pour.',
+  oxygen: 'Life in shallow water makes oxygen. Raise the sea floor to just under the surface, then move on: lava kills the life it covers.',
+  chaos: BREATHE ? "Hold for a few seconds, and let go before the smoke turns grey. A burst won't break the ice. Move away from the last field each time." : "Hold a finger on the world for a few seconds, and lift it before the smoke turns grey. Pouring or a burst won't break the ice. Move away from the last field each time.",
+  streaks: `Wait until the sun is over the volcano, then ${BURST}. For the next one, move outside the dotted ring.`,
   snow: 'Pour on the sunlit side, under the star. The lava boils away and falls just inside the night.',
 };
 /** A world's own tip, where its aim is shared with others but the way to it isn't. */
 const OWN_TIP: Partial<Record<WorldId, string>> = {
-  hollow: BREATHE ? 'The ground over the magma sinks as it empties. Breathing, it rests by itself; hold it back too long, and the summit falls in.' : 'Pour in short bursts and let the ground rest between them. Pour too fast and the summit falls in.',
+  mars: `${TIP.height} Dust storms wear it down: poured rock lasts best.`,
+  hollow: BREATHE ? "Lava pours by itself and pauses while the ground recovers. Don't hold it back: a big burst makes the summit fall in." : 'Pour a little at a time, then wait. Never wait for grey smoke: a burst empties the magma and the summit falls in.',
 };
 /** How the hands do it, for the way it's being played: tipping a phone, breathing, or a computer's mouse. */
 const HANDS: string[] = LAMP
@@ -1466,7 +1471,7 @@ function goalLine(): string {
   const d = Math.round(aimDone), of = aimOf, pct = Math.min(100, d);
   switch (WORLD.goal) {
     case 'ring': return `Islands · ${d} of ${of} stretches`;
-    case 'basins': return `Basins flooded · ${d} of ${of}`;
+    case 'basins': return `Basins filled · ${d} of ${of}`;
     case 'height': return `The mountain · ${Math.min(d, of)} of ${of} km`;
     case 'cover': return `New ice · ${Math.min(d, of)} of ${of}%`;
     case 'plumes': return `Great plumes · ${d} of ${of}`;
@@ -1479,9 +1484,9 @@ function goalLine(): string {
     case 'orbit': return `A moon · ${pct}%`;
     case 'hearth': return `Living ground · ${pct}%`;
     case 'thaw': return planet.thawed ? 'The ice gives way' : `A warmer sky · ${pct}%`;
-    case 'outbuild': return `Grown back · ${pct}%`;
+    case 'outbuild': return `New rock kept · ${pct}%`;
     case 'snow': return `Rock snow · ${pct}%`;
-    case 'gather': return `Stones gathered · ${d} of ${of}`;
+    case 'gather': return `Stones caught · ${d} of ${of}`;
     case 'antipode': return `The far side · ${Math.min(d, of)} of ${of} km`;
     case 'white': return !peakReached ? `The peak · ${Math.round(Math.max(0, planet.summit * HEIGHT.kmPerUnit))} of ${HEIGHT.target} km` : `The summit turning white · ${Math.round((aimDone - 50) * 2)}%`;
     case 'glow': return `The night kept lit · ${Math.round(litFor)} of ${LIT_FOR} seconds${planet.burning >= GLOW ? '' : ', dimming'}`;
@@ -1743,6 +1748,7 @@ function arrows(dt: number): void {
  * The first minute: a few quiet lines at the foot, each said once, when it's what matters next,
  * and never over what the world is saying itself. Then nothing more, but the aim now and then.
  */
+const BURST_WORLDS = new Set(['plumes', 'feed', 'calm', 'orbit', 'thaw', 'waves', 'antipode', 'streaks']);
 const CUES: { ready: () => boolean; say?: string; begin?: () => void; done: (since: number) => boolean }[] = [
   { ready: () => true, say: LAMP ? (COMPUTER ? 'A glowing blob grows at the vent' : 'Keep the phone level, and a glowing blob grows') : BREATHE ? 'The heat gathers under the smoke, and breathes out by itself' : 'Keep the phone level, and the heat gathers under the smoke', done: () => planet.pressure > planet.k.least * 2 },
   { ready: () => !planet.pouring, say: LAMP ? (COMPUTER ? 'Click the world, and the blob lets go' : 'Tilt the phone, and the blob lets go') : BREATHE ? 'Drag the world to choose which way it runs' : 'Tilt the phone to pour', done: (s) => planet.tally.flows + planet.tally.bursts > 0 || s > 40 },
@@ -1750,13 +1756,15 @@ const CUES: { ready: () => boolean; say?: string; begin?: () => void; done: (sin
   { ready: () => !planet.pouring && planet.pressure > planet.k.least, say: LAMP ? (COMPUTER ? 'Hold the mouse button on the world to keep the blob, and let go to release it' : 'Or hold a finger on the world to keep the blob, and lift it to let go') : COMPUTER ? 'Hold the mouse button on the world (or space) to keep the heat in, and let go to let it out' : 'Or hold a finger on the world to keep the heat in, and lift it to let it out', done: (s: number) => s > 12 },
   ...(WORLD.rules.rises ? [{ ready: () => true, say: 'The vent creeps to whatever faces up: drag the world to move it', done: (s: number) => s > 20 }] : []),
   ...(WORLD.goal === 'ridge' ? [{ ready: () => planet.tally.flows + planet.tally.bursts > 0, say: 'The spin carries the lava to the equator', done: (s: number) => s > 25 }] : []),
-  { ready: () => !LAMP && (planet.k.great > 0 ? planet.throwOf(planet.pressure) >= planet.k.great : planet.pressure >= planet.k.explosive) && !planet.pouring, say: WORLD.goal === 'feed' ? 'The smoke has turned grey: lean the vent towards the giant, and let it out to burst' : 'The smoke has turned grey: let it out now, and it bursts', done: (s) => planet.tally.bursts > 0 || s > 40 },
+  // (Only where a burst is the way: on the worlds that want pouring, or a release short of a burst, or none
+  // at all, it pointed the wrong way, and on the hollow world it emptied the ground.)
+  { ready: () => !LAMP && BURST_WORLDS.has(WORLD.goal) && (planet.k.great > 0 ? planet.throwOf(planet.pressure) >= planet.k.great : planet.pressure >= planet.k.explosive) && !planet.pouring, say: WORLD.goal === 'feed' ? 'The smoke has turned grey: lean the vent towards the giant, and let it out to burst' : 'The smoke has turned grey: let it out now, and it bursts', done: (s) => planet.tally.bursts > 0 || s > 40 },
   ...(WORLD.goal === 'plumes' ? [
     { ready: () => planet.tideNow > 0.6, say: 'High tide: the heat comes fast. Hold until the smoke turns grey', done: (s: number) => s > 20 },
     { ready: () => planet.tideNow < -0.6, say: 'Low tide: the heat comes slowly. Move it somewhere new', done: (s: number) => s > 20 },
   ] : []),
   ...(WORLD.goal === 'orbit' ? [
-    { ready: () => planet.tally.bursts > 0, say: 'The taller the cone, the more it holds, and the further a burst throws', done: (s: number) => s > 25 },
+    { ready: () => planet.tally.bursts > 0, say: 'The taller the cone, the more it holds, and the more rock a burst throws up', done: (s: number) => s > 25 },
   ] : []),
   ...(WORLD.goal === 'feed' ? [
     { ready: () => planet.tally.bursts > 0, say: 'The ring thins away unless it is fed', done: (s: number) => s > 20 },
@@ -1810,7 +1818,7 @@ function lessons(): void {
 
 // ---------------------------------------------------------------- words, and the key
 /** What's worth saying: the turns in the world's story, not every happening in it. */
-const QUIET_WORDS = /^(The plume reaches the ring|A great plume, but too near|Wanted where|A stone is coming|Land breaks|Life begins in|The first|Moss grows|[A-Z][a-z]+( [a-z]+)? took hold|Held too long|Stone caught|Missed: the stone|The fire is out|The heat is nearly|A dust storm|The storm passes|The ground is sinking|The ground gives way)/;
+const QUIET_WORDS = /^(The plume reaches the ring|A great plume, but too near|Wanted where|A stone is coming|Land breaks|Life begins in|The first|Moss grows|[A-Z][a-z]+( [a-z]+)? took hold|Held too long|Stone caught|Rafts, but too near|A geyser, but its streak crosses|Missed: the stone|The fire is out|The heat is nearly|A dust storm|The storm passes|The ground is sinking|The ground gives way)/;
 const ERAS: Record<Era, string> = { young: 'A young fire', burning: 'Burning strong', cooling: 'Cooling', embers: 'Last embers', out: 'The fire is out' };
 // (In free play the heat never runs low, so the title says what kind of play it is.)
 if (FREE) ERAS.young = 'Free play';
