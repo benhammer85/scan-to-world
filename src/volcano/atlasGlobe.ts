@@ -49,7 +49,7 @@ const FIGURES: Record<string, Figure> = {
   // III · Strange fires: the Dragon, curled round the pole: tail, coil, head.
   III: { name: 'Draco', src: draco, w: 677, h: 818, stars: [[80, 710], [182, 262], [293, 80]], ra: 16.2, dec: 66, span: 36 },
   // IV · Pressure: Hercules, kneeling: club, face, shoulder, hip, knee, foot.
-  IV: { name: 'Hercules', src: hercules, w: 686, h: 819, stars: [[318, 44], [427, 213], [418, 392], [310, 494], [120, 600], [478, 770]], ra: 17.4, dec: 21, span: 36 },
+  IV: { name: 'Hercules', src: hercules, w: 686, h: 819, stars: [[318, 44], [427, 213], [418, 392], [310, 494], [120, 600], [478, 770], [643, 648]], ra: 17.4, dec: 21, span: 36 },
   // V · Far worlds: Pegasus, flying: muzzle, neck, wing, wingtip, cloud.
   V: { name: 'Pegasus', src: pegasus, w: 820, h: 573, stars: [[57, 232], [265, 158], [372, 186], [616, 72], [671, 292]], ra: 22.6, dec: 17, span: 52 },
 };

@@ -931,6 +931,25 @@ const gauge = new THREE.Group(), gaugeInk = new Stipple(AIM_INK, 'dot', 2.5 * AI
 const gaugeAt = new THREE.Vector3(planet.plume.x, planet.plume.y, planet.plume.z).normalize();
 for (const s of [aimInk, aimPencil, aimNext, gaugeInk, gaugePencil]) { s.byDirection = true; s.linger = 1.5; (s.object.material as THREE.Material).depthTest = false; }
 for (const s of [aimInk, aimPencil, aimNext]) group.add(s.object);
+/**
+ * The hollow world: ring cracks round the vent as the chamber under it empties, as round a summit about
+ * to fall in: one, then two, then three, broken, inked as fine dots; gone again as it fills.
+ */
+const cracks = planet.k.hollow > 0 ? new Stipple(P.landInkHigh, 'dot', 1.5 * AIM_BIG) : null;
+if (cracks) { cracks.byDirection = true; cracks.linger = 2; (cracks.object.material as THREE.Material).depthTest = false; group.add(cracks.object); }
+let cracksAt = -1;
+function cracking(): void {
+  if (!cracks || seconds - cracksAt < 0.4) return;
+  cracksAt = seconds;
+  const h = ending ? 0 : planet.hollowness, dots: number[] = [];
+  [[0.3, 0.08, 1.7], [0.5, 0.14, 4.1], [0.7, 0.2, 2.9]].forEach(([from, r, twist]) => {
+    if (h < from) return;
+    // (Broken: a crack runs a way round, then stops, then runs again, each ring its own way.)
+    const pts = circleAt(planet.plume, r).filter((_, i, all) => Math.sin((i / all.length) * Math.PI * 2 * 5 + twist) > -0.25);
+    onGround(pts, dots);
+  });
+  cracks.set(dots);
+}
 gauge.add(gaugeInk.object, gaugePencil.object);
 group.add(gauge);
 /**
@@ -1395,6 +1414,10 @@ const TIP: Record<string, string> = {
   streaks: 'Erupt when the smoke is grey and sunlight is on the volcano. Move on for the next.',
   snow: 'Pour on the sunlit side, under the star. The lava boils away and falls just inside the night.',
 };
+/** A world's own tip, where its aim is shared with others but the way to it isn't. */
+const OWN_TIP: Partial<Record<WorldId, string>> = {
+  hollow: BREATHE ? 'The ground over the magma sinks as it empties. Breathing, it rests by itself; hold it back too long, and the summit falls in.' : 'Pour in short bursts and let the ground rest between them. Pour too fast and the summit falls in.',
+};
 /** How the hands do it, for the way it's being played: tipping a phone, breathing, or a computer's mouse. */
 const HANDS: string[] = LAMP
   ? COMPUTER ? ['Drag · turn the planet', 'Click · let a blob go'] : ['Drag · turn the planet', 'Keep level · a blob grows', 'Tilt · let it go']
@@ -1745,7 +1768,7 @@ function lessons(): void {
 
 // ---------------------------------------------------------------- words, and the key
 /** What's worth saying: the turns in the world's story, not every happening in it. */
-const QUIET_WORDS = /^(The plume reaches the ring|A great plume, but too near|Wanted where|A stone is coming|Land breaks|Life begins in|The first|Moss grows|[A-Z][a-z]+( [a-z]+)? took hold|Held too long|Stone caught|The fire is out|The heat is nearly|A dust storm|The storm passes)/;
+const QUIET_WORDS = /^(The plume reaches the ring|A great plume, but too near|Wanted where|A stone is coming|Land breaks|Life begins in|The first|Moss grows|[A-Z][a-z]+( [a-z]+)? took hold|Held too long|Stone caught|The fire is out|The heat is nearly|A dust storm|The storm passes|The ground is sinking|The ground gives way)/;
 const ERAS: Record<Era, string> = { young: 'A young fire', burning: 'Burning strong', cooling: 'Cooling', embers: 'Last embers', out: 'The fire is out' };
 // (In free play the heat never runs low, so the title says what kind of play it is.)
 if (FREE) ERAS.young = 'Free play';
@@ -1781,6 +1804,7 @@ function words(): void {
     // Only the few things worth a word are said, quietly, at the foot of the page.
     if (!ending && QUIET_WORDS.test(text)) announce(text);
     if (/wish kept|takes in|Land breaks/.test(text)) feel(12);
+    else if (/The ground gives way/.test(text)) feel([30, 80, 60]);
     else if (/The stone falls/.test(text)) feel(30);
   }
   const living = new Set(ecology.living);
@@ -2377,7 +2401,7 @@ const cardWords = () => {
   const el = $('begin').querySelector('.second') as HTMLElement;
   el.replaceChildren();
   const aim = document.createElement('b'); aim.className = 'aim'; aim.textContent = FREE ? 'No aim and no clock.' : AIM[WORLD.goal] ?? WORLD.second;
-  el.append(aim, document.createTextNode(FREE ? 'The fire never cools.' : TIP[WORLD.goal] ?? ''));
+  el.append(aim, document.createTextNode(FREE ? 'The fire never cools.' : OWN_TIP[WORLD.id] ?? TIP[WORLD.goal] ?? ''));
 };
 cardWords();
 // The hands, the same on every card.
@@ -2681,6 +2705,7 @@ renderer.setAnimationLoop(() => {
   if (begun) drawAim(seconds);
   aimInk.update(dt);
   aimPencil.update(dt);
+  if (cracks) { cracking(); cracks.update(dt); }
   aimNext.update(dt);
   if (WORLD.goal === 'orbit') orbiting(dt);
   if (LAMP) lamping();
@@ -2688,6 +2713,8 @@ renderer.setAnimationLoop(() => {
   skyNow(dt);
   // (Breathing on Lengai: once the peak is tall enough, it stops breathing out, so its summit can rest and whiten;
   // pouring on by itself, the top never cooled and the world never ended.)
+  // (Breathing on the hollow world, which can't be held back by tipping: it rests by itself as the ground starts to sink, and breathes again once it has.)
+  if (BREATHE && planet.k.hollow > 0) planet.k.pulse = planet.hollowness > 0.55 ? 0 : planet.hollowness < 0.25 ? planet.k.explosive * 0.55 : planet.k.pulse; if (planet.k.pulse === 0 && planet.pressure > planet.k.explosive * 0.5) { planet.reserve += planet.pressure - planet.k.explosive * 0.5; planet.pressure = planet.k.explosive * 0.5; } // (resting, the heat waits below rather than gathering into one burst that empties it at once)
   if (BREATHE && WORLD.goal === 'white' && (peakReached || planet.summit * HEIGHT.kmPerUnit >= HEIGHT.target)) planet.k.pulse = 0;
   if (WORLD.goal === 'height' || WORLD.goal === 'cover' || WORLD.goal === 'round' || WORLD.goal === 'calm') {
     // The ring follows the heat, eased, so it glides as the heat creeps.

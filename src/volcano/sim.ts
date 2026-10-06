@@ -76,6 +76,15 @@ export const VOLCANO = {
   cap: 24,
   explosive: 7,
   /** Burst out on its own, it tears the mountain open: a caldera this wide and deep, and death this far. */
+  /**
+   * A hollow world: a thin crust over one shallow chamber, which every eruption drains. This much heat let
+   * out empties it (0: no chamber to empty); it fills again at `hollowRefill` of itself a second. Emptying,
+   * the ground over it sags; emptied, the summit falls in, a caldera `hollowDepth` times the usual
+   * depth, and what was built there goes down with it. (As Kilauea's summit did in 2018.)
+   */
+  hollow: 0,
+  hollowRefill: 0.02,
+  hollowDepth: 1.5,
   caldera: 0.09,
   calderaDepth: 0.12,
   calderaKills: 0.35,
@@ -903,6 +912,7 @@ export class Planet {
     const volume = this.pressure;
     if (volume < this.k.least) return null;
     this.pressure = 0;
+    this.drained += volume; // (a hollow world's chamber gives it, flow or burst alike)
     this.breathe(volume, volume >= this.k.explosive);
     // The lava lamp: the bud lets go as one blob; held too long, it bursts into small ones, which cool before they get far.
     if (this.k.lamp) {
@@ -1161,6 +1171,7 @@ export class Planet {
     if (this.k.ringThins > 0) this.orbit -= this.orbit * this.k.ringThins * dt;
     this.movePlume(dt);
     this.pour(dt);
+    this.chamber(dt);
     this.flow(dt);
     this.cool(dt);
     this.skies(dt);
@@ -1238,6 +1249,41 @@ export class Planet {
   }
 
   /** The summit falls into the emptied chamber, and the blast kills all round. */
+  /** On a hollow world, how much lava the chamber under it has given (see `hollow`). */
+  drained = 0;
+  private sinkingSaid = false;
+  /** How empty the chamber is: 0 full, 1 empty and about to give way. */
+  get hollowness(): number {
+    return this.k.hollow > 0 ? Math.min(1, this.drained / this.k.hollow) : 0;
+  }
+  /** The chamber: refilling, the ground over it sagging as it empties, and, emptied, falling in. */
+  private chamber(dt: number): void {
+    if (this.k.hollow <= 0) return;
+    this.drained = Math.max(0, this.drained - this.k.hollow * this.k.hollowRefill * dt);
+    const h = this.drained / this.k.hollow, p = this.topo.basePositions, at = this.plumeVertex, r = this.k.caldera * 1.6;
+    if (h > 0.45) {
+      // (A sag, slow and shallow, over the chamber: the warning, before it goes.)
+      const sink = 0.004 * (h - 0.45) * dt;
+      for (let v = 0; v < this.rock.length; v++) {
+        const d = Math.hypot(p[v * 3] - p[at * 3], p[v * 3 + 1] - p[at * 3 + 1], p[v * 3 + 2] - p[at * 3 + 2]);
+        if (d < r && this.rock[v] > this.k.floor) this.rock[v] -= sink * (1 - (d / r) ** 2);
+      }
+    }
+    if (h > 0.6 && !this.sinkingSaid) { this.sinkingSaid = true; this.tell('The ground is sinking: let it rest'); }
+    else if (h < 0.3) this.sinkingSaid = false;
+    if (h >= 1) {
+      // (Wide as well as deep: the whole summit over the chamber, not a pit at its tip.)
+      const depth = this.k.calderaDepth, width = this.k.caldera;
+      this.k.calderaDepth = depth * this.k.hollowDepth; this.k.caldera = width * 2.2;
+      this.collapse();
+      this.k.calderaDepth = depth; this.k.caldera = width;
+      this.drained = this.k.hollow * 0.3;
+      this.tally.calderas++;
+      this.lavaChanged();
+      this.tell('The ground gives way: the summit falls in');
+    }
+  }
+
   private collapse(): void {
     const p = this.topo.basePositions, at = this.plumeVertex, r = this.k.caldera;
     for (let v = 0; v < this.rock.length; v++) {
