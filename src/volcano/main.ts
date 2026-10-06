@@ -208,6 +208,9 @@ planet.stonesFall = WORLD.goal === 'gather'; // not until the first ideas have c
 const COMPUTER = (navigator.maxTouchPoints || 0) === 0 && matchMedia('(pointer: fine)').matches;
 const BREATHE = (remembered('volcano.controls') === 'breathe' || COMPUTER) && !WORLD.rules.lamp;
 if (BREATHE) planet.k.pulse = planet.k.explosive * 0.55;
+// (Breathing, a third more heat: its breaths spread wider and waste more than a steady pour, and it's the forgiving way
+// to play, which every computer plays.)
+if (BREATHE) { planet.k.heat *= 1.35; planet.reserve *= 1.35; }
 const ecology = new Ecology(planet, topo);
 const islands = new Islands(topo);
 
@@ -1287,6 +1290,8 @@ const HEIGHT = WORLD.height ?? { target: 0, kmPerUnit: 40 };
 const CALM = WORLD.calm ?? 0, ISLAND = WORLD.island ?? 0, POOL = WORLD.pool ?? 0, ROUND = Math.round((WORLD.round ?? 0) * 100), COVER = Math.round((WORLD.cover ?? 0) * 100), PLUMES = WORLD.plumes ?? 0, ORBIT = WORLD.orbit ?? 0;
 const HEARTH = WORLD.hearth ?? 0, OUTBUILD = WORLD.outbuild ?? 0, SNOWFALL = WORLD.snowfall ?? 0, GATHER = WORLD.gather ?? 0, OXYGEN = WORLD.oxygen ?? 0, FIELDS = WORLD.fields ?? 0, FAR_KM = WORLD.farKm ?? 0, WHITENESS = Math.round((WORLD.whiteness ?? 0) * 100), GLOW = WORLD.glow ?? 0, RINGS = WORLD.rings ?? 0;
 let aimDone = 0, aimOf = WORLD.goal === 'white' ? 100 : WORLD.goal === 'waves' ? RINGS : WORLD.goal === 'glow' ? 100 : WORLD.goal === 'antipode' ? FAR_KM : WORLD.goal === 'gather' ? GATHER : WORLD.goal === 'chaos' || WORLD.goal === 'streaks' ? FIELDS : WORLD.goal === 'oxygen' || WORLD.goal === 'thaw' || WORLD.goal === 'outbuild' || WORLD.goal === 'snow' ? 100 : WORLD.goal === 'ring' ? CHAIN.stretches : WORLD.goal === 'height' ? HEIGHT.target : WORLD.goal === 'cover' ? COVER : WORLD.goal === 'round' ? ROUND : WORLD.goal === 'ridge' ? Planet.RIDGE_STRETCHES : WORLD.goal === 'lamp' || WORLD.goal === 'bank' ? 100 : WORLD.goal === 'calm' ? CALM : WORLD.goal === 'plumes' ? PLUMES : WORLD.goal === 'orbit' || WORLD.goal === 'feed' ? 100 : planet.basins.length, lastAim = -10;
+/** Lengai: whether its peak has reached its height (kept, once it has). */
+let peakReached = false;
 /** How much of the aim is done now, reckoned afresh. */
 function reckonAim(): void {
   if (chain) { aimDone = chain.update(planet, topo); aimOf = CHAIN.stretches; }
@@ -1310,7 +1315,8 @@ function reckonAim(): void {
   else if (WORLD.goal === 'snow') { aimDone = (100 * planet.snow) / SNOWFALL; aimOf = 100; }
   else if (WORLD.goal === 'gather') { aimDone = planet.tally.caught; aimOf = GATHER; }
   // (Lengai: the peak first, to its height, as the first half; then its summit whitening, the second.)
-  else if (WORLD.goal === 'white') { const km = Math.max(0, planet.summit * HEIGHT.kmPerUnit); aimDone = km < HEIGHT.target ? (50 * km) / HEIGHT.target : 50 + 50 * Math.min(1, (planet.whiteSummit * 100) / WHITENESS); aimOf = 100; }
+  // (Once the peak has reached its height it counts as reached: a cone settles a little as it cools, and sagging back under, the whitening stopped counting.)
+  else if (WORLD.goal === 'white') { const km = Math.max(0, planet.summit * HEIGHT.kmPerUnit); if (km >= HEIGHT.target) peakReached = true; aimDone = !peakReached ? (50 * km) / HEIGHT.target : 50 + 50 * Math.min(1, (planet.whiteSummit * 100) / WHITENESS); aimOf = 100; }
   // (Ijen: the night kept lit, as much at once as it asks, for LIT_FOR seconds in all.)
   else if (WORLD.goal === 'glow') { if (planet.burning >= GLOW) litFor += planet.seconds - litAt; litAt = planet.seconds; aimDone = (100 * litFor) / LIT_FOR; aimOf = 100; }
   else if (WORLD.goal === 'waves') { aimDone = planet.waves.length; aimOf = RINGS; }
@@ -1419,7 +1425,7 @@ function goalLine(): string {
     case 'snow': return `Rock snow · ${pct}%`;
     case 'gather': return `Stones gathered · ${d} of ${of}`;
     case 'antipode': return `The far side · ${Math.min(d, of)} of ${of} km`;
-    case 'white': return aimDone < 50 ? `The peak · ${Math.round(Math.max(0, planet.summit * HEIGHT.kmPerUnit))} of ${HEIGHT.target} km` : `The summit turning white · ${Math.round((aimDone - 50) * 2)}%`;
+    case 'white': return !peakReached ? `The peak · ${Math.round(Math.max(0, planet.summit * HEIGHT.kmPerUnit))} of ${HEIGHT.target} km` : `The summit turning white · ${Math.round((aimDone - 50) * 2)}%`;
     case 'glow': return `The night kept lit · ${Math.round(litFor)} of ${LIT_FOR} seconds${planet.burning >= GLOW ? '' : ', dimming'}`;
     case 'waves': return `Waves round the world · ${d} of ${of}`;
     case 'oxygen': return `Oxygen · ${pct}%`;
@@ -2682,7 +2688,7 @@ renderer.setAnimationLoop(() => {
   skyNow(dt);
   // (Breathing on Lengai: once the peak is tall enough, it stops breathing out, so its summit can rest and whiten;
   // pouring on by itself, the top never cooled and the world never ended.)
-  if (BREATHE && WORLD.goal === 'white') planet.k.pulse = planet.summit * HEIGHT.kmPerUnit >= HEIGHT.target ? 0 : planet.k.explosive * 0.55;
+  if (BREATHE && WORLD.goal === 'white' && (peakReached || planet.summit * HEIGHT.kmPerUnit >= HEIGHT.target)) planet.k.pulse = 0;
   if (WORLD.goal === 'height' || WORLD.goal === 'cover' || WORLD.goal === 'round' || WORLD.goal === 'calm') {
     // The ring follows the heat, eased, so it glides as the heat creeps.
     gaugeAt.lerp(new THREE.Vector3(planet.plume.x, planet.plume.y, planet.plume.z), 1 - Math.exp(-dt / 1.5)).normalize();
