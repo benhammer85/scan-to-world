@@ -433,7 +433,7 @@ const swell = (x: number): number => x - Math.sin(2 * Math.PI * x) / (2 * Math.P
  * hot (1 to 0). (The blob still budding at the vent is the pressure itself: held level it grows,
  * and tipped it lets go.)
  */
-export interface Blob { x: number; y: number; z: number; area: number; heat: number }
+export interface Blob { x: number; y: number; z: number; area: number; heat: number; /** Running into another (merging), or into the pool on the far shore: given over a moment, not at once. */ into?: Blob | 'pool' }
 /** A blob's radius, in radians across the world, from how much of it there is. */
 export const blobRadius = (area: number): number => 0.035 * Math.sqrt(area);
 
@@ -676,10 +676,10 @@ export class Planet {
     this.breakPhase = new Float32Array(n);
     for (let v = 0; v < n; v++) { const x = Math.sin(v * 12.9898 + 78.233) * 43758.5453; this.breakPhase[v] = (x - Math.floor(x)) * Math.PI * 2; }
     this.start = this.rock.slice();
-    // The lava lamp's far shore: two radians round the world from where the heat is, some way.
+    // The lava lamp's far shore: well round the world from where the heat is.
     if (this.k.lamp) {
       const q = this.plume, a = this.rand() * Math.PI * 2, t1 = unit(cross(q, Math.abs(q.y) < 0.9 ? { x: 0, y: 1, z: 0 } : { x: 1, y: 0, z: 0 })), t2 = cross(q, t1);
-      const d = { x: t1.x * Math.cos(a) + t2.x * Math.sin(a), y: t1.y * Math.cos(a) + t2.y * Math.sin(a), z: t1.z * Math.cos(a) + t2.z * Math.sin(a) }, far = 2.0;
+      const d = { x: t1.x * Math.cos(a) + t2.x * Math.sin(a), y: t1.y * Math.cos(a) + t2.y * Math.sin(a), z: t1.z * Math.cos(a) + t2.z * Math.sin(a) }, far = 1.6; // (in reach: at two radians a middling blob turned back a hair short of it)
       this.shore = { ...unit({ x: q.x * Math.cos(far) + d.x * Math.sin(far), y: q.y * Math.cos(far) + d.y * Math.sin(far), z: q.z * Math.cos(far) + d.z * Math.sin(far) }), r: 0.3 };
     }
   }
@@ -1015,8 +1015,9 @@ export class Planet {
   /** A burst: the heat flung out as a ring of small blobs round the vent. */
   private scatter(volume: number): void {
     const q = this.plume, t1 = unit(cross(q, Math.abs(q.y) < 0.9 ? { x: 0, y: 1, z: 0 } : { x: 1, y: 0, z: 0 })), t2 = cross(q, t1), k = 6;
+    const turn = this.rand() * Math.PI * 2; // (one turn for the whole ring: each its own, they landed on each other and ran together at once)
     for (let i = 0; i < k; i++) {
-      const a = (i / k) * Math.PI * 2 + this.rand(), o = 0.14;
+      const a = (i / k) * Math.PI * 2 + turn, o = 0.3; // (flung clear of each other: closer, they ran straight back together)
       this.blobs.push({ ...unit({ x: q.x + (t1.x * Math.cos(a) + t2.x * Math.sin(a)) * o, y: q.y + (t1.y * Math.cos(a) + t2.y * Math.sin(a)) * o, z: q.z + (t1.z * Math.cos(a) + t2.z * Math.sin(a)) * o }), area: volume / k, heat: 1 });
     }
   }
@@ -1025,7 +1026,29 @@ export class Planet {
   private lampStep(dt: number): void {
     const g = this.gravity, q = this.plume, up = g ? unit({ x: -g.x, y: -g.y, z: -g.z }) : { ...q };
     const angle = (a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }) => Math.acos(Math.max(-1, Math.min(1, a.x * b.x + a.y * b.y + a.z * b.z)));
+    // (Running together, or into the pool: a share each moment, sliding in as it goes, so nothing jumps.)
+    const give = 1 - Math.exp(-dt / 0.14);
+    const slide = (b: Blob, to: { x: number; y: number; z: number }, f: number) => Object.assign(b, unit({ x: b.x + (to.x - b.x) * f, y: b.y + (to.y - b.y) * f, z: b.z + (to.z - b.z) * f }));
+    for (let i = this.blobs.length - 1; i >= 0; i--) {
+      const b = this.blobs[i];
+      if (!b.into) continue;
+      const share = b.area * give;
+      if (b.into === 'pool') { if (this.shore) slide(b, this.shore, give); this.pooled += share; }
+      else if (this.blobs.includes(b.into)) {
+        const t = b.into;
+        t.heat = (t.heat * t.area + b.heat * share) / (t.area + share);
+        slide(t, b, share / (t.area + share)); // (the one taking it in leans towards it, as the middle of the two would)
+        t.area += share;
+        slide(b, t, give);
+      } else b.into = undefined; // (what it was running into is gone: it goes on alone)
+      b.area -= share;
+      if (b.area < 0.06) {
+        if (b.into === 'pool') this.pooled += b.area; else if (b.into) b.into.area += b.area;
+        this.blobs.splice(i, 1);
+      }
+    }
     for (const b of this.blobs) {
+      if (b.into) continue;
       // Hot, it floats up; cold, it sinks: the way the world is held. Big blobs are slower, and cool slower.
       const size = Math.sqrt(Math.sqrt(b.area / 4)), towards = b.heat > 0.45 ? up : { x: -up.x, y: -up.y, z: -up.z };
       const speed = (this.k.blobSpeed * Math.sqrt(Math.abs(b.heat - 0.45) / 0.55)) / size, far = angle(b, towards);
@@ -1037,26 +1060,23 @@ export class Planet {
       b.heat -= dt / (this.k.blobHot * Math.sqrt(b.area / 4));
       if (angle(b, q) < this.k.warmth) b.heat = Math.min(1, b.heat + dt * 0.25);
     }
-    // Two hot blobs that touch run together.
+    // Two warm blobs that touch run together: the smaller into the bigger. (Warm, not only hot: from where
+    // they turn back, or two drawn as one lump came apart again.)
     for (let i = 0; i < this.blobs.length; i++) {
       for (let j = i + 1; j < this.blobs.length; j++) {
         const a = this.blobs[i], b = this.blobs[j];
-        if (a.heat < 0.5 || b.heat < 0.5 || angle(a, b) > (blobRadius(a.area) + blobRadius(b.area)) * 0.8) continue;
-        const area = a.area + b.area;
-        Object.assign(a, unit({ x: a.x * a.area + b.x * b.area, y: a.y * a.area + b.y * b.area, z: a.z * a.area + b.z * b.area }));
-        a.heat = (a.heat * a.area + b.heat * b.area) / area;
-        a.area = area;
-        this.blobs.splice(j, 1);
-        j--;
+        if (a.into || b.into || a.heat < 0.45 || b.heat < 0.45 || angle(a, b) > (blobRadius(a.area) + blobRadius(b.area)) * 0.8) continue;
+        if (a.area >= b.area) b.into = a; else a.into = b;
       }
     }
-    // The far shore: a blob that reaches it still warm pools there. A cold one sinks into the deep and is gone.
+    // The far shore: a blob still warm that reaches it (any of it over the line, not only its middle) pools
+    // there. A cold one sinks into the deep and is gone.
     for (let i = this.blobs.length - 1; i >= 0; i--) {
       const b = this.blobs[i];
-      if (this.shore && b.heat > 0.2 && angle(b, this.shore) < this.shore.r) {
-        this.pooled += b.area;
+      if (b.into) continue;
+      if (this.shore && b.heat > 0.2 && angle(b, this.shore) < this.shore.r + blobRadius(b.area) * 0.5) {
+        b.into = 'pool';
         this.pooledBiggest = Math.max(this.pooledBiggest, b.area);
-        this.blobs.splice(i, 1);
         this.tell('A blob reaches the far shore');
       } else if (b.heat <= 0) this.blobs.splice(i, 1);
     }
@@ -1064,7 +1084,8 @@ export class Planet {
     while (this.blobs.length > 23) {
       let worst = 0;
       for (let i = 1; i < this.blobs.length; i++) if (this.blobs[i].heat * this.blobs[i].area < this.blobs[worst].heat * this.blobs[worst].area) worst = i;
-      this.blobs.splice(worst, 1);
+      const gone = this.blobs.splice(worst, 1)[0];
+      for (const b of this.blobs) if (b.into === gone) b.into = undefined;
     }
   }
 

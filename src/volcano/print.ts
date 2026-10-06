@@ -231,7 +231,7 @@ export function printFragment(look: Look, sea: boolean): string {
       vec3 landCol = paper * mix(vec3(1.0), own, clamp(0.8 + 0.5 * (b1 - 0.5), 0.0, 1.0) * (0.9 + 0.1 * grain)) * tint;
       // Where lava has lain and the world keeps the mark (the Moon's dark seas, the ice moons' new ice, Io's
       // sulphur): a wash of its own, with a ragged edge and a rim where it pooled.
-      float flr = vMarks.x * (1.0 - uFlows) + 0.04 * (b3 - 0.5) + 0.14 * (b2 - 0.5), flw = max(fwidth(flr), 1e-4) * 1.6;
+      float flr = vMarks.x + 0.04 * (b3 - 0.5) + 0.14 * (b2 - 0.5), flw = max(fwidth(flr), 1e-4) * 1.6;
       float inF = smoothstep(0.5 - flw, 0.5 + flw, flr), rimF = exp(-max(0.0, (flr - 0.5) / flw) / (3.0 * uPx));
       landCol = mix(landCol, uFlooded * (1.0 - 0.12 * rimF * uFloodRim), washEdge * uFloodStrength * inF * clamp(0.72 + 0.35 * (b2 - 0.5) + 0.25 * rimF * uFloodRim, 0.0, 1.0));
       float floodDark = inF * uFloodStrength * uFloodDots; // (the Moon's dark seas are stippled darker, as lunar charts draw them)
@@ -267,7 +267,7 @@ export function printFragment(look: Look, sea: boolean): string {
       float black = here > 0.01 ? clamp(vMarks.z / here, 0.0, 1.0) : 0.0;
       // (Dark lava kept for good: how new its flow is, 1 the newest, a quarter less for each pour since (FLOWS
       // in main; carried as itself, not a share of where it lies), stepped so each flow is one even shade with a clean edge where the next lies over it.)
-      float flowN = clamp(vMarks.x, 0.0, 1.0) * 4.0, flowW = 21.0 * px * 0.7;
+      float flowN = clamp(vFlow, 0.0, 1.0) * 4.0, flowW = 21.0 * px * 0.7;
       float aged = (floor(flowN) + smoothstep(0.5 - flowW, 0.5 + flowW, fract(flowN))) / 4.0;
 
       // Stipple: crowded along the shore, thinning inland, gathering on slopes turned from the light,

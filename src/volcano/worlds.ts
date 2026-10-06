@@ -590,9 +590,9 @@ export const WORLDS: World[] = [
       shallow: '#d4e3ec', deep: '#b1c8d8',
       landInk: '#4a4038', landInkHigh: '#2f2822', pencil: '#b5aa9c', seaInk: '#5b82a3',
     },
-    sun: [0.88, 0.25, -0.4],
+    sun: [0.88, 0.25, 0.2], // (towards us a little: day and the edge of night both in view, and the vent starting in the morning)
     goal: 'snow',
-    snowfall: 170,
+    snowfall: 130,
   },
   {
     id: 'dust',

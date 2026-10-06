@@ -83,7 +83,7 @@
       #atlas .head { display: flex; justify-content: space-between; align-items: baseline; margin: 0 4px 18px; }
       #atlas h2 { margin: 0; font-weight: normal; font-style: italic; font-size: 22px; letter-spacing: 0.04em; }
       #atlas .close { font: italic 14px "Newsreader", "Iowan Old Style", Georgia, serif; color: #efe7d3; background: none; border: none; opacity: 0.6; padding: 6px; cursor: pointer; }
-      #atlas .sky { position: relative; height: min(calc(100svh - 110px - env(safe-area-inset-top)), 120vw, 900px); margin: 0 -16px 8px; }
+      #atlas .sky { position: relative; height: max(320px, min(calc(100svh - 120px - env(safe-area-inset-top) - env(safe-area-inset-bottom)), 1000px)); margin: 0 -16px 8px; } /* (the whole screen's height: capped at the width's, the globe sat in a short band with the page empty below) */
       #atlas .credit { text-align: center; font-style: italic; font-size: 11px; opacity: 0.45; margin: 0 0 30px; }
       #atlas .plates-head { text-align: center; font-style: italic; font-size: 14px; opacity: 0.7; margin: 0 0 14px; }
       #atlas .pages { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 20px 14px; max-width: 900px; margin: 0 auto; }

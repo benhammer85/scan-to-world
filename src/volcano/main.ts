@@ -221,6 +221,8 @@ const positions = new Float32Array(FN * 3);
 const landColour = new Float32Array(FN * 3), fineHeight = new Float32Array(FN);
 /** Where lava lies (how thick) and where it has lain (this fire's, or an earlier one's): amounts, so their edges are drawn crisp in each pixel. */
 const fineMarks = new Float32Array(FN * 4), prevMarks = new Float32Array(FN * 4);
+/** Each kept flow's shade, by how many pours have come since it (FLOWS): its own channel, beside the marks. */
+const fineFlow = new Float32Array(FN), prevFlow = new Float32Array(FN);
 geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
 geometry.setAttribute('color', new THREE.BufferAttribute(landColour, 3));
 geometry.setAttribute('aH', new THREE.BufferAttribute(fineHeight, 1));
@@ -234,6 +236,8 @@ geometry.setAttribute('aPrevColour', new THREE.BufferAttribute(prevColour, 3));
 geometry.setAttribute('aPrevH', new THREE.BufferAttribute(prevHeight, 1));
 geometry.setAttribute('aMarks', new THREE.BufferAttribute(fineMarks, 4));
 geometry.setAttribute('aPrevMarks', new THREE.BufferAttribute(prevMarks, 4));
+geometry.setAttribute('aFlow', new THREE.BufferAttribute(fineFlow, 1));
+geometry.setAttribute('aPrevFlow', new THREE.BufferAttribute(prevFlow, 1));
 geometry.setIndex(new THREE.BufferAttribute(ftopo.triangles, 1));
 const blend = { value: 1 }, blendFrom = { at: 0, span: 0.5 };
 /** How strongly ground lava has lain on is marked: less, as the ice moon's new ice greys in its long age. */
@@ -290,8 +294,8 @@ function cratering(): void {
 const material = new THREE.MeshLambertMaterial({ vertexColors: true, dithering: true });
 material.onBeforeCompile = (shader) => {
   shader.vertexShader = shader.vertexShader
-    .replace('void main() {', 'attribute float aH;\nattribute float aPrevH;\nattribute vec3 aPrevPos;\nattribute vec3 aPrevColour;\nattribute vec4 aMarks;\nattribute vec4 aPrevMarks;\nuniform float uBlend;\nvarying float vH;\nvarying vec4 vMarks;\nvarying vec3 vDir;\nvarying vec3 vN;\nvarying vec3 vS;\nvoid main() {')
-    .replace('#include <color_vertex>', '#include <color_vertex>\n  vColor.rgb = mix(aPrevColour, color.rgb, uBlend);\n  vH = mix(aPrevH, aH, uBlend);\n  vMarks = mix(aPrevMarks, aMarks, uBlend);\n  vDir = normalize(position);\n  vN = normalize(normalMatrix * normal);\n  vS = normalize(normalMatrix * normalize(position));')
+    .replace('void main() {', 'attribute float aH;\nattribute float aPrevH;\nattribute vec3 aPrevPos;\nattribute vec3 aPrevColour;\nattribute vec4 aMarks;\nattribute vec4 aPrevMarks;\nattribute float aFlow;\nattribute float aPrevFlow;\nuniform float uBlend;\nvarying float vH;\nvarying vec4 vMarks;\nvarying float vFlow;\nvarying vec3 vDir;\nvarying vec3 vN;\nvarying vec3 vS;\nvoid main() {')
+    .replace('#include <color_vertex>', '#include <color_vertex>\n  vColor.rgb = mix(aPrevColour, color.rgb, uBlend);\n  vH = mix(aPrevH, aH, uBlend);\n  vMarks = mix(aPrevMarks, aMarks, uBlend);\n  vFlow = mix(aPrevFlow, aFlow, uBlend);\n  vDir = normalize(position);\n  vN = normalize(normalMatrix * normal);\n  vS = normalize(normalMatrix * normalize(position));')
     .replace('#include <begin_vertex>', 'vec3 transformed = mix(aPrevPos, position, uBlend);');
   shader.uniforms.uBlend = blend;
   // The sea's colour is only its depth, so it's worked out here rather than sent: paler over the shallows.
@@ -351,7 +355,7 @@ material.onBeforeCompile = (shader) => {
   shader.uniforms.uInkCold = BLUE ? ink(0.9, 0.95, 0.98) : QUIET ? ink(0.4, 0.37, 0.35) : ink(0.2, 0.19, 0.18);
   shader.uniforms.uInkAsh = BLUE ? ink(0.62, 0.74, 0.82) : QUIET ? ink(0.58, 0.55, 0.52) : ink(0.42, 0.4, 0.38);
   shader.fragmentShader = shader.fragmentShader
-    .replace('void main() {', `uniform vec3 uShallow;\nuniform vec3 uDeep;\nuniform vec3 uFlooded;\nuniform float uFloodStrength;\nuniform vec3 uLava;\nuniform vec3 uDeepLava;\nuniform vec3 uHot;\nuniform vec3 uCrust;\nuniform float uTime;\nuniform float uPx;\nuniform vec3 uLandPaper;\nuniform float uSeaFloor;\nvarying float vH;\nvarying vec4 vMarks;\nvarying vec3 vDir;\nvarying vec3 vN;
+    .replace('void main() {', `uniform vec3 uShallow;\nuniform vec3 uDeep;\nuniform vec3 uFlooded;\nuniform float uFloodStrength;\nuniform vec3 uLava;\nuniform vec3 uDeepLava;\nuniform vec3 uHot;\nuniform vec3 uCrust;\nuniform float uTime;\nuniform float uPx;\nuniform vec3 uLandPaper;\nuniform float uSeaFloor;\nvarying float vH;\nvarying vec4 vMarks;\nvarying float vFlow;\nvarying vec3 vDir;\nvarying vec3 vN;
       // (Without sin, which phones' GPUs work out roughly for large numbers, turning noise into patterns.)
       float hash3(vec3 p) { p = fract(p * 0.1031); p += dot(p, p.zyx + 31.32); return fract((p.x + p.y) * p.z); }
       float noise3(vec3 p) {
@@ -534,16 +538,18 @@ function surface(v: number): number {
 const LAVA_WHOLE = 0.003;
 /** How many times the marks are eased toward their neighbours. */
 const MARK_EASING = 8;
+/** How pale ash may lie: a tint, but on the lava world, where the rock snow is the aim, plain to see. */
+const SNOW_SHOWN = WORLD.goal === 'snow' ? 0.6 : 0.22;
 /**
  * Dark lava kept for good, drawn flow by flow: each pour's lava keeps the number of the pour that laid
  * it (the planet's flowOf), and is drawn by how many pours have come since, the newest darkest, one shade lighter for each
  * after it, so the flows read in the order they came, as a geological map's do (by each point's own age,
  * neighbours set a moment apart blotched, and one flow ran into the next with no edge between them).
- * Carried in the marks' first channel, where a world doesn't keep its seas there. Each flow stands a
+ * Carried in a channel of its own (aFlow). Each flow stands a
  * little proud of what it covers, the newest the highest (FLOW_PROUD), for the lamp to shade.
  */
-const FLOWS = DARK_LAVA && !!LOOK && !FL && !SULPHUR && !planet.k.whiteAt, FLOW_PROUD = FLOWS ? 0.025 : 0, FLOW_STEP = 0.25;
-const flowShown = new Float32Array(N);
+const FLOWS = DARK_LAVA && !!LOOK && !planet.k.whiteAt, FLOW_PROUD = FLOWS ? 0.025 : 0, FLOW_STEP = 0.25;
+const flowShown = new Float32Array(N), coarseFlow = new Float32Array(N), flowNext = new Float32Array(N);
 /** How long each point has lain under lava too thin to run (drawn set): such a sheet chills at once, though the simulation still counts it molten. */
 const chilled = new Float32Array(N);
 let chilledAt = -1;
@@ -598,7 +604,7 @@ function coarse(): void {
     const v3 = v * 3;
     // (Not on a world that marks where lava has lain: there that mark is the edge, and a soft tint beside it only smears it.)
     // (Not in the quiet print: there its cooling lava fades itself, and the grey of fresh rock outlined every flow.)
-    const fresh = !FL && !QUIET && planet.age[v] < 200 ? Math.exp(-planet.age[v] / 30) * 0.3 : 0, ash = Math.min(0.22, planet.ash[v] * 0.3);
+    const fresh = !FL && !QUIET && planet.age[v] < 200 ? Math.exp(-planet.age[v] / 30) * 0.3 : 0, ash = Math.min(SNOW_SHOWN, planet.ash[v] * 0.3);
     const hot = lava > 0.002 ? Math.min(1, lava * 40) : 0;
     // Where a world keeps the mark of it (the Moon's seas), ground lava has lain on stays dark: this
     // fire's fully, an earlier one's a little faded. And the lava itself, by how thick it lies.
@@ -628,7 +634,7 @@ function coarse(): void {
     coarseMarks[v * 4 + 3] = set;
     if (FLOWS) {
       flowShown[v] += (Math.max(0, 1 - (planet.flowsPoured - planet.flowOf[v]) * FLOW_STEP) - flowShown[v]) * ease;
-      coarseMarks[v * 4] = set > 0.05 ? flowShown[v] : -1;
+      coarseFlow[v] = set > 0.05 ? flowShown[v] : -1;
     }
     chilled[v] = lava > LAVA_WHOLE / 4 ? 0 : lava > 0 ? chilled[v] + simDt : chilled[v];
     coarseMarks[v * 4 + 2] = set * Math.exp(-(planet.age[v] + chilled[v]) / (planet.k.whiteAt ? planet.k.whiteAt * 0.6 : 45));
@@ -657,14 +663,20 @@ function coarse(): void {
   // (Flows: each one's shade carried on its own, not as a share of where it lies, and spread a few
   // points out past its edge, so it can be eased less than the edge is: where a new flow lies on one
   // several pours older, the shades between them then pass in a hair, not a band like another flow.)
-  if (FLOWS) for (let pass = 0; pass < 4; pass++) {
-    for (let v = 0; v < N; v++) {
-      if (M[v * 4] >= 0) { eased[v * 4] = M[v * 4]; continue; }
-      let sum = 0, c = 0;
-      for (let k = o[v]; k < o[v + 1]; k++) { const x = M[l[k] * 4]; if (x >= 0) { sum += x; c++; } }
-      eased[v * 4] = c ? sum / c : pass === 3 ? 0 : -1;
+  if (FLOWS) {
+    for (let pass = 0; pass < 4; pass++) {
+      for (let v = 0; v < N; v++) {
+        if (coarseFlow[v] >= 0) { flowNext[v] = coarseFlow[v]; continue; }
+        let sum = 0, c = 0;
+        for (let k = o[v]; k < o[v + 1]; k++) { const x = coarseFlow[l[k]]; if (x >= 0) { sum += x; c++; } }
+        flowNext[v] = c ? sum / c : pass === 3 ? 0 : -1;
+      }
+      coarseFlow.set(flowNext);
     }
-    for (let v = 0; v < N; v++) M[v * 4] = eased[v * 4];
+    for (let pass = 0; pass < 3; pass++) {
+      for (let v = 0; v < N; v++) { let sum = 0; for (let k = o[v]; k < o[v + 1]; k++) sum += coarseFlow[l[k]]; flowNext[v] = coarseFlow[v] * 0.4 + (sum / Math.max(1, o[v + 1] - o[v])) * 0.6; }
+      coarseFlow.set(flowNext);
+    }
   }
   for (let pass = 0; pass < MARK_EASING; pass++) {
     const lavaToo = pass < MARK_EASING * 0.75;
@@ -672,16 +684,16 @@ function coarse(): void {
       let s0 = 0, s1 = 0, s2 = 0, s3 = 0;
       for (let k = o[v]; k < o[v + 1]; k++) { const w = l[k] * 4; s0 += M[w]; s1 += M[w + 1]; s2 += M[w + 2]; s3 += M[w + 3]; }
       const by = 0.6 / Math.max(1, o[v + 1] - o[v]), v4 = v * 4;
-      eased[v4] = FLOWS && pass >= 3 ? M[v4] : M[v4] * 0.4 + s0 * by; eased[v4 + 1] = lavaToo ? M[v4 + 1] * 0.4 + s1 * by : M[v4 + 1];
+      eased[v4] = M[v4] * 0.4 + s0 * by; eased[v4 + 1] = lavaToo ? M[v4 + 1] * 0.4 + s1 * by : M[v4 + 1];
       eased[v4 + 2] = M[v4 + 2] * 0.4 + s2 * by; eased[v4 + 3] = M[v4 + 3] * 0.4 + s3 * by;
     }
     M.set(eased);
   }
-  if (!FL && !SULPHUR && !FLOWS) for (let v = 0; v < N; v++) M[v * 4] = 0;
+  if (!FL && !SULPHUR) for (let v = 0; v < N; v++) M[v * 4] = 0;
   // Each flow a little proud of the ground it covers, the newer the higher, so the lamp shades the edge of
   // one lying over another, as a raised edge, and the order they came in shows. (Drawn only: the simulation keeps its own.)
   if (FLOW_PROUD) for (let v = 0; v < N; v++) {
-    const h = (coarseHeight[v] += FLOW_PROUD * M[v * 4 + 3] * (0.4 + 0.6 * M[v * 4])), r = 1 + RELIEF * Math.max(0, h);
+    const h = (coarseHeight[v] += FLOW_PROUD * M[v * 4 + 3] * (0.4 + 0.6 * coarseFlow[v])), r = 1 + RELIEF * Math.max(0, h);
     topo.positions[v * 3] = base[v * 3] * r; topo.positions[v * 3 + 1] = base[v * 3 + 1] * r; topo.positions[v * 3 + 2] = base[v * 3 + 2] * r;
   }
 }
@@ -696,12 +708,12 @@ const shaper = offThread(() => { if (noWorkers) throw new Error('no workers'); r
 shaper.post({ init: { parts: fine.parts, triangles: ftopo.triangles.slice(), basePositions: fbase.slice(), relief: RELIEF } });
 let shapeOut = false;
 shaper.onmessage = (data) => {
-  const d = data as { height: Float32Array; land: Float32Array; position: Float32Array; normal: Float32Array; marks: Float32Array };
+  const d = data as { height: Float32Array; land: Float32Array; position: Float32Array; normal: Float32Array; marks: Float32Array; flow: Float32Array };
   // What was being drawn becomes where the new one eases in from, over about as long as it took to come.
-  prevHeight.set(fineHeight); prevColour.set(landColour); prevPositions.set(positions); prevMarks.set(fineMarks);
-  fineMarks.set(d.marks);
+  prevHeight.set(fineHeight); prevColour.set(landColour); prevPositions.set(positions); prevMarks.set(fineMarks); prevFlow.set(fineFlow);
+  fineMarks.set(d.marks); fineFlow.set(d.flow);
   fineHeight.set(d.height); landColour.set(d.land); positions.set(d.position); normals.set(d.normal);
-  for (const name of ['position', 'normal', 'color', 'aH', 'aPrevPos', 'aPrevColour', 'aPrevH', 'aMarks', 'aPrevMarks']) geometry.getAttribute(name).needsUpdate = true;
+  for (const name of ['position', 'normal', 'color', 'aH', 'aPrevPos', 'aPrevColour', 'aPrevH', 'aMarks', 'aPrevMarks', 'aFlow', 'aPrevFlow']) geometry.getAttribute(name).needsUpdate = true;
   const now = performance.now() / 1000;
   blendFrom.span = Math.min(0.8, Math.max(0.05, now - blendFrom.at));
   blendFrom.at = now;
@@ -712,8 +724,8 @@ function draw(): void {
   if (shapeOut) return;
   coarse();
   shapeOut = true;
-  const height = coarseHeight.slice(), land = coarseLand.slice(), marks = coarseMarks.slice();
-  shaper.post({ shape: { height, land, marks } }, [height.buffer, land.buffer, marks.buffer]);
+  const height = coarseHeight.slice(), land = coarseLand.slice(), marks = coarseMarks.slice(), flow = coarseFlow.slice();
+  shaper.post({ shape: { height, land, marks, flow } }, [height.buffer, land.buffer, marks.buffer, flow.buffer]);
 }
 
 /** Redraw the surface here and now: at the start, on taking up a kept world, and for the kept chart. */
@@ -722,6 +734,7 @@ function drawNow(): void {
   fine.carryDrawn(coarseHeight, coarseLand, fineHeight, landColour);
   fine.ease(landColour, 3);
   fine.carryMarks(coarseMarks, fineMarks);
+  fine.carry(coarseFlow, fineFlow); fine.ease(fineFlow, 1);
   const nm = ftopo.normals;
   for (let v = 0; v < FN; v++) {
     const r = 1 + RELIEF * Math.max(0, fineHeight[v]);
@@ -732,9 +745,9 @@ function drawNow(): void {
     nm[v * 3] = x; nm[v * 3 + 1] = y; nm[v * 3 + 2] = z;
   }
   smoothNormals();
-  prevHeight.set(fineHeight); prevColour.set(landColour); prevPositions.set(positions); prevMarks.set(fineMarks);
+  prevHeight.set(fineHeight); prevColour.set(landColour); prevPositions.set(positions); prevMarks.set(fineMarks); prevFlow.set(fineFlow);
   blend.value = 1;
-  for (const name of ['position', 'normal', 'color', 'aH', 'aPrevPos', 'aPrevColour', 'aPrevH', 'aMarks', 'aPrevMarks']) geometry.getAttribute(name).needsUpdate = true;
+  for (const name of ['position', 'normal', 'color', 'aH', 'aPrevPos', 'aPrevColour', 'aPrevH', 'aMarks', 'aPrevMarks', 'aFlow', 'aPrevFlow']) geometry.getAttribute(name).needsUpdate = true;
 }
 
 /** The ground's normals, each the sum of its triangles' (weighted by their area), in plain arrays: three's own way is several times slower. */
@@ -988,25 +1001,82 @@ if (WORLD.goal === 'feed') {
  */
 const SUN = WORLD.sun ? new THREE.Vector3(...WORLD.sun).normalize() : null, SUN_AT = new THREE.Vector3(0.85, 2.05, -4.6);
 const sky = { value: new THREE.Vector4(0, 0, 1, WORLD.id === 'rogue' || WORLD.id === 'ijen' ? 2 : SUN ? 1 : 0) }, iceLine = { value: planet.k.gas > 0 ? 0 : -1 }, haze = { value: planet.k.breathe > 0 ? 1 : 0 };
-let sunDisc: THREE.Sprite | null = null;
+let sunDisc: THREE.Mesh | null = null;
+/**
+ * The star itself, worked out at every pixel as the world is, so it's as crisp as the world at any
+ * size (a picture of one, drawn once small and stretched, looked like a sticker beside it): a disc
+ * brighter at its middle and deepening to gold at its rim, as a star's is, its face faintly grained and
+ * drifting, with a spot or two; a fine inked rim; and round it a warm glow and an engraver's rays,
+ * long and short by turns, breathing a little. Near (a lava world's, a world boiling away's) it fills
+ * much of the sky; far (Triton's), it's small and white.
+ */
+const STAR_TIME = { value: 0 };
 if (SUN) {
-  const cv = document.createElement('canvas');
-  cv.width = cv.height = 256;
-  const g = cv.getContext('2d')!;
-  g.strokeStyle = P.landInkHigh; g.fillStyle = '#f3e6c4'; g.lineCap = 'round';
-  // (Its rays, short and long by turns, as an old chart's sun; then the disc over them.)
-  for (let i = 0; i < 24; i++) {
-    const a = (i / 24) * Math.PI * 2, r0 = 66, r1 = i % 2 ? 92 : 112;
-    g.lineWidth = i % 2 ? 2 : 3;
-    g.beginPath(); g.moveTo(128 + Math.cos(a) * r0, 128 + Math.sin(a) * r0); g.lineTo(128 + Math.cos(a) * r1, 128 + Math.sin(a) * r1); g.stroke();
-  }
-  g.lineWidth = 3.5;
-  g.beginPath(); g.arc(128, 128, 56, 0, Math.PI * 2); g.fill(); g.stroke();
-  const tex = new THREE.CanvasTexture(cv);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  const disc = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
-  disc.scale.setScalar(0.62);
+  const far = WORLD.id === 'triton', hot = WORLD.id === 'magma';
+  const mat = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false,
+    uniforms: {
+      uTime: STAR_TIME,
+      uInk: { value: new THREE.Color(P.landInkHigh) },
+      uMid: { value: new THREE.Color(far ? '#fbf7ea' : hot ? '#fde9bf' : '#fcefc8') },
+      uRim: { value: new THREE.Color(far ? '#efe2c4' : hot ? '#e8913f' : '#eeb455') },
+      uGlow: { value: new THREE.Color(hot ? '#f2a865' : '#f5cf8a') },
+    },
+    vertexShader: 'varying vec2 vP; void main() { vP = position.xy * 2.0; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: `
+      varying vec2 vP;
+      uniform float uTime; uniform vec3 uInk, uMid, uRim, uGlow;
+      float h3(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+      float n3(vec3 x) {
+        vec3 i = floor(x), f = fract(x); f = f * f * (3.0 - 2.0 * f);
+        return mix(mix(mix(h3(i), h3(i + vec3(1, 0, 0)), f.x), mix(h3(i + vec3(0, 1, 0)), h3(i + vec3(1, 1, 0)), f.x), f.y),
+                   mix(mix(h3(i + vec3(0, 0, 1)), h3(i + vec3(1, 0, 1)), f.x), mix(h3(i + vec3(0, 1, 1)), h3(i + vec3(1, 1, 1)), f.x), f.y), f.z);
+      }
+      void main() {
+        const float R = 0.44; // (the disc's radius, in the square's half-widths; the rest is glow and rays)
+        float d = length(vP), r = d / R, px = max(fwidth(d), 1e-5);
+        vec3 col = vec3(0.0); float a = 0.0;
+        // The face: limb-darkened (seen through more of the star's air at its edge), grained, slowly turning.
+        if (r < 1.0) {
+          float mu = sqrt(max(0.0, 1.0 - r * r));
+          vec3 sp = vec3(vP / R, mu); // (a point on the star's face, as on a ball)
+          float turn = uTime * 0.01;
+          vec3 q = vec3(sp.x * cos(turn) + sp.z * sin(turn), sp.y, -sp.x * sin(turn) + sp.z * cos(turn));
+          float grain = n3(q * 34.0 + vec3(0.0, 0.0, uTime * 0.05)) * 0.6 + n3(q * 80.0 - uTime * 0.03) * 0.4;
+          float sn = n3(q * 2.6 + 7.0) * 0.7 + n3(q * 9.0 + 3.0) * 0.3, spots = smoothstep(0.8, 0.84, sn), pen = smoothstep(0.73, 0.8, sn); // (a group or two, not a scatter)
+          col = mix(uRim, uMid, pow(mu, 0.55));
+          col *= 0.95 + 0.1 * grain;
+          col = mix(col, col * 0.78, pen * 0.6);
+          col = mix(col, uInk * 1.6, spots * 0.7 * mu);
+          a = 1.0;
+        }
+        // The rim, finely inked; a hair of soft edge either side.
+        float rimPx = abs(d - R) / px;
+        float rim = 1.0 - smoothstep(0.6, 1.6, rimPx);
+        col = mix(col, uInk, rim * 0.75); a = max(a * (1.0 - smoothstep(-0.5, 0.5, (d - R) / px)), rim * 0.75);
+        // Outside: the glow, and the rays.
+        if (r > 1.0) {
+          float glow = exp(-(r - 1.0) * 2.4) * 0.45;
+          // (Many, fine and faint, each its own length, as an engraver cuts a star's light: a few bold spokes
+          // read as a child's sun.)
+          float ang = atan(vP.y, vP.x), N = 90.0, k = ang / 6.2831853 * N;
+          float idx = floor(k + 0.5), ray = abs(k - idx) * 6.2831853 / N * d / px; // (pixels from the nearest ray)
+          float len = h3(vec3(idx, 3.1, 7.7));
+          float reach = 1.18 + 0.55 * len * len + 0.04 * sin(uTime * 0.35 + idx * 1.7); // (breathing a little, each its own time)
+          float along = smoothstep(1.06, 1.12, r) * (1.0 - smoothstep(1.06, reach, r));
+          float rays = (1.0 - smoothstep(0.25, 0.9, ray)) * along * 0.42;
+          col = mix(uGlow, uInk, rays / max(rays + glow, 1e-4));
+          a = max(a, clamp(glow + rays, 0.0, 1.0));
+        }
+        gl_FragColor = vec4(col, a);
+        #include <colorspace_fragment>
+      }`,
+  });
+  const disc = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), mat);
+  disc.scale.setScalar(far ? 0.75 : hot ? 1.9 : 1.45);
   disc.position.copy(SUN_AT);
+  disc.position.add(new THREE.Vector3(far ? 0.15 : 0.8, far ? -0.1 : -0.12, 0)); // (out in the corner of the sky, clear of the world's name)
+  disc.renderOrder = -1;
   scene.add(disc);
   sunDisc = disc;
 }
@@ -1057,6 +1127,7 @@ function skyNow(dt: number): void {
     SUN.applyAxisAngle(SKY_UP, WORLD.sunTurns * dt);
     if (sunDisc) sunDisc.position.set(SUN.x * 1.15, SUN_AT.y, SUN_AT.z);
   }
+  if (sunDisc) { sunDisc.quaternion.copy(camera.quaternion); STAR_TIME.value += dt; }
   if (SUN) {
     camera.updateMatrixWorld();
     const v = GIANT_DIR.copy(SUN).transformDirection(camera.matrixWorldInverse);
@@ -1122,17 +1193,19 @@ if (LAMP) {
     depthWrite: false,
     uniforms: { uBlob: { value: blobAt }, uHeat: { value: blobHeat }, uCount: blobCount, uHot: { value: new THREE.Color(P.lava) }, uCool: { value: new THREE.Color(P.deepLava) }, uHeart: { value: new THREE.Color('#f6c27a') }, uTime: lavaClock, uPx: pxRatio },
     vertexShader: /* glsl */ `
-      varying vec3 vDir;
-      void main() { vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+      varying vec3 vDirV;
+      void main() { vDirV = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
     fragmentShader: /* glsl */ `
       uniform vec4 uBlob[${BLOBS}];
       uniform float uHeat[${BLOBS}];
       uniform int uCount;
       uniform vec3 uHot, uCool, uHeart;
       uniform float uTime, uPx;
-      varying vec3 vDir;
+      varying vec3 vDirV;
+      vec3 vDir; // (made whole again in each pixel: carried between the shell's points, it shortens, and every blob's edge was faceted)
       ${LOOK ? LAMP_PRINT_FUNCTIONS : ''}
       void main() {
+        vDir = normalize(vDirV);
         float f = 0.0, hs = 0.0;
         for (int i = 0; i < ${BLOBS}; i++) {
           if (i >= uCount) break;
@@ -1159,9 +1232,10 @@ function lamping(): void {
   let n = 0;
   const put = (x: number, y: number, z: number, area: number, heat: number) => { if (n < BLOBS && area > 0.05) { blobAt[n].set(x, y, z, blobRadius(area)); blobHeat[n] = heat; n++; } };
   const q = planet.plume, s = planet.shore;
-  if (s && planet.pooled > 0) put(s.x, s.y, s.z, Math.min(planet.pooled, (s.r * 0.9 / blobRadius(1)) ** 2), 0.75);
+  // (The pool grows with how far along it is, to fill the shore when it's full: drawn as it came, it was full a third of the way.)
+  if (s && planet.pooled > 0) put(s.x, s.y, s.z, Math.max(Math.min(planet.pooled, 2), Math.min(1, planet.pooled / POOL) * (s.r * 0.95 / blobRadius(1)) ** 2), 0.75);
   if (!planet.over) put(q.x, q.y, q.z, planet.pressure, 1);
-  for (const b of planet.blobs) put(b.x, b.y, b.z, b.area, Math.max(0, b.heat));
+  for (const b of planet.blobs) put(b.x, b.y, b.z, b.area * Math.min(1, Math.max(0, b.heat) / 0.12), Math.max(0, b.heat)); // (a cold one shrinks away as it goes, rather than vanishing)
   blobCount.value = n;
 }
 const TUMBLE = new THREE.Quaternion(), TUMBLE_AXIS = new THREE.Vector3();
@@ -1266,7 +1340,7 @@ const HOW: Record<string, string> = {
   oxygen: 'Life in shallow water makes oxygen, but lava buries it. Pour a shallow shelf, turn a little, pour the next, and let life grow.',
   chaos: 'Hold, then let go before the smoke turns grey. The warmth breaks the ice into rafts. Each new field must be away from the last.',
   streaks: 'The sun slowly crosses the sky. Hold until the smoke turns grey, wait for sunlight on the volcano, then let go. Turn somewhere new for the next streak.',
-  snow: 'Turn the volcano into the starlight and pour. The lava there boils into the air and falls as rock snow along the edge of night.',
+  snow: 'Turn the world until the volcano is on the sunlit side, under the star, and pour. The lava boils away there and falls as pale rock snow on the dotted line, just inside the night.',
 };
 
 /** The aim and how far it's come, in a few words for the top of the screen, always there while it's played. */
@@ -1377,6 +1451,15 @@ function drawAim(now: number): void {
     const step = Math.floor(aimDone / 25) * 25;
     void step; // (the goal line at the top shows how far it's come)
     const pts = circleAt(planet.shore, planet.shore.r), filled = Math.round(pts.length * Math.min(1, aimDone / aimOf)), ink: number[] = [], pencil: number[] = [];
+    onGround(pts.slice(0, filled), ink);
+    onGround(pts.slice(filled), pencil);
+    aimInk.set(ink);
+    aimPencil.set(pencil);
+    return;
+  }
+  if (WORLD.goal === 'snow' && planet.star) {
+    // Where the rock snow falls: a line of dots just inside the night, inked round as it fills.
+    const pts = circleAt(planet.star, Math.acos(-0.18)), filled = Math.round(pts.length * Math.min(1, aimDone / aimOf)), ink: number[] = [], pencil: number[] = [];
     onGround(pts.slice(0, filled), ink);
     onGround(pts.slice(filled), pencil);
     aimInk.set(ink);
@@ -1557,11 +1640,17 @@ const CUES: { ready: () => boolean; say?: string; begin?: () => void; done: (sin
   ...(WORLD.goal === 'feed' ? [
     { ready: () => planet.tally.bursts > 0, say: 'The ring thins away unless it is fed', done: (s: number) => s > 20 },
   ] : []),
+  ...(WORLD.goal === 'snow' ? [
+    // (Said when it matters: pouring in the dark makes no snow; pouring in the day, the first snow falls.)
+    { ready: () => (planet.pouring && planet.dayAt(planet.plumeVertex) < 0.12) || planet.snow > 0.02, get say() { return planet.snow > 0.02 ? 'The lava boils into the sky and falls as rock snow on the dotted line' : 'The volcano is in the night here: turn the world to bring it under the star'; }, done: (s: number) => s > 14 },
+    { ready: () => planet.pouring && planet.dayAt(planet.plumeVertex) < 0.12, say: 'In the night nothing boils: turn the volcano back towards the star', done: (s: number) => s > 14 },
+  ] : []),
   ...(WORLD.rules.impactEvery?.[1] === 0 ? [] : [
     { ready: () => true, begin: () => { planet.stonesFall = true; }, done: () => planet.impact !== null || planet.tally.stones > 0 },
     { ready: () => planet.impact !== null, say: 'A stone is coming: turn it to the top before it lands, and its heat is yours', done: (s: number) => s > 20 },
   ]),
 ];
+let vapourIn = 0;
 let lesson = 0, lessonSince = 0, lessonShown = false, embersSaid = false;
 function lessons(): void {
   if (ending) return;
@@ -1673,6 +1762,14 @@ function effects(dt: number): void {
     for (let v = 0; v < N; v++) {
       const l = planet.lava[v];
       if (l > 0.004 && planet.rock[v] < 0.005 && Math.random() < Math.min(0.02, l * 0.35)) puffs.add('steam', p[v * 3], p[v * 3 + 1], p[v * 3 + 2], 1, Math.random, up);
+    }
+  }
+  // The lava world: rock boiling off lava in the starlight, rising pale.
+  if (WORLD.goal === 'snow' && !planet.over) {
+    vapourIn -= dt;
+    if (vapourIn <= 0) {
+      vapourIn = 0.3;
+      for (let v = 0; v < N; v++) if (planet.lava[v] > 0.002 && Math.random() < 0.05 * planet.dayAt(v)) puffs.add('steam', p[v * 3], p[v * 3 + 1], p[v * 3 + 2], 0.8, Math.random, up);
     }
   }
   // A dust storm: dust driven across the face of the world, low and fast.

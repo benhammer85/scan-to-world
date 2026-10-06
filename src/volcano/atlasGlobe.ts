@@ -234,7 +234,7 @@ export function openGlobe(box: HTMLElement, pages: Page[], here: WorldId, pick: 
     c.worlds.forEach((id, i) => {
       const at = onFigure(f, f.stars[i][0] / f.w, f.stars[i][1] / f.h, 1.004), page = latest.get(id);
       const sprite = new THREE.Sprite(keep(new THREE.SpriteMaterial({ map: keep(markerTexture(id, page, id === here)), depthTest: false, depthWrite: false, transparent: true })));
-      const k = page ? 0.135 : 0.095;
+      const k = page ? 0.17 : 0.15;
       sprite.scale.set(k, k * 1.4, 1);
       sprite.center.set(0.5, 1 - 0.5 / 1.4); // (the globe's middle on the star; the numeral under it)
       sprite.position.copy(at);
@@ -277,7 +277,7 @@ export function openGlobe(box: HTMLElement, pages: Page[], here: WorldId, pick: 
   canvas.addEventListener('pointermove', (e) => {
     if (!pointers.has(e.pointerId)) return;
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (pointers.size === 2) { const [a, b] = [...pointers.values()], d = Math.hypot(a.x - b.x, a.y - b.y); if (pinch > 0) dist = THREE.MathUtils.clamp(dist * (pinch / d), 2.4, 5.2); pinch = d; moved = 99; return; }
+    if (pointers.size === 2) { const [a, b] = [...pointers.values()], d = Math.hypot(a.x - b.x, a.y - b.y); if (pinch > 0) dist = THREE.MathUtils.clamp(dist * (pinch / d), 3.3, 5.2); pinch = d; moved = 99; return; }
     if (!dragging) return;
     const dx = e.clientX - last.x, dy = e.clientY - last.y;
     moved = Math.max(moved, Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y));
@@ -293,7 +293,7 @@ export function openGlobe(box: HTMLElement, pages: Page[], here: WorldId, pick: 
   };
   canvas.addEventListener('pointerup', up);
   canvas.addEventListener('pointercancel', up);
-  canvas.addEventListener('wheel', (e) => { e.preventDefault(); dist = THREE.MathUtils.clamp(dist * Math.exp(e.deltaY * 0.0012), 2.4, 5.2); }, { passive: false });
+  canvas.addEventListener('wheel', (e) => { e.preventDefault(); dist = THREE.MathUtils.clamp(dist * Math.exp(e.deltaY * 0.0012), 3.3, 5.2); }, { passive: false });
   /** A touch: the nearest world to it, if near enough; turned to face us first if it's far round. */
   function touched(cx: number, cy: number): void {
     const r = canvas.getBoundingClientRect();
@@ -316,8 +316,8 @@ export function openGlobe(box: HTMLElement, pages: Page[], here: WorldId, pick: 
     const w = box.clientWidth, h = box.clientHeight;
     if (w < 2 || h < 2) return;
     renderer.setSize(w, h, false); camera.aspect = w / h;
-    // (Framed to fit whichever way the screen is: the globe a little inside the narrower side.)
-    camera.fov = w < h ? 2 * Math.atan(Math.tan(13.2 * RAD) / camera.aspect) / RAD : 26.4;
+    // (Framed to fit whichever way the screen is: the globe a little inside the narrower side, with room round it.)
+    camera.fov = w < h ? 2 * Math.atan(Math.tan(14.2 * RAD) / camera.aspect) / RAD : 28.4;
     camera.updateProjectionMatrix();
   };
   const ro = new ResizeObserver(resize); ro.observe(box); resize();
@@ -351,38 +351,56 @@ export function openGlobe(box: HTMLElement, pages: Page[], here: WorldId, pick: 
   };
 }
 
-/** A world's mark, drawn on a small canvas: the world (as it was left, or small in its own colours), ringed, its numeral under it. */
+/**
+ * Every world as it looks when first come to, drawn by the game itself (a frame of each, taken when the
+ * game was built: see README), small and inlined, so an unplayed world is shown as itself, not a token.
+ */
+const PORTRAITS = import.meta.glob<string>('./portraits/*.webp', { eager: true, query: '?inline', import: 'default' });
+const portraitFor = (id: WorldId): string | undefined => PORTRAITS[`./portraits/${id}.webp`];
+
+/**
+ * A world's mark, drawn on a small canvas: the world itself (as it was left, if it's been made; else as
+ * it is first come to), lit from the upper left as a ball is, ringed, its numeral under it.
+ */
 function markerTexture(id: WorldId, page: Page | undefined, here: boolean): THREE.CanvasTexture {
-  const w = worldOf(id), S = 128, cv = document.createElement('canvas');
+  const w = worldOf(id), S = 192, cv = document.createElement('canvas');
   cv.width = S; cv.height = Math.round(S * 1.4);
-  const g = cv.getContext('2d')!, cx = S / 2, cy = S / 2, r = page ? 44 : 34;
+  const g = cv.getContext('2d')!, cx = S / 2, cy = S / 2, r = page ? 66 : 54;
   const tex = new THREE.CanvasTexture(cv);
   tex.colorSpace = THREE.SRGBColorSpace;
   const ring = () => {
-    g.lineWidth = page ? 4 : 2.5;
-    g.strokeStyle = page ? GOLD : 'rgba(239,231,211,0.75)';
-    if (!page) g.setLineDash([5, 6]);
-    g.beginPath(); g.arc(cx, cy, r + (page ? 3 : 4), 0, Math.PI * 2); g.stroke(); g.setLineDash([]);
-    if (here) { g.lineWidth = 2; g.strokeStyle = GOLD; g.beginPath(); g.arc(cx, cy, r + 14, 0, Math.PI * 2); g.stroke(); }
-    g.font = 'italic 26px Newsreader, "Iowan Old Style", Georgia, serif'; g.textAlign = 'center'; g.fillStyle = PALE;
-    g.globalAlpha = page ? 0.95 : 0.7; g.fillText(w.numeral, cx, S + 40); g.globalAlpha = 1;
+    g.lineWidth = page ? 5 : 3;
+    g.strokeStyle = page ? GOLD : 'rgba(239,231,211,0.6)';
+    if (!page) g.setLineDash([7, 8]);
+    g.beginPath(); g.arc(cx, cy, r + (page ? 5 : 6), 0, Math.PI * 2); g.stroke(); g.setLineDash([]);
+    if (here) { g.lineWidth = 3; g.strokeStyle = GOLD; g.beginPath(); g.arc(cx, cy, r + 20, 0, Math.PI * 2); g.stroke(); }
+    g.font = 'italic 38px Newsreader, "Iowan Old Style", Georgia, serif'; g.textAlign = 'center'; g.fillStyle = PALE;
+    g.globalAlpha = page ? 0.95 : 0.7; g.fillText(w.numeral, cx, S + 60); g.globalAlpha = 1;
     tex.needsUpdate = true;
   };
-  // The world small, in its own colours, lit from the upper left, its night side shaded.
+  // (Its roundness: the lamp's light on it, falling away to the lower right, and a darker rim.)
+  const shade = () => {
+    const lit = g.createRadialGradient(cx - r * 0.38, cy - r * 0.42, r * 0.1, cx, cy, r * 1.02);
+    lit.addColorStop(0, 'rgba(255,248,232,0.16)'); lit.addColorStop(0.55, 'rgba(27,35,65,0)'); lit.addColorStop(1, 'rgba(27,35,65,0.5)');
+    g.save(); g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.clip(); g.fillStyle = lit; g.fillRect(0, 0, S, S); g.restore();
+  };
+  // (Failing a picture: the world small in its own colours.)
   const disc = () => {
     g.save(); g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.clip();
     g.fillStyle = w.palette.paper; g.fillRect(0, 0, S, S);
-    g.globalAlpha = 0.45; g.fillStyle = w.palette.basalt; g.beginPath(); g.arc(cx + r * 0.35, cy + r * 0.3, r * 0.9, 0, Math.PI * 2); g.fill();
-    g.globalAlpha = 0.4; g.fillStyle = '#1b2341'; g.beginPath(); g.arc(cx + r * 0.62, cy + r * 0.5, r * 0.95, 0, Math.PI * 2); g.fill();
     g.restore();
   };
-  if (page?.portrait) {
+  const src = page?.portrait || portraitFor(id);
+  disc(); shade(); ring();
+  if (src) {
     const img = new Image();
-    img.onload = () => { g.save(); g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.clip(); g.drawImage(img, cx - r, cy - r, r * 2, r * 2); g.restore(); ring(); };
-    img.onerror = () => { disc(); ring(); };
-    img.src = page.portrait;
-  } else disc();
-  ring();
+    img.onload = () => {
+      g.clearRect(0, 0, S, S);
+      g.save(); g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.clip(); g.globalAlpha = page ? 1 : 0.88; g.drawImage(img, cx - r, cy - r, r * 2, r * 2); g.restore();
+      shade(); ring();
+    };
+    img.src = src;
+  }
   return tex;
 }
 

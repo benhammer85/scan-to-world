@@ -605,3 +605,11 @@ This is meant to be a quick sketchbook, not a heavy engine. What keeps it that w
 * Brush distance is Euclidean. On thin or concave objects it can bleed across gaps, so use geodesic distance (a Dijkstra step on the adjacency) if that matters.
 * There's no BVH, and raycasting is brute force. That's fine up to around 50k triangles. Add `three-mesh-bvh` for more.
 * Contour rebuilds walk every triangle. Rebuilding only the brushed region would scale better.
+
+**Latest round.**
+* *Flows on the Moon and Io:* the flow shade now has its own channel (`aFlow`), so the Moon's seas and Io's sulphur keep the marks' first channel and these worlds get stacked flows too.
+* *The star:* drawn per pixel like the world (limb-darkened disc, faint drifting granulation, a spot or two, an inked rim, a warm glow with many fine engraved rays), large on the lava world and the world boiling away, small and white on Triton. The old one was a small picture stretched, and looked like a sticker.
+* *The lava world:* its star moved towards the viewer so the volcano starts in the morning and day and night are both in view; a dotted line marks where rock snow falls, inked as it fills; the snow shows pale (the ash tint is allowed to 0.6 here); rock vapour rises off lava in the starlight; a hint says when the volcano is pouring in the night; snowfall to win lowered to 130; the card says plainly where to pour and what happens.
+* *The glass world:* blobs run together and into the pool over a moment instead of snapping; a blob counts once any of it is over the shore line; the shore is 1.6 radians from the vent (within reach); a burst's ring is spaced evenly and flung clear so it doesn't merge back at once; blob outlines are round (the shell's direction is made whole again per pixel); the pool grows with progress all the way to full; a cold blob shrinks away instead of vanishing.
+* *The atlas:* the sky uses the whole screen height; zoom stops before the globe overflows; every world on the celestial globe is shown as itself, from portraits the game rendered of each (`src/volcano/portraits/`, inlined), with the lamp's shading on them; a world that's been made shows how it was left.
+
