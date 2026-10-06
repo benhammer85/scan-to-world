@@ -12,6 +12,15 @@ import * as THREE from 'three';
 import { CHAPTERS, worldOf, type WorldId } from './worlds';
 import type { Page } from './save';
 import ursa from './figures/ursa.webp';
+import scorpius from './figures/scorpius.webp';
+import sagittarius from './figures/sagittarius.webp';
+import centaurus from './figures/centaurus.webp';
+import lupus from './figures/lupus.webp';
+import ara from './figures/ara.webp';
+import piscis from './figures/piscis.webp';
+import argo from './figures/argo.webp';
+import cetus from './figures/cetus.webp';
+import eridanus from './figures/eridanus.webp';
 import hydra from './figures/hydra.webp';
 import draco from './figures/draco.webp';
 import hercules from './figures/hercules.webp';
@@ -57,6 +66,16 @@ const BACKGROUND: Figure[] = [
   { name: 'Perseus', src: perseus, w: 383, h: 559, stars: [], ra: 3.5, dec: 44, span: 20 },
   { name: 'Orion', src: orion, w: 536, h: 559, stars: [], ra: 5.6, dec: 4, span: 26 },
   { name: 'Canis Major', src: canis, w: 462, h: 559, stars: [], ra: 6.9, dec: -22, span: 22 },
+  // The southern sky, from the same atlas's southern plates, so it isn't left bare.
+  { name: 'Cetus', src: cetus, w: 560, h: 470, stars: [], ra: 1.7, dec: -8, span: 36 },
+  { name: 'Eridanus', src: eridanus, w: 457, h: 560, stars: [], ra: 3.7, dec: -32, span: 36 },
+  { name: 'Argo Navis', src: argo, w: 560, h: 425, stars: [], ra: 8.2, dec: -44, span: 46 },
+  { name: 'Centaurus', src: centaurus, w: 532, h: 560, stars: [], ra: 13.0, dec: -48, span: 34 },
+  { name: 'Lupus', src: lupus, w: 525, h: 560, stars: [], ra: 15.3, dec: -43, span: 18 },
+  { name: 'Scorpius', src: scorpius, w: 560, h: 535, stars: [], ra: 16.9, dec: -30, span: 30 },
+  { name: 'Ara', src: ara, w: 432, h: 560, stars: [], ra: 17.4, dec: -56, span: 16 },
+  { name: 'Sagittarius', src: sagittarius, w: 560, h: 439, stars: [], ra: 19.1, dec: -28, span: 30 },
+  { name: 'Piscis Austrinus', src: piscis, w: 560, h: 267, stars: [], ra: 22.3, dec: -31, span: 24 },
 ];
 
 const RAD = Math.PI / 180;
@@ -234,7 +253,7 @@ export function openGlobe(box: HTMLElement, pages: Page[], here: WorldId, pick: 
     c.worlds.forEach((id, i) => {
       const at = onFigure(f, f.stars[i][0] / f.w, f.stars[i][1] / f.h, 1.004), page = latest.get(id);
       const sprite = new THREE.Sprite(keep(new THREE.SpriteMaterial({ map: keep(markerTexture(id, page, id === here)), depthTest: false, depthWrite: false, transparent: true })));
-      const k = page ? 0.17 : 0.15;
+      const k = page ? 0.17 : 0.13;
       sprite.scale.set(k, k * 1.4, 1);
       sprite.center.set(0.5, 1 - 0.5 / 1.4); // (the globe's middle on the star; the numeral under it)
       sprite.position.copy(at);
@@ -359,8 +378,8 @@ const PORTRAITS = import.meta.glob<string>('./portraits/*.webp', { eager: true, 
 const portraitFor = (id: WorldId): string | undefined => PORTRAITS[`./portraits/${id}.webp`];
 
 /**
- * A world's mark, drawn on a small canvas: the world itself (as it was left, if it's been made; else as
- * it is first come to), lit from the upper left as a ball is, ringed, its numeral under it.
+ * A world's mark, drawn on a small canvas: a world that's been made, as it was left, lit from the upper
+ * left as a ball is, ringed in gold; one not yet come to, only a dotted ring; its numeral under it.
  */
 function markerTexture(id: WorldId, page: Page | undefined, here: boolean): THREE.CanvasTexture {
   const w = worldOf(id), S = 192, cv = document.createElement('canvas');
@@ -390,13 +409,15 @@ function markerTexture(id: WorldId, page: Page | undefined, here: boolean): THRE
     g.fillStyle = w.palette.paper; g.fillRect(0, 0, S, S);
     g.restore();
   };
-  const src = page?.portrait || portraitFor(id);
+  // A world not yet come to: only its dotted outline on its star, waiting to be found.
+  if (!page) { ring(); return tex; }
+  const src = page.portrait || portraitFor(id);
   disc(); shade(); ring();
   if (src) {
     const img = new Image();
     img.onload = () => {
       g.clearRect(0, 0, S, S);
-      g.save(); g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.clip(); g.globalAlpha = page ? 1 : 0.88; g.drawImage(img, cx - r, cy - r, r * 2, r * 2); g.restore();
+      g.save(); g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.clip(); g.drawImage(img, cx - r, cy - r, r * 2, r * 2); g.restore();
       shade(); ring();
     };
     img.src = src;
