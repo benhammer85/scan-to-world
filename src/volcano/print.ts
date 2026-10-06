@@ -266,8 +266,8 @@ export function printFragment(look: Look, sea: boolean): string {
       float here = vMarks.w + 0.09 * (noise3(vDir * 21.0 + 5.0) - 0.5), hw = 21.0 * px * 1.2, setOn = smoothstep(0.5 - hw, 0.5 + hw, here) * onLand; // (a little wobble and a softer edge, so the mesh's triangles don't show as teeth)
       float black = here > 0.01 ? clamp(vMarks.z / here, 0.0, 1.0) : 0.0;
       // (Dark lava kept for good: how new its flow is, 1 the newest, a quarter less for each pour since (FLOWS
-      // in main), stepped so each flow is one even shade with a clean edge where the next lies over it.)
-      float flowN = here > 0.01 ? clamp(vMarks.x / here, 0.0, 1.0) * 4.0 : 0.0, flowW = 21.0 * px * 0.7;
+      // in main; carried as itself, not a share of where it lies), stepped so each flow is one even shade with a clean edge where the next lies over it.)
+      float flowN = clamp(vMarks.x, 0.0, 1.0) * 4.0, flowW = 21.0 * px * 0.7;
       float aged = (floor(flowN) + smoothstep(0.5 - flowW, 0.5 + flowW, fract(flowN))) / 4.0;
 
       // Stipple: crowded along the shore, thinning inland, gathering on slopes turned from the light,
@@ -591,10 +591,15 @@ const PRINT = (q: boolean) => /* glsl */ `
           float molten = smoothstep(0.15, 0.55, run) * mix(0.45, 1.0, uFeeding) * (0.6 + 0.4 * exp(-far / 0.25));
           // (The heat showing in cracks winding through the crust, wider the hotter it is, and opening into
           // pools only near the mouth while it's fed: wide round pools everywhere read as a leopard's spots.)
-          float rfw = max(fwidth(raftF), 1e-4) * 2.0, crackW = mix(0.025, 0.11, molten), crackD = abs(raftF - 0.5);
+          // (Straight, as crust cracks: the edges between plates, carried with the flow, short runs that meet
+          // and branch, and only some of them open: all of them, a net of polygons read as a tortoise's shell;
+          // winding, they read as worms.)
+          vec2 ck = plates(rid * 15.0 + 0.7 * vec2(noise3(vDir * 9.0), noise3(vDir * 9.0 + 5.1)));
+          float rfw = max(fwidth(raftF), 1e-4) * 2.0, ckw = max(fwidth(ck.x), 1e-4);
+          float crackW = mix(0.03, 0.13, molten), crackD = ck.x;
+          float crackOn = smoothstep(0.5, 0.62, 0.45 * ck.y + 0.55 * noise3(vDir * 11.0 + 13.0) + 0.12 * molten); // (which cracks are open: by stretches, beside some plates and not others, so each runs a little way and stops; even where it's hottest, never the whole net)
           float raftAt = mix(0.0, 0.62, smoothstep(0.65, 1.0, molten));
-          float crackOn = mix(smoothstep(0.32, 0.62, noise3(vDir * 7.0 + 13.0)), 1.0, molten); // (broken off here and there where it's cooler: unbroken, a net of them read as a maze)
-          float seam = max((1.0 - smoothstep(crackW - rfw, crackW + rfw, crackD)) * crackOn, 1.0 - smoothstep(raftAt - rfw, raftAt + rfw, raftF)) * smoothstep(0.2, 0.5, run);
+          float seam = max((1.0 - smoothstep(crackW - ckw, crackW + ckw, crackD)) * crackOn, 1.0 - smoothstep(raftAt - rfw, raftAt + rfw, raftF)) * smoothstep(0.2, 0.5, run);
           // The skin itself: rough at two scales, as a'a is, and folded along the flow (the level lines of how
           // deep it lies), as pahoehoe's ropes are, faintly, as an engraver would cut them.
           float rough = noise3(vDir * 180.0) * 0.6 + noise3(vDir * 520.0 + 2.0) * 0.4;
@@ -647,7 +652,7 @@ const PRINT = (q: boolean) => /* glsl */ `
           float vein = (1.0 - smoothstep(0.0, 0.09, abs(vn - 0.5))) * (0.5 + 0.5 * (1.0 - hot)) * smoothstep(0.02, 0.07, far) * 0.6; // (broad and soft, a shading in the liquid: thin lines read as a maze; and not at the very mouth, where the carrying squeezes them into rings)
           liquid = mix(liquid, lRed * 0.7, vein * 0.6);
           // A raft's edge glows where the liquid meets it: a thin bright line, its crust's hot underside.
-          float raftEdge = 1.0 - smoothstep(0.0, rfw * 2.5, abs(crackD - crackW));
+          float raftEdge = (1.0 - smoothstep(0.0, ckw * 2.5, abs(crackD - crackW))) * crackOn;
           crustInk = mix(crustInk, deep * 0.8, raftEdge * 0.5 * smoothstep(0.2, 0.5, run));
           inkCol = mix(inkCol, liquid, seam);
           inkCol = mix(inkCol, verm, front * 0.9);
@@ -720,17 +725,21 @@ const PRINT = (q: boolean) => /* glsl */ `
         // the flows read in the order they came, as a geological map's do. Each world's own tint only a
         // little: tinted fully, Mars's old lava went the red of its hot lava, and read as still hot.)
         if (uDark > 0.5) {
-          vec3 oldCol = mix(vec3(0.53, 0.48, 0.42), vec3(0.31, 0.27, 0.235), smoothstep(0.08, 0.45, aged));
-          oldCol = mix(oldCol, vec3(0.165, 0.145, 0.13), smoothstep(0.5, 0.85, aged));
+          // (In a map's inks, warm: sepia, umber, a dark umber-black; in greys, the world went drab.)
+          vec3 oldCol = mix(vec3(0.66, 0.55, 0.42), vec3(0.42, 0.31, 0.21), smoothstep(0.08, 0.45, aged));
+          oldCol = mix(oldCol, vec3(0.19, 0.145, 0.11), smoothstep(0.5, 0.85, aged));
           // Ropes, faintly, as cooled pahoehoe keeps them: arcs across the way it ran, bowed and broken.
           float ropeF = far * 45.0 + 1.5 * noise3(vDir * 11.0) + 0.5 * noise3(vDir * 37.0);
           float rope = (1.0 - smoothstep(0.4 * uPx, 1.1 * uPx, abs(fract(ropeF) - 0.5) / (45.0 * px))) * smoothstep(0.45, 0.7, noise3(vDir * 16.0 + 4.0));
           oldCol *= 1.0 - 0.22 * rope * (1.0 - smoothstep(0.002, 0.005, px)); // (none seen from afar, where they'd crowd into a smudge: closer together, they did)
           setCol = mix(setCol, oldCol * mix(vec3(1.0), uCrustTint, 0.3), weathered);
         }
-        float setA = hs * (uDark > 0.5 ? min(1.0, 0.95 * smoothstep(0.04, 0.16, black) + mix(0.5, 0.95, smoothstep(0.1, 0.7, aged)) * weathered) : 0.3 * smoothstep(0.006, 0.15, black) + 0.62 * smoothstep(0.45, 0.8, black));
+        // (Lit by the running lava beside it: a warm light on the rock along its edge, as on the bare ground.)
+        float nearHeat = uDark * smoothstep(0.05, 0.45, lv) * (1.0 - cov) * (0.6 + 0.4 * uFeeding);
+        setCol = mix(setCol, vec3(0.78, 0.38, 0.13), nearHeat * 0.5);
+        float setA = hs * (uDark > 0.5 ? min(1.0, 0.95 * smoothstep(0.04, 0.16, black) + mix(0.36, 0.95, smoothstep(0.05, 0.7, aged)) * weathered) : 0.3 * smoothstep(0.006, 0.15, black) + 0.62 * smoothstep(0.45, 0.8, black));
         col = mix(col, setCol * mix(vec3(1.0), col / paper, uDark > 0.5 ? 0.04 : 0.5), setA); // (dark: barely the ground's own washes through it, or they blotched each flow)
-        glowInk = max(glowInk, setA * (uDark > 0.5 ? smoothstep(0.93, 0.99, black) * 0.35 : sWarm * 0.4));
+        glowInk = max(glowInk, setA * (uDark > 0.5 ? max(smoothstep(0.93, 0.99, black) * 0.35, nearHeat * 0.3) : sWarm * 0.4));
         if (uDark > 0.5) {
           // Each flow's edge inked, finely, as the maps outline a lava flow; and the ground it built shaded by
           // the lamp, softly, so a shield it raised stands up off the page (the rest of the map stays flat).

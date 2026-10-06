@@ -628,7 +628,7 @@ function coarse(): void {
     coarseMarks[v * 4 + 3] = set;
     if (FLOWS) {
       flowShown[v] += (Math.max(0, 1 - (planet.flowsPoured - planet.flowOf[v]) * FLOW_STEP) - flowShown[v]) * ease;
-      coarseMarks[v * 4] = set * flowShown[v];
+      coarseMarks[v * 4] = set > 0.05 ? flowShown[v] : -1;
     }
     chilled[v] = lava > LAVA_WHOLE / 4 ? 0 : lava > 0 ? chilled[v] + simDt : chilled[v];
     coarseMarks[v * 4 + 2] = set * Math.exp(-(planet.age[v] + chilled[v]) / (planet.k.whiteAt ? planet.k.whiteAt * 0.6 : 45));
@@ -654,13 +654,25 @@ function coarse(): void {
   // Running lava, already carried by its depth (so its edge falls between the vertices), is eased
   // a few times fewer, so a narrow stream still shows.
   const o = topo.nbrOffsets, l = topo.nbrList, M = coarseMarks;
+  // (Flows: each one's shade carried on its own, not as a share of where it lies, and spread a few
+  // points out past its edge, so it can be eased less than the edge is: where a new flow lies on one
+  // several pours older, the shades between them then pass in a hair, not a band like another flow.)
+  if (FLOWS) for (let pass = 0; pass < 4; pass++) {
+    for (let v = 0; v < N; v++) {
+      if (M[v * 4] >= 0) { eased[v * 4] = M[v * 4]; continue; }
+      let sum = 0, c = 0;
+      for (let k = o[v]; k < o[v + 1]; k++) { const x = M[l[k] * 4]; if (x >= 0) { sum += x; c++; } }
+      eased[v * 4] = c ? sum / c : pass === 3 ? 0 : -1;
+    }
+    for (let v = 0; v < N; v++) M[v * 4] = eased[v * 4];
+  }
   for (let pass = 0; pass < MARK_EASING; pass++) {
     const lavaToo = pass < MARK_EASING * 0.75;
     for (let v = 0; v < N; v++) {
       let s0 = 0, s1 = 0, s2 = 0, s3 = 0;
       for (let k = o[v]; k < o[v + 1]; k++) { const w = l[k] * 4; s0 += M[w]; s1 += M[w + 1]; s2 += M[w + 2]; s3 += M[w + 3]; }
       const by = 0.6 / Math.max(1, o[v + 1] - o[v]), v4 = v * 4;
-      eased[v4] = M[v4] * 0.4 + s0 * by; eased[v4 + 1] = lavaToo ? M[v4 + 1] * 0.4 + s1 * by : M[v4 + 1];
+      eased[v4] = FLOWS && pass >= 3 ? M[v4] : M[v4] * 0.4 + s0 * by; eased[v4 + 1] = lavaToo ? M[v4 + 1] * 0.4 + s1 * by : M[v4 + 1];
       eased[v4 + 2] = M[v4 + 2] * 0.4 + s2 * by; eased[v4 + 3] = M[v4 + 3] * 0.4 + s3 * by;
     }
     M.set(eased);
@@ -669,7 +681,7 @@ function coarse(): void {
   // Each flow a little proud of the ground it covers, the newer the higher, so the lamp shades the edge of
   // one lying over another, as a raised edge, and the order they came in shows. (Drawn only: the simulation keeps its own.)
   if (FLOW_PROUD) for (let v = 0; v < N; v++) {
-    const h = (coarseHeight[v] += FLOW_PROUD * (0.4 * M[v * 4 + 3] + 0.6 * M[v * 4])), r = 1 + RELIEF * Math.max(0, h);
+    const h = (coarseHeight[v] += FLOW_PROUD * M[v * 4 + 3] * (0.4 + 0.6 * M[v * 4])), r = 1 + RELIEF * Math.max(0, h);
     topo.positions[v * 3] = base[v * 3] * r; topo.positions[v * 3 + 1] = base[v * 3 + 1] * r; topo.positions[v * 3 + 2] = base[v * 3 + 2] * r;
   }
 }
