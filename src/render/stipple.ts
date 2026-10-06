@@ -56,6 +56,8 @@ export class Stipple {
           gl_PointSize *= DOT == 1 ? 0.5 + 1.0 * h : 0.5 + 0.9 * h;
           #elif DOT == 0
           gl_PointSize *= 0.82 + 0.36 * h;
+          #else
+          gl_PointSize *= 0.84 + 0.32 * h; // (as a pen leaves them, no two dots quite alike: all one size read as a machine's)
           #endif
           vFlip = MIRROR == 1 && fract(h * 7.0) > 0.5 ? -1.0 : 1.0;
           // Which of its shapes, how far it leans, where between its two inks, how light: each its own.
@@ -83,7 +85,9 @@ export class Stipple {
           vec2 p = (gl_PointCoord - 0.5) * (vSize + 1.0);
           #if DOT == 1
           // A round dot with a soft edge a pixel wide, so the stipple is smooth at any size, not stepped.
-          float cover = clamp(vSize * 0.5 - length(p) + 0.5, 0.0, 1.0);
+          // (Not quite round, each its own way, and inked a little more or less, as a nib leaves a dot.)
+          float rr = vSize * 0.5 * (1.0 + 0.1 * sin(atan(p.y, p.x) * 2.0 + vWay.x * 6.28) + 0.06 * sin(atan(p.y, p.x) * 3.0 + vWay.z * 6.28));
+          float cover = clamp(rr - length(p) + 0.5, 0.0, 1.0) * (0.8 + 0.2 * vWay.w);
           #else
           // A sign in a fine line, its distance from the strokes fading to nothing over a pixel.
           // (The strokes are in a box from -1 to 1, y up; the point's y runs down.)

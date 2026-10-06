@@ -427,7 +427,10 @@ group.add(mesh);
 const landStyle = { ...defaultPlotterStyle, ink: LOOK ? '#2a241e' : P.landInk, inkHigh: LOOK ? '#2a241e' : P.landInkHigh, pencil: P.pencil, alpha: LOOK ? 0.22 : 0.5, indexAlpha: LOOK ? 0.35 : 0.8, indexEvery: 5, fadeSeconds: 0, pen: false, appearSeconds: 0.001, widthPx: 1.15, nib: false };
 const seaStyle = { ...defaultPlotterStyle, ink: P.seaInk, inkHigh: P.seaInk, pencil: '#a9bfd0', alpha: 0.45, indexAlpha: 0.6, fadeSeconds: 0, pen: false, appearSeconds: 0.001, widthPx: 0.95, nib: false };
 const landPens = [new PlotterLines(landStyle), new PlotterLines(landStyle)], seaPens = [new PlotterLines(seaStyle), new PlotterLines(seaStyle)];
-for (const pen of [...landPens, ...seaPens]) { pen.width = 2; pens.push(pen); group.add(pen.object); }
+// (The ink a hair out of register with the colour under it, as a print's line plate never sits exactly on its
+// colour plates: coast and contour lines, ruled exactly on their washes, read as a machine's.)
+const OFF_REGISTER = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0.6, 0.8, 0.2).normalize(), LOOK ? 0.0035 : 0);
+for (const pen of [...landPens, ...seaPens]) { pen.width = 2; pens.push(pen); group.add(pen.object); pen.object.quaternion.copy(OFF_REGISTER); }
 let frontPen = 0, fadeFrom = -1;
 const CROSS_FADE = 1.2;
 landPens[1].opacity = seaPens[1].opacity = 0;
@@ -517,7 +520,7 @@ const stoneMark = mark((g) => {
 });
 /** Round where a stone will fall, a dotted circle, as the card says: the ground it will take. */
 const stoneRing = mark((g) => {
-  for (let i = 0; i < 18; i++) { const a = (i / 18) * Math.PI * 2; g.beginPath(); g.arc(32 + 27 * Math.cos(a), 32 + 27 * Math.sin(a), 2.2, 0, Math.PI * 2); g.fill(); }
+  for (let i = 0; i < 18; i++) { const a = (i / 18) * Math.PI * 2, j = Math.sin(i * 12.9898) * 0.5 + 0.5, r = 27 + 1.2 * Math.sin(a * 2 + 1); g.beginPath(); g.arc(32 + r * Math.cos(a), 32 + r * Math.sin(a), 1.6 + 1.2 * j, 0, Math.PI * 2); g.fill(); } // (by hand: dots not all one size, the ring a hair out of round)
 });
 /**
  * The stone itself, falling out of the sky over its warning: a lump of rock engraved as an old plate

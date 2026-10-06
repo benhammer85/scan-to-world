@@ -279,6 +279,19 @@ export function printFragment(look: Look, sea: boolean): string {
       // (Toward a warm orange of the same lightness, not the blue sea dimmed to mud.)
       if (uHaze > 0.0) col = mix(col, vec3(1.0, 0.74, 0.47) * dot(col, vec3(0.3, 0.59, 0.11)) * 1.08, uHaze * 0.72);
 
+      // The paper's tooth, as pastel and watercolour show it: the colour laid catches on the paper's raised grain
+      // and skips its hollows, so a wash is never a smooth digital blend but speckled with paper, a little
+      // heavier on the tops. Fixed to the world, at about the grain a printed page shows; the finer of its two
+      // sizes let go as the world draws away, so it never crawls.
+      {
+        float tf = 90.0, t1 = noise3(vDir * tf + 11.0), t2 = noise3(vDir * tf * 2.7 + 23.0);
+        float a1 = 1.0 - smoothstep(0.25, 0.5, tf * px), a2 = 1.0 - smoothstep(0.25, 0.5, tf * 2.7 * px);
+        float tooth = mix(0.5, t1, a1) * 0.55 + mix(0.5, t2, a2) * 0.45;
+        float laid = clamp(length(paper - col) * 2.4, 0.0, 1.0); // (how much colour is on the paper here)
+        col = mix(col, mix(col, paper, 0.55), smoothstep(0.47, 0.3, tooth) * laid * 0.38 * washEdge);
+        col = mix(col, col * col / paper, smoothstep(0.6, 0.78, tooth) * laid * 0.22 * washEdge);
+      }
+
       // Lava's marks.
       float lv = vMarks.y * onLand, lw = max(fwidth(lv), 1e-4); // (under the sea it's hidden, as it always was)
       float here = vMarks.w + 0.09 * (noise3(vDir * 21.0 + 5.0) - 0.5) + 0.06 * (noise3(vDir * 64.0 + 2.0) - 0.5), // (and toes: small rounded lobes along it, as a flow's edge buds)
@@ -342,10 +355,14 @@ export function printFragment(look: Look, sea: boolean): string {
       ${look === 3 ? 'darkL += 1.0 * pow(black, 1.1) * setOn * (1.0 - smoothstep(0.5 - lw, 0.5 + lw, lv)); // set: its own dots, black, thinning as it weathers' : ''}
       float dark = mix(limb + exp(-max(-vH, 0.0) / 0.03) * 0.14, darkL + limb, onLand); // (and a little over the shallows, so what rises under the sea shows)
       if (dark > 0.035) col = mix(col, ink, stipple(vDir, 300.0, dark, 0.45 * uPx, px) * 0.92);
-      // The graticule, over the open sea.
-      col = mix(col, ink, edgeOn * graticule(vDir, px) * ${sea ? '(1.0 - onLand) * (1.0 - 0.5 * aSea) * 0.5' : '0.22'});
+      // The graticule, over the open sea; on a world without one, faint over its middle and only drawn towards its
+      // edge, so the most of it reads as quiet paper.
+      col = mix(col, ink, edgeOn * graticule(vDir, px) * ${sea ? '(1.0 - onLand) * (1.0 - 0.5 * aSea) * 0.5' : '0.22 * mix(0.3, 1.0, 1.0 - smoothstep(0.35, 0.8, faceOn))'});
 
 
+      // Shaded in colour, as a painter shades, not in grey: the side turned from the light cool, a little lavender,
+      // the side towards it warm, a little peach. (Darkened only, each world went drab towards its edge.)
+      col *= mix(vec3(0.9, 0.9, 1.035), vec3(1.035, 1.0, 0.95), smoothstep(-0.35, 0.75, dot(S, L)));
       float glowInk = 0.0; // (lava's inks glow by their own light, and are not shaded with the ground)
       ${look === 1 ? ENGRAVE : look === 2 ? WATER : look === 3 ? STIPPLE : look === 4 ? GLOW : PRINT(look === 6)}
       // The hollow world: as the chamber under the vent empties, the ground round it cracks in rings, as round
@@ -756,9 +773,12 @@ const PRINT = (q: boolean) => /* glsl */ `
         // pale, as the crater's lip.
         if (uVentMark > 0.5) {
           float vr = max(0.011, 5.0 * px), vlw = max(0.7 * uPx * px, 1e-5);
-          float rimV = 1.0 - smoothstep(vlw * 0.6, vlw * 1.6, abs(far - vr));
+          // (By hand: a little out of round, the strokes not all one length, and a small gap where the pen lifted.)
+          float vrW = vr * (1.0 + 0.12 * (noise3(vec3(cos(ang) * 1.6, sin(ang) * 1.6, 3.0)) - 0.5));
+          float rimV = (1.0 - smoothstep(vlw * 0.6, vlw * 1.6, abs(far - vrW))) * smoothstep(0.0, 0.05, fract(ang / 6.2832 + 0.37));
           float tickA = abs(fract(ang / 6.2832 * 14.0) - 0.5) / 14.0 * 6.2832 * far; // (how far round, along the ground, from the nearest stroke)
-          float tick = (1.0 - smoothstep(vlw * 0.5, vlw * 1.4, tickA)) * step(vr, far) * (1.0 - smoothstep(vr * 1.45, vr * 1.6, far));
+          float tickL = 1.3 + 0.35 * fract(sin(floor(ang / 6.2832 * 14.0 + 0.5) * 12.9898) * 43758.5);
+          float tick = (1.0 - smoothstep(vlw * 0.5, vlw * 1.4, tickA)) * step(vrW, far) * (1.0 - smoothstep(vr * tickL, vr * (tickL + 0.12), far));
           float mark = max(rimV, tick * 0.8) * onLand;
           col = mix(col, mix(vec3(0.2, 0.16, 0.13) * uCrustTint * 1.6, vec3(0.86, 0.6, 0.38), cov), mark * 0.85);
           // As the pressure builds, the mouth warms: a dull red ember inside the ring from the start,
@@ -781,7 +801,8 @@ const PRINT = (q: boolean) => /* glsl */ `
             vec3 onC = normalize(vDir - cn * dot(vDir, cn));
             float t = atan(dot(cross(cA, onC), cn), dot(cA, onC)); // (how far along, from the volcano)
             float cdw = max(1.6 * uPx * px, 1e-5), sp = 0.03;
-            float dotsC = 1.0 - smoothstep(cdw * 0.7, cdw * 1.7, length(vec2(off, (fract(t / sp) - 0.5) * sp)));
+            float cdK = 0.7 + 0.6 * fract(sin(floor(t / sp) * 12.9898) * 43758.5);
+            float dotsC = 1.0 - smoothstep(cdw * 0.7 * cdK, cdw * 1.7 * cdK, length(vec2(off, (fract(t / sp) - 0.5) * sp)));
             dotsC *= step(0.035, t) * step(t, arc - 0.02) * (0.45 + 0.55 * t / max(arc, 1e-3));
             float endR = max(0.012, 4.0 * px), dEnd = acos(clamp(dot(vDir, cB), -1.0, 1.0));
             float endRing = 1.0 - smoothstep(cdw * 0.5, cdw * 1.5, abs(dEnd - endR));
@@ -793,7 +814,8 @@ const PRINT = (q: boolean) => /* glsl */ `
         // stone must land. (Only its tiny gold mouth showed, and what "catch" meant was a riddle.)
         if (uCatchR > 0.0) {
           float cw = max(1.1 * uPx * px, 1e-5), dots = abs(fract(ang / 6.2832 * 40.0) - 0.5) / 40.0 * 6.2832 * far;
-          float cRing = (1.0 - smoothstep(cw * 0.8, cw * 2.0, length(vec2(far - uCatchR, dots)))) * onLand;
+          float cK = fract(sin(floor(ang / 6.2832 * 40.0 + 0.5) * 12.9898) * 43758.5), cR = uCatchR * (1.0 + 0.03 * (noise3(vec3(cos(ang), sin(ang), 5.0) * 2.0) - 0.5));
+          float cRing = (1.0 - smoothstep(cw * 0.8 * (0.7 + 0.6 * cK), cw * 2.0 * (0.7 + 0.6 * cK), length(vec2(far - cR, dots)))) * onLand; // (each dot its own size, the ring a hair out of round: by hand)
           col = mix(col, vec3(0.97, 0.72, 0.3), cRing * 0.9);
           col = mix(col, col * vec3(1.12, 1.0, 0.86) + vec3(0.03, 0.015, 0.0), (1.0 - smoothstep(uCatchR * 0.9, uCatchR, far)) * 0.35 * onLand); // (and the ground inside it a little warmer)
           glowInk = max(glowInk, cRing * 0.7);
@@ -886,7 +908,11 @@ const PRINT = (q: boolean) => /* glsl */ `
           // the lamp, softly, so a shield it raised stands up off the page (the rest of the map stays flat).
           float rimD = MARGIN_PX(here, 0.5, 21.0);
           float rimLine = (1.0 - smoothstep(0.3 * uPx, 1.1 * uPx, rimD)) * onLand * (1.0 - cov);
-          col = mix(col, vec3(0.13, 0.11, 0.1) * uCrustTint, rimLine * 0.62);
+          // (As watercolour dries: the pigment pooled a little darker just inside each flow's edge, fading inward,
+          // under a lighter line; a firm ruled outline read as drawn by machine.)
+          float pooled = exp(-rimD / (5.0 * uPx)) * setOn * (1.0 - cov) * (0.7 + 0.6 * noise3(vDir * 40.0));
+          col *= 1.0 - 0.17 * pooled;
+          col = mix(col, vec3(0.13, 0.11, 0.1) * uCrustTint, rimLine * 0.34);
           // (Standing off the ground, as the running lava does: a shadow cast beyond its edge away from the
           // light, the edge towards the light catching it.)
           float setCast = (1.0 - smoothstep(0.0, slabPx, rimD)) * smoothstep(0.1, 0.7, hereFace) * onLand * (1.0 - setOn) * (1.0 - cov);
