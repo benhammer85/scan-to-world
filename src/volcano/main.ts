@@ -427,10 +427,7 @@ group.add(mesh);
 const landStyle = { ...defaultPlotterStyle, ink: LOOK ? '#2a241e' : P.landInk, inkHigh: LOOK ? '#2a241e' : P.landInkHigh, pencil: P.pencil, alpha: LOOK ? 0.22 : 0.5, indexAlpha: LOOK ? 0.35 : 0.8, indexEvery: 5, fadeSeconds: 0, pen: false, appearSeconds: 0.001, widthPx: 1.15, nib: false };
 const seaStyle = { ...defaultPlotterStyle, ink: P.seaInk, inkHigh: P.seaInk, pencil: '#a9bfd0', alpha: 0.45, indexAlpha: 0.6, fadeSeconds: 0, pen: false, appearSeconds: 0.001, widthPx: 0.95, nib: false };
 const landPens = [new PlotterLines(landStyle), new PlotterLines(landStyle)], seaPens = [new PlotterLines(seaStyle), new PlotterLines(seaStyle)];
-// (The ink a hair out of register with the colour under it, as a print's line plate never sits exactly on its
-// colour plates: coast and contour lines, ruled exactly on their washes, read as a machine's.)
-const OFF_REGISTER = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0.6, 0.8, 0.2).normalize(), LOOK ? 0.0035 : 0);
-for (const pen of [...landPens, ...seaPens]) { pen.width = 2; pens.push(pen); group.add(pen.object); pen.object.quaternion.copy(OFF_REGISTER); }
+for (const pen of [...landPens, ...seaPens]) { pen.width = 2; pens.push(pen); group.add(pen.object); }
 let frontPen = 0, fadeFrom = -1;
 const CROSS_FADE = 1.2;
 landPens[1].opacity = seaPens[1].opacity = 0;
@@ -609,7 +606,7 @@ const flowShown = new Float32Array(N), coarseFlow = new Float32Array(N), flowNex
 /** How long each point has lain under lava too thin to run (drawn set): such a sheet chills at once, though the simulation still counts it molten. */
 const chilled = new Float32Array(N);
 let chilledAt = -1;
-const lavaShown = new Float32Array(N), drawnHeight = new Float32Array(N), heightEase = new Float32Array(N), coarseHeight = new Float32Array(N), coarseLand = new Float32Array(N * 3), coarseMarks = new Float32Array(N * 4), eased = new Float32Array(N * 4);
+const lavaShown = new Float32Array(N), drawnHeight = new Float32Array(N), heightEase = new Float32Array(N), coarseHeight = new Float32Array(N), coarseLand = new Float32Array(N * 3), coarseMarks = new Float32Array(N * 4), eased = new Float32Array(N * 4), rawLava = new Float32Array(N), rawSet = new Float32Array(N), rawBlack = new Float32Array(N);
 /** The simulation's heights and colours, a vertex at a time, ready to be carried onto the finer surface. */
 function coarse(): void {
   // How far the wash eases this time: by the seconds since last, over a second or two.
@@ -734,6 +731,10 @@ function coarse(): void {
       coarseFlow.set(flowNext);
     }
   }
+  // (What lies before easing, so a narrow tongue of lava, two or three points wide, isn't eased away below the
+  // edge: eased more once set than while running, a tongue that ran down a slope vanished as it set, and the flow
+  // seemed to draw back, which lava never does.)
+  for (let v = 0; v < N; v++) { rawLava[v] = Math.min(1, M[v * 4 + 1]); rawSet[v] = M[v * 4 + 3]; rawBlack[v] = M[v * 4 + 3] > 0 ? M[v * 4 + 2] / M[v * 4 + 3] : 0; }
   for (let pass = 0; pass < MARK_EASING; pass++) {
     const lavaToo = pass < MARK_EASING * 0.75;
     for (let v = 0; v < N; v++) {
@@ -744,6 +745,11 @@ function coarse(): void {
       eased[v4 + 2] = M[v4 + 2] * 0.4 + s2 * by; eased[v4 + 3] = M[v4 + 3] * 0.4 + s3 * by;
     }
     M.set(eased);
+  }
+  for (let v = 0; v < N; v++) {
+    M[v * 4 + 1] = Math.max(M[v * 4 + 1], rawLava[v] * 0.62);
+    const keep = rawSet[v] * 0.62;
+    if (keep > M[v * 4 + 3]) { M[v * 4 + 3] = keep; M[v * 4 + 2] = keep * rawBlack[v]; } // (its blackness kept with it)
   }
   if (!FL && !SULPHUR) for (let v = 0; v < N; v++) M[v * 4] = 0;
   // Each flow a little proud of the ground it covers, the newer the higher, so the lamp shades the edge of
@@ -2726,11 +2732,11 @@ let seconds = 0, lastWords = 0, lastDraw = 0, lastIslands = 0, lastEcology = 0;
 /** In development, how long each frame's own work took (before drawing), to find what stutters. */
 const frameCost: number[] = [];
 let stageShown = false;
-renderer.setAnimationLoop(() => {
+const loop = (): void => {
   const began0 = performance.now();
   // Once the world has been drawn, it comes in from the paper.
   if (!stageShown) { stageShown = true; requestAnimationFrame(() => stage.classList.add('shown')); }
-  const raw = clock.getDelta(), dt = Math.min(raw, 1 / 20);
+  const raw = Math.max(0, clock.getDelta()), dt = Math.min(raw, 1 / 20); // (never backwards, should the timer ever jump back)
   seconds += dt;
   pace(raw);
   gestures.tick(performance.now(), dt);
@@ -2833,6 +2839,7 @@ renderer.setAnimationLoop(() => {
   renderer.render(scene, camera);
   drawEnding();
   turnedSince();
-});
+};
+renderer.setAnimationLoop(loop);
 
-if (import.meta.env.DEV) (window as unknown as { volcano: unknown }).volcano = { atlas: (all: Page[]) => openAtlas(all), sky, haze, planet, held, keepsake: () => keepsakeOf(planet), pick: (id: WorldId) => atlasPick?.(id), portrait: () => { renderer.render(scene, camera); return portraitOf(renderer.domElement); }, group, base, renderer, scene, camera, puffs, ecology, islands, rotate, draw, save, effects: (dt: number) => { effects(dt); puffs.update(dt); }, world, frameCost, kindDots, chain: () => chain, aim: () => aimInk, lines: () => { lastLines = -1; redrawLines(1e6); }, life: () => { lastLife = -10; redrawLife(1e6); }, replayKeep: () => keepReplayFrame(), replayCount: () => replayFrames.length, replaying: () => (replaying ? replayShown : -1), settle: (d = 3.6) => { lift = 0; dist = d; begunAt = -100; zoomedAt = seconds; look(); } };
+if (import.meta.env.DEV) (window as unknown as { volcano: unknown }).volcano = { atlas: (all: Page[]) => openAtlas(all), sky, haze, planet, held, keepsake: () => keepsakeOf(planet), pick: (id: WorldId) => atlasPick?.(id), portrait: () => { renderer.render(scene, camera); return portraitOf(renderer.domElement); }, group, base, renderer, scene, camera, puffs, ecology, islands, rotate, draw, save, effects: (dt: number) => { effects(dt); puffs.update(dt); }, world, frameCost, kindDots, chain: () => chain, aim: () => aimInk, lines: () => { lastLines = -1; redrawLines(1e6); }, life: () => { lastLife = -10; redrawLife(1e6); }, replayKeep: () => keepReplayFrame(), replayCount: () => replayFrames.length, replaying: () => (replaying ? replayShown : -1), pause: () => renderer.setAnimationLoop(null), frame: () => loop(), settle: (d = 3.6) => { lift = 0; dist = d; begunAt = -100; zoomedAt = seconds; look(); } };

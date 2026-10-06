@@ -279,19 +279,6 @@ export function printFragment(look: Look, sea: boolean): string {
       // (Toward a warm orange of the same lightness, not the blue sea dimmed to mud.)
       if (uHaze > 0.0) col = mix(col, vec3(1.0, 0.74, 0.47) * dot(col, vec3(0.3, 0.59, 0.11)) * 1.08, uHaze * 0.72);
 
-      // The paper's tooth, as pastel and watercolour show it: the colour laid catches on the paper's raised grain
-      // and skips its hollows, so a wash is never a smooth digital blend but speckled with paper, a little
-      // heavier on the tops. Fixed to the world, at about the grain a printed page shows; the finer of its two
-      // sizes let go as the world draws away, so it never crawls.
-      {
-        float tf = 90.0, t1 = noise3(vDir * tf + 11.0), t2 = noise3(vDir * tf * 2.7 + 23.0);
-        float a1 = 1.0 - smoothstep(0.25, 0.5, tf * px), a2 = 1.0 - smoothstep(0.25, 0.5, tf * 2.7 * px);
-        float tooth = mix(0.5, t1, a1) * 0.55 + mix(0.5, t2, a2) * 0.45;
-        float laid = clamp(length(paper - col) * 2.4, 0.0, 1.0); // (how much colour is on the paper here)
-        col = mix(col, mix(col, paper, 0.55), smoothstep(0.47, 0.3, tooth) * laid * 0.38 * washEdge);
-        col = mix(col, col * col / paper, smoothstep(0.6, 0.78, tooth) * laid * 0.22 * washEdge);
-      }
-
       // Lava's marks.
       float lv = vMarks.y * onLand, lw = max(fwidth(lv), 1e-4); // (under the sea it's hidden, as it always was)
       float here = vMarks.w + 0.09 * (noise3(vDir * 21.0 + 5.0) - 0.5) + 0.06 * (noise3(vDir * 64.0 + 2.0) - 0.5), // (and toes: small rounded lobes along it, as a flow's edge buds)
@@ -360,9 +347,6 @@ export function printFragment(look: Look, sea: boolean): string {
       col = mix(col, ink, edgeOn * graticule(vDir, px) * ${sea ? '(1.0 - onLand) * (1.0 - 0.5 * aSea) * 0.5' : '0.22 * mix(0.3, 1.0, 1.0 - smoothstep(0.35, 0.8, faceOn))'});
 
 
-      // Shaded in colour, as a painter shades, not in grey: the side turned from the light cool, a little lavender,
-      // the side towards it warm, a little peach. (Darkened only, each world went drab towards its edge.)
-      col *= mix(vec3(0.9, 0.9, 1.035), vec3(1.035, 1.0, 0.95), smoothstep(-0.35, 0.75, dot(S, L)));
       float glowInk = 0.0; // (lava's inks glow by their own light, and are not shaded with the ground)
       ${look === 1 ? ENGRAVE : look === 2 ? WATER : look === 3 ? STIPPLE : look === 4 ? GLOW : PRINT(look === 6)}
       // The hollow world: as the chamber under the vent empties, the ground round it cracks in rings, as round
@@ -564,9 +548,9 @@ const PRINT = (q: boolean) => /* glsl */ `
         float ang = atan(dot(vDir, vt2), dot(vDir, vt1));
         // (Its edges wobble irregularly, at about the size of the mesh's triangles, so what's left of
         // their teeth, seen close, doesn't line up into a saw.)
-        float wob = 0.12 * (noise3(vDir * 21.0 + vec3(0.0, tq * ${q ? '0.035' : '0.1'}, tq * ${q ? '0.025' : '0.07'})) - 0.5); // (heaving slowly, in broad rounded lobes, as a flow's toes are: a finer wobble made its edge ragged)
+        float wob = 0.15 * (noise3(vDir * 17.0 + 3.0) - 0.5) + 0.08 * (noise3(vDir * 46.0 + 8.0) - 0.5); // (lobes and toes fixed to the ground, at two sizes: as the flow advances its edge reaches into them, lobe by lobe, as a real front does; heaving with time, the edge wobbled like jelly, and growing evenly, it swelled like a balloon)
         float lvR = lv + wob;
-        float lwr = 25.0 * px * 1.2, cov = smoothstep(0.5 - lwr, 0.5 + lwr, lvR); // (a soft edge a pixel or so wide, measured as MARGIN_PX does: by the slope from triangle to triangle, it stepped in a fine saw)
+        float lwr = 12.0 * px * 1.2, cov = smoothstep(0.5 - lwr, 0.5 + lwr, lvR); // (a soft edge a pixel or so wide, measured as MARGIN_PX does: by the slope from triangle to triangle, it stepped in a fine saw)
         // Which way each flow's edge faces the lamp, on the screen (its fields' slopes, worked out here, before
         // any branch): a flow is a slab a few metres thick, so its front casts a little shadow on the ground
         // on the side away from the light and catches the light on the side towards it. (Drawn flat, flows
@@ -678,7 +662,7 @@ const PRINT = (q: boolean) => /* glsl */ `
           // Where the heat shows: the channel down the deepest of it, and the front while it's fed, where it
           // breaks out; under the body of the flow the crust is thicker, its cracks fewer and only dull red.
           float channel = smoothstep(1.4, 2.3, lvR), frontBand = (1.0 - smoothstep(0.55, 0.85, lvR)) * (0.3 + 0.7 * uFeeding);
-          float fresh = clamp(max(max(channel, frontBand), exp(-far / 0.06)), 0.0, 1.0);
+          float fresh = clamp(max(max(channel, frontBand), exp(-far / 0.025)), 0.0, 1.0); // (gold only right at the mouth: wider, gold cracks round the vent radiated like a spider)
           float crackTh = 0.5 + 0.14 * smoothstep(0.05, 0.35, far) * (1.0 - 0.6 * fresh); // (fewer further out, where it's older)
           float crackOpen = smoothstep(crackTh, crackTh + 0.16, 0.45 * ck.y + 0.55 * noise3(vDir * 11.0 + 13.0) + 0.12 * molten) * alignOn;
           float crackOn = smoothstep(0.0, 0.25, crackOpen); // (open or not; how far open thins it instead, below) // (which cracks are open: by stretches, beside some plates and not others, so each runs a little way and stops; even where it's hottest, never the whole net)
@@ -686,7 +670,7 @@ const PRINT = (q: boolean) => /* glsl */ `
           float pool = (1.0 - smoothstep(raftAt - rfw, raftAt + rfw, raftF)) * exp(-far / 0.035); // (open liquid only at the mouth: scattered over the body, or down the channel, little pools read as spots)
           // (Tapering as it runs out, to a hair, as a tear in a crust does: cut off at full width, the ends were blunt wedges.)
           float crackWt = crackW * crackOpen * (0.7 + 0.6 * noise3(vDir * 70.0 + 2.0));
-          float crackS = (1.0 - smoothstep(crackWt - ckw, crackWt + ckw, crackD)) * crackOn;
+          float crackS = (1.0 - smoothstep(crackWt - ckw, crackWt + ckw, crackD)) * crackOn * mix(0.35, 1.0, smoothstep(0.03, 0.09, far));
           float seam = max(crackS * mix(0.6, 1.0, fresh), pool) * smoothstep(0.2, 0.5, run);
           // The skin itself: rough at two scales, as a'a is, and folded along the flow (the level lines of how
           // deep it lies), as pahoehoe's ropes are, faintly, as an engraver would cut them.
@@ -696,14 +680,14 @@ const PRINT = (q: boolean) => /* glsl */ `
           // (Richer: plates a little warmer or cooler, brown to slate; the heat under the skin showing
           // through it as a faint red where it's thick and hot; a glassy sheen where the light catches
           // fresh crust, silver-blue, as new pahoehoe has; and the crest of each fold catching it too.)
-          vec3 crustBase = mix(vec3(0.066, 0.046, 0.034), vec3(0.048, 0.047, 0.054), smoothstep(0.3, 0.8, pl.y));
+          vec3 crustBase = mix(vec3(0.088, 0.06, 0.042), vec3(0.042, 0.042, 0.05), smoothstep(0.3, 0.8, pl.y)) * (0.86 + 0.14 * smoothstep(0.0, 0.12, pl.x)); // (plates a little more their own, and darker at their seams, so the crust is seen carried down the flow)
           vec3 crustInk = crustBase * uCrustTint * (0.86 + 0.18 * pl.y) * (0.78 + 0.44 * rough) * (1.0 - folds);
           crustInk = mix(crustInk, deep * 0.5, 0.45 * smoothstep(0.25, 0.8, T) * (0.6 + 0.4 * noise3(vDir * 24.0)));
           float foldHi = (1.0 - smoothstep(0.0, foldW * 1.6, abs(fold - 0.14))) * smoothstep(0.6, 1.2, lvR);
           float sheen = pow(max(0.0, dot(reflect(-L, Nn), V)), 9.0) * (0.35 + 0.65 * rough) + foldHi * 0.1 * smoothstep(0.4, 0.7, noise3(vDir * 14.0));
           crustInk += vec3(0.1, 0.11, 0.135) * sheen * (0.45 + 0.55 * smoothstep(0.15, 0.6, T));
           float frontPx = MARGIN_PX(lvR, 0.5, 25.0);
-          float front = (1.0 - smoothstep(0.6 * uPx, 2.2 * uPx, frontPx)) * uFeeding * smoothstep(0.6, 0.8, noise3(vDir * 16.0 + tq * 0.05)) * 0.7; // (thin, broken, and soft: a bright line all round looked drawn on)
+          float front = (1.0 - smoothstep(0.8 * uPx, 3.2 * uPx, frontPx)) * uFeeding * smoothstep(0.62, 0.8, noise3(vDir * 30.0 + vec3(0.0, tq * 0.12, tq * 0.09))) * 0.85; // (breakouts: here and there along the front a glowing spot swells and fades, as toes break out) // (thin, broken, and soft: a bright line all round looked drawn on)
           // The open heat at the vent and down the fresh stream, graded as incandescence is: pale gold
           // at the mouth, orange, then a dull red where the crust is closing over it; its edge ragged.
           float heatV = max(G, T * 0.75) + 0.12 * (noise3(vDir * 30.0 + vec3(0.0, tq * 0.04, 0.0)) - 0.5) + 0.05 * (noise3(vDir * 90.0) - 0.5);
@@ -898,7 +882,7 @@ const PRINT = (q: boolean) => /* glsl */ `
           setCol = mix(setCol, oldCol * mix(vec3(1.0), uCrustTint, 0.3), weathered);
         }
         // (Lit by the running lava beside it: a warm light on the rock along its edge, as on the bare ground.)
-        float nearHeat = uDark * smoothstep(0.05, 0.45, lv) * (1.0 - cov) * (0.6 + 0.4 * uFeeding);
+        float nearHeat = uDark * smoothstep(0.38, 0.48, lv) * (1.0 - cov) * (0.6 + 0.4 * uFeeding); // (only a thin warm rim beside the running lava: across the whole thin margin, an amber band read as a gel skin round the flow)
         setCol = mix(setCol, vec3(0.78, 0.38, 0.13), nearHeat * 0.5);
         float setA = hs * (uDark > 0.5 ? min(1.0, 0.95 * newSet + mix(0.36, 0.95, smoothstep(0.05, 0.7, aged)) * weathered) : 0.3 * smoothstep(0.006, 0.15, black) + 0.62 * smoothstep(0.45, 0.8, black));
         col = mix(col, setCol * mix(vec3(1.0), col / paper, uDark > 0.5 ? 0.04 : 0.5), setA); // (dark: barely the ground's own washes through it, or they blotched each flow)
@@ -945,7 +929,7 @@ const PRINT = (q: boolean) => /* glsl */ `
         ${q ? `// A warm glow on the ground round fresh lava, and at the vent while it pours: the heat lighting what's near it.
         {
           // (Close to the fresh lava only, while it's fed: spread over a wide thin sheet, it tinted half the world.)
-          float halo = (1.0 - cov) * onLand * uFeeding * (smoothstep(0.1, 0.5, lvR) * exp(-far / 0.2) * 0.85 + exp(-far / 0.05) * 0.8);
+          float halo = (1.0 - cov) * onLand * uFeeding * (smoothstep(0.35, 0.5, lvR) * exp(-far / 0.2) * 0.6 + exp(-far / 0.04) * 0.7); // (close round it: wide, a tan band)
           col = mix(col, col * vec3(1.0, 0.78, 0.58), clamp(halo, 0.0, 1.0) * 0.55);
           glowInk = max(glowInk, halo * 0.3);
         }` : ''}
