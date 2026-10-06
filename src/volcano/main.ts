@@ -2370,7 +2370,7 @@ cardWords();
 // The worlds: one touch to the atlas's sky, where every world stands in its chapter's constellation.
 if (RUN === null) {
   const b = document.createElement('button');
-  b.textContent = 'all worlds';
+  b.textContent = 'the chart';
   b.addEventListener('pointerdown', (e) => { e.stopPropagation(); void pages().then((all) => openAtlas(all)); });
   $('begin').querySelector('.worlds')!.appendChild(b);
 }
@@ -2429,7 +2429,7 @@ if (ASKED.has('system')) openSystem();
 // The atlas, from the card: every chart kept so far, newest first, to leaf through.
 void pages().then((all) => {
   if (!all.length) return;
-  moreLink(`The atlas · ${all.length} ${all.length === 1 ? 'chart' : 'charts'} kept`, () => openAtlas(all));
+  moreLink(`Celestial Chart · ${all.length} ${all.length === 1 ? 'chart' : 'charts'} kept`, () => openAtlas(all));
 });
 let atlasPick: ((id: WorldId) => void) | null = null;
 let globeView: Globe | null = null, cardGlobe: { dispose(): void } | null = null;
