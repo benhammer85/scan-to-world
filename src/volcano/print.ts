@@ -58,6 +58,19 @@ export const PRINT_FUNCTIONS = /* glsl */ `
     }
     return vec2(sqrt(d2) - sqrt(d1), id);
   }
+  // The same, and which way the nearest seam runs (zw, a unit vector along it), so cracks can be
+  // opened by the way they run.
+  vec4 seams(vec2 x) {
+    vec2 n = floor(x), f = fract(x), r1 = vec2(0.0), r2 = vec2(0.0);
+    float d1 = 8.0, d2 = 8.0, id = 0.0;
+    for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) {
+      vec2 g = vec2(float(i), float(j)), r = g + hash22(n + g) - f;
+      float d = dot(r, r);
+      if (d < d1) { d2 = d1; r2 = r1; d1 = d; r1 = r; id = hash22(n + g + 7.0).x; } else if (d < d2) { d2 = d; r2 = r; }
+    }
+    vec2 across = normalize(r2 - r1 + 1e-5);
+    return vec4(sqrt(d2) - sqrt(d1), id, -across.y, across.x);
+  }
   // (Hashed without sin: phones' GPUs work sin out roughly for large numbers, which turns "random"
   // into regular patterns.)
   vec3 hash33(vec3 p) {
@@ -263,7 +276,8 @@ export function printFragment(look: Look, sea: boolean): string {
 
       // Lava's marks.
       float lv = vMarks.y * onLand, lw = max(fwidth(lv), 1e-4); // (under the sea it's hidden, as it always was)
-      float here = vMarks.w + 0.09 * (noise3(vDir * 21.0 + 5.0) - 0.5), hw = 21.0 * px * 1.2, setOn = smoothstep(0.5 - hw, 0.5 + hw, here) * onLand; // (a little wobble and a softer edge, so the mesh's triangles don't show as teeth)
+      float here = vMarks.w + 0.09 * (noise3(vDir * 21.0 + 5.0) - 0.5) + 0.06 * (noise3(vDir * 64.0 + 2.0) - 0.5), // (and toes: small rounded lobes along it, as a flow's edge buds)
+        hw = 21.0 * px * 1.2, setOn = smoothstep(0.5 - hw, 0.5 + hw, here) * onLand; // (a little wobble and a softer edge, so the mesh's triangles don't show as teeth)
       float black = here > 0.01 ? clamp(vMarks.z / here, 0.0, 1.0) : 0.0;
       // (Dark lava kept for good: how new its flow is, 1 the newest, a quarter less for each pour since (FLOWS
       // in main; carried as itself, not a share of where it lies), stepped so each flow is one even shade with a clean edge where the next lies over it.)
@@ -509,6 +523,21 @@ const PRINT = (q: boolean) => /* glsl */ `
         float wob = 0.12 * (noise3(vDir * 21.0 + vec3(0.0, tq * ${q ? '0.035' : '0.1'}, tq * ${q ? '0.025' : '0.07'})) - 0.5); // (heaving slowly, in broad rounded lobes, as a flow's toes are: a finer wobble made its edge ragged)
         float lvR = lv + wob;
         float lwr = 25.0 * px * 1.2, cov = smoothstep(0.5 - lwr, 0.5 + lwr, lvR); // (a soft edge a pixel or so wide, measured as MARGIN_PX does: by the slope from triangle to triangle, it stepped in a fine saw)
+        // Which way each flow's edge faces the lamp, on the screen (its fields' slopes, worked out here, before
+        // any branch): a flow is a slab a few metres thick, so its front casts a little shadow on the ground
+        // on the side away from the light and catches the light on the side towards it. (Drawn flat, flows
+        // looked painted on.)
+        vec2 gLv = vec2(dFdx(lvR), dFdy(lvR)), gHr = vec2(dFdx(here), dFdy(here)), lampW = normalize(vec2(-0.55, 0.6));
+        float lvFace = dot(gLv / max(length(gLv), 1e-6), lampW), hereFace = dot(gHr / max(length(gHr), 1e-6), lampW);
+        float slabPx = clamp(0.0022 / max(px, 1e-6), 1.0, 5.0) * uPx; // (its thickness on the screen: a few pixels close, a hairline from afar)
+        // Hatching for the flows once set, as an engraver shades them: lines fixed to the ground, two ways
+        // for crossing. (Their slopes, here, before any branch.)
+        // (Each way two families of planes, square to each other, each used away from its own axis: planes
+        // cut a sphere in circles, and round where one family's axis faced us its lines drew a target.)
+        vec3 hA = vec3(0.62, 0.35, 0.70), hB = normalize(cross(hA, vec3(0.0, 1.0, 0.0))), hC = vec3(-0.52, 0.72, 0.46), hD = normalize(cross(hC, vec3(1.0, 0.0, 0.0)));
+        float hP1 = dot(vDir, hA) * 120.0, hP1b = dot(vDir, hB) * 120.0, hP2 = dot(vDir, hC) * 120.0, hP2b = dot(vDir, hD) * 120.0;
+        float hF1 = fwidth(hP1), hF1b = fwidth(hP1b), hF2 = fwidth(hP2), hF2b = fwidth(hP2b);
+        float hW1 = smoothstep(0.55, 0.75, abs(dot(vDir, hA))), hW2 = smoothstep(0.55, 0.75, abs(dot(vDir, hC)));
         // Its heat: the core follows the deepest lava, down the flow (the vent warms it only a little,
         // or the core sat round the vent like a yolk), pinching and swelling along its length as it's carried.
         vec2 pol = vec2(cos(ang), sin(ang)) * far;
@@ -594,12 +623,24 @@ const PRINT = (q: boolean) => /* glsl */ `
           // (Straight, as crust cracks: the edges between plates, carried with the flow, short runs that meet
           // and branch, and only some of them open: all of them, a net of polygons read as a tortoise's shell;
           // winding, they read as worms.)
-          vec2 ck = plates(rid * 15.0 + 0.7 * vec2(noise3(vDir * 9.0), noise3(vDir * 9.0 + 5.1)));
+          vec4 ck4 = seams(rid * 15.0 + 0.7 * vec2(noise3(vDir * 9.0), noise3(vDir * 9.0 + 5.1)));
+          vec2 ck = ck4.xy;
           float rfw = max(fwidth(raftF), 1e-4) * 2.0, ckw = max(fwidth(ck.x), 1e-4);
           float crackW = mix(0.03, 0.13, molten), crackD = ck.x;
-          float crackOn = smoothstep(0.5, 0.62, 0.45 * ck.y + 0.55 * noise3(vDir * 11.0 + 13.0) + 0.12 * molten); // (which cracks are open: by stretches, beside some plates and not others, so each runs a little way and stops; even where it's hottest, never the whole net)
+          // (Crust tears the way it's pulled: along the flow, out from the vent, in long cracks that run
+          // down it; a net of cracks every way at once, all alike, read as crazed tile.)
+          float along = abs(dot(ck4.zw, vec2(cos(ang), sin(ang))));
+          float alignOn = mix(1.0, smoothstep(0.45, 0.85, along), smoothstep(0.01, 0.04, far));
+          // Where the heat shows: the channel down the deepest of it, and the front while it's fed, where it
+          // breaks out; under the body of the flow the crust is thicker, its cracks fewer and only dull red.
+          float channel = smoothstep(1.4, 2.3, lvR), frontBand = (1.0 - smoothstep(0.55, 0.85, lvR)) * (0.3 + 0.7 * uFeeding);
+          float fresh = clamp(max(max(channel, frontBand), exp(-far / 0.06)), 0.0, 1.0);
+          float crackTh = 0.5 + 0.14 * smoothstep(0.05, 0.35, far) * (1.0 - 0.6 * fresh); // (fewer further out, where it's older)
+          float crackOn = smoothstep(crackTh, crackTh + 0.12, 0.45 * ck.y + 0.55 * noise3(vDir * 11.0 + 13.0) + 0.12 * molten) * alignOn; // (which cracks are open: by stretches, beside some plates and not others, so each runs a little way and stops; even where it's hottest, never the whole net)
           float raftAt = mix(0.0, 0.62, smoothstep(0.65, 1.0, molten));
-          float seam = max((1.0 - smoothstep(crackW - ckw, crackW + ckw, crackD)) * crackOn, 1.0 - smoothstep(raftAt - rfw, raftAt + rfw, raftF)) * smoothstep(0.2, 0.5, run);
+          float pool = (1.0 - smoothstep(raftAt - rfw, raftAt + rfw, raftF)) * exp(-far / 0.035); // (open liquid only at the mouth: scattered over the body, or down the channel, little pools read as spots)
+          float crackS = (1.0 - smoothstep(crackW - ckw, crackW + ckw, crackD)) * crackOn;
+          float seam = max(crackS * mix(0.6, 1.0, fresh), pool) * smoothstep(0.2, 0.5, run);
           // The skin itself: rough at two scales, as a'a is, and folded along the flow (the level lines of how
           // deep it lies), as pahoehoe's ropes are, faintly, as an engraver would cut them.
           float rough = noise3(vDir * 180.0) * 0.6 + noise3(vDir * 520.0 + 2.0) * 0.4;
@@ -615,29 +656,32 @@ const PRINT = (q: boolean) => /* glsl */ `
           float sheen = pow(max(0.0, dot(reflect(-L, Nn), V)), 9.0) * (0.35 + 0.65 * rough) + foldHi * 0.1 * smoothstep(0.4, 0.7, noise3(vDir * 14.0));
           crustInk += vec3(0.1, 0.11, 0.135) * sheen * (0.45 + 0.55 * smoothstep(0.15, 0.6, T));
           float frontPx = MARGIN_PX(lvR, 0.5, 25.0);
-          float front = (1.0 - smoothstep(0.6 * uPx, 2.2 * uPx, frontPx)) * uFeeding * smoothstep(0.45, 0.75, noise3(vDir * 45.0 + tq * 0.05)) * 0.7; // (thin, broken, and soft: a bright line all round looked drawn on)
+          float front = (1.0 - smoothstep(0.6 * uPx, 2.2 * uPx, frontPx)) * uFeeding * smoothstep(0.6, 0.8, noise3(vDir * 16.0 + tq * 0.05)) * 0.7; // (thin, broken, and soft: a bright line all round looked drawn on)
           // The open heat at the vent and down the fresh stream, graded as incandescence is: pale gold
           // at the mouth, orange, then a dull red where the crust is closing over it; its edge ragged.
-          // The open heat at the vent and down the fresh stream, as a print lays it: three flat inks (a
-          // dull red, orange, gold), each edge crisp and ragged, screened in halftone dots where one gives
-          // way to the next (blended smoothly, it looked airbrushed beside the rest of the print).
           float heatV = max(G, T * 0.75) + 0.12 * (noise3(vDir * 30.0 + vec3(0.0, tq * 0.04, 0.0)) - 0.5) + 0.05 * (noise3(vDir * 90.0) - 0.5);
           float hw = max(fwidth(heatV), 1e-4) * 0.8;
           // (Smaller than it was, so the heat is precious: a bright mouth, quickly crusting over.)
-          float band1 = smoothstep(0.5 - hw, 0.5 + hw, heatV), band2 = smoothstep(0.68 - hw, 0.68 + hw, heatV), band3 = smoothstep(0.86 - hw, 0.86 + hw, heatV);
-          // (Screened in the game's own stipple, scattered as by hand: a halftone on a grid read as pixels.)
-          band2 = max(band2, stipple(vDir, 260.0, 1.6 * smoothstep(0.56, 0.68, heatV), 0.55 * uPx, px) * band1);
-          band3 = max(band3, stipple(vDir, 260.0, 1.6 * smoothstep(0.74, 0.86, heatV), 0.55 * uPx, px) * band2);
-          band3 *= exp(-far / 0.05); band2 *= 0.5 + 0.5 * exp(-far / 0.12); // (the gold only at the mouth, the orange close by: a wide bright disc looked like a lamp)
+          float band1 = smoothstep(0.5 - hw, 0.5 + hw, heatV);
           float open = band1 * (0.35 + 0.65 * exp(-far / 0.16)) * mix(smoothstep(0.9, 1.5, lvR), 1.0, exp(-far / 0.012)); // (the open heat reaches well down the stream, along its deep channel: all round the vent, it was a round orange patch)
-          // A skin forming over the heat: dark plates closing over it from its edge in, the glow showing
-          // only in the cracks between them, wider nearer the mouth. (A bare blob of graded heat looked airbrushed.)
-          float skinW = 0.04 + 0.22 * smoothstep(0.6, 0.95, heatV);
-          float skinOver = smoothstep(0.62 - 0.3 * smoothstep(0.6, 0.95, heatV) - rfw, 0.62 - 0.3 * smoothstep(0.6, 0.95, heatV) + rfw, raftF) * (1.0 - smoothstep(0.9, 0.97, heatV)); // (the skin closing over the heat in rounded rafts too: a net of plates there read as a honeycomb)
-          open *= 1.0 - skinOver * 0.7;
-          vec3 glowCol = mix(deep * 1.15, verm, band2);
-          glowCol = mix(glowCol, yel, band3);
-          glowCol = mix(glowCol, uInkPale, smoothstep(0.97 - hw, 0.97 + hw, heatV) * step(far, 0.015)); // (the palest only right at the mouth)
+          // (Graded, as incandescence is: white-gold at the mouth, through gold and orange to a dull red where
+          // the skin is closing over it. In flat inks it read as a pink sticker, and rounded rafts of skin on
+          // it as dark blotches; now the skin closes over it in plates from its edge in, the heat showing in
+          // the seams between them, wider nearer the mouth, as a lava lake's crust does.)
+          float g = smoothstep(0.5, 0.97, heatV) * (0.5 + 0.5 * exp(-far / 0.03)); // (gold only near the mouth: a wide bright disc looked like a lamp)
+          float skinSeam = mix(0.02, 0.14, smoothstep(0.3, 0.7, g)), plw = max(fwidth(pl.x), 1e-4);
+          float skin = smoothstep(skinSeam - plw, skinSeam + plw, pl.x) * (1.0 - smoothstep(0.6, 0.75, g)); // (the hot pool itself open, the skin only round it: plates all over it, with gold between, read as a waffle)
+          // And on the open pool, a few rafts of crust floating, as on a lava lake (a bare pool read as a lamp).
+          float rafts = smoothstep(0.2 - plw, 0.2 + plw, pl.x) * step(0.74, pl.y) * smoothstep(0.55, 0.75, g) * (1.0 - exp(-far / 0.006));
+          // (Its seams open only in stretches, as the flow's cracks are: every one open read as a net.)
+          float seamOn = smoothstep(0.5, 0.62, noise3(vDir * 70.0 + 3.0) * 0.6 + pl.y * 0.4);
+          skin = max(skin, (1.0 - seamOn) * (1.0 - smoothstep(0.6, 0.75, g)));
+          open *= (1.0 - max(skin, rafts) * 0.95) * smoothstep(0.12, 0.32, g); // (and where it's only dull red, closed over: a net of red seams there read as a honeycomb)
+          vec3 glowCol = mix(vec3(0.5, 0.07, 0.02), vec3(0.86, 0.2, 0.03), smoothstep(0.0, 0.35, g));
+          glowCol = mix(glowCol, vec3(1.0, 0.45, 0.07), smoothstep(0.3, 0.6, g));
+          glowCol = mix(glowCol, vec3(1.0, 0.74, 0.28), smoothstep(0.55, 0.85, g));
+          glowCol = mix(glowCol, vec3(1.0, 0.93, 0.7), smoothstep(0.85, 1.0, g) * exp(-far / 0.012)); // (the palest only right at the mouth)
+          glowCol *= 0.78 + 0.32 * (noise3(vec3(fr * 2.2, tq * 0.3)) * 0.6 + noise3(vDir * 90.0 + vec3(0.0, tq * 0.2, 0.0)) * 0.4); // (never quite even: the surface churning)
           inkCol = crustInk;
           // The liquid between: orange to gold, brightest where hottest, rippling as it's carried down the flow.
           float ripple = noise3(vec3(fr * 1.1, tq * 0.35)) * 0.65 + noise3(vec3(fr * 2.6 + 7.0, tq * 0.6)) * 0.35;
@@ -651,16 +695,24 @@ const PRINT = (q: boolean) => /* glsl */ `
           float vn = noise3(vec3(fr * 1.7 + 3.0, tq * 0.25)), vw = max(fwidth(vn), 1e-4) * 1.5;
           float vein = (1.0 - smoothstep(0.0, 0.09, abs(vn - 0.5))) * (0.5 + 0.5 * (1.0 - hot)) * smoothstep(0.02, 0.07, far) * 0.6; // (broad and soft, a shading in the liquid: thin lines read as a maze; and not at the very mouth, where the carrying squeezes them into rings)
           liquid = mix(liquid, lRed * 0.7, vein * 0.6);
+          liquid = mix(liquid, lRed * 0.75, (1.0 - fresh) * 0.65 * (1.0 - pool)); // (under the body, a dull red in the cracks: gold all through it read as a lit net)
           // A raft's edge glows where the liquid meets it: a thin bright line, its crust's hot underside.
           float raftEdge = (1.0 - smoothstep(0.0, ckw * 2.5, abs(crackD - crackW))) * crackOn;
           crustInk = mix(crustInk, deep * 0.8, raftEdge * 0.5 * smoothstep(0.2, 0.5, run));
           inkCol = mix(inkCol, liquid, seam);
           inkCol = mix(inkCol, verm, front * 0.9);
           inkCol = mix(inkCol, glowCol, open);
-          lit = clamp(max(open, max(seam * (0.75 + 0.25 * hot), front)), 0.0, 1.0);
+          lit = clamp(max(open, max(seam * (0.75 + 0.25 * hot) * mix(0.45, 1.0, max(fresh, pool)), front)), 0.0, 1.0);
         }
         col = mix(col, inkCol * mix(vec3(1.0), col / paper, uDark > 0.5 ? 0.15 : 0.5), cov * (uDark > 0.5 ? 0.96 : 0.92));
-        glowInk = uDark > 0.5 ? cov * lit * 0.95 : cov * mix(0.4, 0.95, yelOn); // (a little of its own light, or the lighting dims the soft inks to mud; the gold, the one light)
+        glowInk = uDark > 0.5 ? cov * lit * 0.95 : cov * mix(0.4, 0.95, yelOn);
+        if (uDark > 0.5) {
+          float edgePx = MARGIN_PX(lvR, 0.5, 25.0);
+          float castL = (1.0 - smoothstep(0.0, slabPx, edgePx)) * smoothstep(0.1, 0.7, lvFace) * (1.0 - cov) * onLand;
+          float litEdge = (1.0 - smoothstep(0.0, 0.7 * slabPx, edgePx)) * smoothstep(0.1, 0.7, -lvFace) * cov * (1.0 - lit);
+          col *= 1.0 - 0.3 * castL;
+          col += vec3(0.07, 0.07, 0.08) * litEdge; // (the crust's top edge catching the light)
+        } // (a little of its own light, or the lighting dims the soft inks to mud; the gold, the one light)
         // A burst: the mouth flares white-gold for a moment, a wide soft light round it fading as the ash rises.
         if (uFlash > 0.02) {
           float fr2 = 0.018 + 0.06 * (1.0 - min(1.0, uFlash));
@@ -708,7 +760,7 @@ const PRINT = (q: boolean) => /* glsl */ `
         if (uDark > 0.5) {
           // (Weathering sooner, and lighter: black for its first seconds, basalt by half a minute, a light
           // grey-brown by a minute, and gone in two and a half, so the world stays airy, the newest the darkest.)
-          setCol = mix(vec3(0.13, 0.115, 0.105) * mix(vec3(1.0), uCrustTint, 0.3), vec3(0.06, 0.044, 0.034) * uCrustTint, smoothstep(0.3, 0.6, black)); // (to charcoal, where its age takes it on from: light first, then dark again, neighbours set a moment apart blotched)
+          setCol = vec3(0.045, 0.034, 0.027) * uCrustTint; // (one even charcoal while it's new: graded by how long ago each point set, the newest flow cooled in a smudge) // (to charcoal, where its age takes it on from: light first, then dark again, neighbours set a moment apart blotched)
           setCol = mix(setCol, vec3(0.035, 0.026, 0.021) * uCrustTint, smoothstep(0.65, 0.85, black));
           setCol = mix(setCol, mix(deep * 0.45, vec3(0.05, 0.035, 0.028) * uCrustTint, 0.4), smoothstep(0.85, 0.99, black)); // (a dark red for its first seconds only, eased in: sharp, neighbouring points cooling a moment apart blotched it) // (a dark red for its first seconds only: brighter and longer, a thin sheet just set flashed orange)
         }` : `vec3 setCol = mix(vec3(0.24, 0.22, 0.21), deep, smoothstep(0.6 - sb, 0.6 + sb, black));
@@ -720,7 +772,8 @@ const PRINT = (q: boolean) => /* glsl */ `
         setCol = mix(setCol, mix(paper, setCol, 0.35), starve * (1.0 - uDark)); // (not on dark lava: specks of paper read as stars)
         ${q ? `// (Dark: solid basalt for its first minute, then settling, not going: the flow stays on the map as a
         // field of darker rock, a lasting record of where the fire went, as a geological map keeps every flow.)
-        float weathered = max(1.0 - smoothstep(0.04, 0.16, black), uFlows * (1.0 - smoothstep(0.8, 0.95, aged))); // (and once a newer flow has come, all of it: points set a moment apart, still blackening, blotched it)
+        float newSet = smoothstep(0.1 - max(sb * 2.0, 0.004), 0.1 + max(sb * 2.0, 0.004), black); // (weathering in a clean edge, not a smudge: per point, by how long since it set, the newest flow went soft-edged blotches)
+        float weathered = max(1.0 - newSet, uFlows * (1.0 - smoothstep(0.8, 0.95, aged))); // (and once a newer flow has come, all of it: points set a moment apart, still blackening, blotched it)
         // (And by its age after that: charcoal, then a warm grey-brown, then pale, the newest the darkest, so
         // the flows read in the order they came, as a geological map's do. Each world's own tint only a
         // little: tinted fully, Mars's old lava went the red of its hot lava, and read as still hot.)
@@ -731,13 +784,20 @@ const PRINT = (q: boolean) => /* glsl */ `
           // Ropes, faintly, as cooled pahoehoe keeps them: arcs across the way it ran, bowed and broken.
           float ropeF = far * 45.0 + 1.5 * noise3(vDir * 11.0) + 0.5 * noise3(vDir * 37.0);
           float rope = (1.0 - smoothstep(0.4 * uPx, 1.1 * uPx, abs(fract(ropeF) - 0.5) / (45.0 * px))) * smoothstep(0.45, 0.7, noise3(vDir * 16.0 + 4.0));
-          oldCol *= 1.0 - 0.22 * rope * (1.0 - smoothstep(0.002, 0.005, px)); // (none seen from afar, where they'd crowd into a smudge: closer together, they did)
+          oldCol *= 1.0 - 0.22 * rope * (1.0 - smoothstep(0.002, 0.005, px)) * (1.0 - smoothstep(0.3, 0.6, aged)); // (only on the older flows: on the newer, with the hatching, they read as a fingerprint) // (none seen from afar, where they'd crowd into a smudge: closer together, they did)
+          // Hatched, as an engraved map shades a flow: the newer, the closer and darker its lines, the newest
+          // crossed; the oldest a light wash with a few. (A flat brown wash read as airbrushed.) Seen from afar,
+          // where they'd crowd, they give way to the wash.
+          float h1 = mix(engrave(hP1, hF1, 0.15 + 0.35 * aged, 1.0), engrave(hP1b, hF1b, 0.15 + 0.35 * aged, 1.0), hW1) * smoothstep(0.0, 0.3, aged + 0.15);
+          float h2 = mix(engrave(hP2, hF2, 0.1 + 0.25 * aged, 1.0), engrave(hP2b, hF2b, 0.1 + 0.25 * aged, 1.0), hW2) * smoothstep(0.55, 0.85, aged);
+          float hatch = max(h1, h2);
+          oldCol = mix(oldCol * 1.05, vec3(0.15, 0.115, 0.085), hatch * mix(0.2, 0.38, aged));
           setCol = mix(setCol, oldCol * mix(vec3(1.0), uCrustTint, 0.3), weathered);
         }
         // (Lit by the running lava beside it: a warm light on the rock along its edge, as on the bare ground.)
         float nearHeat = uDark * smoothstep(0.05, 0.45, lv) * (1.0 - cov) * (0.6 + 0.4 * uFeeding);
         setCol = mix(setCol, vec3(0.78, 0.38, 0.13), nearHeat * 0.5);
-        float setA = hs * (uDark > 0.5 ? min(1.0, 0.95 * smoothstep(0.04, 0.16, black) + mix(0.36, 0.95, smoothstep(0.05, 0.7, aged)) * weathered) : 0.3 * smoothstep(0.006, 0.15, black) + 0.62 * smoothstep(0.45, 0.8, black));
+        float setA = hs * (uDark > 0.5 ? min(1.0, 0.95 * newSet + mix(0.36, 0.95, smoothstep(0.05, 0.7, aged)) * weathered) : 0.3 * smoothstep(0.006, 0.15, black) + 0.62 * smoothstep(0.45, 0.8, black));
         col = mix(col, setCol * mix(vec3(1.0), col / paper, uDark > 0.5 ? 0.04 : 0.5), setA); // (dark: barely the ground's own washes through it, or they blotched each flow)
         glowInk = max(glowInk, setA * (uDark > 0.5 ? max(smoothstep(0.93, 0.99, black) * 0.35, nearHeat * 0.3) : sWarm * 0.4));
         if (uDark > 0.5) {
@@ -745,7 +805,13 @@ const PRINT = (q: boolean) => /* glsl */ `
           // the lamp, softly, so a shield it raised stands up off the page (the rest of the map stays flat).
           float rimD = MARGIN_PX(here, 0.5, 21.0);
           float rimLine = (1.0 - smoothstep(0.3 * uPx, 1.1 * uPx, rimD)) * onLand * (1.0 - cov);
-          col = mix(col, vec3(0.13, 0.11, 0.1) * uCrustTint, rimLine * 0.5);
+          col = mix(col, vec3(0.13, 0.11, 0.1) * uCrustTint, rimLine * 0.62);
+          // (Standing off the ground, as the running lava does: a shadow cast beyond its edge away from the
+          // light, the edge towards the light catching it.)
+          float setCast = (1.0 - smoothstep(0.0, slabPx, rimD)) * smoothstep(0.1, 0.7, hereFace) * onLand * (1.0 - setOn) * (1.0 - cov);
+          float setLit = (1.0 - smoothstep(0.0, 0.7 * slabPx, rimD)) * smoothstep(0.1, 0.7, -hereFace) * setOn * (1.0 - cov);
+          col *= 1.0 - 0.24 * setCast;
+          col = mix(col, min(col * 1.3 + 0.03, vec3(1.0)), setLit * 0.6);
           if (uFlows > 0.5) {
             // Where one flow lies over an older one: its edge finely inked too, and standing proud, a
             // little shadow cast onto the older on the side away from the lamp, the lit side catching it.
