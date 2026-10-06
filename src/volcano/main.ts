@@ -47,7 +47,7 @@ import { handleDrafts } from './drafts';
 import { handleSurface } from './surface';
 import { offThread } from './offthread';
 import { snapshotOf, restoreInto, keep, recall, forget, keepGround, recallGround, forgetGround, keepPage, pages, type Page } from './save';
-import { worldOf, nextWorld, WORLDS, chapterOf, type WorldId } from './worlds';
+import { worldOf, nextWorld, chapterOf, type WorldId } from './worlds';
 import { openGlobe, type Globe } from './atlasGlobe';
 import { keepsakeOf, turningGlobe } from './keepsakeGlobe';
 import { Chain, CHAIN } from './chain';
@@ -201,7 +201,13 @@ planet.stonesFall = WORLD.goal === 'gather'; // not until the first ideas have c
  * out by itself, a flow at a time, down the screen as it's seen, and the world is turned to say where
  * it goes; a finger held down holds a breath, for a bigger one. (Not the lava lamp, whose tipping is its game.)
  */
-const BREATHE = remembered('volcano.controls') === 'breathe' && !WORLD.rules.lamp;
+/**
+ * On a computer (a mouse, no touch, nothing that feels how it's held), there's no tipping: the world
+ * can't be tilted, so it always counted as level and never poured. So there it breathes, and what's
+ * said to the player speaks of the mouse and the space bar, never a phone.
+ */
+const COMPUTER = (navigator.maxTouchPoints || 0) === 0 && matchMedia('(pointer: fine)').matches;
+const BREATHE = (remembered('volcano.controls') === 'breathe' || COMPUTER) && !WORLD.rules.lamp;
 if (BREATHE) planet.k.pulse = planet.k.explosive * 0.55;
 const ecology = new Ecology(planet, topo);
 const islands = new Islands(topo);
@@ -1316,32 +1322,44 @@ const won = () => aimOf > 0 && aimDone >= aimOf && (WORLD.goal !== 'calm' || cal
  * (a finger on it), and burst (what it does when it's held too long). (The card's own lines used a
  * different verb on every world: tip, pour, erupt, burst, turn uppermost.)
  */
+/**
+ * What to do on each world, said plainly, in one pattern: what to do, with things you can see on the
+ * screen; then when it's done. How the hands do it ("pour", "hold the heat", "release a burst") is
+ * the card's last line, which is said for the way it's being played (see HANDS).
+ */
 const HOW: Record<string, string> = {
-  ring: 'The fire drifts slowly across the sea. Pour as it moves, and keep a line of living islands behind it.',
-  basins: 'Turn a dotted basin to the top of the world, then pour gently until it fills. Fill them all.',
-  height: `Tilt the phone to pour. Keep pouring in one place until the mountain is ${HEIGHT.target} km tall.`,
-  cover: `Pour across the old grey ice to make it new. Turn the world to reach fresh grey, until ${COVER}% is new.`,
-  plumes: `Hold until the smoke turns grey, then let go while the tide is high. Make ${PLUMES} great plumes, each outside the last one's rings.`,
-  feed: 'Hold until the smoke turns grey, lean the volcano towards the giant planet, and let go. The spray fills its ring.',
-  round: `Turn a hollow to the top and pour into it. Fill the hollows until the asteroid is ${ROUND}% rounder.`,
-  ridge: 'The spin flings lava to the equator. Turn a bare part of the dotted equator to the top and pour, until a ridge runs all the way round.',
-  lamp: 'Hold the phone level and a glowing blob grows. Tilt, and it lets go and floats up. Turn the dotted shore to the top to guide the blobs there.',
-  calm: `Hold until the smoke turns grey, then let go where the dotted ring crosses the volcano. Each burst slows the tumbling. Keep it calm for ${CALM_HOLD} seconds.`,
-  bank: 'Tilt towards the dotted bank to pour that way. Keep pouring until an island rises there.',
-  orbit: 'Hold until the smoke turns grey, then let go. Each burst throws rock into the sky, and enough of it becomes a moon.',
-  hearth: 'Life gathers on fresh, warm rock and fades as it cools. Pour beside it, never on top, and keep enough alive at once.',
-  thaw: 'Build the mountain up through the ice, then hold until the smoke turns grey and let go. The gas warms the sky until the ice gives way.',
-  outbuild: 'Anything facing the star boils away. Turn the volcano round into the night side, pour there, and build more than the star can take.',
-  white: 'This lava runs black and turns white as it cools. Build the peak, then hold still and watch the top turn white.',
-  glow: 'At night the sulphur burns blue as it flows. Pour thin and wide, a new way each time, and keep the crater glowing for two minutes.',
-  waves: 'Build the cone until it is just under the sea, then hold until the smoke turns grey and let go. A wave rings the whole world. Rebuild, and do it again.',
-  antipode: 'Hold until the smoke turns grey and let go. The shock travels through the planet and breaks open the far side. Turn the world over to watch it grow.',
-  gather: 'Stones fall where a circle appears. Turn that spot to the top before they land, and the glow will catch them.',
-  oxygen: 'Life in shallow water makes oxygen, but lava buries it. Pour a shallow shelf, turn a little, pour the next, and let life grow.',
-  chaos: 'Hold, then let go before the smoke turns grey. The warmth breaks the ice into rafts. Each new field must be away from the last.',
-  streaks: 'The sun slowly crosses the sky. Hold until the smoke turns grey, wait for sunlight on the volcano, then let go. Turn somewhere new for the next streak.',
-  snow: 'Turn the world until the volcano is on the sunlit side, under the star, and pour. The lava boils away there and falls as pale rock snow on the dotted line, just inside the night.',
+  ring: 'The vent drifts slowly across the sea. Pour as it goes to leave a chain of islands behind it. Done when the chain is complete.',
+  basins: 'Turn a dotted basin to the top and pour into it until it fills. Done when every basin is full.',
+  height: `Pour in one place to build the mountain up. Done when it is ${HEIGHT.target} km tall.`,
+  cover: `Pour over the old grey ice to make it new, turning the world to reach more grey. Done when ${COVER}% is new.`,
+  plumes: `Hold the heat until the smoke turns grey, then release a burst while the tide is high. Each one must land outside the rings of the last. Done after ${PLUMES} great plumes.`,
+  feed: 'Hold the heat until the smoke turns grey, lean the volcano towards the giant planet, and release a burst. The spray feeds its ring. Done when the ring is full.',
+  round: `Turn a pencilled hollow to the top and pour into it. Done when the asteroid is ${ROUND}% rounder.`,
+  ridge: 'Turn a bare stretch of the dotted equator to the top and pour; the spin carries the lava along it. Done when the ridge runs all the way round.',
+  lamp: 'Grow a glowing blob at the vent and let it go: warm blobs float to whatever is uppermost. Turn the dotted shore to the top so they gather there. Done when the shore is full.',
+  calm: `Hold the heat until the smoke turns grey, then release a burst as the dotted ring passes over the volcano. Each one slows the tumbling. Done when it stays calm for ${CALM_HOLD} seconds.`,
+  bank: 'Pour towards the dotted bank, again and again. Done when an island rises above the water there.',
+  orbit: 'Hold the heat until the smoke turns grey, then release a burst: it throws rock into the sky, further from a taller cone. Done when enough has gathered into a moon.',
+  hearth: 'Life gathers on fresh, warm rock and fades as it cools. Pour new lava beside the green, never on it. Done when enough is alive at once.',
+  thaw: 'Build the mountain up through the ice, then hold the heat until the smoke turns grey and release a burst. Its gas warms the sky. Done when the ice gives way.',
+  outbuild: 'The side facing the star boils away. Turn the volcano round into the night and pour there. Done when you have built more than the star has taken.',
+  white: 'Build the peak, then rest and watch: this lava runs black and turns white as it cools. Done when the top is white.',
+  glow: 'At night the sulphur burns blue as it flows. Pour thin streams, each a new way, to keep the crater glowing. Done after two minutes of glow.',
+  waves: 'Build the cone until it is just under the sea, then hold the heat until the smoke turns grey and release a burst: a wave circles the world. Rebuild and do it again until the count is reached.',
+  antipode: 'Hold the heat until the smoke turns grey and release a burst. The shock breaks open the far side. Turn the world over to watch it grow. Done when the far side has risen.',
+  gather: 'A circle shows where a stone will land. Turn that spot to the top before it lands, and the glow catches it. Done after catching enough stones.',
+  oxygen: 'Life in shallow water makes oxygen, but lava buries it. Pour a shallow shelf, then turn a little and pour the next, leaving the last for life. Done when the sky has cleared.',
+  chaos: 'Release a burst before the smoke turns grey: the warmth breaks the ice into rafts. Make each new field away from the last. Done after enough fields.',
+  streaks: 'The sun slowly crosses the sky. Hold the heat until the smoke turns grey, wait for sunlight on the volcano, then release a burst. Turn somewhere new for each streak.',
+  snow: 'Turn the world until the volcano is on the sunlit side, under the star, and pour. The lava boils away and falls as pale rock snow on the dotted line. Done when the line is full.',
 };
+/** How the hands do it, for the way it's being played: tipping a phone, breathing, or a computer's mouse. */
+const HANDS = LAMP
+  ? COMPUTER ? 'A blob grows at the vent · click the world (or press space) to let it go · drag to turn the world'
+    : 'Keep the phone level to grow a blob · tilt to let it go · drag to turn the world'
+  : BREATHE ? COMPUTER ? 'It pours by itself, down the screen · drag to turn the world · hold the mouse button on it (or space) to hold the heat, let go to release a burst'
+      : 'It pours by itself, down the screen · drag to turn the world · rest a finger on it to hold the heat, lift it to release a burst'
+    : 'Tilt the phone to pour · keep it level to hold the heat, tilt to release a burst · drag to turn the world';
 
 /** The aim and how far it's come, in a few words for the top of the screen, always there while it's played. */
 function goalLine(): string {
@@ -1579,7 +1597,8 @@ const gestures = new GestureRecognizer(
   {
     // (A tap no longer calls the heat to where it touched: two ways to play, tilt to pour and a
     // finger to hold, were clearer than five. The heat still creeps to whatever is on top.)
-    tap() { /* none */ },
+    // (Except on the glass world played on a computer, which can't be tipped: there a click lets the blob go.)
+    tap() { if (LAMP && COMPUTER) { holdShut(); letGo(); } },
     spin(dx, dy) { spin.set(0, 0); rotate(dx * 0.006, dy * 0.006); },
     fling(vx, vy) { spin.set(vx * 0.006, vy * 0.006); },
     zoom(f) { dist /= f; look(); zoomedAt = seconds; },
@@ -1623,10 +1642,10 @@ function arrows(dt: number): void {
  * and never over what the world is saying itself. Then nothing more, but the aim now and then.
  */
 const CUES: { ready: () => boolean; say?: string; begin?: () => void; done: (since: number) => boolean }[] = [
-  { ready: () => true, say: LAMP ? 'Keep the phone level, and a glowing blob grows' : 'Keep the phone level, and the heat gathers under the smoke', done: () => planet.pressure > planet.k.least * 2 },
-  { ready: () => !planet.pouring, say: LAMP ? 'Tilt the phone, and the blob lets go' : 'Tilt the phone to pour', done: (s) => planet.tally.flows + planet.tally.bursts > 0 || s > 40 },
+  { ready: () => true, say: LAMP ? (COMPUTER ? 'A glowing blob grows at the vent' : 'Keep the phone level, and a glowing blob grows') : BREATHE ? 'The heat gathers under the smoke, and breathes out by itself' : 'Keep the phone level, and the heat gathers under the smoke', done: () => planet.pressure > planet.k.least * 2 },
+  { ready: () => !planet.pouring, say: LAMP ? (COMPUTER ? 'Click the world, and the blob lets go' : 'Tilt the phone, and the blob lets go') : BREATHE ? 'Drag the world to choose which way it runs' : 'Tilt the phone to pour', done: (s) => planet.tally.flows + planet.tally.bursts > 0 || s > 40 },
   // The touch, once the tilt is known: a finger held on the world holds the heat in; lifted, it lets it out.
-  { ready: () => !planet.pouring && planet.pressure > planet.k.least, say: LAMP ? 'Or hold a finger on the world to keep the blob, and lift it to let go' : 'Or hold a finger on the world to keep the heat in, and lift it to let it out', done: (s: number) => s > 12 },
+  { ready: () => !planet.pouring && planet.pressure > planet.k.least, say: LAMP ? (COMPUTER ? 'Hold the mouse button on the world to keep the blob, and let go to release it' : 'Or hold a finger on the world to keep the blob, and lift it to let go') : COMPUTER ? 'Hold the mouse button on the world (or space) to keep the heat in, and let go to let it out' : 'Or hold a finger on the world to keep the heat in, and lift it to let it out', done: (s: number) => s > 12 },
   ...(WORLD.rules.rises ? [{ ready: () => true, say: 'The vent creeps to whatever faces up: drag the world to move it', done: (s: number) => s > 20 }] : []),
   ...(WORLD.goal === 'ridge' ? [{ ready: () => planet.tally.flows + planet.tally.bursts > 0, say: 'The spin carries the lava to the equator', done: (s: number) => s > 25 }] : []),
   { ready: () => !LAMP && (planet.k.great > 0 ? planet.throwOf(planet.pressure) >= planet.k.great : planet.pressure >= planet.k.explosive) && !planet.pouring, say: WORLD.goal === 'feed' ? 'The smoke has turned grey: lean the vent towards the giant, and let it out to burst' : 'The smoke has turned grey: let it out now, and it bursts', done: (s) => planet.tally.bursts > 0 || s > 40 },
@@ -2303,11 +2322,11 @@ let begun = false;
 // (An age of Earth begun on the ground the age before left says so: it's the world you made, an age on.)
 ($('begin').querySelector('.first') as HTMLElement).textContent = AGE_GROUND ? 'The world you made, an age later.' : '';
 // (Breathing, there's no tipping: what the card says of tipping is said of turning instead.)
-const breathed = (t: string) => (BREATHE ? t.replace('Tilt the phone to pour. ', '').replace('Tilt towards the dotted bank to pour that way.', 'Turn the world so each breath runs towards the dotted bank.').replace(/ and pour(?=[ ,.])/g, '') : t);
+const breathed = (t: string) => (BREATHE ? t.replace('Pour towards the dotted bank, again and again.', 'Turn the world so each breath runs towards the dotted bank.').replace(/ and pour(?=[ ,.;])/g, '') : t);
 ($('begin').querySelector('.second') as HTMLElement).textContent = FREE ? 'No aim and no clock: the fire never cools.' : breathed(HOW[WORLD.goal] ?? WORLD.second);
 // The hands, the same on every card.
 // (Only where the hands are new: the first world, and the lamp, where they work the other way round.)
-($('begin').querySelector('.hands') as HTMLElement).textContent = LAMP ? 'Keep it level to grow · tilt to let go · drag to turn' : BREATHE ? 'It pours by itself, down the screen · drag to turn the world · hold for a bigger breath' : WORLD === WORLDS[0] ? 'Tilt to pour · hold, then let go to burst · drag to turn' : '';
+($('begin').querySelector('.hands') as HTMLElement).textContent = HANDS;
 // The worlds, along the card's foot, as an atlas lists its plates: touch another to go to it.
 // (Not for a world of a solar system: it's reached from the system's chart.)
 // The worlds: one touch to the atlas's sky, where every world stands in its chapter's constellation.
@@ -2334,7 +2353,7 @@ const moreLink = (text: string, act: () => void): HTMLElement => {
 moreLink(SYSTEM ? `Voyage · ${madeCount(SYSTEM)} of ${SYSTEM.bodies.length} worlds made` : 'Voyage · worlds one after another', () => openSystem());
 // Wandering: this world with no aim and no clock; or, wandering, back to the world with its aim.
 // The calm way to play, or tipping: kept for every world.
-moreLink(BREATHE ? 'Tip the phone to pour, as before' : 'Breathe · no tipping: it pours by itself, you turn the world', () => { remember('volcano.controls', BREATHE ? 'tip' : 'breathe'); location.reload(); });
+if (!COMPUTER && !LAMP) moreLink(BREATHE ? 'Tip the phone to pour, as before' : 'Breathe · no tipping: it pours by itself, you turn the world', () => { remember('volcano.controls', BREATHE ? 'tip' : 'breathe'); location.reload(); }); // (a computer can't be tipped: it always breathes)
 if (RUN === null) moreLink(FREE ? 'Play with the aim' : 'Wander · no aim, no clock', () => {
   const q = new URLSearchParams(location.search);
   q.delete('seed');
@@ -2442,7 +2461,7 @@ void resume().then((back) => {
   cardReady();
   if (!back) return;
   ($('begin').querySelector('.first') as HTMLElement).textContent = 'Your world, as you left it.';
-  ($('begin').querySelector('.second') as HTMLElement).textContent = `However you hold the phone now counts as level. ${HOW[WORLD.goal] ?? ''}`;
+  ($('begin').querySelector('.second') as HTMLElement).textContent = `${COMPUTER || BREATHE ? '' : 'However you hold the phone now counts as level. '}${breathed(HOW[WORLD.goal] ?? '')}`;
   ($('begin').querySelector('.touch') as HTMLElement).textContent = 'Continue';
 });
 
