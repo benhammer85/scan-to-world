@@ -508,6 +508,41 @@ const stoneMark = mark((g) => {
     g.beginPath(); g.moveTo(32 - 18 * Math.cos(a), 32 - 18 * Math.sin(a)); g.lineTo(32 + 18 * Math.cos(a), 32 + 18 * Math.sin(a)); g.stroke();
   }
 });
+/** Round where a stone will fall, a dotted circle, as the card says: the ground it will take. */
+const stoneRing = mark((g) => {
+  for (let i = 0; i < 18; i++) { const a = (i / 18) * Math.PI * 2; g.beginPath(); g.arc(32 + 27 * Math.cos(a), 32 + 27 * Math.sin(a), 2.2, 0, Math.PI * 2); g.fill(); }
+});
+/**
+ * The stone itself, falling out of the sky over its warning: a lump of rock engraved as an old plate
+ * draws a meteorite, pale stone outlined in ink, hatched on the side away from the light. (Only its
+ * mark on the ground showed before, and a stone seemed never to come.) Hidden behind the world.
+ */
+const skyStone = mark((g) => {
+  const pts: [number, number][] = [];
+  for (let i = 0; i < 14; i++) { const a = (i / 14) * Math.PI * 2, r = 20 + 4 * Math.sin(a * 3 + 1) + 2.5 * Math.cos(a * 5 + 2); pts.push([32 + r * Math.cos(a), 32 + r * Math.sin(a) * 0.86]); }
+  const outline = () => { g.beginPath(); pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.closePath(); };
+  outline(); g.fillStyle = '#d8ccb6'; g.fill();
+  g.save(); outline(); g.clip();
+  g.beginPath(); g.moveTo(64, 14); g.lineTo(64, 64); g.lineTo(14, 64); g.closePath(); g.clip(); // (hatched only on its lower right, away from the light)
+  g.strokeStyle = '#2e2118'; g.lineWidth = 1.3; g.globalAlpha = 0.8;
+  for (let k = -64; k < 64; k += 4.5) { g.beginPath(); g.moveTo(k, 64); g.lineTo(k + 64, 0); g.stroke(); }
+  g.restore();
+  g.globalAlpha = 1; g.strokeStyle = '#2e2118'; g.lineWidth = 2.4; outline(); g.stroke();
+  g.lineWidth = 1.1; for (const [x, y, r] of [[40, 26, 3.2], [24, 34, 2.2], [36, 41, 1.8]]) { g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.stroke(); } // (pocked with small pits: two arcs read as a face)
+});
+skyStone.material.depthTest = true;
+/** Its trail: a few dots of dust left behind it in the sky, thinning. */
+const stoneTrail = [0, 1, 2, 3, 4].map(() => mark((g) => { g.beginPath(); g.arc(32, 32, 9, 0, Math.PI * 2); g.fill(); }));
+for (const d of stoneTrail) { d.material.depthTest = true; d.material.color.set(WORLD.id === 'first' ? '#d9c7a6' : '#6b5a48'); }
+let stoneWas: { vertex: number } | null = null;
+const STONE_AT = new THREE.Vector3(), STONE_UP = new THREE.Vector3(), STONE_SIDE = new THREE.Vector3(), STONE_Q = new THREE.Quaternion();
+/** Where the falling stone is, `f` of its warning left (1 as it's seen, 0 as it lands), in the world's frame. */
+function stoneAt(v: number, f: number, into: THREE.Vector3): THREE.Vector3 {
+  STONE_UP.set(base[v * 3], base[v * 3 + 1], base[v * 3 + 2]).normalize();
+  STONE_SIDE.set(0.45, 1, 0.3).applyQuaternion(STONE_Q.copy(group.quaternion).invert()); STONE_SIDE.addScaledVector(STONE_UP, -STONE_SIDE.dot(STONE_UP)).normalize(); // (coming down from the top of the page, slantwise, as they do)
+  const h = 1.5 * (1 - (1 - f) * (1 - f)); // (gathering speed as it falls)
+  return into.set(topo.positions[v * 3], topo.positions[v * 3 + 1], topo.positions[v * 3 + 2]).addScaledVector(STONE_UP, h).addScaledVector(STONE_SIDE, h * 0.7);
+}
 /**
  * Where life wishes for a kind: a few of that kind's own signs, sketched in broken pencil where
  * they would stand, as a surveyor pencils what is yet to be inked.
@@ -872,11 +907,26 @@ function drawMarks(): void {
   callMark.visible = !!t && !ending;
   if (t) { setMark(callMark, nearestAbove(new THREE.Vector3(t.x, t.y, t.z)), 0.035); callMark.material.color.set(INK); }
   const s = planet.impact;
-  stoneMark.visible = !!s && !ending;
+  stoneMark.visible = stoneRing.visible = skyStone.visible = !!s && !ending;
+  for (const d of stoneTrail) d.visible = skyStone.visible;
   if (s) {
-    setMark(stoneMark, s.vertex, 0.04);
+    setMark(stoneMark, s.vertex, 0.03);
+    setMark(stoneRing, s.vertex, Math.max(0.05, planet.k.crater * 1.2));
     // In the lava's red, if the plume is under it and will catch its heat.
-    stoneMark.material.color.set(planet.warmthAt(s.vertex) > 0.5 ? '#9a4230' : INK);
+    const ink = planet.warmthAt(s.vertex) > 0.5 ? '#9a4230' : WORLD.id === 'first' ? '#efe2c6' : INK; // (pale on the first world's dark crust, where ink was lost)
+    stoneMark.material.color.set(ink); stoneRing.material.color.set(ink);
+    const f = Math.max(0, Math.min(1, s.in / Math.max(1e-6, planet.k.impactWarning)));
+    stoneAt(s.vertex, f, STONE_AT); skyStone.position.copy(STONE_AT);
+    skyStone.scale.setScalar((0.06 + 0.03 * (1 - f)) * (dist / 3.2)); skyStone.material.opacity = Math.min(1, (1 - f) * 8);
+    stoneTrail.forEach((d, i) => { stoneAt(s.vertex, Math.min(1, f + 0.05 * (i + 1)), d.position); d.scale.setScalar(0.012 * (1 - i / 6) * (dist / 3.2)); d.material.opacity = 0.7 * (1 - i / 5) * Math.min(1, (1 - f) * 8); });
+    stoneWas = { vertex: s.vertex };
+  } else if (stoneWas) {
+    // Landed: a burst of dust and broken rock where it struck.
+    const v = stoneWas.vertex, p = topo.positions;
+    STONE_UP.set(base[v * 3], base[v * 3 + 1], base[v * 3 + 2]).normalize();
+    for (let i = 0; i < 6; i++) puffs.add('ash', p[v * 3], p[v * 3 + 1], p[v * 3 + 2], 0.35, Math.random);
+    for (let i = 0; i < 14; i++) puffs.add('ember', p[v * 3], p[v * 3 + 1], p[v * 3 + 2], 0.6, Math.random);
+    stoneWas = null;
   }
   const w = ecology.wish;
   wishMarks.forEach((m, i) => {
@@ -2077,7 +2127,7 @@ function theEnd(): void {
     if (RUN === null && AGES.includes(WORLD.id)) keepGround(ageKey(WORLD.id), { rock: planet.rock.slice(), fires: 1, marked: null }); // (the ground the next age begins on)
     else if (RUN === null) keepGround(GROUND_KEY, { rock: planet.rock.slice(), fires: FIRES + 1, marked });
     $('stage-name').textContent = ending.info.title;
-    $('worlds').style.display = 'none'; // (the chart has its own title there)
+    $('worlds').classList.add('ended'); // (moved to the other corner: the chart has its own title there)
     $('goal').style.opacity = '0'; // (and its own line under it: the goal's ran into it)
     void forget(); // the world is finished: nothing to come back to
   }
@@ -2161,10 +2211,13 @@ addEventListener('pointerup', (e) => {
 });
 // The worlds, off the world in a corner: touch to go back to the card that lists them (the world is kept, to come back to).
 // (Only this world's numeral, so six of them don't run into the title: touched, the card shows them all.)
-$('worlds').textContent = WORLD.numeral;
+// (Said in words under the numeral, and straight to the chart of every world: a numeral alone, going back to
+// the card, wasn't found, and from a world's own chart at its end there was no way back at all.)
+$('worlds').innerHTML = `<span class="n">${WORLD.numeral}</span><span class="w">${RUN === null ? 'all worlds' : 'the system'}</span>`;
 $('worlds').addEventListener('click', () => {
   save();
-  setTimeout(() => location.reload(), 300);
+  if (RUN === null) void pages().then((all) => openAtlas(all));
+  else setTimeout(() => location.reload(), 300);
 });
 /** How far the world has been turned since the chart was drawn, by any means: gravity's swing in the planet's frame. */
 const LAST_DOWN = new THREE.Vector3(), NOW_DOWN = new THREE.Vector3();

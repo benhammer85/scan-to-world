@@ -116,6 +116,10 @@
       #keep.shown { opacity: 0.65; pointer-events: auto; }
       /* The worlds, in a corner off the world: back to the card that lists them. */
       #worlds { position: fixed; top: calc(22px + env(safe-area-inset-top)); left: 20px; font: 12px "Newsreader", "Iowan Old Style", Georgia, serif; letter-spacing: 0.12em; color: #2e2118; background: none; border: none; opacity: 0.6; cursor: pointer; padding: 12px; min-width: 44px; min-height: 44px; }
+      #worlds .n { display: block; }
+      #worlds .w { display: block; font-size: 10px; font-style: italic; letter-spacing: 0.04em; margin-top: 2px; opacity: 0.85; }
+      #worlds.ended { left: auto; right: 20px; text-align: right; }
+      #worlds.ended .n { display: none; }
     </style>
   </head>
   <body class="carding">
