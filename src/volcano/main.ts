@@ -2429,7 +2429,7 @@ if (ASKED.has('system')) openSystem();
 // The atlas, from the card: every chart kept so far, newest first, to leaf through.
 void pages().then((all) => {
   if (!all.length) return;
-  moreLink(`Celestial Chart · ${all.length} ${all.length === 1 ? 'chart' : 'charts'} kept`, () => openAtlas(all));
+  moreLink(`Celestial Chart · ${all.length} ${all.length === 1 ? 'plate' : 'plates'} kept`, () => openAtlas(all));
 });
 let atlasPick: ((id: WorldId) => void) | null = null;
 let globeView: Globe | null = null, cardGlobe: { dispose(): void } | null = null;
