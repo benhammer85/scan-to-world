@@ -2701,7 +2701,7 @@ renderer.setAnimationLoop(() => {
   // (Breathing on Lengai: once the peak is tall enough, it stops breathing out, so its summit can rest and whiten;
   // pouring on by itself, the top never cooled and the world never ended.)
   // (Breathing on the hollow world, which can't be held back by tipping: it rests by itself as the ground starts to sink, and breathes again once it has.)
-  if (BREATHE && planet.k.hollow > 0) planet.k.pulse = planet.hollowness > 0.55 ? 0 : planet.hollowness < 0.25 ? planet.k.explosive * 0.55 : planet.k.pulse; if (planet.k.pulse === 0 && planet.pressure > planet.k.explosive * 0.5) { planet.reserve += planet.pressure - planet.k.explosive * 0.5; planet.pressure = planet.k.explosive * 0.5; } // (resting, the heat waits below rather than gathering into one burst that empties it at once)
+  if (BREATHE && planet.k.hollow > 0) { planet.k.pulse = planet.hollowness > 0.55 ? 0 : planet.hollowness < 0.25 ? planet.k.explosive * 0.55 : planet.k.pulse; if (planet.k.pulse === 0 && planet.pressure > planet.k.explosive * 0.5) { planet.reserve += planet.pressure - planet.k.explosive * 0.5; planet.pressure = planet.k.explosive * 0.5; } } // (resting, the heat waits below rather than gathering into one burst that empties it at once)
   if (BREATHE && WORLD.goal === 'white' && (peakReached || planet.summit * HEIGHT.kmPerUnit >= HEIGHT.target)) planet.k.pulse = 0;
   if (WORLD.goal === 'height' || WORLD.goal === 'cover' || WORLD.goal === 'round' || WORLD.goal === 'calm') {
     // The ring follows the heat, eased, so it glides as the heat creeps.
