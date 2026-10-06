@@ -332,6 +332,7 @@ material.onBeforeCompile = (shader) => {
   shader.uniforms.uFeeding = fed;
   shader.uniforms.uBuild = building;
   shader.uniforms.uHollow = hollowU;
+  shader.uniforms.uCatchR = { value: WORLD.goal === 'gather' ? 2 * Math.asin(Math.min(1, planet.k.warmth * Math.sqrt(Math.LN2) / 2)) : 0 }; // (the glow a stone is caught in, ringed: where warmth is a half)
   shader.uniforms.uVentMark = { value: LAMP ? 0 : 1 }; // (the vent marked on the map, as a chart marks a volcano)
   shader.uniforms.uFlash = flash;
   shader.uniforms.uDark = { value: DARK_LAVA ? 1 : 0 };
@@ -913,7 +914,7 @@ function drawMarks(): void {
     setMark(stoneMark, s.vertex, 0.03);
     setMark(stoneRing, s.vertex, Math.max(0.05, planet.k.crater * 1.2));
     // In the lava's red, if the plume is under it and will catch its heat.
-    const ink = planet.warmthAt(s.vertex) > 0.5 ? '#9a4230' : WORLD.id === 'first' ? '#efe2c6' : INK; // (pale on the first world's dark crust, where ink was lost)
+    const inGlow = planet.warmthAt(s.vertex) > 0.5, ink = inGlow ? (WORLD.goal === 'gather' ? '#f4b545' : '#9a4230') : WORLD.id === 'first' ? '#efe2c6' : INK; // (pale on the first world's dark crust, where ink was lost; gold once the glow is under it, and it will be caught)
     stoneMark.material.color.set(ink); stoneRing.material.color.set(ink);
     const f = Math.max(0, Math.min(1, s.in / Math.max(1e-6, planet.k.impactWarning)));
     stoneAt(s.vertex, f, STONE_AT); skyStone.position.copy(STONE_AT);
@@ -1416,7 +1417,7 @@ const AIM: Record<string, string> = {
   glow: 'Keep the crater glowing blue for two minutes.',
   waves: 'Send waves round the world.',
   antipode: 'Break open the far side of the planet.',
-  gather: 'Catch the falling stones.',
+  gather: 'Catch 10 falling stones in the glow.',
   oxygen: 'Clear the sky with oxygen.',
   chaos: 'Break the ice into chaos fields.',
   streaks: 'Lay dark streaks across the ice.',
@@ -1442,7 +1443,7 @@ const TIP: Record<string, string> = {
   glow: 'At night the sulphur burns blue as it flows. Pour thin streams, a new way each time.',
   waves: 'Build the cone to just under the sea, then erupt when the smoke is grey.',
   antipode: 'Erupt when the smoke is grey. The shock travels through; turn the planet over to watch.',
-  gather: 'A circle shows where one will land. Turn it to the top before it does.',
+  gather: 'A dotted circle shows where each stone will land. Turn the world so the circle is on top: the glow under your volcano follows it, and catches the stone. No need to pour.',
   oxygen: 'Life in shallow water makes it, but lava buries it. Pour a shelf, then move on.',
   chaos: 'Erupt before the smoke turns grey, each time away from the last.',
   streaks: 'Erupt when the smoke is grey and sunlight is on the volcano. Move on for the next.',
@@ -1773,7 +1774,14 @@ const CUES: { ready: () => boolean; say?: string; begin?: () => void; done: (sin
 let vapourIn = 0;
 // (Once the hands are known, their lessons give way to one reminder, and only if nothing has come out for a while.)
 let stuckSaid = false;
-if (!NEWCOMER) CUES.splice(0, 3, { ready: () => true, done: (s: number) => {
+// (On the first world, where catching stones is the aim and pouring isn't, its own few lines, about the stones and
+// the glow: the lessons about pressure and pouring sent players looking for the wrong thing.)
+if (WORLD.goal === 'gather') CUES.splice(0, CUES.length,
+  { ready: () => true, say: 'The gold ring is the glow under your volcano: a stone that lands inside it is caught', done: (s: number) => s > 10 },
+  { ready: () => planet.impact !== null, say: 'A stone is coming: turn the world so its circle is on top, and the glow will move under it', done: (s: number) => planet.impact === null || s > 14 },
+  { ready: () => planet.tally.stones > 0, say: 'The glow drifts to whatever is on top: keep the next circle uppermost', done: (s: number) => s > 12 },
+);
+else if (!NEWCOMER) CUES.splice(0, 3, { ready: () => true, done: (s: number) => {
   const tried = planet.tally.flows + planet.tally.bursts > 0;
   if (!tried && !stuckSaid && s > 20) { stuckSaid = true; announce(HANDS.join('   ')); }
   return tried || (stuckSaid && s > 34);
@@ -1802,7 +1810,7 @@ function lessons(): void {
 
 // ---------------------------------------------------------------- words, and the key
 /** What's worth saying: the turns in the world's story, not every happening in it. */
-const QUIET_WORDS = /^(The plume reaches the ring|A great plume, but too near|Wanted where|A stone is coming|Land breaks|Life begins in|The first|Moss grows|[A-Z][a-z]+( [a-z]+)? took hold|Held too long|Stone caught|The fire is out|The heat is nearly|A dust storm|The storm passes|The ground is sinking|The ground gives way)/;
+const QUIET_WORDS = /^(The plume reaches the ring|A great plume, but too near|Wanted where|A stone is coming|Land breaks|Life begins in|The first|Moss grows|[A-Z][a-z]+( [a-z]+)? took hold|Held too long|Stone caught|Missed: the stone|The fire is out|The heat is nearly|A dust storm|The storm passes|The ground is sinking|The ground gives way)/;
 const ERAS: Record<Era, string> = { young: 'A young fire', burning: 'Burning strong', cooling: 'Cooling', embers: 'Last embers', out: 'The fire is out' };
 // (In free play the heat never runs low, so the title says what kind of play it is.)
 if (FREE) ERAS.young = 'Free play';
@@ -1836,7 +1844,7 @@ function words(): void {
   if (era !== shownEra && !ending) { shownEra = era; eraFrom.push({ name: ERAS[era], from: planet.seconds }); }
   for (const text of planet.news.splice(0)) {
     // Only the few things worth a word are said, quietly, at the foot of the page.
-    if (!ending && QUIET_WORDS.test(text)) announce(text);
+    if (!ending && QUIET_WORDS.test(text)) announce(WORLD.goal === 'gather' ? text.replace(/^A stone is coming$/, 'A stone is coming: turn its circle to the top').replace(/^Stone caught: more heat$/, `Caught in the glow: ${planet.tally.caught} of ${GATHER}`) : text);
     if (/wish kept|takes in|Land breaks/.test(text)) feel(12);
     else if (/The ground gives way/.test(text)) feel([30, 80, 60]);
     else if (/The stone falls/.test(text)) feel(30);

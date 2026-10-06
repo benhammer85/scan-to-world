@@ -39,6 +39,7 @@ export const PRINT_FUNCTIONS = /* glsl */ `
   #define uFeedingGlow (0.4 + 0.6 * uFeeding)
   uniform vec3 uVent;
   uniform float uVentMark;
+  uniform float uCatchR; // (the first world: the glow a stone is caught in)
   uniform float uHollow; // (the hollow world: how empty the chamber under the vent is)
   // Craters, as the charts draw them (see 'Craters' below): each one's middle and width, how long since it was dug, and the light in the world's own frame.
   uniform vec4 uCrater[64];
@@ -765,6 +766,15 @@ const PRINT = (q: boolean) => /* glsl */ `
           emberC = mix(emberC, yel, smoothstep(0.6, 0.9, uBuild));
           col = mix(col, emberC, warmV * (0.55 + 0.35 * uBuild) * (0.85 + 0.15 * noise3(vDir * 140.0 + vec3(0.0, uTime * 0.6, 0.0))));
           glowInk = max(glowInk, warmV * (0.3 + 0.5 * uBuild));
+        }
+        // The first world: the glow a stone is caught in, ringed in gold dots round the vent, so it's plain where a
+        // stone must land. (Only its tiny gold mouth showed, and what "catch" meant was a riddle.)
+        if (uCatchR > 0.0) {
+          float cw = max(1.1 * uPx * px, 1e-5), dots = abs(fract(ang / 6.2832 * 40.0) - 0.5) / 40.0 * 6.2832 * far;
+          float cRing = (1.0 - smoothstep(cw * 0.8, cw * 2.0, length(vec2(far - uCatchR, dots)))) * onLand;
+          col = mix(col, vec3(0.97, 0.72, 0.3), cRing * 0.9);
+          col = mix(col, col * vec3(1.12, 1.0, 0.86) + vec3(0.03, 0.015, 0.0), (1.0 - smoothstep(uCatchR * 0.9, uCatchR, far)) * 0.35 * onLand); // (and the ground inside it a little warmer)
+          glowInk = max(glowInk, cRing * 0.7);
         }
         // And past half full, the gold spreads beyond the ring, widening, before anything pours.
         if (uBuild > 0.5) {
