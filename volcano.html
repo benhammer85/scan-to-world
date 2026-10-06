@@ -13,9 +13,9 @@
       #stage canvas { width: 100% !important; height: 100% !important; display: block; }
       .engraved { font-family: "Newsreader", "Iowan Old Style", Georgia, serif; color: #2e2118; }
       /* The era, as a map's title; and, at the end, the chart drawn round the world, on a canvas over it. */
-      #stage-name { position: fixed; top: calc(22px + env(safe-area-inset-top)); left: 0; right: 0; text-align: center; font-size: 19px; letter-spacing: 0.04em; pointer-events: none; }
+      #stage-name { position: fixed; top: calc(22px + env(safe-area-inset-top)); left: 92px; right: 92px; text-align: center; font-size: 19px; letter-spacing: 0.04em; pointer-events: none; }
       /* What to do, and how far it's come: always there, quietly, under the world's name. */
-      #goal { position: fixed; top: calc(52px + env(safe-area-inset-top)); left: 16px; right: 16px; text-align: center; font-size: 14px; letter-spacing: 0.03em; opacity: 0.7; pointer-events: none; font-variant-numeric: tabular-nums; }
+      #goal { position: fixed; top: calc(52px + env(safe-area-inset-top)); left: 92px; right: 92px; text-wrap: balance; text-align: center; font-size: 14px; letter-spacing: 0.03em; opacity: 0.7; pointer-events: none; font-variant-numeric: tabular-nums; }
       #frame { position: fixed; inset: 0; width: 100vw; height: 100dvh; pointer-events: none; }
       /* The key, at the foot: the six kinds by their signs, faint until living; drawn out a little when it's new. */
       #legend { position: fixed; bottom: calc(24px + env(safe-area-inset-bottom)); left: 26px; right: 26px; display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 14px; font-size: 12px; font-style: italic; pointer-events: none; }
@@ -54,6 +54,7 @@
       #begin .chapter { font-size: 13px; opacity: 0.55; margin-bottom: -4px; }
       #begin .chapter:empty { display: none; }
       #begin .first:empty, #begin .hands:empty { display: none; }
+      #begin .calmer { font-size: 12px; font-style: italic; letter-spacing: 0.03em; opacity: 0.6; margin-top: 2px; padding: 8px 14px; }
       #atlas .plates-head .play { font: italic 14px "Newsreader", "Iowan Old Style", Georgia, serif; color: #2e2118; background: none; border: none; text-decoration: underline; text-underline-offset: 4px; padding: 4px; cursor: pointer; }
       #begin .worlds { display: flex; flex-direction: row; flex-wrap: wrap; justify-content: center; align-items: center; max-width: min(100%, 30em); padding: 0 12px; box-sizing: border-box; margin-top: 4px; }
       #begin .worlds > button + button::before { content: '·'; margin-right: 12px; opacity: 0.7; }
@@ -135,7 +136,7 @@
     <button id="worlds" aria-label="All worlds"></button>
     <div id="atlas" class="engraved"><div class="head"><h2>Celestial Chart</h2><button class="close">back</button></div><div class="sky"></div><p class="credit">The figures after Johann Bayer's Uranometria, engraved by Alexander Mair, 1603</p><p class="plates-head"></p><div class="pages"></div><div class="view"><img alt=""></div><div class="pick"><div class="card"><div class="globe"></div><p class="t"></p><p class="k"></p><div class="acts"><button class="go">Play</button><button class="plates">its plates</button></div></div></div></div>
     <div id="system" class="engraved"><div class="head"><h2>A solar system</h2><button class="close">back</button></div><p class="about"></p><div class="plate"></div><div class="foot"></div></div>
-    <div id="begin" class="engraved loading"><p class="chapter"></p><p class="world"></p><h1 class="name"></h1><p class="first"></p><p class="second"></p><p class="hands"></p><button class="touch">Begin</button><div class="worlds"></div><button class="more-toggle">more</button><div class="more" hidden></div></div>
+    <div id="begin" class="engraved loading"><p class="chapter"></p><p class="world"></p><h1 class="name"></h1><p class="first"></p><p class="second"></p><p class="hands"></p><button class="touch">Begin</button><button class="calmer" hidden>or play without tilting the phone</button><div class="worlds"></div><button class="more-toggle">more</button><div class="more" hidden></div></div>
     <script type="module" src="/src/volcano/main.ts"></script>
   </body>
 </html>

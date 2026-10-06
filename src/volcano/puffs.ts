@@ -162,7 +162,8 @@ export class Puffs {
             // (The grey only once a puff has risen: at the vent, the newest piled into a grey ball over the glow.)
             // (Smoke in three plain stages, by vDark: white steam (0), grey with ash (0.5), black, heavy with ash
             // (1); from the vent's mouth up, darkest at its foot as a real column is.)
-            float gS = smoothstep(0.1, 0.5, vDark), bS = smoothstep(0.52, 0.78, vDark); // (black by the brink, when the phone shudders)
+            float rdy = step(1.5, vDark), stg = vDark - 2.0 * rdy; // (past 2: both things a burst wants are so)
+            float gS = smoothstep(0.1, 0.5, stg), bS = smoothstep(0.52, 0.78, stg); // (black by the brink, when the phone shudders)
             vec3 sShade = mix(mix(vec3(0.86, 0.84, 0.8), vec3(0.47, 0.45, 0.43), gS), vec3(0.09, 0.08, 0.08), bS);
             vec3 sLight = mix(mix(vec3(1.0, 0.99, 0.96), vec3(0.66, 0.64, 0.61), gS), vec3(0.22, 0.2, 0.19), bS);
             vec3 cShade = vTint < 0.5 ? vec3(0.72, 0.8, 0.86) : vTint < 1.5 ? shade : sShade;
@@ -175,7 +176,11 @@ export class Puffs {
               // Engraved, so it reads on pale ground: white steam outlined in fine ink round each billow;
               // grey stippled in dots, as an engraver tones a middle grey; black solid.
               float ring = (1.0 - smoothstep(0.0, 1.6 / max(vPx, 1.0) + 0.04, abs(d - edge))) * (1.0 - smoothstep(0.4, 0.9, vLife));
-              c = mix(c, vec3(0.3, 0.26, 0.22), ring * mix(0.75, 0.3, gS) * (1.0 - bS));
+              c = mix(c, vec3(0.3, 0.26, 0.22), ring * mix(0.75, 0.3, gS) * (1.0 - bS) * (1.0 - rdy));
+              // Ready, both ways: the outline gold, a little bolder, the one sign for "now".
+              float ringG = (1.0 - smoothstep(0.0, 2.4 / max(vPx, 1.0) + 0.06, abs(d - edge))) * (1.0 - smoothstep(0.5, 0.95, vLife));
+              c = mix(c, c * vec3(1.18, 0.98, 0.72) + vec3(0.1, 0.06, 0.0), rdy * 0.6); // (and warmed through, so a whole column says it, not only the edges, which overlap and hide)
+              c = mix(c, vec3(0.95, 0.68, 0.22), ringG * rdy * 0.95);
               vec2 sc = gl_PointCoord * vPx / 2.6, sf = fract(sc) - 0.5;
               float sdot = 1.0 - smoothstep(0.22, 0.34, length(sf + 0.15 * (vec2(h2(floor(sc) + 3.0), h2(floor(sc) + 7.0)) - 0.5)));
               c = mix(c, vec3(0.2, 0.18, 0.17), sdot * gS * (1.0 - bS) * 0.55);

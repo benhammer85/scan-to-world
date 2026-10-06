@@ -39,6 +39,7 @@ export const PRINT_FUNCTIONS = /* glsl */ `
   #define uFeedingGlow (0.4 + 0.6 * uFeeding)
   uniform vec3 uVent;
   uniform float uVentMark;
+  uniform vec3 uCreepTo; uniform float uCreepOn; // (where the volcano is creeping to, and how much to show it)
   uniform float uCatchR; // (the first world: the glow a stone is caught in)
   uniform float uHollow; // (the hollow world: how empty the chamber under the vent is)
   // Craters, as the charts draw them (see 'Craters' below): each one's middle and width, how long since it was dug, and the light in the world's own frame.
@@ -48,6 +49,7 @@ export const PRINT_FUNCTIONS = /* glsl */ `
   uniform vec3 uLightObj;
   uniform vec3 uBlock, uBlockDeep; // the woodblock's colours: vermilion, or on the ice moons, water's blues
   uniform vec3 uInkDeep, uInkMid, uInkHot, uInkOver, uInkPale, uInkCold, uInkAsh; // the print's inks (linear): its dark, middle and hot bands, the two overprinted, the palest, what a burp's clots cool to, and its ash
+  float hLumC(vec3 c) { return smoothstep(0.42, 0.22, dot(c, vec3(0.3, 0.59, 0.11))); } // (1 on dark ground, where a mark is drawn pale)
   // Plates, as a crust breaks into them: how far a point is from the nearest seam between cells
   // (the second-nearest cell's distance less the nearest's), and the nearest cell's own number.
   vec2 hash22(vec2 p) { vec3 q = fract(vec3(p.xyx) * vec3(0.1031, 0.1030, 0.0973)); q += dot(q, q.yzx + 33.33); return fract((q.xx + q.yz) * q.zy); }
@@ -766,6 +768,26 @@ const PRINT = (q: boolean) => /* glsl */ `
           emberC = mix(emberC, yel, smoothstep(0.6, 0.9, uBuild));
           col = mix(col, emberC, warmV * (0.55 + 0.35 * uBuild) * (0.85 + 0.15 * noise3(vDir * 140.0 + vec3(0.0, uTime * 0.6, 0.0))));
           glowInk = max(glowInk, warmV * (0.3 + 0.5 * uBuild));
+        }
+        // Where the volcano is creeping to: a faint dotted trail along the ground from it, ending in a small open ring,
+        // so a turn is seen to have worked at once. (The volcano creeps slowly, and with nothing to show the turn
+        // had taken, players swiped again and again.)
+        if (uCreepOn > 0.02) {
+          vec3 cA = uVent, cB = normalize(uCreepTo), cn = cross(cA, cB);
+          float cl = length(cn);
+          if (cl > 1e-4) {
+            cn /= cl;
+            float off = asin(clamp(dot(vDir, cn), -1.0, 1.0)), arc = acos(clamp(dot(cA, cB), -1.0, 1.0));
+            vec3 onC = normalize(vDir - cn * dot(vDir, cn));
+            float t = atan(dot(cross(cA, onC), cn), dot(cA, onC)); // (how far along, from the volcano)
+            float cdw = max(1.6 * uPx * px, 1e-5), sp = 0.03;
+            float dotsC = 1.0 - smoothstep(cdw * 0.7, cdw * 1.7, length(vec2(off, (fract(t / sp) - 0.5) * sp)));
+            dotsC *= step(0.035, t) * step(t, arc - 0.02) * (0.45 + 0.55 * t / max(arc, 1e-3));
+            float endR = max(0.012, 4.0 * px), dEnd = acos(clamp(dot(vDir, cB), -1.0, 1.0));
+            float endRing = 1.0 - smoothstep(cdw * 0.5, cdw * 1.5, abs(dEnd - endR));
+            float creep = max(dotsC, endRing) * uCreepOn * onLand;
+            col = mix(col, mix(vec3(0.2, 0.16, 0.13), vec3(0.95, 0.84, 0.64), max(smoothstep(0.3, 0.6, cov), hLumC(col))), creep * 0.85); // (dark dots, pale on dark ground)
+          }
         }
         // The first world: the glow a stone is caught in, ringed in gold dots round the vent, so it's plain where a
         // stone must land. (Only its tiny gold mouth showed, and what "catch" meant was a riddle.)

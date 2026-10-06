@@ -261,7 +261,7 @@ const lavaClock = { value: 0 }, pxRatio = { value: 1 };
 /** The craters for the print's shader (the latest 64 of them), and the light in the world's own frame, so a crater's shadow falls the right way however it's turned. */
 const CRATERS = 64, craterAt = Array.from({ length: CRATERS }, () => new THREE.Vector4()), craterAge = new Float32Array(CRATERS), craterCount = { value: 0 };
 /** Where the vent is (the world's own frame), and whether it's feeding lava (the engraving's dashes stream while it is). */
-const flash = { value: 0 }, ventObj = new THREE.Vector3(0, 0, 1), fed = { value: 0 }, building = { value: 0 }, hollowU = { value: 0 }, spray = { value: 0 }, drift = { value: 0 }, burp = { value: -1 }, burpSize = { value: 1 }, burpSeed = { value: 0 }, burpDir = { value: 0 }, gold = { value: 0 };
+const flash = { value: 0 }, ventObj = new THREE.Vector3(0, 0, 1), fed = { value: 0 }, building = { value: 0 }, hollowU = { value: 0 }, creepTo = new THREE.Vector3(0, 0, 1), creepOn = { value: 0 }, spray = { value: 0 }, drift = { value: 0 }, burp = { value: -1 }, burpSize = { value: 1 }, burpSeed = { value: 0 }, burpDir = { value: 0 }, gold = { value: 0 };
 let driftAt = 0, burpAt = -1, nextBurp = 0, burst = true;
 const LIGHT_VIEW = new THREE.Vector3(-0.55, 0.6, 0.6).normalize(), lightObj = new THREE.Vector3(), unturn = new THREE.Quaternion();
 function cratering(): void {
@@ -272,6 +272,10 @@ function cratering(): void {
   ventObj.set(planet.plume.x, planet.plume.y, planet.plume.z).normalize();
   // (How near the vent is to giving way: the ground round it strains and its cracks glow.)
   building.value = LAMP || planet.pouring ? 0 : Math.min(1, planet.pressure / Math.max(1e-6, planet.capNow));
+  // (Where the volcano is creeping to, on the worlds where it follows whatever is on top: so a turn is seen to have
+  // worked at once, and the player waits for it rather than swiping again.)
+  { const t = planet.target, far = t ? Math.acos(Math.max(-1, Math.min(1, ventObj.dot(creepTo.set(t.x, t.y, t.z).normalize())))) : 0;
+    creepOn.value += ((t && planet.k.rises > 0 && !LAMP && !ending && far > 0.06 ? 1 : 0) - creepOn.value) * 0.08; }
   hollowU.value += ((ending ? 0 : planet.hollowness) - hollowU.value) * 0.1; // (the hollow world: how empty the chamber under the vent is, for its ring cracks)
   fed.value += ((planet.erupting || planet.pouring || planet.molten > 0.01 ? 1 : 0.25) - fed.value) * 0.05;
   // (An eruption's splatter: thrown out quickly as it starts, settling slowly once it's done.)
@@ -332,6 +336,8 @@ material.onBeforeCompile = (shader) => {
   shader.uniforms.uFeeding = fed;
   shader.uniforms.uBuild = building;
   shader.uniforms.uHollow = hollowU;
+  shader.uniforms.uCreepTo = { value: creepTo };
+  shader.uniforms.uCreepOn = creepOn;
   shader.uniforms.uCatchR = { value: WORLD.goal === 'gather' ? 2 * Math.asin(Math.min(1, planet.k.warmth * Math.sqrt(Math.LN2) / 2)) : 0 }; // (the glow a stone is caught in, ringed: where warmth is a half)
   shader.uniforms.uVentMark = { value: LAMP ? 0 : 1 }; // (the vent marked on the map, as a chart marks a volcano)
   shader.uniforms.uFlash = flash;
@@ -1432,12 +1438,12 @@ const TIP: Record<string, string> = {
   basins: 'Turn a basin to the top and pour into it.',
   height: BREATHE ? 'Lava pours out by itself, down the screen. Turn the planet now and then, so it builds up on every side.' : 'Tip gently, a different way each time, so it builds up on every side.',
   cover: 'Pour over the grey ice, turning the planet to reach more of it. Bursts spread frost that counts too.',
-  plumes: `Wait for high tide. Then ${BURST}. Each time, move outside the old rings.`,
-  feed: `The giant is at the top left. Lean the volcano towards it until its ring darkens. ${BURST_}. The ring fades, so keep feeding it.`,
+  plumes: `Wait for high tide. Then ${BURST}. Each time, move outside the old rings The smoke's edge turns gold when it's time.`,
+  feed: `The giant is at the top left. Lean the volcano towards it until its ring darkens. ${BURST_}. The ring fades, so keep feeding it The smoke's edge turns gold when it's time.`,
   round: 'Turn a speckled hollow to the top and pour into it. Lava on high ground makes it lumpier.',
   ridge: 'The spin carries lava to the dotted equator. Turn a bare stretch to the top: the volcano creeps there.',
   lamp: 'Blobs float to the small ring, which marks the top. Turn the dotted shore up there. Let blobs grow big, but not too big, or they burst.',
-  calm: `Turn the dotted ring to the top so the volcano sits on it. Then ${BURST}. The tumbling builds again, so keep going.`,
+  calm: `Turn the dotted ring to the top so the volcano sits on it. Then ${BURST}. The tumbling builds again, so keep going The smoke's edge turns gold when it's time.`,
   bank: BREATHE ? 'Turn the world so the dotted bank is below the volcano. Pour the same way again and again: fresh crust lets lava run further.' : 'Tilt towards the dotted bank, the same way again and again: fresh crust lets lava run further.',
   orbit: BREATHE ? 'Let it pour to build a tall cone. Then hold until the smoke turns dark, and let go. The longer you hold, the more rock flies up.' : 'Pour first to build a tall cone. Then keep level until the smoke turns dark, and tilt. The longer you wait, the more rock flies up.',
   hearth: 'Life gathers on warm new rock and fades as it cools. Pour beside the green, never on it.',
@@ -1450,7 +1456,7 @@ const TIP: Record<string, string> = {
   gather: 'A pale dotted circle shows where each stone will land. Turn it to the top: the gold ring follows, and a stone landing inside the gold ring is caught. No need to pour.',
   oxygen: 'Life in shallow water makes oxygen. Raise the sea floor to just under the surface, then move on: lava kills the life it covers.',
   chaos: BREATHE ? "Hold for a few seconds, and let go before the smoke turns grey. A burst won't break the ice. Move away from the last field each time." : "Hold a finger on the world for a few seconds, and lift it before the smoke turns grey. Pouring or a burst won't break the ice. Move away from the last field each time.",
-  streaks: `Wait until the sun is over the volcano, then ${BURST}. For the next one, move outside the dotted ring.`,
+  streaks: `Wait until the sun is over the volcano, then ${BURST}. For the next one, move outside the dotted ring The smoke's edge turns gold when it's time.`,
   snow: 'Pour on the sunlit side, under the star. The lava boils away and falls just inside the night.',
 };
 /** A world's own tip, where its aim is shared with others but the way to it isn't. */
@@ -1827,16 +1833,24 @@ let shownEra: Era = 'young';
 const eraFrom: { name: string; from: number }[] = [{ name: ERAS.young, from: 0 }];
 const queue: string[] = [];
 let showingUntil = 0;
+// (One line at a time, and no more than one every ten seconds or so, a quiet stretch between them, so the foot
+// of the page is calm: back to back, they came in a stream. A repeat is let go, and if several gather, only the
+// newest two are kept.)
+let quietUntil = 0;
 function announce(text: string): void {
+  if (queue.includes(text) || $('event').textContent === text && seconds < showingUntil) return;
   queue.push(text);
+  if (queue.length > 2) queue.splice(0, queue.length - 2);
 }
 function showNext(): void {
   const e = $('event');
   if (seconds < showingUntil) return;
-  if (!queue.length) { e.classList.remove('shown'); return; }
+  e.classList.remove('shown');
+  if (!queue.length || seconds < quietUntil) return;
   e.textContent = queue.shift()!;
   e.classList.add('shown');
-  showingUntil = seconds + 3.2;
+  showingUntil = seconds + 5;
+  quietUntil = seconds + 10;
 }
 /** The key at the foot: the six kinds by their signs, faint until the kind is living, then inked. */
 const kindEls = KINDS.map((k) => {
@@ -1863,6 +1877,13 @@ function words(): void {
 
 // ---------------------------------------------------------------- what happens, seen and felt
 const tallied = { ...planet.tally };
+/** The worlds where a burst is never the way (Europa's held release, a white peak's rest, the hollow world's ground). */
+const NO_BURST = WORLD.goal === 'chaos' || WORLD.goal === 'white' || planet.k.hollow > 0;
+/** On the tumbling moon: whether the volcano sits on the tumble's equator, where an eruption calms it most. */
+function onTumbleRing(): boolean {
+  const w = planet.spinNow, p = planet.plume, r = Math.hypot(w.x, w.y, w.z);
+  return r > 1e-6 && (1 - Math.abs(w.x * p.x + w.y * p.y + w.z * p.z) / r) ** 2 > 0.6;
+}
 let steamIn = 0, sparkIn = 0, smokeIn = 0, momentAt = -100, wasBrink = false;
 const UPWARD = new THREE.Vector3(), INVERSE_RIGHT = new THREE.Vector3();
 function effects(dt: number): void {
@@ -1931,7 +1952,7 @@ function effects(dt: number): void {
   // (And on Io, the dark column is for a burst that would be a great plume, which the tide decides as much as the pressure.)
   const share = Math.min(1, planet.pressure / planet.capNow), brink = planet.pressure > planet.capNow * 0.85;
   // On the brink, a long low shudder in the hand, once.
-  if (brink && !wasBrink && !LAMP && !planet.pouring) feel([70, 60, 90]);
+  if (brink && !wasBrink && !LAMP && !planet.pouring && !NO_BURST) feel([70, 60, 90]);
   wasBrink = brink;
   const full = planet.k.great > 0 ? planet.throwOf(planet.pressure) >= planet.k.great : planet.bursting;
   if (QUIET) {
@@ -1944,7 +1965,13 @@ function effects(dt: number): void {
       // Three plain stages, as real smoke reads: white steam (pour), grey with ash once letting it out would
       // burst (0.5), black, heavy with ash, as the cone nears what it can hold (1). (Graded together, grey and
       // dark were hard to tell apart.)
-      const stage = Math.max(0.5 * THREE.MathUtils.smoothstep(ready, 0.88, 1), share > 0.75 ? 0.5 + 0.5 * Math.min(1, (share - 0.75) / 0.2) : 0);
+      let stage = Math.max(0.5 * THREE.MathUtils.smoothstep(ready, 0.88, 1), share > 0.75 ? 0.5 + 0.5 * Math.min(1, (share - 0.75) / 0.2) : 0);
+      // (Where a burst is never the way, the smoke stops at a gentle grey: going on to black, it urged one.)
+      if (NO_BURST) stage = Math.min(stage, 0.5);
+      // Where a burst wants two things at once (grey smoke, and the sun, the giant's way, the tumble's ring, or the
+      // tide), a thin gold edge on the smoke once both are so: one sign for "now".
+      const both = WORLD.goal === 'streaks' ? planet.dayAt(planet.plumeVertex) > 0.2 : WORLD.goal === 'feed' ? !!planet.towardGiant : WORLD.goal === 'calm' ? onTumbleRing() : WORLD.goal === 'plumes';
+      if (stage >= 0.5 && both) stage += 2;
       const lean = { x: up.x + 0.3 * INVERSE_RIGHT.x, y: up.y + 0.3 * INVERSE_RIGHT.y, z: up.z + 0.3 * INVERSE_RIGHT.z };
       // (From the vent's mouth itself, so the column stands on it: started a little off it, the way it
       // leaned, and coming in faint, it seemed to float on its own.)
@@ -2491,6 +2518,13 @@ if (RUN === null) footLink(FREE ? 'with the aim' : 'explore', () => {
   if (FREE) q.delete('free'); else q.set('free', '');
   location.search = q.toString().replace(/free=(&|$)/, 'free$1');
 });
+// (On a phone's first worlds, the calm way offered under Begin itself: tipping asks the phone held level, a strain,
+// and the quiet link at the foot went unseen.)
+if (!COMPUTER && !LAMP && !BREATHE && NEWCOMER) {
+  const c = $('begin').querySelector('.calmer') as HTMLElement;
+  c.hidden = false;
+  c.addEventListener('pointerdown', (e) => { e.stopPropagation(); remember('volcano.controls', 'breathe'); location.reload(); });
+}
 // The calm way to play, or tipping: on a phone (a computer always breathes), not on the glass world.
 if (!COMPUTER && !LAMP) footLink(BREATHE ? 'tilt to pour' : 'breathe', () => { remember('volcano.controls', BREATHE ? 'tip' : 'breathe'); location.reload(); });
 ($('begin').querySelector('.more-toggle') as HTMLElement).hidden = true;

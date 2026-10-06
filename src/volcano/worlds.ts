@@ -125,7 +125,7 @@ export const WORLDS: World[] = [
       talus: 1.65, flow: 8, channel: 2, coolLand: 1, // (its gravity makes slopes stand steeper still; and it sets fast, so poured lava stacks into a mountain rather than running off)
       drift: 0, rises: 0, heat: 250, rising: 0.8, steady: true, // (the heat comes back quickly: the first world, so waiting is short)
       impactEvery: [60, 100], impactWarning: 14, impactHeat: 6,
-      stormEvery: [60, 100], stormWarning: 12, stormLasts: 22, stormWear: 0.006,
+      stormEvery: [110, 160], stormWarning: 12, stormLasts: 22, stormWear: 0.003, softer: 7, // (rarer, and wearing mostly loose ash: poured rock lasts, so a storm doesn't feel like losing)
     },
     palette: {
       paper: '#ead3b4', basalt: '#a67a5c', ash: '#c9ad92', lava: '#b8563c', deepLava: '#8f3b28',
@@ -252,8 +252,8 @@ export const WORLDS: World[] = [
       waves: 0, rain: 0, sink: 0, swell: 0, life: false,
       magma: 0.012, impactMelt: 0.02, // (molten at first, crusting over as it cools; each stone melts its crater again)
       talus: 2.2, flow: 10, channel: 2, coolLand: 0.05,
-      drift: 0, rises: 0.07, heat: 300, rising: 1.0, steady: true,
-      impactEvery: [9, 15], impactWarning: 11, impactNear: 0.75, impactHeat: 3, crater: 0.07, craterDepth: 0.04,
+      drift: 0, rises: 0.12, heat: 420, rising: 1.0, steady: true, // (the glow follows a turn quickly, so a catch is one turn, not a chase)
+      impactEvery: [18, 24], impactWarning: 12, impactNear: 0.75, // (a breath between stones: one unhurried turn each, then a rest) impactHeat: 3, crater: 0.07, craterDepth: 0.04,
     },
     palette: {
       paper: '#d9cbb8', basalt: '#8a7a6c', ash: '#a69888', lava: '#c25a36', deepLava: '#94402a',
@@ -261,7 +261,7 @@ export const WORLDS: World[] = [
       landInk: '#4f3e30', landInkHigh: '#33271c', pencil: '#b9a892', seaInk: '#5b82a3',
     },
     goal: 'gather',
-    gather: 10,
+    gather: 8, // (eight, with a breath between each: ten, so far apart, outlasted the fire)
   },
   {
     id: 'young',
@@ -334,7 +334,7 @@ export const WORLDS: World[] = [
     first: 'Open water, and a fire far below.',
     then: 'The sea floor drifts over the fire, leaving a trail of islands.',
     second: 'Tip the world as the fire moves, and islands rise along the line.',
-    rules: { drift: 0.0125, rises: 0, heat: 740, rising: 1.4, steady: true, reseed: 15, floor: -0.22, sink: 0.00015, impactEvery: [60, 100], atolls: true },
+    rules: { drift: 0.0125, rises: 0, heat: 740, rising: 1.4, steady: true, reseed: 15, floor: -0.22, sink: 0.0001, impactEvery: [60, 100], atolls: true }, // (islands sinking slowly, so the chain is built steadily, not raced)
     palette: {
       paper: '#ecdfc2', basalt: '#9a8a76', ash: '#b3ada2', lava: '#b8563c', deepLava: '#8f3b28',
       shallow: '#d4e3ec', deep: '#b1c8d8',
@@ -380,7 +380,7 @@ export const WORLDS: World[] = [
       waves: 0, rain: 0, sink: 0, swell: 0, life: false,
       talus: 2, flow: 18, channel: 1, coolLand: 0.45,
       drift: 0, rises: 0.03, heat: 380, rising: 1.3, steady: true,
-      burns: 25,
+      burns: 45, // (glowing long enough that a steady pour one way does most of it, without redirecting every moment)
       impactEvery: [0, 0],
     },
     palette: {
@@ -533,7 +533,7 @@ export const WORLDS: World[] = [
       // (Airless, as the other moons are: it grew life, a sea and rain without these.)
       waves: 0, rain: 0, sink: 0, swell: 0, life: false, drift: 0,
       rises: 0.03, heat: 560, rising: 1.3, steady: true, impactEvery: [70, 110],
-      tumble: 0.3, tumbleGrow: 0.0025, tumbleKick: 0.4,
+      tumble: 0.3, tumbleGrow: 0.0018, tumbleKick: 0.4, // (once calmed, slow to build again, so holding it takes patience, not effort)
     },
     palette: {
       // Pale, porous rock, a little warm.
