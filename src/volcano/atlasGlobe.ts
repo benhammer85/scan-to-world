@@ -353,9 +353,9 @@ export function openGlobe(box: HTMLElement, pages: Page[], here: WorldId, pick: 
 
 /**
  * Every world as it looks when first come to, drawn by the game itself (a frame of each, taken when the
- * game was built: see README), small and inlined, so an unplayed world is shown as itself, not a token.
+ * game was built: see README), small, so an unplayed world is shown as itself, not a token.
  */
-const PORTRAITS = import.meta.glob<string>('./portraits/*.webp', { eager: true, query: '?inline', import: 'default' });
+const PORTRAITS = import.meta.glob<string>('./portraits/*.webp', { eager: true, query: '?url', import: 'default' });
 const portraitFor = (id: WorldId): string | undefined => PORTRAITS[`./portraits/${id}.webp`];
 
 /**
