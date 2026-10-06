@@ -570,34 +570,9 @@ export const WORLDS: World[] = [
     farKm: 30,
   },
   {
-    id: 'hollow',
-    kind: 'A hollow world',
-    numeral: 'XX',
-    title: 'A hollow world',
-    first: 'A thin crust over a shallow sea of magma.',
-    then: 'Empty the magma under a volcano too fast and the ground above it falls in, as Kilauea\'s summit did in 2018.',
-    second: 'Build in short pours, and let the ground rest between them.',
-    rules: {
-      g: 0.5,
-      terrain: 'mars', basins: 0, craters: 12, floor: 0.05, rough: 0.02,
-      waves: 0, rain: 0, sink: 0, life: false,
-      talus: 1.6, flow: 8, channel: 2, coolLand: 1,
-      drift: 0, rises: 0, heat: 300, rising: 0.9, steady: true,
-      hollow: 14, hollowRefill: 0.025, hollowDepth: 3, // (two or three pours one after another empty it; it fills again in about half a minute)
-      impactEvery: [0, 0],
-    },
-    palette: {
-      paper: '#e4dccb', basalt: '#8f857a', ash: '#bdb3a4', lava: '#b8563c', deepLava: '#8f3b28',
-      shallow: '#d4e3ec', deep: '#b1c8d8',
-      landInk: '#5c5046', landInkHigh: '#3d342c', pencil: '#b9ad9c', seaInk: '#5b82a3',
-    },
-    goal: 'height',
-    height: { target: 20, kmPerUnit: 40 },
-  },
-  {
     id: 'magma',
     kind: 'A lava world',
-    numeral: 'XXI',
+    numeral: 'XX',
     title: 'A lava world',
     first: 'One face always to its star, and that face molten.',
     then: 'On worlds like this, rock boils into the air on the day side and falls as rock snow in the night.',
@@ -622,7 +597,7 @@ export const WORLDS: World[] = [
   {
     id: 'dust',
     kind: 'A world boiling away',
-    numeral: 'XXII',
+    numeral: 'XXI',
     title: 'A disintegrating planet',
     first: 'So close to its star that it is boiling away.',
     then: 'Worlds like this trail a tail of dust, like a comet, and grow smaller every orbit.',
@@ -648,7 +623,7 @@ export const WORLDS: World[] = [
   {
     id: 'spin',
     kind: 'A spinning world',
-    numeral: 'XXIII',
+    numeral: 'XXII',
     title: 'A spinning world',
     first: 'Turning fast, swollen at its middle.',
     then: 'Its spin flings whatever flows out toward its middle.',
@@ -673,7 +648,7 @@ export const WORLDS: World[] = [
   {
     id: 'deep',
     kind: 'A deep ocean world',
-    numeral: 'XXIV',
+    numeral: 'XXIII',
     title: 'A deep ocean world',
     first: 'Cold, dark water, with fire on the sea floor.',
     then: 'Lava cools fast in deep water, but inside its own crust it stays hot and runs on.',
@@ -697,7 +672,7 @@ export const WORLDS: World[] = [
   {
     id: 'lamp',
     kind: 'A world of glass',
-    numeral: 'XXV',
+    numeral: 'XXIV',
     title: 'A world of glass',
     first: 'Glass, and glowing rock that rises.',
     then: 'Hot rock here is lighter than the deep, so it floats.',
@@ -718,19 +693,44 @@ export const WORLDS: World[] = [
     goal: 'lamp',
     pool: 140,
   },
+  {
+    id: 'hollow',
+    kind: 'A hollow world',
+    numeral: 'XXV',
+    title: 'A hollow world',
+    first: 'A thin crust over a shallow sea of magma.',
+    then: 'Empty the magma under a volcano too fast and the ground above it falls in, as Kilauea\'s summit did in 2018.',
+    second: 'Build in short pours, and let the ground rest between them.',
+    rules: {
+      g: 0.5,
+      terrain: 'mars', basins: 0, craters: 12, floor: 0.05, rough: 0.02,
+      waves: 0, rain: 0, sink: 0, life: false,
+      talus: 1.6, flow: 8, channel: 2, coolLand: 1,
+      drift: 0, rises: 0, heat: 300, rising: 0.9, steady: true,
+      hollow: 14, hollowRefill: 0.025, hollowDepth: 3, // (two or three pours one after another empty it; it fills again in about half a minute)
+      impactEvery: [0, 0],
+    },
+    palette: {
+      paper: '#e4dccb', basalt: '#8f857a', ash: '#bdb3a4', lava: '#b8563c', deepLava: '#8f3b28',
+      shallow: '#d4e3ec', deep: '#b1c8d8',
+      landInk: '#5c5046', landInkHigh: '#3d342c', pencil: '#b9ad9c', seaInk: '#5b82a3',
+    },
+    goal: 'height',
+    height: { target: 20, kmPerUnit: 40 },
+  },
 ];
 
 /**
  * The worlds in five chapters, each teaching one thing (see the README): pouring and turning; one
  * world through its ages (ages.ts); Earth's strangest real volcanoes; bursts; and placing and
- * steering, last the lava lamp.
+ * steering, the lava lamp, and last the hollow world, where pouring too fast sets you back.
  */
 export const CHAPTERS: { numeral: string; title: string; worlds: WorldId[] }[] = [
   { numeral: 'I', title: 'Our neighbours', worlds: ['mars', 'moon', 'ice', 'asteroid', 'rogue'] },
   { numeral: 'II', title: 'One world, through time', worlds: ['first', 'young', 'archean', 'snowball', 'ocean'] },
   { numeral: 'III', title: 'Strange fires', worlds: ['lengai', 'ijen', 'tonga'] },
-  { numeral: 'IV', title: 'Pressure', worlds: ['io', 'europa', 'enceladus', 'triton', 'tumble', 'mercury', 'hollow'] },
-  { numeral: 'V', title: 'Far worlds', worlds: ['magma', 'dust', 'spin', 'deep', 'lamp'] },
+  { numeral: 'IV', title: 'Pressure', worlds: ['io', 'europa', 'enceladus', 'triton', 'tumble', 'mercury'] },
+  { numeral: 'V', title: 'Far worlds', worlds: ['magma', 'dust', 'spin', 'deep', 'lamp', 'hollow'] },
 ];
 
 /** The chapter a world is in. */
