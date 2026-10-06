@@ -330,6 +330,7 @@ material.onBeforeCompile = (shader) => {
   shader.uniforms.uVent = { value: ventObj };
   shader.uniforms.uFeeding = fed;
   shader.uniforms.uBuild = building;
+  shader.uniforms.uVentMark = { value: LAMP ? 0 : 1 }; // (the vent marked on the map, as a chart marks a volcano)
   shader.uniforms.uFlash = flash;
   shader.uniforms.uDark = { value: DARK_LAVA ? 1 : 0 };
   shader.uniforms.uFlows = { value: FLOWS ? 1 : 0 };
@@ -1889,12 +1890,16 @@ function effects(dt: number): void {
     // grey once letting it out would burst (on Io, burst as a great plume); dark only at the brink.
     // Small puffs in a close stream, so it's one column, leaning with the breeze.
     if (!LAMP && !planet.over && !planet.pouring && planet.pressure > 0.05 && smokeIn <= 0) {
-      smokeIn = 0.14 + 0.22 * (1 - share);
+      smokeIn = 0.06 + 0.08 * (1 - share); // (close together, so the column is unbroken from the mouth up)
       const ready = planet.k.great > 0 ? planet.throwOf(planet.pressure) / planet.k.great : planet.pressure / planet.k.explosive;
-      const grey = 0.75 * THREE.MathUtils.smoothstep(ready, 0.88, 1);
-      const dark = Math.max(grey, Math.min(1, Math.max(0, (share - 0.75) / 0.2))), lean = { x: up.x + 0.3 * INVERSE_RIGHT.x, y: up.y + 0.3 * INVERSE_RIGHT.y, z: up.z + 0.3 * INVERSE_RIGHT.z };
-      // (Starting a little way off the vent, the way it leans, so the glow at the vent's mouth isn't under it.)
-      puffs.add('smoke', p[v0 * 3] + lean.x * 0.05, p[v0 * 3 + 1] + lean.y * 0.05, p[v0 * 3 + 2] + lean.z * 0.05, 0.25 + 1.3 * share, Math.random, lean, 0, dark * dark);
+      // Three plain stages, as real smoke reads: white steam (pour), grey with ash once letting it out would
+      // burst (0.5), black, heavy with ash, as the cone nears what it can hold (1). (Graded together, grey and
+      // dark were hard to tell apart.)
+      const stage = Math.max(0.5 * THREE.MathUtils.smoothstep(ready, 0.88, 1), share > 0.75 ? 0.5 + 0.5 * Math.min(1, (share - 0.75) / 0.2) : 0);
+      const lean = { x: up.x + 0.3 * INVERSE_RIGHT.x, y: up.y + 0.3 * INVERSE_RIGHT.y, z: up.z + 0.3 * INVERSE_RIGHT.z };
+      // (From the vent's mouth itself, so the column stands on it: started a little off it, the way it
+      // leaned, and coming in faint, it seemed to float on its own.)
+      puffs.add('smoke', p[v0 * 3], p[v0 * 3 + 1], p[v0 * 3 + 2], 0.25 + 1.3 * share + 0.5 * Math.max(0, stage - 0.5), Math.random, lean, 0, stage);
     }
   } else if (!LAMP && !planet.over && !planet.pouring && planet.pressure > 0.5 && smokeIn <= 0) {
     smokeIn = brink ? 0.14 : full ? 0.22 : 0.7 - 0.4 * Math.min(1, planet.pressure / VOLCANO.explosive);
@@ -2742,4 +2747,4 @@ renderer.setAnimationLoop(() => {
   turnedSince();
 });
 
-if (import.meta.env.DEV) (window as unknown as { volcano: unknown }).volcano = { atlas: (all: Page[]) => openAtlas(all), sky, haze, planet, held, keepsake: () => keepsakeOf(planet), pick: (id: WorldId) => atlasPick?.(id), portrait: () => { renderer.render(scene, camera); return portraitOf(renderer.domElement); }, group, base, renderer, scene, camera, puffs, ecology, islands, rotate, draw, save, world, frameCost, kindDots, chain: () => chain, aim: () => aimInk, lines: () => { lastLines = -1; redrawLines(1e6); }, life: () => { lastLife = -10; redrawLife(1e6); }, replayKeep: () => keepReplayFrame(), replayCount: () => replayFrames.length, replaying: () => (replaying ? replayShown : -1), settle: (d = 3.6) => { lift = 0; dist = d; begunAt = -100; zoomedAt = seconds; look(); } };
+if (import.meta.env.DEV) (window as unknown as { volcano: unknown }).volcano = { atlas: (all: Page[]) => openAtlas(all), sky, haze, planet, held, keepsake: () => keepsakeOf(planet), pick: (id: WorldId) => atlasPick?.(id), portrait: () => { renderer.render(scene, camera); return portraitOf(renderer.domElement); }, group, base, renderer, scene, camera, puffs, ecology, islands, rotate, draw, save, effects: (dt: number) => { effects(dt); puffs.update(dt); }, world, frameCost, kindDots, chain: () => chain, aim: () => aimInk, lines: () => { lastLines = -1; redrawLines(1e6); }, life: () => { lastLife = -10; redrawLife(1e6); }, replayKeep: () => keepReplayFrame(), replayCount: () => replayFrames.length, replaying: () => (replaying ? replayShown : -1), settle: (d = 3.6) => { lift = 0; dist = d; begunAt = -100; zoomedAt = seconds; look(); } };

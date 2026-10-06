@@ -38,6 +38,7 @@ export const PRINT_FUNCTIONS = /* glsl */ `
   uniform vec4 uSky; // (its star's direction, as seen, and w: 0 no star in it, 1 a star, 2 none at all, a rogue planet)
   #define uFeedingGlow (0.4 + 0.6 * uFeeding)
   uniform vec3 uVent;
+  uniform float uVentMark;
   // Craters, as the charts draw them (see 'Craters' below): each one's middle and width, how long since it was dug, and the light in the world's own frame.
   uniform vec4 uCrater[64];
   uniform float uCraterAge[64];
@@ -720,10 +721,29 @@ const PRINT = (q: boolean) => /* glsl */ `
           col = mix(col, mix(vec3(1.0, 0.62, 0.22), vec3(1.0, 0.95, 0.8), core), clamp(max(core, ring * onLand), 0.0, 1.0));
           glowInk = max(glowInk, max(core, ring * 0.7));
         }
-        // As the pressure builds, a spot of gold warms the ground at the vent, widening, before anything pours.
-        if (uBuild > 0.3) {
+        // The vent, marked as an engraved map marks a volcano: a small ring, its rim hatched outward in short
+        // strokes, so you always know where the heat is and the smoke has somewhere to rise from. (With
+        // nothing there before the first pour, the smoke seemed to come from nowhere.) Over running lava,
+        // pale, as the crater's lip.
+        if (uVentMark > 0.5) {
+          float vr = max(0.011, 5.0 * px), vlw = max(0.7 * uPx * px, 1e-5);
+          float rimV = 1.0 - smoothstep(vlw * 0.6, vlw * 1.6, abs(far - vr));
+          float tickA = abs(fract(ang / 6.2832 * 14.0) - 0.5) / 14.0 * 6.2832 * far; // (how far round, along the ground, from the nearest stroke)
+          float tick = (1.0 - smoothstep(vlw * 0.5, vlw * 1.4, tickA)) * step(vr, far) * (1.0 - smoothstep(vr * 1.45, vr * 1.6, far));
+          float mark = max(rimV, tick * 0.8) * onLand;
+          col = mix(col, mix(vec3(0.2, 0.16, 0.13) * uCrustTint * 1.6, vec3(0.86, 0.6, 0.38), cov), mark * 0.85);
+          // As the pressure builds, the mouth warms: a dull red ember inside the ring from the start,
+          // going orange, then gold, as it nears what the cone can hold.
+          float warmV = smoothstep(0.02, 0.15, uBuild) * (1.0 - smoothstep(vr * 0.55, vr * 0.85, far)) * onLand * (1.0 - cov);
+          vec3 emberC = mix(vec3(0.55, 0.12, 0.05), vec3(0.95, 0.42, 0.1), smoothstep(0.2, 0.6, uBuild));
+          emberC = mix(emberC, yel, smoothstep(0.6, 0.9, uBuild));
+          col = mix(col, emberC, warmV * (0.55 + 0.35 * uBuild) * (0.85 + 0.15 * noise3(vDir * 140.0 + vec3(0.0, uTime * 0.6, 0.0))));
+          glowInk = max(glowInk, warmV * (0.3 + 0.5 * uBuild));
+        }
+        // And past half full, the gold spreads beyond the ring, widening, before anything pours.
+        if (uBuild > 0.5) {
           float spotR = (0.004 + 0.018 * uBuild) * (0.8 + 0.4 * noise3(vDir * 90.0));
-          float spot = smoothstep(0.3, 0.6, uBuild) * (1.0 - smoothstep(spotR - px, spotR + px, far)) * onLand * (1.0 - cov);
+          float spot = smoothstep(0.5, 0.8, uBuild) * (1.0 - smoothstep(spotR - px, spotR + px, far)) * onLand * (1.0 - cov);
           col = mix(col, yel * mix(vec3(1.0), col / paper, 0.5), spot * 0.55);
           glowInk = max(glowInk, spot * 0.5);
         }` : `col = mix(col, inkCol, cov * 0.97);

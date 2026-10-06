@@ -7,11 +7,11 @@
  * the dust a storm drives, stay dots. A fixed number of them, reused in turn, so there's never more
  * than the page can bear.
  *
- * Calm (the quiet print): smoke is the paper left bare, a cream a little lighter than the page, as a
- * print leaves smoke unprinted; steam a pale blue-white; only smoke at the brink (`dark`) and a burst's
- * ash are dark. Small puffs in a close stream, so they make one column, leaning with the breeze; and
- * the plume casts a faint shadow on the map, away from the light, further the higher it's risen, as a
- * map-maker shows height without perspective.
+ * Calm (the quiet print): smoke in three plain stages (`dark`): white steam outlined in fine ink, grey
+ * stippled, black solid; steam a pale blue-white; a burst's ash dark. Small puffs in a close stream from
+ * the vent's mouth, so they make one column standing on it, leaning with the breeze; and a burst's ash
+ * casts a faint shadow on the map, away from the light, further the higher it's risen, as a map-maker
+ * shows height without perspective.
  */
 import * as THREE from 'three';
 import { rimGlsl } from '../render/rim';
@@ -153,18 +153,33 @@ export class Puffs {
             float a = vAlpha * cover;
             if (a <= 0.01) discard;
             ${shadow ? `// (Only once it has risen, sliding out from under it: at the vent, the shadows of the newest puffs piled up into a dark ball.)
+            // (None for the vent's smoke: off to one side, its shadow read as a second column from somewhere else.)
+            if (vTint > 1.5) discard;
             gl_FragColor = vec4(0.3, 0.25, 0.2, a * (vTint < 1.5 && vTint > 0.5 ? 0.22 : 0.16) * smoothstep(0.03, 0.12, vRise));` : `vec3 shade = vTint < 0.5 ? vec3(0.32, 0.42, 0.5) : vTint < 1.5 ? vec3(0.06, 0.05, 0.05) : vec3(0.17, 0.15, 0.15);
             vec3 light = vTint < 0.5 ? vec3(0.72, 0.78, 0.8) : vTint < 1.5 ? vec3(0.26, 0.23, 0.21) : vec3(0.56, 0.5, 0.44);
             // (Calm, as the quiet print draws it: smoke the paper left bare, a cream a little lighter than
             // the page, darkening only at the brink; steam a pale blue-white; ash as it is.)
             // (The grey only once a puff has risen: at the vent, the newest piled into a grey ball over the glow.)
-            float darkNow = vDark * smoothstep(0.02, 0.09, vRise);
-            vec3 cShade = vTint < 0.5 ? vec3(0.72, 0.8, 0.86) : vTint < 1.5 ? shade : mix(vec3(0.82, 0.77, 0.69), vec3(0.16, 0.15, 0.14), darkNow);
-            vec3 cLight = vTint < 0.5 ? vec3(0.92, 0.96, 0.98) : vTint < 1.5 ? light : mix(vec3(0.97, 0.94, 0.87), vec3(0.36, 0.33, 0.3), darkNow);
+            // (Smoke in three plain stages, by vDark: white steam (0), grey with ash (0.5), black, heavy with ash
+            // (1); from the vent's mouth up, darkest at its foot as a real column is.)
+            float gS = smoothstep(0.1, 0.5, vDark), bS = smoothstep(0.52, 0.78, vDark); // (black by the brink, when the phone shudders)
+            vec3 sShade = mix(mix(vec3(0.86, 0.84, 0.8), vec3(0.47, 0.45, 0.43), gS), vec3(0.09, 0.08, 0.08), bS);
+            vec3 sLight = mix(mix(vec3(1.0, 0.99, 0.96), vec3(0.66, 0.64, 0.61), gS), vec3(0.22, 0.2, 0.19), bS);
+            vec3 cShade = vTint < 0.5 ? vec3(0.72, 0.8, 0.86) : vTint < 1.5 ? shade : sShade;
+            vec3 cLight = vTint < 0.5 ? vec3(0.92, 0.96, 0.98) : vTint < 1.5 ? light : sLight;
             shade = mix(shade, cShade, uCalm); light = mix(light, cLight, uCalm);
             // (On the ice moons a burst's ash is frost, as the ground draws it.)
             if (vTint > 0.5 && vTint < 1.5) { shade = mix(shade, vec3(0.5, 0.62, 0.72), uIce); light = mix(light, vec3(0.86, 0.92, 0.96), uIce); }
             vec3 c = mix(shade, light, lit);
+            if (uCalm > 0.5 && vTint > 1.5) {
+              // Engraved, so it reads on pale ground: white steam outlined in fine ink round each billow;
+              // grey stippled in dots, as an engraver tones a middle grey; black solid.
+              float ring = (1.0 - smoothstep(0.0, 1.6 / max(vPx, 1.0) + 0.04, abs(d - edge))) * (1.0 - smoothstep(0.4, 0.9, vLife));
+              c = mix(c, vec3(0.3, 0.26, 0.22), ring * mix(0.75, 0.3, gS) * (1.0 - bS));
+              vec2 sc = gl_PointCoord * vPx / 2.6, sf = fract(sc) - 0.5;
+              float sdot = 1.0 - smoothstep(0.22, 0.34, length(sf + 0.15 * (vec2(h2(floor(sc) + 3.0), h2(floor(sc) + 7.0)) - 0.5)));
+              c = mix(c, vec3(0.2, 0.18, 0.17), sdot * gS * (1.0 - bS) * 0.55);
+            }
             // Young, over lava, its underside is lit red from below.
             c = mix(c, vec3(0.26, 0.035, 0.015), 0.75 * vWarm * (1.0 - lit) * (1.0 - smoothstep(0.03, 0.22, vLife))); // (only the youngest, and only beneath: more turned them pink)
             gl_FragColor = vec4(c, a);`}
@@ -225,7 +240,7 @@ export class Puffs {
       p.life = 1.8 + rand() * 1.6; p.size = 0.0068 + 0.003 * rand(); p.grow = -0.0035;
     }
     else if (kind === 'haze') { p.life = 2.2 + rand() * 1.2; p.rise = 0.03 + 0.02 * rand(); p.size = 0.05 + 0.03 * rand(); p.grow = 0.05; }
-    else if (this.calm) { p.life = 5 + rand() * 2; p.rise = (0.08 + 0.04 * rand()) * strength; p.size = 0.005 + 0.004 * rand(); p.grow = 0.03 + 0.12 * strength; }
+    else if (this.calm) { p.life = 5 + rand() * 2; p.rise = (0.08 + 0.04 * rand()) * strength; p.size = 0.016 + 0.006 * rand(); p.grow = 0.04 + 0.15 * strength; } // (a little bigger, so it's read at a glance)
     else { p.life = 4.5 + rand() * 3; p.rise = (0.1 + 0.06 * rand()) * strength; p.size = 0.008 + 0.006 * rand(); p.grow = 0.18 + 0.1 * strength; }
   }
 
@@ -253,7 +268,7 @@ export class Puffs {
       this.size[i] = p.size + p.grow * f;
       // Coming in quickly, then fading slowly as it thins; smoke the strongest, so a wisp is seen.
       // (Billows come in quickly and then hold their tone, breaking up at the end in the shader; dots fade.)
-      this.alpha[i] = p.kind === 5 ? 0.95 * Math.min(1, f * 6) * (1 - f) ** 1.3 : p.kind === 6 ? 0.13 * Math.min(1, f * 3) * (1 - f) ** 1.5 : (this.calm && p.kind !== 3 ? (p.kind === 2 ? 0.9 : 0.6) : 1) * (p.kind === 3 ? 0.95 * (1 - f) ** 0.7 : p.kind === 4 ? 0.7 * Math.min(1, f * 5) * (1 - f) ** 1.2 : (p.kind === 1 ? 0.85 : p.kind === 0 ? 0.6 : 0.72) * (p.kind === 2 ? Math.min(1, f * 1.4) ** 1.5 : Math.min(1, f * 8)) * (p.kind === 2 || p.kind === 0 ? 1 - Math.max(0, (f - 0.5) / 0.5) ** 1.6 : 1)); // (smoke leaves the vent a faint wisp, not a ball; and thins away over its second half)
+      this.alpha[i] = p.kind === 5 ? 0.95 * Math.min(1, f * 6) * (1 - f) ** 1.3 : p.kind === 6 ? 0.13 * Math.min(1, f * 3) * (1 - f) ** 1.5 : (this.calm && p.kind !== 3 ? (p.kind === 2 ? 0.9 : 0.6) : 1) * (p.kind === 3 ? 0.95 * (1 - f) ** 0.7 : p.kind === 4 ? 0.7 * Math.min(1, f * 5) * (1 - f) ** 1.2 : (p.kind === 1 ? 0.85 : p.kind === 0 ? 0.6 : 0.72) * (p.kind === 2 ? (this.calm ? Math.min(1, f * 40) : Math.min(1, f * 1.4) ** 1.5) : Math.min(1, f * 8)) * (p.kind === 2 || p.kind === 0 ? 1 - Math.max(0, (f - 0.5) / 0.5) ** 1.6 : 1)); // (smoke leaves the vent a faint wisp, not a ball, except calm, where it stands on the vent at full strength; and thins away over its second half)
       this.tint[i] = p.kind;
       this.life[i] = f;
       this.warmth[i] = p.warm;
