@@ -34,24 +34,24 @@ export const TWISTS: Twist[] = [
   { id: 'none', name: 'as it is', words: '', rules: () => ({}) },
   {
     id: 'restless', name: 'a restless sky', words: 'Stones fall twice as often.',
-    rules: (r) => ({ impactEvery: [r.impactEvery[0] / 2, r.impactEvery[1] / 2] as [number, number] }), not: ['io', 'enceladus', 'lamp'],
+    rules: (r) => ({ impactEvery: [r.impactEvery[0] / 2, r.impactEvery[1] / 2] as [number, number] }), not: ['io', 'enceladus', 'lamp', 'first', 'lengai', 'ijen', 'hollow'], // (and none where no stones fall, or where catching them is the aim)
   },
   // (The pace of the heat, not how much: a quicker fire or a slower one, the same heat in all.
   // Not on the ocean world, whose heat travels the route at the crust's pace.)
   {
     id: 'hot', name: 'a quick fire', words: 'The heat comes a quarter faster, and held too long it bursts out sooner.',
-    rules: (r) => ({ rising: r.rising * 1.25, cap: r.cap * 0.8 }), not: ['ocean', 'io', 'lamp'],
+    rules: (r) => ({ rising: r.rising * 1.25, cap: r.cap * 0.8 }), not: ['ocean', 'io', 'lamp', 'first', 'triton'],
   },
   {
     id: 'cold', name: 'a slow fire', words: 'The heat comes slowly, over a longer fire.',
-    rules: (r) => ({ rising: r.rising * 0.8 }), not: ['ocean', 'enceladus'],
+    rules: (r) => ({ rising: r.rising * 0.8 }), not: ['ocean', 'enceladus', 'first', 'snowball'],
   },
   // (How lava runs and sets: thin, it runs far and sets late; thick, it piles up and sets soon.)
-  { id: 'thin', name: 'thin lava', words: 'Lava runs far and thin before it sets.', rules: (r) => ({ flow: r.flow * 1.6, coolLand: r.coolLand * 0.6 }), not: ['lamp', 'spin', 'deep'] },
-  { id: 'thick', name: 'thick lava', words: 'Lava piles up near the vent and sets soon.', rules: (r) => ({ flow: r.flow * 0.5, coolLand: r.coolLand * 1.8 }), not: ['moon', 'enceladus', 'lamp'] },
+  { id: 'thin', name: 'thin lava', words: 'Lava runs far and thin before it sets.', rules: (r) => ({ flow: r.flow * 1.6, coolLand: r.coolLand * 0.6 }), not: ['lamp', 'spin', 'deep', 'mercury', 'lengai', 'hollow'] },
+  { id: 'thick', name: 'thick lava', words: 'Lava piles up near the vent and sets soon.', rules: (r) => ({ flow: r.flow * 0.5, coolLand: r.coolLand * 1.8 }), not: ['moon', 'enceladus', 'lamp', 'ijen', 'mercury'] },
   {
     id: 'tidal', name: 'a near neighbour', words: 'Its tides make the heat come and go, and bursts throw further at high tide.',
-    rules: () => ({ tide: 0.6, tidePeriod: 60, tideThrow: 0.4 }), not: ['io', 'ocean', 'enceladus', 'tumble'],
+    rules: () => ({ tide: 0.6, tidePeriod: 60, tideThrow: 0.4 }), not: ['io', 'ocean', 'enceladus', 'tumble', 'triton'],
   },
 ];
 export const twistOf = (id: string): Twist => TWISTS.find((t) => t.id === id) ?? TWISTS[0];
@@ -71,6 +71,12 @@ export const BALANCE: Partial<Record<WorldId, Record<string, number>>> = {
   io: { cold: 0.81, thin: 0.88 },
   mars: { thick: 0.86, thin: 1.11 },
   young: { cold: 0.88 },
+  snowball: { hot: 0.76 },
+  europa: { hot: 1.16, cold: 0.86 },
+  triton: { cold: 0.81 },
+  lengai: { thick: 0.69 },
+  ijen: { hot: 1.22 },
+  hollow: { thick: 0.67 },
 };
 
 /** A kind of world's rules with a twist: its own, the twist's, and the heat set back where the twist would unbalance it. */
@@ -82,8 +88,9 @@ export function twisted(world: WorldId, twistId: string): Partial<Rules> {
   return rules;
 }
 /** From the star outwards: the kinds of world in the order a system would have them, warmest first. */
-// (The four newest worlds aren't dealt into systems yet: their twists are still to be balanced.)
-const WARMTH: WorldId[] = ['tumble', 'young', 'ocean', 'deep', 'mars', 'lamp', 'asteroid', 'spin', 'io', 'moon', 'ice', 'enceladus'];
+// (Every world but two: the rogue planet has no star by its nature, and the orange Earth's aim the bots
+// can't yet play well enough to balance its twists.)
+const WARMTH: WorldId[] = ['dust', 'magma', 'mercury', 'tumble', 'first', 'young', 'ocean', 'tonga', 'lengai', 'ijen', 'deep', 'mars', 'hollow', 'lamp', 'asteroid', 'spin', 'io', 'europa', 'moon', 'snowball', 'ice', 'enceladus', 'triton'];
 
 export interface Made { met: boolean; second: number; words: string }
 export interface Body {
