@@ -261,7 +261,7 @@ const lavaClock = { value: 0 }, pxRatio = { value: 1 };
 /** The craters for the print's shader (the latest 64 of them), and the light in the world's own frame, so a crater's shadow falls the right way however it's turned. */
 const CRATERS = 64, craterAt = Array.from({ length: CRATERS }, () => new THREE.Vector4()), craterAge = new Float32Array(CRATERS), craterCount = { value: 0 };
 /** Where the vent is (the world's own frame), and whether it's feeding lava (the engraving's dashes stream while it is). */
-const flash = { value: 0 }, ventObj = new THREE.Vector3(0, 0, 1), fed = { value: 0 }, building = { value: 0 }, spray = { value: 0 }, drift = { value: 0 }, burp = { value: -1 }, burpSize = { value: 1 }, burpSeed = { value: 0 }, burpDir = { value: 0 }, gold = { value: 0 };
+const flash = { value: 0 }, ventObj = new THREE.Vector3(0, 0, 1), fed = { value: 0 }, building = { value: 0 }, hollowU = { value: 0 }, spray = { value: 0 }, drift = { value: 0 }, burp = { value: -1 }, burpSize = { value: 1 }, burpSeed = { value: 0 }, burpDir = { value: 0 }, gold = { value: 0 };
 let driftAt = 0, burpAt = -1, nextBurp = 0, burst = true;
 const LIGHT_VIEW = new THREE.Vector3(-0.55, 0.6, 0.6).normalize(), lightObj = new THREE.Vector3(), unturn = new THREE.Quaternion();
 function cratering(): void {
@@ -272,6 +272,7 @@ function cratering(): void {
   ventObj.set(planet.plume.x, planet.plume.y, planet.plume.z).normalize();
   // (How near the vent is to giving way: the ground round it strains and its cracks glow.)
   building.value = LAMP || planet.pouring ? 0 : Math.min(1, planet.pressure / Math.max(1e-6, planet.capNow));
+  hollowU.value += ((ending ? 0 : planet.hollowness) - hollowU.value) * 0.1; // (the hollow world: how empty the chamber under the vent is, for its ring cracks)
   fed.value += ((planet.erupting || planet.pouring || planet.molten > 0.01 ? 1 : 0.25) - fed.value) * 0.05;
   // (An eruption's splatter: thrown out quickly as it starts, settling slowly once it's done.)
   const throwing = !QUIET && (planet.erupting || planet.pouring) ? 1 : 0; // (quiet: only when it bursts)
@@ -330,6 +331,7 @@ material.onBeforeCompile = (shader) => {
   shader.uniforms.uVent = { value: ventObj };
   shader.uniforms.uFeeding = fed;
   shader.uniforms.uBuild = building;
+  shader.uniforms.uHollow = hollowU;
   shader.uniforms.uVentMark = { value: LAMP ? 0 : 1 }; // (the vent marked on the map, as a chart marks a volcano)
   shader.uniforms.uFlash = flash;
   shader.uniforms.uDark = { value: DARK_LAVA ? 1 : 0 };
@@ -525,7 +527,7 @@ const FL = FLOODED ? rgb(FLOODED) : null;
 /** Scorched ground: charcoal, a little warm. */
 const CHAR = [0.27, 0.2, 0.16];
 /** The light fresh lava throws on the ground round it: warm, and stronger on the dark worlds, where it's the light. */
-const GLOW_C = rgb(new THREE.Color('#ffae6a')), GLOW_BY = ICE ? 0 : DARK_LAVA ? 0.5 : 0.32; // (not on the ice moons: their lava is water)
+const GLOW_C = rgb(new THREE.Color('#ffae6a')), GLOW_BY = ICE ? 0 : DARK_LAVA ? 0.4 : 0.32; // (not on the ice moons: their lava is water)
 const glowField = new Float32Array(N), glowNext = new Float32Array(N);
 /**
  * Life's own wash: where something lives, the ground takes its kind's colour, as the hand-coloured
@@ -590,9 +592,9 @@ function coarse(): void {
   // rings out over the ground and weakening as it goes, so the light falls round the lava, not only on it.
   {
     const o = topo.nbrOffsets, l = topo.nbrList;
-    for (let v = 0; v < N; v++) { const lv = planet.lava[v]; glowField[v] = lv > 0.002 ? Math.min(1, lv * 60) : planet.age[v] < 25 && planet.ash[v] < 0.25 ? Math.exp(-planet.age[v] / 8) * 0.7 : 0; }
-    for (let pass = 0; pass < 5; pass++) {
-      for (let v = 0; v < N; v++) { let m = glowField[v]; for (let k = o[v]; k < o[v + 1]; k++) m = Math.max(m, glowField[l[k]] * 0.74); glowNext[v] = m; }
+    for (let v = 0; v < N; v++) { const lv = planet.lava[v]; glowField[v] = lv > 0.002 ? Math.min(1, lv * 60) : planet.age[v] < 25 && planet.ash[v] < 0.25 ? Math.exp(-planet.age[v] / 8) * 0.45 : 0; }
+    for (let pass = 0; pass < 3; pass++) { // (close round the lava: spread wider, on pale worlds it read as a stain)
+      for (let v = 0; v < N; v++) { let m = glowField[v]; for (let k = o[v]; k < o[v + 1]; k++) m = Math.max(m, glowField[l[k]] * 0.62); glowNext[v] = m; }
       glowField.set(glowNext);
     }
     // (Then eased, as the marks are: spread by the strongest neighbour alone, its edge stepped round the
@@ -932,25 +934,6 @@ const gauge = new THREE.Group(), gaugeInk = new Stipple(AIM_INK, 'dot', 2.5 * AI
 const gaugeAt = new THREE.Vector3(planet.plume.x, planet.plume.y, planet.plume.z).normalize();
 for (const s of [aimInk, aimPencil, aimNext, gaugeInk, gaugePencil]) { s.byDirection = true; s.linger = 1.5; (s.object.material as THREE.Material).depthTest = false; }
 for (const s of [aimInk, aimPencil, aimNext]) group.add(s.object);
-/**
- * The hollow world: ring cracks round the vent as the chamber under it empties, as round a summit about
- * to fall in: one, then two, then three, broken, inked as fine dots; gone again as it fills.
- */
-const cracks = planet.k.hollow > 0 ? new Stipple(P.landInkHigh, 'dot', 1.5 * AIM_BIG) : null;
-if (cracks) { cracks.byDirection = true; cracks.linger = 2; (cracks.object.material as THREE.Material).depthTest = false; group.add(cracks.object); }
-let cracksAt = -1;
-function cracking(): void {
-  if (!cracks || seconds - cracksAt < 0.4) return;
-  cracksAt = seconds;
-  const h = ending ? 0 : planet.hollowness, dots: number[] = [];
-  [[0.3, 0.08, 1.7], [0.5, 0.14, 4.1], [0.7, 0.2, 2.9]].forEach(([from, r, twist]) => {
-    if (h < from) return;
-    // (Broken: a crack runs a way round, then stops, then runs again, each ring its own way.)
-    const pts = circleAt(planet.plume, r).filter((_, i, all) => Math.sin((i / all.length) * Math.PI * 2 * 5 + twist) > -0.25);
-    onGround(pts, dots);
-  });
-  cracks.set(dots);
-}
 gauge.add(gaugeInk.object, gaugePencil.object);
 group.add(gauge);
 /**
@@ -2710,7 +2693,6 @@ renderer.setAnimationLoop(() => {
   if (begun) drawAim(seconds);
   aimInk.update(dt);
   aimPencil.update(dt);
-  if (cracks) { cracking(); cracks.update(dt); }
   aimNext.update(dt);
   if (WORLD.goal === 'orbit') orbiting(dt);
   if (LAMP) lamping();

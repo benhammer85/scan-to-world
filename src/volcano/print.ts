@@ -39,6 +39,7 @@ export const PRINT_FUNCTIONS = /* glsl */ `
   #define uFeedingGlow (0.4 + 0.6 * uFeeding)
   uniform vec3 uVent;
   uniform float uVentMark;
+  uniform float uHollow; // (the hollow world: how empty the chamber under the vent is)
   // Craters, as the charts draw them (see 'Craters' below): each one's middle and width, how long since it was dug, and the light in the world's own frame.
   uniform vec4 uCrater[64];
   uniform float uCraterAge[64];
@@ -344,6 +345,28 @@ export function printFragment(look: Look, sea: boolean): string {
 
       float glowInk = 0.0; // (lava's inks glow by their own light, and are not shaded with the ground)
       ${look === 1 ? ENGRAVE : look === 2 ? WATER : look === 3 ? STIPPLE : look === 4 ? GLOW : PRINT(look === 6)}
+      // The hollow world: as the chamber under the vent empties, the ground round it cracks in rings, as round
+      // a summit about to fall in: one, then two, then three, each broken (running a way round, stopping, running
+      // again) and jagged, inked firmly, the ground inside each a little darker where it has sunk.
+      // (Drawn as fine dots they were faint, and missed; drawn under the lava, it hid them.)
+      if (uHollow > 0.25) {
+        float hFar = acos(clamp(dot(vDir, uVent), -1.0, 1.0));
+        vec3 ht1 = normalize(cross(uVent, abs(uVent.y) < 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0))), ht2 = cross(uVent, ht1);
+        float hAng = atan(dot(vDir, ht2), dot(vDir, ht1)), hlw = max(0.9 * uPx * px, 1e-5);
+        float rings = 0.0, sunk = 0.0;
+        for (int k = 0; k < 3; k++) {
+          float fk = float(k), from = 0.3 + 0.2 * fk, r = 0.08 + 0.06 * fk, on = smoothstep(from, from + 0.06, uHollow);
+          float jag = r + 0.006 * (noise3(vec3(cos(hAng) * 6.0, sin(hAng) * 6.0, fk * 7.0)) - 0.5) + 0.0025 * (noise3(vDir * 160.0 + fk) - 0.5);
+          float runs = smoothstep(-0.35, -0.15, sin(hAng * 5.0 + 1.7 + fk * 2.4));
+          rings = max(rings, (1.0 - smoothstep(hlw * 0.5, hlw * 1.5, abs(hFar - jag))) * runs * on);
+          sunk = max(sunk, (1.0 - smoothstep(jag - 0.004, jag + 0.004, hFar)) * on * 0.5);
+        }
+        col *= 1.0 - 0.12 * sunk * smoothstep(0.3, 1.0, uHollow) * onLand;
+        // (Over dark lava, the crack opens on the heat under it: orange, glowing; on the ground, ink.)
+        float hLum = dot(col, vec3(0.3, 0.59, 0.11)), onDark = 1.0 - smoothstep(0.15, 0.35, hLum);
+        col = mix(col, mix(ink, vec3(0.95, 0.45, 0.12), onDark), rings * 0.85 * onLand);
+        glowInk = max(glowInk, rings * onDark * 0.7 * onLand);
+      }
 
       ${sea ? `// The coast: one crisp line.
       float coastPx = abs(vH) / max(fwidth(vH), 1e-6);
@@ -627,7 +650,7 @@ const PRINT = (q: boolean) => /* glsl */ `
           vec4 ck4 = seams(rid * 15.0 + 0.7 * vec2(noise3(vDir * 9.0), noise3(vDir * 9.0 + 5.1)));
           vec2 ck = ck4.xy;
           float rfw = max(fwidth(raftF), 1e-4) * 2.0, ckw = max(fwidth(ck.x), 1e-4);
-          float crackW = mix(0.03, 0.13, molten), crackD = ck.x;
+          float crackW = mix(0.03, 0.09, molten), crackD = ck.x; // (narrower at most: wide, where three plates met they opened into wedges)
           // (Crust tears the way it's pulled: along the flow, out from the vent, in long cracks that run
           // down it; a net of cracks every way at once, all alike, read as crazed tile.)
           float along = abs(dot(ck4.zw, vec2(cos(ang), sin(ang))));
@@ -637,10 +660,13 @@ const PRINT = (q: boolean) => /* glsl */ `
           float channel = smoothstep(1.4, 2.3, lvR), frontBand = (1.0 - smoothstep(0.55, 0.85, lvR)) * (0.3 + 0.7 * uFeeding);
           float fresh = clamp(max(max(channel, frontBand), exp(-far / 0.06)), 0.0, 1.0);
           float crackTh = 0.5 + 0.14 * smoothstep(0.05, 0.35, far) * (1.0 - 0.6 * fresh); // (fewer further out, where it's older)
-          float crackOn = smoothstep(crackTh, crackTh + 0.12, 0.45 * ck.y + 0.55 * noise3(vDir * 11.0 + 13.0) + 0.12 * molten) * alignOn; // (which cracks are open: by stretches, beside some plates and not others, so each runs a little way and stops; even where it's hottest, never the whole net)
+          float crackOpen = smoothstep(crackTh, crackTh + 0.16, 0.45 * ck.y + 0.55 * noise3(vDir * 11.0 + 13.0) + 0.12 * molten) * alignOn;
+          float crackOn = smoothstep(0.0, 0.25, crackOpen); // (open or not; how far open thins it instead, below) // (which cracks are open: by stretches, beside some plates and not others, so each runs a little way and stops; even where it's hottest, never the whole net)
           float raftAt = mix(0.0, 0.62, smoothstep(0.65, 1.0, molten));
           float pool = (1.0 - smoothstep(raftAt - rfw, raftAt + rfw, raftF)) * exp(-far / 0.035); // (open liquid only at the mouth: scattered over the body, or down the channel, little pools read as spots)
-          float crackS = (1.0 - smoothstep(crackW - ckw, crackW + ckw, crackD)) * crackOn;
+          // (Tapering as it runs out, to a hair, as a tear in a crust does: cut off at full width, the ends were blunt wedges.)
+          float crackWt = crackW * crackOpen * (0.7 + 0.6 * noise3(vDir * 70.0 + 2.0));
+          float crackS = (1.0 - smoothstep(crackWt - ckw, crackWt + ckw, crackD)) * crackOn;
           float seam = max(crackS * mix(0.6, 1.0, fresh), pool) * smoothstep(0.2, 0.5, run);
           // The skin itself: rough at two scales, as a'a is, and folded along the flow (the level lines of how
           // deep it lies), as pahoehoe's ropes are, faintly, as an engraver would cut them.
@@ -698,7 +724,7 @@ const PRINT = (q: boolean) => /* glsl */ `
           liquid = mix(liquid, lRed * 0.7, vein * 0.6);
           liquid = mix(liquid, lRed * 0.75, (1.0 - fresh) * 0.65 * (1.0 - pool)); // (under the body, a dull red in the cracks: gold all through it read as a lit net)
           // A raft's edge glows where the liquid meets it: a thin bright line, its crust's hot underside.
-          float raftEdge = (1.0 - smoothstep(0.0, ckw * 2.5, abs(crackD - crackW))) * crackOn;
+          float raftEdge = (1.0 - smoothstep(0.0, ckw * 2.5, abs(crackD - crackWt))) * crackOn;
           crustInk = mix(crustInk, deep * 0.8, raftEdge * 0.5 * smoothstep(0.2, 0.5, run));
           inkCol = mix(inkCol, liquid, seam);
           inkCol = mix(inkCol, verm, front * 0.9);
@@ -808,8 +834,11 @@ const PRINT = (q: boolean) => /* glsl */ `
           // Hatched, as an engraved map shades a flow: the newer, the closer and darker its lines, the newest
           // crossed; the oldest a light wash with a few. (A flat brown wash read as airbrushed.) Seen from afar,
           // where they'd crowd, they give way to the wash.
-          float h1 = mix(engrave(hP1, hF1, 0.15 + 0.35 * aged, 1.0), engrave(hP1b, hF1b, 0.15 + 0.35 * aged, 1.0), hW1) * smoothstep(0.0, 0.3, aged + 0.15);
-          float h2 = mix(engrave(hP2, hF2, 0.1 + 0.25 * aged, 1.0), engrave(hP2b, hF2b, 0.1 + 0.25 * aged, 1.0), hW2) * smoothstep(0.55, 0.85, aged);
+          float h1 = 0.0, h2 = 0.0;
+          if (weathered * hs > 0.01) { // (only where an old flow is: on a phone, every pixel of the world paid for it)
+          h1 = mix(engrave(hP1, hF1, 0.15 + 0.35 * aged, 1.0), engrave(hP1b, hF1b, 0.15 + 0.35 * aged, 1.0), hW1) * smoothstep(0.0, 0.3, aged + 0.15);
+          h2 = mix(engrave(hP2, hF2, 0.1 + 0.25 * aged, 1.0), engrave(hP2b, hF2b, 0.1 + 0.25 * aged, 1.0), hW2) * smoothstep(0.55, 0.85, aged);
+          }
           float hatch = max(h1, h2);
           oldCol = mix(oldCol * 1.05, vec3(0.15, 0.115, 0.085), hatch * mix(0.2, 0.38, aged));
           setCol = mix(setCol, oldCol * mix(vec3(1.0), uCrustTint, 0.3), weathered);

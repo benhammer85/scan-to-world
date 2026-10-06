@@ -260,7 +260,7 @@ export class Puffs {
         p.x += (p.ux * p.rise + p.nx * p.vz) * dt; p.y += (p.uy * p.rise + p.ny * p.vz) * dt; p.z += (p.uz * p.rise + p.nz * p.vz) * dt;
       } else {
         // Rising, and slowing as it goes, as a column does once the heat has left it.
-        const slow = Math.exp(-p.age * (p.kind === 2 ? 0.18 : 0.45)); // (smoke keeps rising, so the column stands tall)
+        const slow = Math.exp(-p.age * (p.kind === 2 ? 0.18 : 0.45)) * (p.kind === 2 && this.calm ? Math.min(1, 0.3 + p.age * 1.4) : 1); // (smoke keeps rising, so the column stands tall; calm, it leaves the mouth slowly, so the column's foot stays on the vent)
         p.x += p.ux * p.rise * slow * dt; p.y += p.uy * p.rise * slow * dt; p.z += p.uz * p.rise * slow * dt;
       }
       const f = p.age / p.life;
