@@ -446,6 +446,15 @@ export class Planet {
   readonly lava: Float32Array;
   /** Seconds since lava last covered each vertex. */
   readonly age: Float32Array;
+  /**
+   * Which flow last covered each vertex: the number of the pour that laid it (see `flowsPoured`), or
+   * -1000 where none has. (A pour is a new flow when it comes after a quiet while: the pour itself starts
+   * and stops as the world is tipped.) Drawn, so the flows read in the order they came.
+   */
+  readonly flowOf: Int32Array;
+  /** How many flows have been poured. */
+  flowsPoured = 0;
+  private pouredAt = -1e9;
   /** How much of the ground is ash, 0 to 1: soft, and fertile. */
   readonly ash: Float32Array;
   /** How rich the ground is with fallen ash, 0 to 1: life takes it sooner and grows there faster. */
@@ -617,6 +626,7 @@ export class Planet {
     this.rock = new Float32Array(n);
     this.lava = new Float32Array(n);
     this.age = new Float32Array(n).fill(1e6);
+    this.flowOf = new Int32Array(n).fill(-1000);
     this.ash = new Float32Array(n);
     this.rich = new Float32Array(n);
     this.life = new Float32Array(n);
@@ -1122,6 +1132,8 @@ export class Planet {
     if (this.reserve < 0.01 && this.pressure >= this.k.least && !this.erupting) { this.erupt(); this.tell('The last of the heat escapes'); }
     if (this.reserve < 0.01 && this.pressure < this.k.least) this.pressure = 0;
     if (this.gravity) this.tipped(dt);
+    if (this.pouring || this.erupting) { if (this.seconds - this.pouredAt > 20) this.flowsPoured++; this.pouredAt = this.seconds; }
+    for (let v = 0; v < this.lava.length; v++) if (this.lava[v] > 0.002) this.flowOf[v] = this.flowsPoured;
     if (this.k.pulse > 0 && !this.clamped && !this.k.lamp && this.pressure >= this.k.pulse && (!this.erupting || (this.pressure >= this.k.explosive * 0.9 && this.rock[this.plumeVertex] > 0))) this.erupt(); // (and again before the last is done, rather than let it build to a burst; under the sea it may, as Surtsey did)
     if (this.k.lamp) this.lampStep(dt);
     // A giant's ring thins away, unless it's fed.

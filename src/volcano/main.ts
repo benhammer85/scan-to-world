@@ -320,6 +320,7 @@ material.onBeforeCompile = (shader) => {
   shader.uniforms.uBuild = building;
   shader.uniforms.uFlash = flash;
   shader.uniforms.uDark = { value: DARK_LAVA ? 1 : 0 };
+  shader.uniforms.uFlows = { value: FLOWS ? 1 : 0 };
   shader.uniforms.uIceLine = iceLine;
   shader.uniforms.uSky = sky;
   shader.uniforms.uHaze = haze;
@@ -533,6 +534,19 @@ function surface(v: number): number {
 const LAVA_WHOLE = 0.003;
 /** How many times the marks are eased toward their neighbours. */
 const MARK_EASING = 8;
+/**
+ * Dark lava kept for good, drawn flow by flow: each pour's lava keeps the number of the pour that laid
+ * it (the planet's flowOf), and is drawn by how many pours have come since, the newest darkest, one shade lighter for each
+ * after it, so the flows read in the order they came, as a geological map's do (by each point's own age,
+ * neighbours set a moment apart blotched, and one flow ran into the next with no edge between them).
+ * Carried in the marks' first channel, where a world doesn't keep its seas there. Each flow stands a
+ * little proud of what it covers, the newest the highest (FLOW_PROUD), for the lamp to shade.
+ */
+const FLOWS = DARK_LAVA && !!LOOK && !FL && !SULPHUR && !planet.k.whiteAt, FLOW_PROUD = FLOWS ? 0.025 : 0, FLOW_STEP = 0.25;
+const flowShown = new Float32Array(N);
+/** How long each point has lain under lava too thin to run (drawn set): such a sheet chills at once, though the simulation still counts it molten. */
+const chilled = new Float32Array(N);
+let chilledAt = -1;
 const lavaShown = new Float32Array(N), drawnHeight = new Float32Array(N), heightEase = new Float32Array(N), coarseHeight = new Float32Array(N), coarseLand = new Float32Array(N * 3), coarseMarks = new Float32Array(N * 4), eased = new Float32Array(N * 4);
 /** The simulation's heights and colours, a vertex at a time, ready to be carried onto the finer surface. */
 function coarse(): void {
@@ -540,6 +554,8 @@ function coarse(): void {
   const now = performance.now() / 1000, ease = washedAt < 0 ? 1 : 1 - Math.exp(-(now - washedAt) / 1.5);
   const lavaEase = washedAt < 0 ? 1 : 1 - Math.exp(-(now - washedAt) / 0.45);
   washedAt = now;
+  const simDt = chilledAt < 0 ? 0 : Math.max(0, planet.seconds - chilledAt);
+  chilledAt = planet.seconds;
   // The ground as drawn, eased a little toward its neighbours: a flow's edge (and the cliff it
   // leaves when it sets) is a step a vertex high, which seen edge-on, near the world's rim, shows
   // as a row of teeth. Eased twice, it's a soft rise instead. (The simulation keeps its own.)
@@ -610,7 +626,12 @@ function coarse(): void {
     const set = !ICE && lava <= LAVA_WHOLE / 4 && planet.age[v] < (planet.k.whiteAt || (DARK_LAVA ? 1e5 : 240)) && planet.ash[v] < 0.25 ? // (lava only: thick ash marks the ground new too, and kept, it drew a dark ring round each burst)
       1 - (LIFE ? Math.min(1, planet.life[v] * 3) : 0) : 0;
     coarseMarks[v * 4 + 3] = set;
-    coarseMarks[v * 4 + 2] = set * Math.exp(-planet.age[v] / (planet.k.whiteAt ? planet.k.whiteAt * 0.6 : 45));
+    if (FLOWS) {
+      flowShown[v] += (Math.max(0, 1 - (planet.flowsPoured - planet.flowOf[v]) * FLOW_STEP) - flowShown[v]) * ease;
+      coarseMarks[v * 4] = set * flowShown[v];
+    }
+    chilled[v] = lava > LAVA_WHOLE / 4 ? 0 : lava > 0 ? chilled[v] + simDt : chilled[v];
+    coarseMarks[v * 4 + 2] = set * Math.exp(-(planet.age[v] + chilled[v]) / (planet.k.whiteAt ? planet.k.whiteAt * 0.6 : 45));
     // (As it's drawn, by how grown it is; just come, faint.)
     const kind = LIFE ? ecology.drawn[v] : -1, wash = kind >= 0 ? WASH[kind] : null, washBy = wash ? WASH_STRENGTH * Math.min(1, planet.life[v] * (ROGUE ? 1.6 : 1)) * (ROGUE ? 1 : 0.45 + 0.55 * Math.min(1, planet.grown[v] * 2.5)) * (1 - hot) : 0;
     washWeight[v] += (washBy - washWeight[v]) * ease;
@@ -644,7 +665,13 @@ function coarse(): void {
     }
     M.set(eased);
   }
-  if (!FL && !SULPHUR) for (let v = 0; v < N; v++) M[v * 4] = 0;
+  if (!FL && !SULPHUR && !FLOWS) for (let v = 0; v < N; v++) M[v * 4] = 0;
+  // Each flow a little proud of the ground it covers, the newer the higher, so the lamp shades the edge of
+  // one lying over another, as a raised edge, and the order they came in shows. (Drawn only: the simulation keeps its own.)
+  if (FLOW_PROUD) for (let v = 0; v < N; v++) {
+    const h = (coarseHeight[v] += FLOW_PROUD * (0.4 * M[v * 4 + 3] + 0.6 * M[v * 4])), r = 1 + RELIEF * Math.max(0, h);
+    topo.positions[v * 3] = base[v * 3] * r; topo.positions[v * 3 + 1] = base[v * 3 + 1] * r; topo.positions[v * 3 + 2] = base[v * 3 + 2] * r;
+  }
 }
 
 /**
