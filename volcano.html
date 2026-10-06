@@ -55,7 +55,8 @@
       #begin .chapter:empty { display: none; }
       #begin .first:empty, #begin .hands:empty { display: none; }
       #atlas .plates-head .play { font: italic 14px "Newsreader", "Iowan Old Style", Georgia, serif; color: #2e2118; background: none; border: none; text-decoration: underline; text-underline-offset: 4px; padding: 4px; cursor: pointer; }
-      #begin .worlds { display: flex; flex-direction: column; align-items: center; max-width: min(100%, 30em); padding: 0 12px; box-sizing: border-box; margin-top: 4px; }
+      #begin .worlds { display: flex; flex-direction: row; flex-wrap: wrap; justify-content: center; align-items: center; max-width: min(100%, 30em); padding: 0 12px; box-sizing: border-box; margin-top: 4px; }
+      #begin .worlds > button + button::before { content: '·'; margin-right: 12px; opacity: 0.7; }
       #begin .worlds .chapter-name { font-size: 12px; opacity: 0.45; margin-top: 6px; line-height: 1.1; }
       #begin .worlds .chapter-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 0 4px; }
       /* (On a short screen, the rows alone, a little apart: the card names the chapter above its title.) */

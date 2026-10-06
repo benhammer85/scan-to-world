@@ -46,13 +46,13 @@ import SurfaceWorker from './surface.worker?worker&inline';
 import { handleDrafts } from './drafts';
 import { handleSurface } from './surface';
 import { offThread } from './offthread';
-import { snapshotOf, restoreInto, keep, recall, forget, keepGround, recallGround, forgetGround, keepPage, pages, type Page } from './save';
+import { snapshotOf, restoreInto, keep, recall, forget, keepGround, recallGround, keepPage, pages, type Page } from './save';
 import { worldOf, nextWorld, chapterOf, type WorldId } from './worlds';
 import { openGlobe, type Globe } from './atlasGlobe';
 import { keepsakeOf, turningGlobe } from './keepsakeGlobe';
 import { Chain, CHAIN } from './chain';
 import { measureSecond, type Second } from './second';
-import { loadSystem, saveSystem, worldFor, recordPlayed, madeCount } from './system';
+import { loadSystem, saveSystem, worldFor, recordPlayed } from './system';
 import { openSystem, closeSystem } from './systemChart';
 import { feel, keepImage, NATIVE, rumble, rumbles, tap } from './native';
 import './fonts.css';
@@ -147,8 +147,7 @@ if (RUN === null) remember('volcano.world', WORLD.id);
 // (A world that tries another ink first keeps its own choice: chosen on its card, it's remembered for it alone.)
 // The quiet print is every world's ink, unless another is chosen for it (and remembered, world by world).
 // (A new key: inks chosen while comparing the print and the quiet print aren't carried over.)
-const OWN_LOOK = 'volcano.ink';
-const LOOK_ID = ASKED.get('look') ?? remembered(OWN_LOOK) ?? 'quiet';
+const LOOK_ID = ASKED.get('look') ?? 'quiet'; // (the quiet print, for everyone: the other inks are by address only now, as a choice once made can't be unmade from the card any more)
 const LOOK: Look = LOOKS.find((l) => l.id === LOOK_ID)?.look ?? 6; // (an ink not known any more: the quiet print)
 /** The quiet print: lava the one warm accent on a calm map; burps only at the brink, splatter only when it bursts, the smoke lighter. */
 const QUIET = LOOK === 6;
@@ -2374,51 +2373,27 @@ if (RUN === null) {
   b.addEventListener('pointerdown', (e) => { e.stopPropagation(); void pages().then((all) => openAtlas(all)); });
   $('begin').querySelector('.worlds')!.appendChild(b);
 }
-const more = $('begin').querySelector('.more') as HTMLElement;
-{
-  const toggle = $('begin').querySelector('.more-toggle') as HTMLElement;
-  toggle.addEventListener('pointerdown', (e) => { e.stopPropagation(); more.hidden = !more.hidden; toggle.textContent = more.hidden ? 'more' : 'less'; cardView(); });
-  more.addEventListener('pointerdown', (e) => e.stopPropagation());
-}
-const moreLink = (text: string, act: () => void): HTMLElement => {
+// The card's foot, one quiet row: the chart, free play, and (on a phone) breathing. (Once there was a
+// "more" with a voyage through the solar system, three inks, a fresh start on new ground and the kept
+// plates again: each a second way to something the card or the chart already does, or the older inks,
+// which the lava's later work never reached. Still there by address for whoever used them.)
+const footLink = (text: string, act: () => void): HTMLElement => {
   const b = document.createElement('button');
   b.textContent = text;
   b.addEventListener('pointerdown', (e) => { e.stopPropagation(); act(); });
-  more.appendChild(b);
+  $('begin').querySelector('.worlds')!.appendChild(b);
   return b;
 };
-// The solar system: its worlds played as a run, in whatever order (see system.ts).
-moreLink(SYSTEM ? `Voyage · ${madeCount(SYSTEM)} of ${SYSTEM.bodies.length} worlds made` : 'Voyage · worlds one after another', () => openSystem());
-// Wandering: this world with no aim and no clock; or, wandering, back to the world with its aim.
-// The calm way to play, or tipping: kept for every world.
-if (!COMPUTER && !LAMP) moreLink(BREATHE ? 'Tip the phone to pour, as before' : 'Breathe · no tipping: it pours by itself, you turn the world', () => { remember('volcano.controls', BREATHE ? 'tip' : 'breathe'); location.reload(); }); // (a computer can't be tipped: it always breathes)
-if (RUN === null) moreLink(FREE ? 'Play with the aim' : 'Wander · no aim, no clock', () => {
+if (RUN === null) footLink(FREE ? 'with the aim' : 'explore', () => {
   const q = new URLSearchParams(location.search);
   q.delete('seed');
   q.set('world', WORLD.id);
   if (FREE) q.delete('free'); else q.set('free', '');
   location.search = q.toString().replace(/free=(&|$)/, 'free$1');
 });
-// The ink, for the whole game: three, the quiet print first. (Remembered once, not world by world.)
-{
-  const row = document.createElement('p');
-  row.className = 'ink';
-  for (const id of ['quiet', 'engrave', 'water']) {
-    const l = LOOKS.find((x) => x.id === id)!;
-    const b = document.createElement('button');
-    b.textContent = l.words;
-    if (l.look === LOOK) b.className = 'here';
-    else b.addEventListener('pointerdown', (e) => {
-      e.stopPropagation();
-      remember(OWN_LOOK, l.id);
-      const q = new URLSearchParams(location.search);
-      q.delete('look');
-      location.search = q.toString();
-    });
-    row.appendChild(b);
-  }
-  more.appendChild(row);
-}
+// The calm way to play, or tipping: on a phone (a computer always breathes), not on the glass world.
+if (!COMPUTER && !LAMP) footLink(BREATHE ? 'tilt to pour' : 'breathe', () => { remember('volcano.controls', BREATHE ? 'tip' : 'breathe'); location.reload(); });
+($('begin').querySelector('.more-toggle') as HTMLElement).hidden = true;
 // The end of a fire in free play: when you choose.
 $('finish').addEventListener('pointerdown', (e) => e.stopPropagation());
 $('finish').addEventListener('click', () => { planet.end(); $('finish').classList.remove('shown'); });
@@ -2426,11 +2401,6 @@ $('system').addEventListener('pointerdown', (e) => e.stopPropagation());
 $('system').querySelector('.close')!.addEventListener('click', () => closeSystem());
 // Back from a world of the system (?system): straight to its chart.
 if (ASKED.has('system')) openSystem();
-// The atlas, from the card: every chart kept so far, newest first, to leaf through.
-void pages().then((all) => {
-  if (!all.length) return;
-  moreLink(`Celestial Chart · ${all.length} ${all.length === 1 ? 'plate' : 'plates'} kept`, () => openAtlas(all));
-});
 let atlasPick: ((id: WorldId) => void) | null = null;
 let globeView: Globe | null = null, cardGlobe: { dispose(): void } | null = null;
 function openAtlas(all: Page[], only: string | null = null): void {
@@ -2480,7 +2450,6 @@ $('atlas').querySelector('.view')!.addEventListener('click', () => $('atlas').cl
 }
 $('atlas').querySelector('.close')!.addEventListener('click', () => { $('atlas').classList.remove('open', 'viewing'); globeView?.dispose(); globeView = null; cardGlobe?.dispose(); cardGlobe = null; $('atlas').querySelector('.pick')!.classList.remove('shown'); });
 // A world with a past can be begun afresh, on new ground.
-if (FIRES) moreLink('Begin this world on new ground', () => { forgetGround(GROUND_KEY); void forget(); setTimeout(() => location.reload(), 200); });
 // A world without life has no key of its kinds.
 // (The key to life's signs is not shown: the aim is the chain, not the kinds, and the key was one more thing to read.)
 $('legend').style.display = 'none';
