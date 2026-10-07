@@ -19,6 +19,8 @@ export interface ChartInfo {
   length: number;
   eras: { name: string; from: number; to: number }[];
   events: { t: number; text: string }[];
+  /** How it was done (see marks.ts): each mark, earned or not. Only when the aim was met. */
+  marks?: { name: string; got: boolean }[];
 }
 
 const PAPER = '#f4efe4', INK = '#2e2118', FAINT = 'rgba(46,33,24,0.45)';
@@ -49,6 +51,7 @@ export function drawChart(globe: HTMLCanvasElement, info: ChartInfo): HTMLCanvas
   let y = by + box + 60;
   g.font = `italic 30px ${SERIF}`; g.fillStyle = INK;
   g.fillText(info.summary, W / 2, y);
+  if (info.marks) { y += 46; drawMarks(g, info.marks, W / 2, y, 1.6); }
   y += 60;
   const step = (W - 240) / info.kinds.length;
   info.kinds.forEach((k, i) => {
@@ -68,7 +71,7 @@ export function drawChart(globe: HTMLCanvasElement, info: ChartInfo): HTMLCanvas
  * The eras along a rule, named beneath it, and what happened above it in rows, so that nothing
  * written crowds anything else. `k` scales the lettering (1 for the plate's).
  */
-function drawTimeline(g: CanvasRenderingContext2D, info: ChartInfo, x0: number, x1: number, y: number, k: number): void {
+function drawTimeline(g: CanvasRenderingContext2D, info: ChartInfo, x0: number, x1: number, y: number, k: number, most = 4): void {
   const at = (t: number) => x0 + (x1 - x0) * Math.min(1, t / Math.max(1, info.length));
   g.textAlign = 'center';
   g.strokeStyle = INK; g.lineWidth = 1.5 * k;
@@ -85,7 +88,7 @@ function drawTimeline(g: CanvasRenderingContext2D, info: ChartInfo, x0: number, 
     const x = Math.max(x0 + 40 * k, Math.min(x1 - 40 * k, at(e.t))), w = g.measureText(e.text).width + 18 * k;
     let row = 0;
     while (row < rows.length && rows[row] > x - w / 2) row++;
-    if (row >= 4) continue; // no room left above the rule here: better unsaid than crowded
+    if (row >= most) continue; // no room left above the rule here: better unsaid than crowded
     rows[row] = x + w / 2;
     const ty = y - 26 * k - row * 26 * k;
     g.strokeStyle = 'rgba(46,33,24,0.25)'; g.lineWidth = 1 * k;
@@ -131,8 +134,36 @@ export function drawFrame(g: CanvasRenderingContext2D, w: number, h: number, k: 
   // on a phone, one long line ran off both sides.)
   const lines = wrap(g, info.summary, w - 72 * k);
   lines.forEach((line, i) => g.fillText(line, w / 2, foot - 140 * k - (lines.length - 1 - i) * 21 * k));
-  drawTimeline(g, info, 34 * k, w - 34 * k, foot - 44 * k, 0.62 * k);
+  // (The marks under it, between it and what happened.)
+  if (info.marks) drawMarks(g, info.marks, w / 2, foot - 112 * k, k, w - 72 * k);
+  drawTimeline(g, info, 34 * k, w - 34 * k, foot - 44 * k, 0.62 * k, info.marks ? 3 : 4); // (a row fewer under the marks)
   g.globalAlpha = 1;
+}
+
+/**
+ * The marks in a row, centred on x: each a small engraved roundel, a ring with a dot struck in it
+ * when it was earned, an empty ring when not, and its name beside it, faint when not earned.
+ */
+function drawMarks(g: CanvasRenderingContext2D, marks: { name: string; got: boolean }[], x: number, y: number, k: number, most = Infinity): void {
+  g.save();
+  g.font = `${12 * k}px ${SERIF}`;
+  // (Narrow, all of it smaller, to fit in one row.)
+  const wide = marks.reduce((a, m) => a + g.measureText(m.name).width + 14 * k, 0) + 18 * k * (marks.length - 1);
+  k *= Math.min(1, most / wide);
+  const size = 12 * k, gap = 18 * k, r = 4 * k;
+  g.font = `${size}px ${SERIF}`;
+  g.textAlign = 'left'; g.textBaseline = 'middle';
+  const widths = marks.map((m) => g.measureText(m.name).width + r * 2 + 6 * k);
+  let at = x - (widths.reduce((a, b) => a + b, 0) + gap * (marks.length - 1)) / 2;
+  marks.forEach((m, i) => {
+    const cx = at + r, ink = m.got ? INK : FAINT;
+    g.strokeStyle = ink; g.fillStyle = ink; g.lineWidth = 0.9 * k;
+    g.beginPath(); g.arc(cx, y, r, 0, Math.PI * 2); g.stroke();
+    if (m.got) { g.beginPath(); g.arc(cx, y, r * 0.45, 0, Math.PI * 2); g.fill(); }
+    g.fillText(m.name, at + r * 2 + 6 * k, y + 0.5 * k);
+    at += widths[i] + gap;
+  });
+  g.restore();
 }
 
 /** Text broken into lines no wider than `width`: at its parts (" · ") first, then between words. */

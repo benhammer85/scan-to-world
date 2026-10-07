@@ -55,6 +55,7 @@ import { measureSecond, type Second } from './second';
 import { loadSystem, saveSystem, worldFor, recordPlayed } from './system';
 import { openSystem, closeSystem } from './systemChart';
 import { feel, keepImage, NATIVE, rumble, rumbles, tap } from './native';
+import { earned, markNames, mergeMarks, readMarks, stillToEarn, writeMarks, type Marks } from './marks';
 import './fonts.css';
 import { LOOKS, PRINT_FUNCTIONS, LAMP_PRINT_FUNCTIONS, LAMP_PRINT, LAMP_QUIET, printFragment, type Look } from './print';
 
@@ -2157,6 +2158,22 @@ function tale(met: boolean): string {
     case 'snow': return met ? 'Pale rock snow fallen all along the edge of night' : `Rock snow ${pct}% fallen along the edge of night`;
   }
 }
+/** This game's marks, if the aim was met (see marks.ts); the best on this world are kept, as earned. */
+let marksNow: Marks | null = null;
+const MARKS_KEY = (id: WorldId) => `volcano.marks.${id}`;
+function markTheWin(): void {
+  if (FREE || RUN !== null) return; // (free play has no clock; a system's world has its own twist)
+  marksNow = earned(WORLD.id, planet.heatLeft, planet.tally.calderas, planet.seconds);
+  const before = readMarks(remembered(MARKS_KEY(WORLD.id)));
+  remember(MARKS_KEY(WORLD.id), writeMarks(mergeMarks(before, marksNow)));
+  // (Not said: the aim met and the long age are said then, and two lines are all that's shown. They're on the plate.)
+}
+/** A world's marks for its cards, once it's been won ('' before). */
+function marksLine(id: WorldId): string {
+  const kept = remembered(MARKS_KEY(id));
+  if (kept === null) return '';
+  return stillToEarn(id, readMarks(kept)) || 'All three marks earned.';
+}
 let ending: { from: number; shown: boolean; at: number; info: ChartInfo | null; turned: number; won: boolean } | null = null;
 let wonSeen = -1;
 const wonAt = () => (wonSeen < 0 ? (wonSeen = seconds) : wonSeen);
@@ -2172,6 +2189,7 @@ function theEnd(): void {
     announce(GOAL_WORDS[WORLD.goal].done);
     feel([30, 50, 30]);
     measureTheSecond();
+    markTheWin();
     // On a world with a sea, the fire goes out and the long age follows even so, for its atolls.
     planet.reserve = 0; planet.pressure = 0;
     announce(AGE_WORDS(true));
@@ -2231,6 +2249,7 @@ function chartInfo(): ChartInfo {
     kinds: LIFE ? KINDS.map((k) => ({ name: k.name, ink: k.ink, sign: k.sign, living: living.has(k.kind) })) : [],
     // The first aim, how far it got; and the second, as the fire left it.
     summary: tale(met) + (second ? ` · ${second.words}` : ''),
+    marks: marksNow ? markNames(WORLD.id).map((name, i) => ({ name, got: marksNow![i] })) : undefined,
     length,
     eras,
     events,
@@ -2513,6 +2532,8 @@ const cardWords = () => {
   el.replaceChildren();
   const aim = document.createElement('b'); aim.className = 'aim'; aim.textContent = FREE ? 'No aim and no clock.' : AIM[WORLD.goal] ?? WORLD.second;
   el.append(aim, document.createTextNode(FREE ? 'The fire never cools.' : OWN_TIP[WORLD.id] ?? TIP[WORLD.goal] ?? ''));
+  // (Once the world has been won: the marks there are still to earn on it.)
+  ($('begin').querySelector('.marks') as HTMLElement).textContent = FREE || RUN !== null ? '' : marksLine(WORLD.id);
 };
 cardWords();
 // The hands, the same on every card.
@@ -2579,6 +2600,7 @@ function openAtlas(all: Page[], only: string | null = null): void {
     cardGlobe = turningGlobe(globe, topo, id, last?.globe, () => new Planet(topo, START, 11, worldOf(id).rules));
     (pick.querySelector('.t') as HTMLElement).textContent = w.title;
     (pick.querySelector('.k') as HTMLElement).textContent = w.first;
+    (pick.querySelector('.m') as HTMLElement).textContent = marksLine(id);
     (pick.querySelector('.plates') as HTMLElement).hidden = !made.length;
     pick.dataset.world = id;
     pick.classList.add('shown');

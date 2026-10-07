@@ -48,6 +48,7 @@
       #begin .first { font-size: 17px; font-style: italic; max-width: 22em; line-height: 1.45; padding: 0 24px; opacity: 0.8; }
       #begin .hands { font-size: 13px; letter-spacing: 0.04em; max-width: 24em; line-height: 1.7; padding: 0 24px; opacity: 0.7; margin-top: -4px; white-space: pre-line; }
       #begin .second { text-wrap: pretty; font-size: 16px; max-width: 21em; line-height: 1.55; padding: 0 28px; opacity: 0.9; }
+      #begin .marks { font-size: 13px; max-width: 24em; padding: 0 28px; opacity: 0.6; text-wrap: balance; margin-top: 0; }
       #begin .second .aim { display: block; font-weight: normal; font-size: 19px; line-height: 1.4; margin-bottom: 8px; opacity: 1; text-wrap: balance; }
       #begin button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
       #begin .touch { font-size: 16px; letter-spacing: 0.08em; margin-top: 10px; padding: 12px 34px; border: 1px solid rgba(46, 33, 24, 0.35); border-radius: 999px; }
@@ -101,6 +102,8 @@
       #atlas .pick .globe { width: 150px; height: 150px; margin: -6px auto 6px; filter: drop-shadow(0 7px 9px rgba(46, 33, 24, 0.22)); }
       #atlas .pick .t { margin: 0; font-size: 21px; }
       #atlas .pick .k { margin: 4px 0 16px; font-style: italic; font-size: 15px; opacity: 0.7; }
+      #atlas .pick .m { margin: -8px 0 14px; font-size: 13px; opacity: 0.6; text-wrap: balance; }
+      #atlas .pick .m:empty, #begin .marks:empty { display: none; }
       #atlas .pick .acts { display: flex; justify-content: center; align-items: baseline; gap: 22px; }
       #atlas .pick .go { font: 17px "Newsreader", "Iowan Old Style", Georgia, serif; color: #f4efe4; background: #2e2118; border: none; padding: 9px 30px; cursor: pointer; }
       #atlas .pick .plates { font: italic 14px "Newsreader", "Iowan Old Style", Georgia, serif; color: #2e2118; background: none; border: none; text-decoration: underline; text-underline-offset: 4px; opacity: 0.75; padding: 6px; cursor: pointer; }
@@ -134,9 +137,9 @@
     <button id="keep">keep the plate</button>
     <button id="finish">end the fire</button>
     <button id="worlds" aria-label="All worlds"></button>
-    <div id="atlas" class="engraved"><div class="head"><h2>Celestial Chart</h2><button class="close">back</button></div><div class="sky"></div><p class="credit">The figures after Johann Bayer's Uranometria, engraved by Alexander Mair, 1603</p><p class="plates-head"></p><div class="pages"></div><div class="view"><img alt=""></div><div class="pick"><div class="card"><div class="globe"></div><p class="t"></p><p class="k"></p><div class="acts"><button class="go">Play</button><button class="plates">its plates</button></div></div></div></div>
+    <div id="atlas" class="engraved"><div class="head"><h2>Celestial Chart</h2><button class="close">back</button></div><div class="sky"></div><p class="credit">The figures after Johann Bayer's Uranometria, engraved by Alexander Mair, 1603</p><p class="plates-head"></p><div class="pages"></div><div class="view"><img alt=""></div><div class="pick"><div class="card"><div class="globe"></div><p class="t"></p><p class="k"></p><p class="m"></p><div class="acts"><button class="go">Play</button><button class="plates">its plates</button></div></div></div></div>
     <div id="system" class="engraved"><div class="head"><h2>A solar system</h2><button class="close">back</button></div><p class="about"></p><div class="plate"></div><div class="foot"></div></div>
-    <div id="begin" class="engraved loading"><p class="chapter"></p><p class="world"></p><h1 class="name"></h1><p class="first"></p><p class="second"></p><p class="hands"></p><button class="touch">Begin</button><button class="calmer" hidden>or play without tilting the phone</button><div class="worlds"></div><button class="more-toggle">more</button><div class="more" hidden></div></div>
+    <div id="begin" class="engraved loading"><p class="chapter"></p><p class="world"></p><h1 class="name"></h1><p class="first"></p><p class="second"></p><p class="marks"></p><p class="hands"></p><button class="touch">Begin</button><button class="calmer" hidden>or play without tilting the phone</button><div class="worlds"></div><button class="more-toggle">more</button><div class="more" hidden></div></div>
     <script type="module" src="/src/volcano/main.ts"></script>
   </body>
 </html>
