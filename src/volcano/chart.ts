@@ -57,7 +57,9 @@ export function drawChart(globe: HTMLCanvasElement, info: ChartInfo): HTMLCanvas
   info.kinds.forEach((k, i) => {
     const x = 120 + step * (i + 0.5);
     g.globalAlpha = k.living ? 1 : 0.3;
-    sign(g, k.sign, x, y, 13, k.ink);
+    // (A swatch of its colour, as a watercolourist's key: the kinds are washes on the map, not signs.)
+    g.fillStyle = k.ink; g.globalAlpha *= 0.75;
+    g.beginPath(); g.ellipse(x, y, 15, 11, -0.3, 0, Math.PI * 2); g.fill();
     g.globalAlpha = 1;
     g.font = `20px ${SERIF}`; g.fillStyle = k.living ? INK : FAINT;
     g.fillText(k.name, x, y + 42);

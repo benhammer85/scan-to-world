@@ -492,7 +492,15 @@ function crossFade(): void {
  * where living islands are the aim. Elsewhere life is one green wash: mangroves and forests on the orange
  * Earth, two billion years before plants, were wrong there, and only something more to read.)
  */
-const KIND_SIGNS = WORLD.id === 'ocean';
+const KIND_SIGNS = false;
+/**
+ * Life is wash, not signs: ink for what stays, watercolour for what changes, and life is the most alive thing on
+ * the map. Each kind its own pigment, faint where it has only just come and a full, deep wash where it has taken
+ * hold; where two kinds meet they bleed into each other. (Its reed and tree signs came from engraved maps, and
+ * read as badly drawn shapes.) Named, by its colour, on the ocean world's plate, where living islands are the aim.
+ */
+const PIGMENT: Partial<Record<string, string>> = { moss: '#a9bd72', mangrove: '#6e8a3e', meadow: '#9fbd48', forest: '#3a6c45', heath: '#8b6f8a' };
+const KIND_NAMES = WORLD.id === 'ocean';
 const kindDots = KINDS.map((k) => new Stipple(k.ink, k.sign, k.sign === 'dot' ? 1.7 : k.sign === 'tree' ? 5.5 : 4.5, { ink2: k.ink2 }));
 const foam = new Stipple('#46708f', 'dash', 6);
 for (const s of [...kindDots, foam]) {
@@ -604,7 +612,7 @@ const glowField = new Float32Array(N), glowNext = new Float32Array(N);
  * maps washed woods green, in a thin watercolour over the paper, stronger the more there is.
  * (The reef's is left to its signs: the sea's colour is its depth alone.)
  */
-const WASH = KINDS.map((k) => (k.kind === 'reef' ? null : rgb(new THREE.Color(KIND_SIGNS ? k.ink : '#6f8a55').lerp(PAPER, KIND_SIGNS ? 0.25 : 0.3))));
+const WASH = KINDS.map((k) => (k.kind === 'reef' ? null : rgb(new THREE.Color(PIGMENT[k.kind] ?? k.ink).lerp(PAPER, 0.12))));
 const WASH_STRENGTH = 0.9;
 /** The wash as it's drawn, each vertex's colour and strength eased toward what lives there, so it comes and goes softly. */
 const washTint = new Float32Array(N * 3), washWeight = new Float32Array(N);
@@ -2418,7 +2426,7 @@ function chartInfo(): ChartInfo {
   return {
     title: words.title[met ? 0 : 1],
     subtitle: `${WORLD.numeral} · ${WORLD.title} · ${FIRES ? `fire ${FIRES + 1} · ` : ''}${mm} of fire`,
-    kinds: LIFE && KIND_SIGNS ? KINDS.map((k) => ({ name: k.name, ink: k.ink, sign: k.sign, living: living.has(k.kind) })) : [],
+    kinds: LIFE && KIND_NAMES ? KINDS.map((k) => ({ name: k.name, ink: PIGMENT[k.kind] ?? k.ink, sign: k.sign, living: living.has(k.kind) })) : [],
     // The first aim, how far it got; and the second, as the fire left it.
     summary: tale(met) + (second ? ` · ${second.words}` : ''),
     marks: marksNow ? markNames(WORLD.id).map((name, i) => ({ name, got: marksNow![i] })) : undefined,
