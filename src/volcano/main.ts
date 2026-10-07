@@ -624,10 +624,19 @@ const glowField = new Float32Array(N), glowNext = new Float32Array(N);
  * maps washed woods green, in a thin watercolour over the paper, stronger the more there is.
  * (The reef's is left to its signs: the sea's colour is its depth alone.)
  */
-const WASH = KINDS.map((k) => (k.kind === 'reef' ? null : rgb(new THREE.Color(PIGMENT[k.kind] ?? k.ink).lerp(PAPER, 0.12))));
+// (One pigment for all of it, except on the ocean world, where the kinds are the aim: several greens in small
+// patches side by side read as camouflage. The orange Earth's is a cyanobacterial blue-green; elsewhere sap green.)
+const ONE_LIFE = WORLD.id === 'archean' ? '#6f9a80' : '#8aa858';
+const WASH = KINDS.map((k) => (k.kind === 'reef' ? null : rgb(new THREE.Color(KIND_NAMES ? PIGMENT[k.kind] ?? k.ink : ONE_LIFE).lerp(PAPER, 0.12))));
 const WASH_STRENGTH = 0.9;
 /** The wash as it's drawn, each vertex's colour and strength eased toward what lives there, so it comes and goes softly. */
 const washTint = new Float32Array(N * 3), washWeight = new Float32Array(N);
+/**
+ * And as it's laid: each vertex's strength eased toward its neighbours' a few times over, so life is a few broad,
+ * graded washes, strongest where it has taken hold and fading out over the slopes, not a mottle of small
+ * patches as uneven as the simulation's own grid (worked out after each redraw, and used on the next).
+ */
+const washSoft = new Float32Array(N), washSoftNext = new Float32Array(N);
 let washedAt = -1;
 
 function surface(v: number): number {
@@ -754,12 +763,25 @@ function coarse(): void {
       if (FL && MARKED && MARKED[v] && planet.age[v] >= 1e5) x += (FL[i] - x) * 0.45;
       x += (AS[i] - x) * ash;
       if (wash) washTint[v3 + i] += (wash[i] - washTint[v3 + i]) * (washWeight[v] < 0.05 ? 1 : ease);
-      x += (washTint[v3 + i] - x) * washWeight[v];
+      x += (washTint[v3 + i] - x) * washSoft[v];
       // Where lava has just burned what lived, the ground is scorched a while before it's buried or greys.
       if (planet.scorch[v] > 0.01) x += (CHAR[i] - x) * Math.min(0.85, planet.scorch[v] * 0.9);
       if (glowField[v] > 0.01 && lava < 0.002) x += (GLOW_C[i] - x) * glowField[v] * GLOW_BY;
       coarseLand[v3 + i] = x;
     }
+  }
+  if (LIFE) {
+    washSoft.set(washWeight);
+    for (let pass = 0; pass < 4; pass++) {
+      for (let v = 0; v < N; v++) {
+        let sum = washSoft[v] * 2, n = 2;
+        for (let k = topo.nbrOffsets[v]; k < topo.nbrOffsets[v + 1]; k++) { sum += washSoft[topo.nbrList[k]]; n++; }
+        washSoftNext[v] = sum / n;
+      }
+      washSoft.set(washSoftNext);
+    }
+    // (Kept a little stronger than the plain average, so a wash eased out over its neighbours doesn't simply pale.)
+    for (let v = 0; v < N; v++) washSoft[v] = Math.min(WASH_STRENGTH, washSoft[v] * 1.25);
   }
   // Each mark's amount eased toward its neighbours', again and again, so the edge the shader draws
   // where it crosses a half is a smooth curve, not the simulation's triangles stepping in teeth.
@@ -1460,6 +1482,7 @@ function reckonAim(): void {
   else { aimDone = planet.basins.filter((b) => planet.flooded(b) >= FLOODED_ENOUGH).length; aimOf = planet.basins.length; }
 }
 let calmHeld = 0, calmAt = 0, litFor = 0, litAt = 0;
+const story: { t: number; v: number; sky: number }[] = [];
 /** How long Kawah Ijen's night must be kept lit, in all, in seconds. */
 const LIT_FOR = 120;
 /** How long the tumbling moon must be kept calm, in seconds. */
@@ -1612,6 +1635,12 @@ function drawAim(now: number): void {
   if (now - lastAim < 2) return;
   lastAim = now;
   if (!ending) reckonAim(); // (once the fire is done, what it did stands, whatever the long age does after)
+  // The aim's story, for the chart's band: how far it had come, and (on the orange Earth) how orange the sky still was.
+  // (Taken back to now first, in case the world was taken up again from a minute before.)
+  if (!ending && begun) {
+    while (story.length && story[story.length - 1].t >= planet.seconds) story.pop();
+    story.push({ t: planet.seconds, v: aimOf > 0 ? Math.max(0, Math.min(1, aimDone / aimOf)) : 0, sky: haze.value });
+  }
   if (begun) tellAim();
   const inked: number[] = [], pencilled: number[] = [], next: number[] = [];
   if (WORLD.goal === 'orbit') {
@@ -2467,12 +2496,19 @@ const SHORT: [RegExp, (m: RegExpMatchArray) => string][] = [
 ];
 function chartInfo(): ChartInfo {
   const living = new Set(ecology.living), seen = new Set<string>(), events: { t: number; text: string }[] = [];
+  // (Only what tells this world's story: the kinds of life only on the ocean world, where they're the aim.)
+  const KINDS_SAID = /^(moss|reef|mangroves|meadows|forest|heath|a wish met)$/;
   for (const e of planet.log) {
     for (const [re, f] of SHORT) {
       const m = e.text.match(re);
-      if (m) { const s = f(m); if (!seen.has(s)) { seen.add(s); events.push({ t: e.t, text: s }); } break; }
+      if (m) { const s = f(m); if (!seen.has(s) && (KIND_NAMES || !KINDS_SAID.test(s))) { seen.add(s); events.push({ t: e.t, text: s }); } break; }
     }
   }
+  // And the aim's own way there: a quarter, half, three quarters, and met.
+  const OXY = WORLD.goal === 'oxygen', STEPS: [number, string][] = [[0.25, OXY ? 'a quarter of the oxygen' : 'a quarter'], [0.5, OXY ? 'half the oxygen' : 'halfway'], [0.75, OXY ? 'three quarters' : 'three quarters']];
+  for (const [at, text] of STEPS) { const s = story.find((p) => p.v >= at); if (s && !(ending?.won && at >= 1)) events.push({ t: s.t, text }); }
+  if (ending?.won) events.push({ t: ending.from, text: GOAL_WORDS[WORLD.goal].title[0].replace(/^An? |^The /, (m) => m.toLowerCase()).replace(/^./, (c) => c.toLowerCase()) });
+  events.sort((a, b) => a.t - b.t);
   const length = ending!.from, mm = `${Math.floor(length / 60)}:${String(Math.floor(length % 60)).padStart(2, '0')}`;
   const eras = eraFrom.filter((e) => e.from < length).map((e, i, all) => ({ name: e.name.replace(/^The /, ''), from: e.from, to: i + 1 < all.length ? all[i + 1].from : length }));
 
@@ -2487,6 +2523,7 @@ function chartInfo(): ChartInfo {
     length,
     eras,
     events,
+    story: { samples: story.slice(), kind: OXY ? 'sky' : 'rise', ink: P.lava },
   };
 }
 

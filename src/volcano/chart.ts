@@ -19,6 +19,11 @@ export interface ChartInfo {
   length: number;
   eras: { name: string; from: number; to: number }[];
   events: { t: number; text: string }[];
+  /**
+   * The aim's story, for a band along the rule: how far it had come over the fire (0 to 1), drawn as a
+   * wash rising in the world's own pigment; or, on the orange Earth, the sky's own colour, orange to blue.
+   */
+  story?: { samples: { t: number; v: number; sky: number }[]; kind: 'sky' | 'rise'; ink: string };
   /** How it was done (see marks.ts): each mark, earned or not. Only when the aim was met. */
   marks?: { name: string; got: boolean }[];
 }
@@ -76,28 +81,71 @@ export function drawChart(globe: HTMLCanvasElement, info: ChartInfo): HTMLCanvas
 function drawTimeline(g: CanvasRenderingContext2D, info: ChartInfo, x0: number, x1: number, y: number, k: number, most = 4): void {
   const at = (t: number) => x0 + (x1 - x0) * Math.min(1, t / Math.max(1, info.length));
   g.textAlign = 'center';
+  // The band: the aim's story along the rule, as a strip of wash (see drawBand), with what happened set above it.
+  const band = info.story && info.story.samples.length > 1 ? (info.story.kind === 'sky' ? 20 : 36) * k : 0; // (a rising wash needs height to be read)
+  if (band) drawBand(g, info.story!, info.length, x0, x1, y - band, y, k);
   g.strokeStyle = INK; g.lineWidth = 1.5 * k;
   g.beginPath(); g.moveTo(x0, y); g.lineTo(x1, y); g.stroke();
-  g.font = `italic ${19 * k}px ${SERIF}`; g.fillStyle = FAINT;
-  for (const e of info.eras) {
-    g.beginPath(); g.moveTo(at(e.from), y - 8 * k); g.lineTo(at(e.from), y + 8 * k); g.stroke();
-    g.fillText(e.name, (at(e.from) + at(e.to)) / 2, y + 34 * k);
-  }
-  g.beginPath(); g.moveTo(x1, y - 8 * k); g.lineTo(x1, y + 8 * k); g.stroke();
+  for (const x of [x0, x1]) { g.beginPath(); g.moveTo(x, y - 6 * k); g.lineTo(x, y + 6 * k); g.stroke(); }
+  // (Only the fire's start and its length beneath it: the eras' names said little, and filled half the rule with nothing.)
+  g.font = `italic ${15 * k}px ${SERIF}`; g.fillStyle = FAINT;
+  const mm = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
+  g.textAlign = 'left'; g.fillText('0:00', x0, y + 24 * k);
+  g.textAlign = 'right'; g.fillText(mm(info.length), x1, y + 24 * k);
+  g.textAlign = 'center';
   g.font = `${17 * k}px ${SERIF}`;
   const rows: number[] = [];
   for (const e of info.events.slice(0, 14)) {
     const x = Math.max(x0 + 40 * k, Math.min(x1 - 40 * k, at(e.t))), w = g.measureText(e.text).width + 18 * k;
     let row = 0;
     while (row < rows.length && rows[row] > x - w / 2) row++;
-    if (row >= most) continue; // no room left above the rule here: better unsaid than crowded
+    if (row >= (info.story?.kind === 'rise' && band ? Math.max(1, most - 1) : most)) continue; // no room left above the rule here (a row fewer over the taller band): better unsaid than crowded
     rows[row] = x + w / 2;
-    const ty = y - 26 * k - row * 26 * k;
+    const ty = y - band - 18 * k - row * 26 * k;
     g.strokeStyle = 'rgba(46,33,24,0.25)'; g.lineWidth = 1 * k;
-    g.beginPath(); g.moveTo(at(e.t), y); g.lineTo(at(e.t), ty + 6 * k); g.stroke();
+    g.beginPath(); g.moveTo(at(e.t), y - band); g.lineTo(at(e.t), ty + 6 * k); g.stroke();
     g.fillStyle = INK;
     g.fillText(e.text, x, ty);
   }
+}
+
+/**
+ * The aim's story as a strip of watercolour from top to bottom: on the orange Earth the sky's colour at each moment,
+ * from its orange haze to blue; elsewhere a wash in the world's pigment rising from the rule as the aim came on,
+ * a little darker along its top, where the pigment pooled. Its edges a little ragged, as a brush leaves them.
+ */
+function drawBand(g: CanvasRenderingContext2D, story: NonNullable<ChartInfo['story']>, length: number, x0: number, x1: number, top: number, bottom: number, k: number): void {
+  const S = story.samples, at = (t: number) => x0 + (x1 - x0) * Math.min(1, t / Math.max(1, length));
+  const valueAt = (t: number, f: (p: (typeof S)[number]) => number) => {
+    if (t <= S[0].t) return f(S[0]);
+    for (let i = 1; i < S.length; i++) if (S[i].t >= t) { const a = S[i - 1], b = S[i], u = (t - a.t) / Math.max(1e-6, b.t - a.t); return f(a) + (f(b) - f(a)) * u; }
+    return f(S[S.length - 1]);
+  };
+  const rag = (x: number, seed: number) => (Math.sin(x * 0.11 + seed) + Math.sin(x * 0.037 + seed * 2.3) * 0.7) * 1.2 * k;
+  const step = Math.max(1, 2 * k), h = bottom - top;
+  g.save();
+  if (story.kind === 'sky') {
+    const orange = [233, 164, 106], blue = [150, 184, 212];
+    for (let x = x0; x < x1; x += step) {
+      const t = ((x - x0) / (x1 - x0)) * length, haze = Math.max(0, Math.min(1, valueAt(t, (p) => p.sky)));
+      const c = blue.map((b, i) => Math.round(b + (orange[i] - b) * haze));
+      g.fillStyle = `rgba(${c[0]},${c[1]},${c[2]},0.62)`;
+      g.fillRect(x, top + rag(x, 1), step + 0.5, h - rag(x, 1)); // (its foot on the rule, its top as the brush left it)
+    }
+  } else {
+    g.fillStyle = story.ink;
+    g.globalAlpha = 0.38;
+    g.beginPath(); g.moveTo(x0, bottom);
+    const last = at(S[S.length - 1].t);
+    for (let x = x0; x <= last; x += step) { const t = ((x - x0) / (x1 - x0)) * length; g.lineTo(x, bottom - Math.max(0.5 * k, valueAt(t, (p) => p.v) * h + rag(x, 2) * 0.4)); }
+    g.lineTo(last, bottom); g.closePath(); g.fill();
+    // The pooled top edge.
+    g.globalAlpha = 0.55; g.strokeStyle = story.ink; g.lineWidth = 1.4 * k;
+    g.beginPath();
+    for (let x = x0; x <= last; x += step) { const t = ((x - x0) / (x1 - x0)) * length, yy = bottom - Math.max(0.5 * k, valueAt(t, (p) => p.v) * h + rag(x, 2) * 0.4); if (x === x0) g.moveTo(x, yy); else g.lineTo(x, yy); }
+    g.stroke();
+  }
+  g.restore();
 }
 
 /**
