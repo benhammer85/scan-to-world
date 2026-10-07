@@ -63,6 +63,7 @@
       body.titled #begin, body.titled #worlds { opacity: 0 !important; pointer-events: none; }
       /* The menu from the corner while a world is played, and the plain list of every world, chapter by chapter. */
       #menu, #list { position: fixed; inset: 0; z-index: 30; background: rgba(244, 239, 228, 0.94); box-sizing: border-box; transition: opacity 0.5s; }
+      #list { background: #f4efe4; } /* (a page of its own: nothing shows through it) */
       #menu[hidden], #list[hidden] { display: none; }
       #menu { display: flex; align-items: center; justify-content: center; padding: 16px; }
       #menu .card { display: flex; flex-direction: column; align-items: center; gap: 6px; max-width: 22em; width: 100%; }
@@ -74,9 +75,9 @@
       #list .head { display: flex; justify-content: space-between; align-items: baseline; max-width: 30em; margin: 0 auto 6px; }
       #list h2 { font-weight: normal; font-size: 24px; margin: 0; }
       #list .head .close { font-size: 14px; opacity: 0.6; padding: 10px 4px; }
-      #list .chapter { max-width: 30em; margin: 18px auto 0; }
+      #list .chapter { max-width: 30em; margin: 22px auto 0; }
       #list .chapter h3 { font-weight: normal; font-style: italic; font-size: 14px; letter-spacing: 0.04em; opacity: 0.6; margin: 0 0 4px; }
-      #list .row { display: grid; grid-template-columns: 3.2em 1fr auto; align-items: baseline; width: 100%; text-align: left; padding: 9px 2px; border-bottom: 1px solid rgba(46, 33, 24, 0.12); min-height: 44px; font-size: 17px; }
+      #list .row { display: grid; grid-template-columns: 3.2em 1fr auto; align-items: center; width: 100%; text-align: left; padding: 6px 2px; border-bottom: 1px solid rgba(46, 33, 24, 0.12); min-height: 44px; font-size: 17px; }
       #list .row .n { font-size: 12px; letter-spacing: 0.12em; opacity: 0.55; }
       #list .row .m { font-size: 12px; letter-spacing: 0.2em; opacity: 0.6; font-variant-numeric: tabular-nums; }
       #list .row.here .t { text-decoration: underline; text-underline-offset: 5px; }
