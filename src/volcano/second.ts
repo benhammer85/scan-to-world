@@ -41,6 +41,8 @@
  *   Kawah Ijen      light the night, and as much of the crater, ever: pouring wide and pouring new pull apart.
  *   Hunga Tonga     send the waves, and more: every one needs the cone built again.
  *   Mercury         raise the far side, and the near side as little: bursts heap ash here too.
+ *   Venus, Pluto    raise the domes, and one as tall as can be: time on one dome is time not on the next.
+ *   Grindavík       keep the town, with as little earth moved as can be.
  *   A lava world    make rock snow, and pile it deep in one place: snow spreads along all the edge
  *                   of night, and turning the world to pile it costs the molten pool.
  */
@@ -83,6 +85,8 @@ export function secondWords(goal: World['goal'], value: number): string {
     case 'oxygen': return `${value}% more oxygen than the sky needed`;
     case 'chaos': return `${value}% of the ice broken`;
     case 'streaks': return `${value}% of the ice streaked`;
+    case 'domes': return `the tallest ${value} km high`;
+    case 'town': return `${value} ${value === 1 ? 'tap' : 'taps'} of earth to spare`;
   }
 }
 
@@ -171,6 +175,14 @@ export function measureSecond(world: World, pl: Planet, topo: Topology, islands:
     let dark = 0;
     for (let v = 0; v < n; v++) if (pl.ash[v] > 0.3) dark++;
     value = Math.round((100 * dark) / n);
+  } else if (world.goal === 'domes') {
+    // The tallest dome: the most the ground has risen anywhere, in km (a unit of height standing for 10 km, so a dome is about a kilometre, as Venus's are).
+    let most = 0;
+    for (let v = 0; v < n; v++) most = Math.max(most, pl.rock[v] - pl.start[v]);
+    value = Math.round(most * 10 * 10) / 10;
+  } else if (world.goal === 'town') {
+    // Earth to spare: the town kept with fewer walls.
+    value = pl.wallsLeft;
   } else if (world.goal === 'snow') {
     let most = 0;
     for (let v = 0; v < n; v++) if (pl.ash[v] > 0.5) most = Math.max(most, pl.rock[v] - pl.start[v]);

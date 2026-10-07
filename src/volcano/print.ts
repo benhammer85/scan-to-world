@@ -569,9 +569,14 @@ const WATER = /* glsl */ `
         // (Its hottest part glows: lighter than the paper's tint, laid over rather than multiplied.)
         col *= 1.0 - a * (1.0 - wc);
         col = mix(col, wc, a * smoothstep(0.6, 1.0, T) * 0.6);
+        // In the dark (the night side of a world with a star, or none at all), lava is lit by its own heat, not
+        // the sun: laid over the night's shade at its own brightness, and its glow reaching further round it.
+        float nightL = uSky.w > 1.5 ? 1.0 : uSky.w > 0.5 ? smoothstep(0.1, -0.22, dot(normalize(vN), uSky.xyz)) : 0.0;
+        col = mix(col, wc * (1.05 + 0.25 * T), a * (0.35 + 0.55 * T) * nightL * (0.4 + 0.6 * wet));
         // The ground just beyond it warms in its glow.
         float near = smoothstep(0.08, 0.5, lv) * (1.0 - cov) * smoothstep(-0.5, 0.0, -wFar + 1.0);
-        col *= mix(vec3(1.0), vec3(1.0, 0.84, 0.7), near * 0.45 * uFeedingGlow);
+        col *= mix(vec3(1.0), vec3(1.0, 0.84, 0.7), near * (0.45 + 0.5 * nightL) * uFeedingGlow);
+        col += vec3(0.32, 0.12, 0.03) * smoothstep(0.02, 0.45, lv) * (1.0 - cov) * nightL * 0.5 * uFeedingGlow; // (a warm light thrown on the dark ground)
       }`;
 
 /** The lava lamp's blobs, as woodblock prints too: a flat block, hot orange at a hot heart, in a black outline. */

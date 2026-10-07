@@ -52,6 +52,8 @@ const FIGURES: Record<string, Figure> = {
   // IV · Pressure: Hercules, kneeling: club, face, shoulder, hip, knee, foot.
   IV: { name: 'Hercules', src: hercules, w: 686, h: 819, stars: [[318, 44], [427, 213], [418, 392], [310, 494], [120, 600], [478, 770]], ra: 17.4, dec: 21, span: 36 },
   // V · Far worlds: Pegasus, flying: muzzle, neck, wing, wingtip, cloud.
+  // VI · Slow fires: Orion, the hunter: Betelgeuse, his shoulder, and Rigel, his foot.
+  VI: { name: 'Orion', src: orion, w: 536, h: 559, stars: [[160, 150], [340, 418]], ra: 5.6, dec: 4, span: 26 },
   V: { name: 'Pegasus', src: pegasus, w: 820, h: 573, stars: [[57, 232], [265, 158], [372, 186], [616, 72], [671, 292], [455, 380]], ra: 22.6, dec: 17, span: 52 },
 };
 
@@ -65,7 +67,6 @@ const BACKGROUND: Figure[] = [
   { name: 'Cassiopeia', src: cassiopeia, w: 560, h: 405, stars: [], ra: 1.0, dec: 61, span: 32 },
   { name: 'Andromeda', src: andromeda, w: 560, h: 520, stars: [], ra: 1.1, dec: 33, span: 28 },
   { name: 'Perseus', src: perseus, w: 383, h: 559, stars: [], ra: 3.5, dec: 44, span: 20 },
-  { name: 'Orion', src: orion, w: 536, h: 559, stars: [], ra: 5.6, dec: 4, span: 26 },
   { name: 'Canis Major', src: canis, w: 462, h: 559, stars: [], ra: 6.9, dec: -22, span: 22 },
   // The southern sky, from the same atlas's southern plates, so it isn't left bare.
   { name: 'Cetus', src: cetus, w: 560, h: 470, stars: [], ra: 1.7, dec: -8, span: 36 },

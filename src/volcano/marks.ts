@@ -41,7 +41,13 @@ export const MARK_AT: Record<WorldId, { heat: number; minutes: number }> = {
   deep: { heat: 33, minutes: 3 },
   lamp: { heat: 33, minutes: 4 },
   hollow: { heat: 33, minutes: 4 },
+  venus: { heat: 33, minutes: 3 },
+  pluto: { heat: 33, minutes: 3 },
+  grindavik: { heat: 50, minutes: 4 }, // (its first mark is the whole town kept, not heat: see HOUSES)
 };
+
+/** Worlds whose first mark is every house standing, not heat left (the fire there runs its course whatever you do). */
+const HOUSES: WorldId[] = ['grindavik'];
 
 const SHARE: [number, string][] = [[50, 'half'], [33, 'a third'], [25, 'a quarter'], [20, 'a fifth'], [10, 'a tenth']];
 const shareWords = (heat: number) => { const w = SHARE.find(([h]) => h <= heat)?.[1] ?? 'some'; return w === 'half' ? 'half the heat left' : `${w} of the heat left`; };
@@ -49,13 +55,13 @@ const shareWords = (heat: number) => { const w = SHARE.find(([h]) => h <= heat)?
 /** The three marks' names on a world, in order. */
 export function markNames(world: WorldId): [string, string, string] {
   const at = MARK_AT[world] ?? { heat: 10, minutes: 8 };
-  return [shareWords(at.heat), 'no setbacks', `within ${at.minutes} minutes`];
+  return [HOUSES.includes(world) ? 'every house standing' : shareWords(at.heat), 'no setbacks', `within ${at.minutes} minutes`];
 }
 
-/** What a won game earned: heat left (0 to 1), setbacks (the mountain blown apart or fallen in), and its length in seconds. */
+/** What a won game earned: heat left (0 to 1; at Grindavík, the share of the town standing), setbacks (the mountain blown apart or fallen in), and its length in seconds. */
 export function earned(world: WorldId, heatLeft: number, setbacks: number, seconds: number): Marks {
   const at = MARK_AT[world] ?? { heat: 10, minutes: 8 };
-  return [heatLeft * 100 >= at.heat - 1e-6, setbacks === 0, seconds <= at.minutes * 60];
+  return [HOUSES.includes(world) ? heatLeft >= 1 - 1e-6 : heatLeft * 100 >= at.heat - 1e-6, setbacks === 0, seconds <= at.minutes * 60];
 }
 
 /** Kept as three 0s and 1s ("101"); what's earned once stays earned. */

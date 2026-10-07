@@ -31,7 +31,7 @@
  */
 import type { Rules } from './sim';
 
-export type WorldId = 'ocean' | 'moon' | 'mars' | 'ice' | 'io' | 'enceladus' | 'asteroid' | 'spin' | 'lamp' | 'tumble' | 'deep' | 'young' | 'rogue' | 'snowball' | 'dust' | 'magma' | 'first' | 'archean' | 'europa' | 'triton' | 'mercury' | 'lengai' | 'ijen' | 'tonga' | 'hollow';
+export type WorldId = 'ocean' | 'moon' | 'mars' | 'ice' | 'io' | 'enceladus' | 'asteroid' | 'spin' | 'lamp' | 'tumble' | 'deep' | 'young' | 'rogue' | 'snowball' | 'dust' | 'magma' | 'first' | 'archean' | 'europa' | 'triton' | 'mercury' | 'lengai' | 'ijen' | 'tonga' | 'hollow' | 'venus' | 'pluto' | 'grindavik';
 
 export interface Palette {
   /** The ground: bare old rock, fresh basalt, ash, lava as it runs (and where it lies thick), and, for worlds that keep a mark of it, rock that lava has flooded. */
@@ -62,7 +62,7 @@ export interface World {
   /** Its second aim, for the card: one that pulls against the first (see second.ts). */
   second: string;
   palette: Palette;
-  goal: 'ring' | 'basins' | 'height' | 'cover' | 'plumes' | 'feed' | 'round' | 'ridge' | 'lamp' | 'calm' | 'bank' | 'orbit' | 'hearth' | 'thaw' | 'outbuild' | 'snow' | 'gather' | 'oxygen' | 'chaos' | 'streaks' | 'antipode' | 'white' | 'glow' | 'waves';
+  goal: 'ring' | 'basins' | 'height' | 'cover' | 'plumes' | 'feed' | 'round' | 'ridge' | 'lamp' | 'calm' | 'bank' | 'orbit' | 'hearth' | 'thaw' | 'outbuild' | 'snow' | 'gather' | 'oxygen' | 'chaos' | 'streaks' | 'antipode' | 'white' | 'glow' | 'waves' | 'domes' | 'town';
   /** For Ol Doinyo Lengai: how much of the summit must turn white, once the peak stands its `height`. */
   whiteness?: number;
   /** For Kawah Ijen: how much must glow at once (in vertices of a planet of the drawn detail), for two minutes in all, to count as lit. */
@@ -103,6 +103,10 @@ export interface World {
   pool?: number;
   /** For a world whose aim is great plumes: how many. */
   plumes?: number;
+  /** For Grindavík: the share of the town's houses to keep, until the eruption ends. */
+  keep?: number;
+  /** For Venus and Pluto: how many domes (or mounds round the hollow), each apart from the others. */
+  domes?: number;
   /** For a world whose aim is a moon: how much rock it takes, thrown into orbit; or, feeding a giant's ring, how much the ring must hold at once. */
   orbit?: number;
   /** How far apart its contours are, in height (0.035 unless it says). */
@@ -721,12 +725,89 @@ export const WORLDS: World[] = [
     goal: 'height',
     height: { target: 20, kmPerUnit: 40 },
   },
+  {
+    id: 'venus',
+    kind: 'A hot world under thick cloud',
+    numeral: 'XXVI',
+    title: 'Venus',
+    first: 'Scorching ground under a sky of thick yellow cloud.',
+    then: 'Here thick, sticky lava barely flows. It piles up where it comes out, in round, flat-topped domes, like pancakes.',
+    second: 'Let it out in one place till a dome stands; then turn the world, and start the next.',
+    rules: {
+      g: 0.9, // (Venus's gravity, Earth's being 1)
+      terrain: 'mars', basins: 0, craters: 4, floor: 0.05, rough: 0.02,
+      waves: 0, rain: 0, sink: 0, swell: 0, life: false,
+      talus: 1.0, flow: 4, channel: 1, thin: 0.01, coolLand: 2, grainPull: 0, // (stiff and quick to set: it heaps where it comes out, rather than running)
+      drift: 0, rises: 0.03, heat: 230, rising: 1.0, steady: true,
+      dome: 0.12, plumesApart: 0.4, ashShare: 0.1, // (a burst wells out as more of the same stiff lava, not ash)
+      impactEvery: [0, 0], // (its thick air burns small stones up before they land)
+    },
+    palette: {
+      paper: '#e8d6b0', basalt: '#9b8466', ash: '#cbb48a', lava: '#c25a2c', deepLava: '#8c3a1c',
+      shallow: '#d4e3ec', deep: '#b1c8d8',
+      landInk: '#6e5530', landInkHigh: '#4e3a1c', pencil: '#cdb68c', seaInk: '#5b82a3',
+    },
+    goal: 'domes',
+    domes: 5,
+  },
+  {
+    id: 'pluto',
+    kind: 'A small, far, frozen world',
+    numeral: 'XXVII',
+    title: 'Pluto',
+    first: 'Reddish ice, at the cold edge of the sun’s family.',
+    then: 'Beside a great hollow, icy slush once welled up as mounds, all round it in a ring: Wright Mons.',
+    second: 'Raise each mound on the dotted ring round the hollow, each apart from the last.',
+    rules: {
+      g: 0.06, // (Pluto's gravity, Earth's being 1)
+      terrain: 'ice', basins: 0, craters: 10, floor: 0.08, rough: 0.015,
+      waves: 0, rain: 0, sink: 0, swell: 0, life: false,
+      talus: 1.6, flow: 4, channel: 1, thin: 0.01, coolLand: 1.5, grainPull: 0,
+      drift: 0, rises: 0.035, heat: 240, rising: 1.0, steady: true,
+      dome: 0.1, domeRing: 0.45, domeBand: 0.12, plumesApart: 0.3, ashShare: 0.1,
+      impactEvery: [90, 140], impactWarning: 14, impactHeat: 6,
+    },
+    palette: {
+      paper: '#dfc8b2', basalt: '#eef0ee', ash: '#f5f4f0', lava: '#8fb6c6', deepLava: '#6a98ae', flooded: '#f4f3ee',
+      shallow: '#d4e3ec', deep: '#b1c8d8',
+      landInk: '#7a5040', landInkHigh: '#5a3628', pencil: '#cfb29c', seaInk: '#5b82a3',
+    },
+    goal: 'domes',
+    domes: 5,
+    contour: 0.05,
+  },
+  {
+    id: 'grindavik',
+    kind: 'A fishing town on a fissure',
+    numeral: 'XXVIII',
+    title: 'Grindavík',
+    first: 'A small fishing town in Iceland, below a ridge that has begun to split open.',
+    then: 'In 2024 lava poured from fissures above Grindavík, and people raised long walls of earth to turn it away from the town.',
+    second: 'Tap the ground to raise a wall of earth; tap again nearby and the wall runs on.',
+    rules: {
+      g: 1,
+      terrain: 'mars', basins: 0, craters: 0, floor: 0.15, rough: 0.012,
+      waves: 0, rain: 0, sink: 0, swell: 0, life: false,
+      flow: 2, channel: 3, coolLand: 0.3, thin: 0.0015, // (runny, and slow to set: it creeps on, a front you can see coming)
+      drift: 0, rises: 0, heat: 180, rising: 1.0, steady: true, pulse: 3, tipPour: 5, // (it pours by itself, however the world is held: the walls are all you do)
+      town: 0.38, townR: 0.07, slope: 0.1, byGround: true, walls: 14, wallHeight: 0.06,
+      impactEvery: [0, 0], stormEvery: [0, 0],
+    },
+    palette: {
+      paper: '#e2dccb', basalt: '#57524d', ash: '#8c857c', lava: '#c8502a', deepLava: '#8e3418',
+      shallow: '#d4e3ec', deep: '#b1c8d8',
+      landInk: '#4f4a40', landInkHigh: '#34302a', pencil: '#b9b09c', seaInk: '#5b82a3',
+    },
+    goal: 'town',
+    keep: 0.8,
+  },
 ];
 
 /**
- * The worlds in five chapters, each teaching one thing (see the README): pouring and turning; one
+ * The worlds in six chapters, each teaching one thing (see the README): pouring and turning; one
  * world through its ages (ages.ts); Earth's strangest real volcanoes; bursts; and placing and
- * steering, the lava lamp, and last the hollow world, where pouring too fast sets you back.
+ * steering, the lava lamp, and the hollow world, where pouring too fast sets you back; and last,
+ * slow fires, stiff lava and ice heaped into domes and mounds where they come out.
  */
 export const CHAPTERS: { numeral: string; title: string; worlds: WorldId[] }[] = [
   { numeral: 'I', title: 'Our Neighbours', worlds: ['mars', 'moon', 'ice', 'asteroid', 'rogue'] },
@@ -734,6 +815,8 @@ export const CHAPTERS: { numeral: string; title: string; worlds: WorldId[] }[] =
   { numeral: 'III', title: 'Strange Fires', worlds: ['lengai', 'ijen', 'tonga'] },
   { numeral: 'IV', title: 'Pressure', worlds: ['io', 'europa', 'enceladus', 'triton', 'tumble', 'mercury'] },
   { numeral: 'V', title: 'Far Worlds', worlds: ['magma', 'dust', 'spin', 'deep', 'lamp', 'hollow'] },
+  { numeral: 'VI', title: 'Slow Fires', worlds: ['venus', 'pluto'] },
+  { numeral: 'VII', title: "Earth's Fires", worlds: ['grindavik'] },
 ];
 
 /** The chapter a world is in. */
