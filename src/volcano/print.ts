@@ -43,6 +43,7 @@ export const PRINT_FUNCTIONS = /* glsl */ `
   uniform float uFedTime; // (the time, at uFeeding a second)
   uniform vec3 uVent;
   uniform float uVentMark;
+  uniform vec4 uStone, uStoneHit; // (a falling stone's shadow, and where one struck: see main.ts)
   uniform vec4 uRings[6]; // (the pressure, as rings spreading from the vent: each one's reach, strength, and 0 ink, 1 grey, 2 gold)
   uniform vec3 uRingInk; // (in the world's own colour: sulfur on Io, pale blue on the ice)
   uniform float uBreath; // (and a warm breath at the vent with each ring, 0 for none)
@@ -396,27 +397,21 @@ const VENT_SIGNS = /* glsl */ `
         vec3 vmt1 = normalize(cross(uVent, abs(uVent.y) < 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0))), vmt2 = cross(uVent, vmt1);
         float vmFar = acos(clamp(dot(vDir, uVent), -1.0, 1.0)), vmAng = atan(dot(vDir, vmt2), dot(vDir, vmt1));
         float vmCov = smoothstep(0.45, 0.55, lv);
-        // The vent, marked as an engraved map marks a volcano: a small ring, its rim hatched outward in short
-        // strokes, so you always know where the heat is and the smoke has somewhere to rise from. (With
-        // nothing there before the first pour, the smoke seemed to come from nowhere.) Over running lava,
-        // pale, as the crater's lip.
-        if (uVentMark > 0.5) {
-          float vr = max(0.011, 5.0 * px), vlw = max(0.7 * uPx * px, 1e-5);
-          // (By hand: a little out of round, the strokes not all one length, and a small gap where the pen lifted.)
-          float vrW = vr * (1.0 + 0.12 * (noise3(vec3(cos(vmAng) * 1.6, sin(vmAng) * 1.6, 3.0)) - 0.5));
-          float rimV = (1.0 - smoothstep(vlw * 0.6, vlw * 1.6, abs(vmFar - vrW))) * smoothstep(0.0, 0.05, fract(vmAng / 6.2832 + 0.37));
-          float tickA = abs(fract(vmAng / 6.2832 * 14.0) - 0.5) / 14.0 * 6.2832 * vmFar; // (how far round, along the ground, from the nearest stroke)
-          float tickL = 1.3 + 0.35 * fract(sin(floor(vmAng / 6.2832 * 14.0 + 0.5) * 12.9898) * 43758.5);
-          float tick = (1.0 - smoothstep(vlw * 0.5, vlw * 1.4, tickA)) * step(vrW, vmFar) * (1.0 - smoothstep(vr * tickL, vr * (tickL + 0.12), vmFar));
-          float mark = max(rimV, tick * 0.8) * onLand;
-          col = mix(col, mix(vec3(0.2, 0.16, 0.13) * uCrustTint * 1.6, vec3(0.86, 0.6, 0.38), vmCov), mark * 0.85);
-          // As the pressure builds, the mouth warms: a dull red ember inside the ring from the start,
-          // going orange, then gold, as it nears what the cone can hold.
-          float warmV = smoothstep(0.02, 0.15, uBuild) * (1.0 - smoothstep(vr * 0.55, vr * 0.85, vmFar)) * onLand * (1.0 - vmCov);
-          vec3 emberC = mix(vec3(0.55, 0.12, 0.05), vec3(0.95, 0.42, 0.1), smoothstep(0.2, 0.6, uBuild));
-          emberC = mix(emberC, vec3(0.99, 0.78, 0.4), smoothstep(0.6, 0.9, uBuild));
-          col = mix(col, emberC, warmV * (0.55 + 0.35 * uBuild) * (0.85 + 0.15 * noise3(vDir * 140.0 + vec3(0.0, uTime * 0.6, 0.0))));
-          glowInk = max(glowInk, warmV * (0.3 + 0.5 * uBuild));
+        // A falling stone, in watercolour: its shadow on the ground, a broad faint wash that gathers into a darker spot
+        // as it comes down, so it's felt coming from above; and where it struck, a drop of dark pigment blooming out,
+        // its edge frilled where it met the paper, then paling as it dries.
+        if (uStone.w >= 0.0) {
+          float sF = acos(clamp(dot(vDir, normalize(uStone.xyz)), -1.0, 1.0)) + 0.008 * (noise3(vDir * 38.0) - 0.5);
+          float near = 1.0 - uStone.w, sR = mix(0.13, 0.03, near * near);
+          float sh = (1.0 - smoothstep(sR * 0.45, sR, sF)) * (0.1 + 0.42 * near * near);
+          col = mix(col, col * vec3(0.72, 0.72, 0.8), sh);
+        }
+        if (uStoneHit.w >= 0.0) {
+          float hT = uStoneHit.w, hF = acos(clamp(dot(vDir, normalize(uStoneHit.xyz)), -1.0, 1.0));
+          float reach = 0.025 + 0.06 * (1.0 - exp(-hT * 1.3)), d = hF / reach + 0.22 * (noise3(vDir * 26.0 + 4.0) - 0.5);
+          float inB = 1.0 - smoothstep(0.82, 1.0, d), rimB = exp(-abs(d - 0.93) * 9.0) * step(d, 1.05);
+          float fadeB = exp(-hT / 2.6) * smoothstep(0.0, 0.15, hT);
+          col = mix(col, vec3(0.36, 0.31, 0.3) * uCrustTint * 1.4, clamp(inB * 0.32 + rimB * 0.38, 0.0, 0.6) * fadeB);
         }
         // The pressure, read in rings: drawn flat on the ground, spreading slowly from the vent as rings spread on
         // still water, a little out of round as if drawn by hand, fading as they go. (Smoke drawn as smoke read
@@ -475,6 +470,31 @@ const VENT_SIGNS = /* glsl */ `
             float halo = exp(-max(0.0, rFar - vrB * 0.6) / (vrB * (1.6 + 2.2 * uBuild))) * uBreath * onLand * (1.0 - smoothstep(0.45, 0.55, lv));
             col = mix(col, mix(vec3(0.95, 0.55, 0.22), vec3(1.0, 0.8, 0.45), uBuild), halo * 0.38);
           }
+        }
+
+        // The vent, last, so nothing washes over it: watercolour for the crater itself, a dark throat laid as a small
+        // wash with a ragged edge, darker where it pooled at that edge, an ember alive in it even at rest and warming
+        // with the pressure, and a faint warm wash bled out round it, so the island has a heart; and one fine ink line
+        // for its rim, a little out of round and broken where the pen lifted (ink for what stays). Over running lava,
+        // the rim pale, as the crater's lip. (A ring with strokes running out from it read as a sun; with strokes
+        // running in, as a sliced lemon.)
+        if (uVentMark > 0.5) {
+          float vr = max(0.022, 11.0 * px), vlw = max(0.65 * uPx * px, 1e-5);
+          float wob = 1.0 + 0.1 * (noise3(vec3(cos(vmAng) * 1.6, sin(vmAng) * 1.6, 3.0)) - 0.5);
+          float vrW = vr * wob;
+          float rimV = (1.0 - smoothstep(vlw * 0.5, vlw * 1.5, abs(vmFar - vrW))) * smoothstep(0.0, 0.06, fract(vmAng / 6.2832 + 0.37)) * 0.75 * onLand;
+          float halo = (1.0 - smoothstep(vr * 0.9, vr * (2.6 + 1.4 * uBuild), vmFar + 0.004 * (noise3(vDir * 60.0) - 0.5))) * onLand * (1.0 - vmCov);
+          col = mix(col, col * vec3(1.0, 0.85, 0.74), halo * (0.3 + 0.35 * uBuild));
+          float tr = vr * 0.74, td = vmFar + vr * 0.08 * (noise3(vDir * 160.0 + 3.0) - 0.5) + vr * 0.14 * (noise3(vDir * 45.0) - 0.5); // (a soft, slightly irregular edge: more noise drew a little star)
+          float throat = (1.0 - smoothstep(tr * 0.85, tr, td)) * onLand * (1.0 - vmCov);
+          float pool = exp(-max(0.0, tr - td) / (vr * 0.18)) * throat;
+          col = mix(col, vec3(0.3, 0.2, 0.16) * uCrustTint * 1.45, clamp(throat * 0.55 + pool * 0.3, 0.0, 0.85));
+          col = mix(col, mix(vec3(0.24, 0.18, 0.14) * uCrustTint * 1.6, vec3(0.86, 0.6, 0.38), vmCov), rimV);
+          float warmV = (1.0 - smoothstep(tr * 0.15, tr * 0.8, vmFar)) * onLand * (1.0 - vmCov);
+          vec3 emberC = mix(vec3(0.62, 0.16, 0.07), vec3(0.95, 0.42, 0.1), smoothstep(0.2, 0.6, uBuild));
+          emberC = mix(emberC, vec3(0.99, 0.78, 0.4), smoothstep(0.6, 0.9, uBuild));
+          col = mix(col, emberC, warmV * (0.5 + 0.45 * smoothstep(0.02, 0.6, uBuild)) * (0.85 + 0.15 * noise3(vDir * 140.0 + vec3(0.0, uTime * 0.6, 0.0))));
+          glowInk = max(glowInk, warmV * (0.25 + 0.55 * uBuild));
         }
 `;
 
