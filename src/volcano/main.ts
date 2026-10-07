@@ -368,6 +368,7 @@ material.onBeforeCompile = (shader) => {
   shader.uniforms.uBloomGrey = bloomGreyU;
   shader.uniforms.uBloomCol = { value: new THREE.Color(SULPHUR ? '#f4e6b8' : ICE || WORLD.id === 'ijen' ? '#dde8f2' : '#e0d3c2') };
   shader.uniforms.uBurstWash = { value: burstWashU };
+  shader.uniforms.uStone = stoneU; shader.uniforms.uStoneHit = stoneHitU;
   shader.uniforms.uVentMark = { value: LAMP ? 0 : 1 }; // (the vent marked on the map, as a chart marks a volcano)
   shader.uniforms.uFlash = flash;
   shader.uniforms.uDark = { value: DARK_LAVA ? 1 : 0 };
@@ -555,6 +556,13 @@ function mark(draw: (g: CanvasRenderingContext2D) => void, foot = 0.5): THREE.Sp
   return sprite;
 }
 const INK = '#2e2118';
+/**
+ * A falling stone in watercolour (see VENT_SIGNS in print.ts): its shadow on the ground, a broad faint wash gathering
+ * into a darker spot as it comes down (xyz where, w how much of its warning is left, 1 to 0; below 0, none); and where
+ * it struck, a bloom of dark pigment spreading and drying (w the seconds since; below 0, none).
+ */
+const stoneU = { value: new THREE.Vector4(0, 0, 1, -1) }, stoneHitU = { value: new THREE.Vector4(0, 0, 1, -1) };
+let stoneHitAt = -1e9;
 /** Where a stone will fall: a small star of six strokes, the old sign for a hazard. */
 const stoneMark = mark((g) => {
   g.lineWidth = 3.4;
@@ -586,6 +594,18 @@ const skyStone = mark((g) => {
   g.lineWidth = 1.1; for (const [x, y, r] of [[40, 26, 3.2], [24, 34, 2.2], [36, 41, 1.8]]) { g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.stroke(); } // (pocked with small pits: two arcs read as a face)
 });
 skyStone.material.depthTest = true;
+/** In watercolour, the stone is a drop of grey pigment, its edge soft and a little darker where it pooled; no outline. */
+const dropStone = mark((g) => {
+  const rg = g.createRadialGradient(30, 33, 2, 32, 32, 22);
+  rg.addColorStop(0, 'rgba(255,255,255,0.75)'); rg.addColorStop(0.72, 'rgba(255,255,255,0.6)'); rg.addColorStop(0.86, 'rgba(255,255,255,0.95)'); rg.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = rg; g.beginPath();
+  for (let i = 0; i <= 40; i++) { const a = (i / 40) * Math.PI * 2, r = 21 + 1.6 * Math.sin(a * 3 + 0.7) + 1.1 * Math.sin(a * 7 + 2); if (i) g.lineTo(32 + r * Math.cos(a), 32 + r * Math.sin(a) * 0.9); else g.moveTo(32 + r * Math.cos(a), 32 + r * Math.sin(a) * 0.9); }
+  g.fill();
+});
+dropStone.material.depthTest = true; dropStone.material.color.set('#6d655f');
+/** And the wet wash it leaves behind as it falls: soft drops, paling. */
+const dropTrail = [0, 1, 2, 3, 4, 5].map(() => mark((g) => { const rg = g.createRadialGradient(32, 32, 0, 32, 32, 28); rg.addColorStop(0, 'rgba(255,255,255,0.7)'); rg.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = rg; g.fillRect(0, 0, 64, 64); }));
+for (const d of dropTrail) { d.material.depthTest = true; d.material.color.set('#8a827a'); }
 /** Its trail: a few dots of dust left behind it in the sky, thinning. */
 const stoneTrail = [0, 1, 2, 3, 4].map(() => mark((g) => { g.beginPath(); g.arc(32, 32, 9, 0, Math.PI * 2); g.fill(); }));
 for (const d of stoneTrail) { d.material.depthTest = true; d.material.color.set(WORLD.id === 'first' ? '#d9c7a6' : '#6b5a48'); }
@@ -1003,20 +1023,33 @@ function drawMarks(): void {
   callMark.visible = !!t && !ending;
   if (t) { setMark(callMark, nearestAbove(new THREE.Vector3(t.x, t.y, t.z)), 0.035); callMark.material.color.set(INK); }
   const s = planet.impact;
-  stoneMark.visible = stoneRing.visible = skyStone.visible = !!s && !ending;
+  // (In watercolour: a drop of pigment for the stone, its shadow and its landing in the ground's own wash, and only the dotted ring of ink; no sign.)
+  stoneRing.visible = !!s && !ending;
+  stoneMark.visible = skyStone.visible = !!s && !ending && !WASHED;
+  dropStone.visible = !!s && !ending && WASHED;
   for (const d of stoneTrail) d.visible = skyStone.visible;
+  for (const d of dropTrail) d.visible = dropStone.visible;
+  stoneU.value.w = s && !ending && WASHED ? Math.max(0, Math.min(1, s.in / Math.max(1e-6, planet.k.impactWarning))) : -1;
+  if (s) stoneU.value.set(base[s.vertex * 3], base[s.vertex * 3 + 1], base[s.vertex * 3 + 2], stoneU.value.w);
+  stoneHitU.value.w = WASHED && seconds - stoneHitAt < 8 ? seconds - stoneHitAt : -1;
   if (s) {
     setMark(stoneMark, s.vertex, 0.03);
     setMark(stoneRing, s.vertex, Math.max(0.05, planet.k.crater * 1.2));
     // In the lava's red, if the plume is under it and will catch its heat.
-    const inGlow = planet.warmthAt(s.vertex) > 0.5, ink = inGlow ? (WORLD.goal === 'gather' ? '#f4b545' : '#9a4230') : WORLD.id === 'first' ? '#efe2c6' : INK; // (pale on the first world's dark crust, where ink was lost; gold once the glow is under it, and it will be caught)
+    const inGlow = planet.warmthAt(s.vertex) > 0.5, ink = inGlow ? (WORLD.goal === 'gather' ? '#f4b545' : WASHED ? '#c99a3e' : '#9a4230') : WORLD.id === 'first' ? '#efe2c6' : WASHED ? '#6d655f' : INK; // (pale on the first world's dark crust, where ink was lost; gold once the glow is under it, and it will be caught)
     stoneMark.material.color.set(ink); stoneRing.material.color.set(ink);
     const f = Math.max(0, Math.min(1, s.in / Math.max(1e-6, planet.k.impactWarning)));
     stoneAt(s.vertex, f, STONE_AT); skyStone.position.copy(STONE_AT);
     skyStone.scale.setScalar((0.06 + 0.03 * (1 - f)) * (dist / 3.2)); skyStone.material.opacity = Math.min(1, (1 - f) * 8);
     stoneTrail.forEach((d, i) => { stoneAt(s.vertex, Math.min(1, f + 0.05 * (i + 1)), d.position); d.scale.setScalar(0.012 * (1 - i / 6) * (dist / 3.2)); d.material.opacity = 0.7 * (1 - i / 5) * Math.min(1, (1 - f) * 8); });
+    if (WASHED) {
+      // The drop falls slantwise and grows as it nears; the wet wash behind it pales.
+      dropStone.position.copy(STONE_AT); dropStone.scale.setScalar((0.035 + 0.035 * (1 - f)) * (dist / 3.2)); dropStone.material.opacity = Math.min(0.85, (1 - f) * 6);
+      dropTrail.forEach((d, i) => { stoneAt(s.vertex, Math.min(1, f + 0.03 * (i + 1)), d.position); d.scale.setScalar((0.03 - 0.003 * i) * (dist / 3.2)); d.material.opacity = 0.35 * (1 - i / 6) * Math.min(1, (1 - f) * 6); });
+    }
     stoneWas = { vertex: s.vertex };
   } else if (stoneWas) {
+    if (WASHED) { const v = stoneWas.vertex; stoneHitU.value.set(base[v * 3], base[v * 3 + 1], base[v * 3 + 2], 0); stoneHitAt = seconds; }
     // Landed: a burst of dust and broken rock where it struck.
     const v = stoneWas.vertex, p = topo.positions;
     STONE_UP.set(base[v * 3], base[v * 3 + 1], base[v * 3 + 2]).normalize();
