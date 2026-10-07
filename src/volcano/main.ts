@@ -220,8 +220,13 @@ const islands = new Islands(topo);
 const RELIEF = 0.32;
 const group = new THREE.Group();
 scene.add(group);
-// A fire that starts somewhere new starts facing us, where the first always did.
-if (GROUND) group.quaternion.setFromUnitVectors(new THREE.Vector3(base[START * 3], base[START * 3 + 1], base[START * 3 + 2]), new THREE.Vector3(0.1, 0.15, 0.98).normalize());
+// A fire that starts somewhere new starts facing us, where the first always did. Where the aim is a mountain's
+// height, the vent starts part way round towards the top of the world instead: seen from straight above, a
+// mountain has no height at all (even forty kilometres read as a flat patch), and only turned to the edge did it
+// stand up, so the first world, Mars, showed nothing of what it asks for unless it was turned right over.
+const PROFILE = WORLD.goal === 'height' || WORLD.goal === 'white';
+const FACING = PROFILE ? new THREE.Vector3(0, Math.sin(0.75), Math.cos(0.75)) : new THREE.Vector3(0.1, 0.15, 0.98).normalize();
+if (GROUND || PROFILE) group.quaternion.setFromUnitVectors(new THREE.Vector3(base[START * 3], base[START * 3 + 1], base[START * 3 + 2]), FACING);
 
 /** Drawn on a surface of twice the detail, the values carried across smoothly (see fine.ts). */
 const fine = new FineSurface(topo, buildTopology(new THREE.IcosahedronGeometry(1, 80).attributes.position.array, null));

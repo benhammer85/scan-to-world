@@ -38,6 +38,7 @@
       /* The title page, every time the game is opened: its name above, the world turning in the middle, and where to go beneath. */
       #title { position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column; align-items: center; justify-content: space-between; box-sizing: border-box; padding: calc(9vh + env(safe-area-inset-top)) 16px calc(26px + env(safe-area-inset-bottom)); transition: opacity 1s; background: linear-gradient(to bottom, #f4efe4 0, rgba(244, 239, 228, 0) 26%, rgba(244, 239, 228, 0) 52%, #f4efe4 70%); }
       #title.gone { opacity: 0; pointer-events: none; }
+      #title[hidden] { display: none; } /* (its display:flex outranked the hidden attribute: the title stayed up over the card on every later visit) */
       #title .head { text-align: center; }
       #title h1 { margin: 0; font-weight: normal; font-size: clamp(30px, 9vw, 44px); letter-spacing: 0.02em; text-wrap: balance; }
       #title .sub { margin: 8px 0 0; font-style: italic; font-size: 15px; opacity: 0.6; }
