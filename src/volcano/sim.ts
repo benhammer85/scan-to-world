@@ -346,6 +346,27 @@ export const VOLCANO = {
    */
   chaos: 0,
   /**
+   * Venus and Wright Mons: a dome is counted once the ground at the vent stands this much above
+   * where it began, if it's `plumesApart` from the others. 0: none. With `domeRing`, a great hollow
+   * lies this far (radians) from where the heat begins, and only a mound on the ring round it,
+   * within `domeBand` of the ring, is counted (as Wright Mons is a ring of mounds round a pit).
+   */
+  dome: 0,
+  domeRing: 0,
+  domeBand: 0.12,
+  /**
+   * Grindavík: a town this far (radians) down the slope from the fissure, `townR` across, its
+   * houses lost where lava reaches them; the ground falls `slope` from the fissure to the town (over
+   * the whole world, a gentle tilt). Lava runs by the ground alone, however the world is held
+   * (`byGround`), and `walls` taps of earth can be raised as walls `wallHeight` high to turn it.
+   */
+  town: 0,
+  townR: 0.08,
+  slope: 0,
+  byGround: false,
+  walls: 0,
+  wallHeight: 0.035,
+  /**
    * Triton: a burst in sunlight is a geyser, its dark plume blown downwind (east, along the
    * world's turning) into a streak this long (radians), counted if it's `plumesApart` from the last.
    * 0: none.
@@ -688,6 +709,39 @@ export class Planet {
     this.laid = new Float32Array(n).fill(1e6);
     this.breakPhase = new Float32Array(n);
     for (let v = 0; v < n; v++) { const x = Math.sin(v * 12.9898 + 78.233) * 43758.5453; this.breakPhase[v] = (x - Math.floor(x)) * Math.PI * 2; }
+    // Wright Mons's hollow: a great pit, the heat beginning on the ring round it.
+    if (this.k.domeRing > 0) {
+      const q = this.plume, t = unit(cross(q, Math.abs(q.y) < 0.9 ? { x: 0, y: 1, z: 0 } : { x: 1, y: 0, z: 0 })), r = this.k.domeRing;
+      const c = unit({ x: q.x * Math.cos(r) + t.x * Math.sin(r), y: q.y * Math.cos(r) + t.y * Math.sin(r), z: q.z * Math.cos(r) + t.z * Math.sin(r) });
+      this.domeCentre = c;
+      for (let v = 0; v < n; v++) {
+        const d = Math.acos(Math.min(1, p[v * 3] * c.x + p[v * 3 + 1] * c.y + p[v * 3 + 2] * c.z)) / (r * 0.7);
+        if (d < 1) this.rock[v] = Math.max(0.004, this.rock[v] - this.k.floor * 0.85 * (1 - d * d) ** 1.5);
+      }
+    }
+    // Grindavík: the ground falling from the fissure towards the town, and the town's houses on a loose grid.
+    if (this.k.town > 0) {
+      const q = this.plume, t1 = unit(cross(q, Math.abs(q.y) < 0.9 ? { x: 0, y: 1, z: 0 } : { x: 1, y: 0, z: 0 })), r = this.k.town;
+      const c = unit({ x: q.x * Math.cos(r) - t1.x * Math.sin(r), y: q.y * Math.cos(r) - t1.y * Math.sin(r), z: q.z * Math.cos(r) - t1.z * Math.sin(r) });
+      this.townAt = c;
+      // (A tilt about the midway point, half the fall above it and half below, fading out a little way beyond the two.)
+      const m = unit({ x: q.x + c.x, y: q.y + c.y, z: q.z + c.z }), fall = 2 * (1 - Math.cos(r));
+      for (let v = 0; v < n; v++) {
+        const x = p[v * 3], y = p[v * 3 + 1], z = p[v * 3 + 2], off = Math.acos(Math.min(1, x * m.x + y * m.y + z * m.z)) / (r * 2.2);
+        if (off < 1) this.rock[v] += (this.k.slope * ((x * q.x + y * q.y + z * q.z) - (x * c.x + y * c.y + z * c.z))) / fall * (1 - off * off) ** 2;
+      }
+      for (let v = 0; v < n; v++) this.rock[v] = Math.max(0.004, this.rock[v]);
+      const u = unit(cross(c, t1)), w = unit(cross(c, u)), R = this.k.townR, step = R / 3.2;
+      for (let i = -4; i <= 4; i++) for (let j = -4; j <= 4; j++) {
+        const jx = (this.rand() - 0.5) * step * 0.5, jy = (this.rand() - 0.5) * step * 0.5, a = i * step + jx, b = j * step + jy;
+        if (Math.hypot(a, b) > R || this.rand() < 0.15) continue;
+        const h = unit({ x: c.x + u.x * a + w.x * b, y: c.y + u.y * a + w.y * b, z: c.z + u.z * a + w.z * b });
+        let best = 0, bd = Infinity;
+        for (let v = 0; v < n; v++) { const d = (p[v * 3] - h.x) ** 2 + (p[v * 3 + 1] - h.y) ** 2 + (p[v * 3 + 2] - h.z) ** 2; if (d < bd) { bd = d; best = v; } }
+        this.houses.push({ ...h, v: best });
+      }
+      this.wallsLeft = this.k.walls;
+    }
     this.start = this.rock.slice();
     // The lava lamp's far shore: well round the world from where the heat is.
     if (this.k.lamp) {
@@ -699,6 +753,16 @@ export class Planet {
 
   /** The ground as this fire found it: what roundness is measured against, and where its hollows were. */
   readonly start: Float32Array;
+  /** Wright Mons: the middle of its great hollow, the mounds to be raised round it (null on other worlds). */
+  domeCentre: { x: number; y: number; z: number } | null = null;
+  /** Grindavík: where the town is, its houses (and the vertex each stands on), the walls raised, and how many taps of earth are left. */
+  townAt: { x: number; y: number; z: number } | null = null;
+  readonly houses: { x: number; y: number; z: number; v: number }[] = [];
+  readonly walls: { a: { x: number; y: number; z: number }; b: { x: number; y: number; z: number } }[] = [];
+  wallsLeft = 0;
+  private lastWall: { x: number; y: number; z: number } | null = null;
+  private domeIn = 0;
+  private domeTold = -1e9;
   private startSpread = -1;
   /** How far the ground (and lava on it) strays from round: the spread of its heights about their mean. */
   spreadOf(h: (v: number) => number): number {
@@ -1187,6 +1251,7 @@ export class Planet {
     if (this.slowHalf) { this.slowHalf = false; this.slow(0.25, half, this.rock.length); this.livingDue = true; }
     else if (this.livingDue) { this.livingDue = false; this.living(0.25); }
     else if (this.slowIn <= 0) { this.slow(0.25, 0, half); this.slowIn = 0.25; this.slowHalf = true; }
+    if (this.k.dome > 0 && (this.domeIn -= dt) <= 0) { this.domeIn = 0.5; this.domed(); }
     this.stones(dt);
     this.storms(dt);
     // The long age on an airless world: small stones still fall, and pock what the fire left.
@@ -1456,6 +1521,57 @@ export class Planet {
     return true;
   }
 
+  /** Whether lava has reached a house (it burns, and is lost, even once the lava has set). */
+  houseLost(i: number): boolean { const v = this.houses[i].v; return this.age[v] < 1e5 || this.lava[v] > 0.002; }
+  /** How many of the town's houses are standing. */
+  get housesKept(): number { let k = 0; for (let i = 0; i < this.houses.length; i++) if (!this.houseLost(i)) k++; return k; }
+  /**
+   * Grindavík: raise a wall of earth where the world was tapped (a unit vector). Tapped near the last
+   * one, the wall runs on from it to here; anywhere else, it begins as a short mound. Each tap is one
+   * of `walls`; none left, nothing. Not on lava, nor on the town itself.
+   */
+  raiseWall(at: { x: number; y: number; z: number }): boolean {
+    if (this.wallsLeft <= 0) return false;
+    const c = unit(at), t = this.townAt;
+    if (t && Math.acos(Math.min(1, c.x * t.x + c.y * t.y + c.z * t.z)) < this.k.townR * 0.9) return false;
+    const l = this.lastWall, joins = l && Math.acos(Math.min(1, l.x * c.x + l.y * c.y + l.z * c.z)) < 0.14;
+    const a = joins ? l! : c;
+    const p = this.topo.basePositions, n = this.rock.length, h = this.k.wallHeight;
+    // (At least as wide as the ground's own points are apart, so a wall has no gaps on a coarser world.)
+    const width = Math.max(0.016, 0.55 * Math.sqrt((4 * Math.PI) / n));
+    const ab = { x: c.x - a.x, y: c.y - a.y, z: c.z - a.z }, len2 = ab.x * ab.x + ab.y * ab.y + ab.z * ab.z;
+    for (let v = 0; v < n; v++) {
+      const x = p[v * 3], y = p[v * 3 + 1], z = p[v * 3 + 2];
+      if ((x - c.x) ** 2 + (y - c.y) ** 2 + (z - c.z) ** 2 > 0.04 && (x - a.x) ** 2 + (y - a.y) ** 2 + (z - a.z) ** 2 > 0.04) continue;
+      const s = len2 > 1e-9 ? Math.max(0, Math.min(1, ((x - a.x) * ab.x + (y - a.y) * ab.y + (z - a.z) * ab.z) / len2)) : 0;
+      const d = Math.hypot(x - a.x - ab.x * s, y - a.y - ab.y * s, z - a.z - ab.z * s);
+      if (d > width * 2.5 || this.lava[v] > 0.004) continue;
+      // (Earth heaped to the wall's height, not on top of what's there: a second pass over the same ground adds nothing.)
+      const want = this.start[v] + h * Math.exp(-((d / width) ** 2));
+      if (this.rock[v] < want) this.rock[v] = want;
+    }
+    this.walls.push({ a: { ...a }, b: { ...c } });
+    this.lastWall = c;
+    this.wallsLeft--;
+    return true;
+  }
+
+  /** How high the ground at the vent stands above where it began (Venus's and Wright Mons's domes). */
+  get domeRise(): number { return this.rock[this.plumeVertex] - this.start[this.plumeVertex]; }
+  /** How far the vent is from the ring round Wright Mons's hollow, in radians (0 on the ring; 0 on other worlds). */
+  get offRing(): number {
+    const c = this.domeCentre, q = this.plume;
+    return c ? Math.abs(Math.acos(Math.min(1, c.x * q.x + c.y * q.y + c.z * q.z)) - this.k.domeRing) : 0;
+  }
+  /** A dome stands at the vent: counted, if it's apart from the others (and, round a hollow, on its ring). */
+  private domed(): void {
+    if (this.domeRise < this.k.dome) return;
+    const q = this.plume, apart = Math.cos(this.k.plumesApart), quiet = this.seconds - this.domeTold < 20;
+    if (this.plumes.some((o) => o.x * q.x + o.y * q.y + o.z * q.z > apart)) return; // (the one it's on, or too near one: said once, below)
+    if (this.offRing > this.k.domeBand) { if (!quiet) { this.domeTold = this.seconds; this.tell('A dome, but off the ring round the hollow'); } return; }
+    this.counted(this.k.plumesApart, this.domeCentre ? 'A mound on the ring' : 'A pancake dome', '');
+  }
+
   /** Triton: a geyser's plume, blown downwind into a long dark streak. */
   private geyser(volume: number): void {
     const p = this.topo.basePositions, q = this.plume, n = this.rock.length, len = this.k.streak;
@@ -1540,7 +1656,7 @@ export class Planet {
       if (l < this.k.thin) continue;
       const s = this.rock[v] + l, a = t.nbrOffsets[v], b = t.nbrOffsets[v + 1];
       const own = (w: number) => s - (this.rock[w] + this.lava[w]), selfG = this.k.selfGravity;
-      const held = G
+      const held = G && !this.k.byGround
         // Held like a globe: how far down the neighbour is along gravity, the ground raised as it
         // is drawn, counted back into the ground's own heights. Near the top the relief is all of
         // it; further round, the curve of the world pulls the lava down its side.

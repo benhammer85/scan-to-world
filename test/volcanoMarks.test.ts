@@ -7,7 +7,7 @@ describe('marks', () => {
     for (const w of WORLDS) {
       expect(MARK_AT[w.id], w.id).toBeDefined();
       expect([10, 20, 25, 33, 50]).toContain(MARK_AT[w.id].heat);
-      expect(markNames(w.id)[0]).toMatch(/heat left$/);
+      expect(markNames(w.id)[0]).toMatch(w.goal === 'town' ? /every house/ : /heat left$/);
     }
   });
   it('earns each mark on its own', () => {

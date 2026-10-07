@@ -95,7 +95,7 @@ function fit(): void {
 /** How far the world is lifted up the page (a share of its height): at the end, to leave the foot for the chart. */
 let lift = 0;
 function look(): void {
-  dist = THREE.MathUtils.clamp(dist, 2.1, farthest * 1.3);
+  dist = THREE.MathUtils.clamp(dist, TOWN ? 1.45 : 2.1, farthest * 1.3);
   camera.position.set(0, 0, dist);
   camera.lookAt(0, 0, 0);
   const w = Math.max(1, stage.clientWidth || innerWidth), h = Math.max(1, stage.clientHeight || innerHeight);
@@ -144,6 +144,8 @@ const FREE = ASKED.has('free') && !ASKED.has('run');
 const CHOSEN = SYSTEM && RUN !== null ? worldFor(SYSTEM, RUN) : worldOf(ASKED.get('world') ?? remembered('volcano.world'));
 const WORLD = FREE ? { ...CHOSEN, rules: { ...CHOSEN.rules, endless: true } } : CHOSEN;
 if (RUN === null) remember('volcano.world', WORLD.id);
+/** Grindavík: the town, and walls tapped up to turn the lava from it. */
+const TOWN = WORLD.goal === 'town';
 /**
  * How the worlds are drawn: as prints (stipple, hand-laid washes, and lava as a
  * woodblock or a watercolour; see print.ts), or as it was. Chosen on the card, and remembered.
@@ -230,6 +232,13 @@ scene.add(group);
 const PROFILE = WORLD.goal === 'height' || WORLD.goal === 'white';
 const FACING = PROFILE ? new THREE.Vector3(0, Math.sin(0.75), Math.cos(0.75)) : new THREE.Vector3(0.1, 0.15, 0.98).normalize();
 if (GROUND || PROFILE) group.quaternion.setFromUnitVectors(new THREE.Vector3(base[START * 3], base[START * 3 + 1], base[START * 3 + 2]), FACING);
+// Grindavík: the fissure and the town both in view, the town below and the fissure above it, as a map of the place would have them.
+if (TOWN && planet.townAt) {
+  const q = new THREE.Vector3(planet.plume.x, planet.plume.y, planet.plume.z), c = new THREE.Vector3(planet.townAt.x, planet.townAt.y, planet.townAt.z);
+  const ez = q.clone().add(c).normalize(), ey = q.clone().sub(c), ex = new THREE.Vector3();
+  ey.addScaledVector(ez, -ey.dot(ez)).normalize(); ex.crossVectors(ey, ez);
+  group.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(ex, ey, ez).transpose());
+}
 
 /** Drawn on a surface of twice the detail, the values carried across smoothly (see fine.ts). */
 const fine = new FineSurface(topo, buildTopology(new THREE.IcosahedronGeometry(1, 80).attributes.position.array, null));
@@ -1405,8 +1414,10 @@ function orbiting(dt: number): void {
 }
 const HEIGHT = WORLD.height ?? { target: 0, kmPerUnit: 40 };
 const CALM = WORLD.calm ?? 0, ISLAND = WORLD.island ?? 0, POOL = WORLD.pool ?? 0, ROUND = Math.round((WORLD.round ?? 0) * 100), COVER = Math.round((WORLD.cover ?? 0) * 100), PLUMES = WORLD.plumes ?? 0, ORBIT = WORLD.orbit ?? 0;
-const HEARTH = WORLD.hearth ?? 0, OUTBUILD = WORLD.outbuild ?? 0, SNOWFALL = WORLD.snowfall ?? 0, GATHER = WORLD.gather ?? 0, OXYGEN = WORLD.oxygen ?? 0, FIELDS = WORLD.fields ?? 0, FAR_KM = WORLD.farKm ?? 0, WHITENESS = Math.round((WORLD.whiteness ?? 0) * 100), GLOW = WORLD.glow ?? 0, RINGS = WORLD.rings ?? 0;
-let aimDone = 0, aimOf = WORLD.goal === 'white' ? 100 : WORLD.goal === 'waves' ? RINGS : WORLD.goal === 'glow' ? 100 : WORLD.goal === 'antipode' ? FAR_KM : WORLD.goal === 'gather' ? GATHER : WORLD.goal === 'chaos' || WORLD.goal === 'streaks' ? FIELDS : WORLD.goal === 'oxygen' || WORLD.goal === 'thaw' || WORLD.goal === 'outbuild' || WORLD.goal === 'snow' ? 100 : WORLD.goal === 'ring' ? CHAIN.stretches : WORLD.goal === 'height' ? HEIGHT.target : WORLD.goal === 'cover' ? COVER : WORLD.goal === 'round' ? ROUND : WORLD.goal === 'ridge' ? Planet.RIDGE_STRETCHES : WORLD.goal === 'lamp' || WORLD.goal === 'bank' ? 100 : WORLD.goal === 'calm' ? CALM : WORLD.goal === 'plumes' ? PLUMES : WORLD.goal === 'orbit' || WORLD.goal === 'feed' ? 100 : planet.basins.length, lastAim = -10;
+const HEARTH = WORLD.hearth ?? 0, OUTBUILD = WORLD.outbuild ?? 0, SNOWFALL = WORLD.snowfall ?? 0, GATHER = WORLD.gather ?? 0, OXYGEN = WORLD.oxygen ?? 0, FIELDS = WORLD.fields ?? 0, FAR_KM = WORLD.farKm ?? 0, WHITENESS = Math.round((WORLD.whiteness ?? 0) * 100), GLOW = WORLD.glow ?? 0, RINGS = WORLD.rings ?? 0, DOMES = WORLD.domes ?? 0, KEEP = WORLD.keep ?? 0;
+/** Pluto: mounds round a hollow, rather than Venus's domes anywhere. */
+const MOUNDS = (WORLD.rules.domeRing ?? 0) > 0;
+let aimDone = 0, aimOf = WORLD.goal === 'white' ? 100 : WORLD.goal === 'waves' ? RINGS : WORLD.goal === 'glow' ? 100 : WORLD.goal === 'antipode' ? FAR_KM : WORLD.goal === 'gather' ? GATHER : WORLD.goal === 'chaos' || WORLD.goal === 'streaks' ? FIELDS : WORLD.goal === 'domes' ? DOMES : TOWN ? 100 : WORLD.goal === 'oxygen' || WORLD.goal === 'thaw' || WORLD.goal === 'outbuild' || WORLD.goal === 'snow' ? 100 : WORLD.goal === 'ring' ? CHAIN.stretches : WORLD.goal === 'height' ? HEIGHT.target : WORLD.goal === 'cover' ? COVER : WORLD.goal === 'round' ? ROUND : WORLD.goal === 'ridge' ? Planet.RIDGE_STRETCHES : WORLD.goal === 'lamp' || WORLD.goal === 'bank' ? 100 : WORLD.goal === 'calm' ? CALM : WORLD.goal === 'plumes' ? PLUMES : WORLD.goal === 'orbit' || WORLD.goal === 'feed' ? 100 : planet.basins.length, lastAim = -10;
 /** Lengai: whether its peak has reached its height (kept, once it has). */
 let peakReached = false;
 /** How much of the aim is done now, reckoned afresh. */
@@ -1440,6 +1451,9 @@ function reckonAim(): void {
   else if (WORLD.goal === 'antipode') { aimDone = planet.farRaised * HEIGHT.kmPerUnit; aimOf = FAR_KM; }
   else if (WORLD.goal === 'oxygen') { aimDone = (100 * planet.oxygen) / OXYGEN; aimOf = 100; }
   else if (WORLD.goal === 'chaos' || WORLD.goal === 'streaks') { aimDone = planet.plumes.length; aimOf = FIELDS; }
+  else if (WORLD.goal === 'domes') { aimDone = planet.plumes.length; aimOf = DOMES; }
+  // (Grindavík: how much of the eruption the town has outlasted, kept; met when it's over with enough of the town standing.)
+  else if (TOWN) { const kept = planet.housesKept >= KEEP * planet.houses.length, through = 100 * (1 - planet.reserve / planet.k.heat); aimDone = kept ? (planet.reserve < 0.01 ? 100 : Math.min(99, through)) : 0; aimOf = 100; }
   else { aimDone = planet.basins.filter((b) => planet.flooded(b) >= FLOODED_ENOUGH).length; aimOf = planet.basins.length; }
 }
 let calmHeld = 0, calmAt = 0, litFor = 0, litAt = 0;
@@ -1484,6 +1498,8 @@ const AIM: Record<string, string> = {
   oxygen: 'Turn the orange sky blue.',
   chaos: `Break the ice into ${FIELDS} chaos fields.`,
   streaks: `Make ${FIELDS} dark geyser streaks.`,
+  town: `Keep ${Math.round(KEEP * 100)}% of the town standing until the eruption ends.`,
+  domes: MOUNDS ? `Raise ${DOMES} mounds round the hollow.` : `Raise ${DOMES} pancake domes.`,
   snow: 'Fill the dotted line with rock snow.',
 };
 // (How a burst is let out, as it's being played: tipping, or breathing. "Erupt when the smoke is grey" read the
@@ -1515,6 +1531,8 @@ const TIP: Record<string, string> = {
   chaos: BREATHE ? "Hold for a few seconds, and let go before the smoke turns grey. A burst won't break the ice. Move away from the last field each time." : "Hold a finger on the world for a few seconds, and lift it before the smoke turns grey. Pouring or a burst won't break the ice. Move away from the last field each time.",
   streaks: `Wait until the sun is over the volcano, then ${BURST}. For the next one, move outside the dotted ring. The smoke's edge turns gold when it's time.`,
   snow: 'Pour on the sunlit side, under the star. The lava boils away and falls just inside the night.',
+  town: `Lava pours from the fissure by itself and runs downhill towards the town. Tap the ground to raise a wall of earth; tap again nearby and the wall runs on. Turn the lava aside before it arrives. You have ${WORLD.rules.walls ?? 0} taps.`,
+  domes: `${BURST_}: the thick lava wells up and piles into a dome where it comes out. Once it stands tall enough it's counted, and ringed. Then turn the world so the volcano moves on, ${MOUNDS ? 'along the dotted ring round the hollow, ' : ''}outside the old rings.`,
 };
 /** A world's own tip, where its aim is shared with others but the way to it isn't. */
 const OWN_TIP: Partial<Record<WorldId, string>> = {
@@ -1557,6 +1575,8 @@ function goalLine(): string {
     case 'oxygen': return `Oxygen · ${pct}%`;
     case 'chaos': return `Chaos fields · ${d} of ${of}`;
     case 'streaks': return `Geyser streaks · ${d} of ${of}`;
+    case 'town': return `Houses standing · ${planet.housesKept} of ${planet.houses.length} · ${planet.wallsLeft} taps of earth left`;
+    case 'domes': return `${MOUNDS ? 'Mounds' : 'Domes'} · ${d} of ${of}${planet.plumes.every((o) => o.x * planet.plume.x + o.y * planet.plume.y + o.z * planet.plume.z < Math.cos(planet.k.plumesApart)) && planet.domeRise > 0.01 ? `, the next ${Math.min(99, Math.round((100 * planet.domeRise) / planet.k.dome))}% risen` : ''}`;
     default: return '';
   }
 }
@@ -1711,6 +1731,28 @@ function drawAim(now: number): void {
       onGround(circleAt(g, planet.k.plumesApart), inked);
       if (g.x * q.x + g.y * q.y + g.z * q.z > apart) onGround(circleAt(g, planet.k.plumesApart * 0.9), inked);
     }
+  } else if (TOWN) {
+    // The town in ink, a dot for each house still standing; its edge pencilled; and the walls inked, as a map draws a dyke.
+    if (planet.townAt) onGround(circleAt(planet.townAt, planet.k.townR * 1.15), pencilled);
+    onGround(planet.houses.filter((_, i) => !planet.houseLost(i)), inked);
+    for (const w of planet.walls) {
+      const a = new THREE.Vector3(w.a.x, w.a.y, w.a.z), b = new THREE.Vector3(w.b.x, w.b.y, w.b.z), steps = Math.max(1, Math.round(a.angleTo(b) / 0.012));
+      const pts: THREE.Vector3[] = [];
+      for (let i = 0; i <= steps; i++) pts.push(a.clone().lerp(b, i / steps).normalize());
+      onGround(pts, inked);
+    }
+  } else if (WORLD.goal === 'domes') {
+    // Round each dome counted, the ground it has taken; round Pluto's hollow, the ring the mounds must stand on; and round
+    // the one rising now, if it would count, a gauge inked round as it rises, whole when it stands tall enough.
+    const q = planet.plume, apart = Math.cos(planet.k.plumesApart);
+    for (const g of planet.plumes) onGround(circleAt(g, planet.k.plumesApart), inked);
+    if (planet.domeCentre) onGround(circleAt(planet.domeCentre, planet.k.domeRing), pencilled);
+    const fresh = planet.plumes.every((g) => g.x * q.x + g.y * q.y + g.z * q.z <= apart) && planet.offRing <= planet.k.domeBand;
+    if (fresh && planet.domeRise > 0.005) {
+      const pts = circleAt(q, planet.k.plumesApart * 0.45), filled = Math.round(pts.length * Math.min(1, planet.domeRise / planet.k.dome));
+      onGround(pts.slice(0, filled), inked);
+      onGround(pts.slice(filled), pencilled);
+    }
   } else {
     for (const b of planet.basins) {
       // The basin's edge, as a circle on the ground round its middle.
@@ -1771,7 +1813,11 @@ const gestures = new GestureRecognizer(
     // (A tap no longer calls the heat to where it touched: two ways to play, tilt to pour and a
     // finger to hold, were clearer than five. The heat still creeps to whatever is on top.)
     // (Except on the glass world played on a computer, which can't be tipped: there a click lets the blob go.)
-    tap() { if (LAMP && COMPUTER) { holdShut(); letGo(); } },
+    tap(x, y) {
+      if (LAMP && COMPUTER) { holdShut(); letGo(); }
+      // (Grindavík: a tap raises a wall of earth where it touched.)
+      if (TOWN && begun && !ending) { const at = onWorld(x, y); if (at && planet.raiseWall(at)) { feel(10); lastAim = -10; } }
+    },
     spin(dx, dy) { spin.set(0, 0); rotate(dx * 0.006, dy * 0.006); },
     fling(vx, vy) { spin.set(vx * 0.006, vy * 0.006); },
     zoom(f) { dist /= f; look(); zoomedAt = seconds; },
@@ -2304,6 +2350,8 @@ const GOAL_WORDS: Record<typeof WORLD.goal, { age: (met: boolean) => string; don
   oxygen: { age: (met) => (met ? 'Time passes, and the sky goes on clearing to blue' : 'Time passes, and the haze stays'), done: 'The sky turns blue', title: ['A blue sky', 'Still an orange sky'], got: () => `${Math.min(100, Math.round(aimDone))}% of the oxygen` },
   chaos: { age: () => 'Time passes, and the rafts freeze where they drifted', done: 'The ice broken into chaos', title: ['Chaos terrain', 'Not enough chaos'], got: () => `${aimDone} of ${aimOf} chaos fields` },
   streaks: { age: () => 'Time passes, and the streaks fade a little', done: 'Streaked with geysers', title: ['Geyser streaks', 'Not enough streaks'], got: () => `${aimDone} of ${aimOf} streaks` },
+  town: { age: (met) => (met ? 'Time passes, and the new lava cools round the town' : 'Time passes, and the lava cools over the streets'), done: 'The eruption is over, and the town still stands', title: ['The town kept', 'The town lost'], got: () => `${planet.housesKept} of ${planet.houses.length} houses standing` },
+  domes: { age: () => (MOUNDS ? 'Time passes, and nitrogen frost settles in the hollow' : 'Time passes, and the domes crack as they cool'), done: MOUNDS ? 'A ring of mounds round the hollow' : 'A field of pancake domes', title: MOUNDS ? ['Wright Mons', 'Not enough mounds'] : ['Pancake domes', 'Not enough domes'], got: () => `${aimDone} of ${aimOf} ${MOUNDS ? 'mounds' : 'domes'}` },
   snow: { age: () => 'Time passes, and the last vapour falls', done: 'Rock snow all along the edge of night', title: ['Rock snow', 'Not enough rock snow'], got: () => `${Math.min(100, Math.round(aimDone))}% of the rock snow` },
 };
 const AGE_WORDS = (met: boolean) => GOAL_WORDS[WORLD.goal].age(met);
@@ -2334,6 +2382,8 @@ function tale(met: boolean): string {
     case 'oxygen': return met ? 'Oxygen breathed out by life in the shallows, and a sky turned blue' : `A sky still orange, ${pct}% of the way to blue`;
     case 'chaos': return met ? `The ice broken into rafts in ${aimDone} places, and frozen again` : `Rafts in ${aimDone} of ${aimOf} places`;
     case 'streaks': return met ? `${aimDone} dark streaks, all blown one way` : `${aimDone} of ${aimOf} geyser streaks`;
+    case 'town': return met ? `The town kept, ${planet.housesKept} of ${planet.houses.length} houses standing behind ${planet.walls.length} taps of earth walls` : `${planet.houses.length - planet.housesKept} of ${planet.houses.length} houses lost under the lava`;
+    case 'domes': return MOUNDS ? (met ? `${aimDone} icy mounds raised in a ring round a great hollow, as Wright Mons is` : `${aimDone} of ${aimOf} mounds round the hollow`) : met ? `${aimDone} flat-topped domes of thick lava, side by side` : `${aimDone} of ${aimOf} pancake domes`;
     case 'snow': return met ? 'Pale rock snow fallen all along the edge of night' : `Rock snow ${pct}% fallen along the edge of night`;
   }
 }
@@ -2342,7 +2392,7 @@ let marksNow: Marks | null = null;
 const MARKS_KEY = (id: WorldId) => `volcano.marks.${id}`;
 function markTheWin(): void {
   if (FREE || RUN !== null) return; // (free play has no clock; a system's world has its own twist)
-  marksNow = earned(WORLD.id, planet.heatLeft, planet.tally.calderas, planet.seconds);
+  marksNow = earned(WORLD.id, TOWN ? planet.housesKept / Math.max(1, planet.houses.length) : planet.heatLeft, planet.tally.calderas, planet.seconds);
   if (toppedUp) marksNow[0] = false; // (heat was given back: none to spare of its own)
   const before = readMarks(remembered(MARKS_KEY(WORLD.id)));
   remember(MARKS_KEY(WORLD.id), writeMarks(mergeMarks(before, marksNow)));
@@ -3055,6 +3105,7 @@ function breathe(dt: number): void {
     for (let v = 0; v < N; v += 3) if (planet.rock[v] > 0) least = Math.min(least, base[v * 3] * q.x + base[v * 3 + 1] * q.y + base[v * 3 + 2] * q.z);
     // (Further back on a young Earth, to leave room for the moon's ring round it.)
     reachDist = THREE.MathUtils.clamp(3.4 + 2 * Math.acos(least), 3.4, 4.8) * (WORLD.goal === 'orbit' ? 1.3 : WORLD.goal === 'feed' ? 1.15 : 1);
+    if (TOWN) reachDist = 2.3; // (Grindavík: close, at the town's scale, the fissure and the town both in view)
   }
   // At the end, the world steps back and up the page, leaving the foot for the chart.
   const held = !ending && seconds - momentAt < moment.hold;

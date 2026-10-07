@@ -18,7 +18,7 @@ const run = (pl: Planet, seconds: number) => { for (let t = 0; t < seconds; t +=
 
 describe('the worlds', () => {
   it('come one after another, and each has its own aim', () => {
-    expect(WORLDS.map((w) => w.id)).toEqual(['mars', 'moon', 'ice', 'asteroid', 'rogue', 'first', 'young', 'archean', 'snowball', 'ocean', 'lengai', 'ijen', 'tonga', 'io', 'europa', 'enceladus', 'triton', 'tumble', 'mercury', 'magma', 'dust', 'spin', 'deep', 'lamp', 'hollow']);
+    expect(WORLDS.map((w) => w.id)).toEqual(['mars', 'moon', 'ice', 'asteroid', 'rogue', 'first', 'young', 'archean', 'snowball', 'ocean', 'lengai', 'ijen', 'tonga', 'io', 'europa', 'enceladus', 'triton', 'tumble', 'mercury', 'magma', 'dust', 'spin', 'deep', 'lamp', 'hollow', 'venus', 'pluto', 'grindavik']);
     expect(worldOf('moon').goal).toBe('basins');
     expect(worldOf('nowhere').id).toBe('mars');
     expect(nextWorld(worldOf('mars'))!.id).toBe('moon');
@@ -45,7 +45,10 @@ describe('the worlds', () => {
     expect(nextWorld(worldOf('spin'))!.id).toBe('deep');
     expect(nextWorld(worldOf('deep'))!.id).toBe('lamp');
     expect(nextWorld(worldOf('lamp'))!.id).toBe('hollow');
-    expect(nextWorld(worldOf('hollow'))).toBe(null);
+    expect(nextWorld(worldOf('hollow'))!.id).toBe('venus');
+    expect(nextWorld(worldOf('venus'))!.id).toBe('pluto');
+    expect(nextWorld(worldOf('pluto'))!.id).toBe('grindavik');
+    expect(nextWorld(worldOf('grindavik'))).toBe(null);
   });
 });
 
@@ -569,6 +572,51 @@ describe('Europa', () => {
     const pl2 = new Planet(topo, nearest(0, 0, 1), 3, worldOf('europa').rules);
     pl2.pressure = pl2.k.explosive + 1; pl2.erupt();
     expect(pl2.plumes.length).toBe(0);
+  });
+});
+
+describe('Venus and Pluto', () => {
+  it('counts a dome once the ground at the vent stands tall enough, and not another on top of it', () => {
+    const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('venus').rules);
+    run(pl, 1);
+    expect(pl.plumes.length).toBe(0);
+    pl.rock[pl.plumeVertex] = pl.start[pl.plumeVertex] + pl.k.dome + 0.01;
+    run(pl, 1);
+    expect(pl.plumes.length).toBe(1);
+    pl.rock[pl.plumeVertex] += 0.05;
+    run(pl, 1);
+    expect(pl.plumes.length).toBe(1);
+  });
+  it('on Pluto, begins on the ring round a great hollow, and counts no mound off it', () => {
+    const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('pluto').rules);
+    const c = pl.domeCentre!;
+    expect(pl.offRing).toBeLessThan(0.05);
+    expect(pl.start[nearest(c.x, c.y, c.z)]).toBeLessThan(pl.start[pl.plumeVertex] - 0.03);
+    // In the hollow's middle, a tall mound isn't counted.
+    pl.plume.x = c.x; pl.plume.y = c.y; pl.plume.z = c.z;
+    pl.plumeVertex = nearest(c.x, c.y, c.z);
+    pl.rock[pl.plumeVertex] += 0.3;
+    run(pl, 1);
+    expect(pl.plumes.length).toBe(0);
+  });
+});
+
+describe('Grindavík', () => {
+  it('raises a wall where tapped, runs it on from a tap nearby, and spends earth on each', () => {
+    const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('grindavik').rules);
+    expect(pl.houses.length).toBeGreaterThan(10);
+    expect(pl.housesKept).toBe(pl.houses.length);
+    const left = pl.wallsLeft, q = pl.plume, c = pl.townAt!;
+    const mid = { x: (q.x + c.x) / 2, y: (q.y + c.y) / 2, z: (q.z + c.z) / 2 };
+    expect(pl.raiseWall(mid)).toBe(true);
+    let raised = 0;
+    for (let v = 0; v < pl.rock.length; v++) raised = Math.max(raised, pl.rock[v] - pl.start[v]);
+    expect(raised).toBeGreaterThan(pl.k.wallHeight * 0.3); // (on this coarse test mesh, no vertex lies right on the wall's line)
+    expect(pl.wallsLeft).toBe(left - 1);
+    // Not on the town itself.
+    expect(pl.raiseWall(c)).toBe(false);
+    pl.wallsLeft = 0;
+    expect(pl.raiseWall(q)).toBe(false);
   });
 });
 
