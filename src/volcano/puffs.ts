@@ -96,10 +96,16 @@ export class Puffs {
           ${shadow ? 'vec4 cS = modelViewMatrix * vec4(0.0, 0.0, 0.0, 1.0); vAlpha = aAlpha * rimFade(position, v) * (1.0 - smoothstep(-0.06, 0.0, length(v.xy - cS.xy) - 1.0)); // (its shadow lies on the map, so it thins at the rim as the map\'s ink does; and only on the world: past its edge there is no ground for it to fall on)' : `// Hidden only where the world stands in front of it: on its far side and inside its outline. (It was faded as
           // the map's ink is, by how squarely the ground under it faced us, so a column turned towards the rim vanished,
           // even where it rose into open sky beyond the edge.)
-          vec4 cW = modelViewMatrix * vec4(0.0, 0.0, 0.0, 1.0);
-          vec3 dW = v.xyz - cW.xyz;
-          float behindW = smoothstep(0.03, -0.05, dW.z), outsideW = smoothstep(-0.04, 0.02, length(dW.xy) - 1.0);
-          vAlpha = aAlpha * (1.0 - behindW * (1.0 - outsideW));`}
+          // Seen along the line from the eye: hidden if that line meets the world before it reaches the puff (so behind
+          // it, or inside it), and only just inside its outline, by perspective's own outline, not the flat disc's.
+          vec3 cW = (modelViewMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+          float R = length((modelViewMatrix * vec4(1.0, 0.0, 0.0, 0.0)).xyz) * 0.99;
+          float L = length(v.xyz); vec3 ray = v.xyz / L;
+          float tc = dot(cW, ray), miss = dot(cW, cW) - tc * tc;
+          float front = tc - sqrt(max(0.0, R * R - miss));
+          float onWorld = 1.0 - smoothstep(R * R * 0.94, R * R * 1.0, miss);
+          float past = smoothstep(-0.02, 0.03, L - front);
+          vAlpha = aAlpha * (1.0 - past * onWorld);`}
           vTint = aTint;
           vSeed = aSeed;
           vPx = gl_PointSize;
@@ -223,7 +229,9 @@ export class Puffs {
     const l = Math.hypot(x, y, z) || 1;
     // Up, tipped a little at random, so a column of them spreads as it goes.
     // (Calm, the smoke keeps closer together, so it's one column.)
-    const d = dir ?? { x: 0, y: 0, z: 0 }, lean = dir ? (this.calm && kind === 'smoke' ? 2.1 : 1.6) : 0, spread = this.calm && kind === 'smoke' ? 0.3 : 0.5; // (calm smoke bent further downwind, and looser: a stack of round puffs straight up read as a chimney's)
+    // (The drift along the ground only, never into it: what's left of it once its part straight up or down is taken out.)
+    const dd = dir ?? { x: 0, y: 0, z: 0 }, dn = (dd.x * x + dd.y * y + dd.z * z) / (l * l), d = { x: dd.x - dn * x, y: dd.y - dn * y, z: dd.z - dn * z };
+    const lean = dir ? (this.calm && kind === 'smoke' ? 2.1 : 1.6) : 0, spread = this.calm && kind === 'smoke' ? 0.3 : 0.5; // (calm smoke bent further downwind, and looser: a stack of round puffs straight up read as a chimney's)
     p.ux = x / l * 0.4 + d.x * lean + (rand() - 0.5) * spread; p.uy = y / l * 0.4 + d.y * lean + (rand() - 0.5) * spread; p.uz = z / l * 0.4 + d.z * lean + (rand() - 0.5) * spread;
     const ul = Math.hypot(p.ux, p.uy, p.uz); p.ux /= ul; p.uy /= ul; p.uz /= ul;
     p.x = x; p.y = y; p.z = z;

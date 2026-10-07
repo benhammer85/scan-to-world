@@ -19,7 +19,7 @@ describe('a solar system', () => {
     sys.bodies[0] = { world: 'mars', twist: 'cold' };
     const w = worldFor(sys, 0);
     expect(w.rules.rising).toBeCloseTo(0.8 * 0.8);
-    expect(w.rules.heat ?? 250).toBeCloseTo(250); // the same heat, only slower
+    expect(w.rules.heat).toBeCloseTo(worldOf('mars').rules.heat!); // the same heat, only slower
     expect(w.then).toContain('A slow fire: the heat comes slowly');
     expect(w.title).toBe('A red world');
   });
@@ -30,7 +30,7 @@ describe('a solar system', () => {
     sys = recordPlayed(sys, 0, { met: true, second: 700, words: '' });
     expect(sys.gift!.heat).toBeCloseTo(MOST_WARMTH);
     const next = worldFor(sys, 1);
-    expect(next.rules.heat).toBeCloseTo(380 * (1 + MOST_WARMTH));
+    expect(next.rules.heat).toBeCloseTo(worldOf('ice').rules.heat! * (1 + MOST_WARMTH));
     expect(next.then).toContain('Given by the last world');
     // Spent once played; and a world not made passes nothing on.
     sys = recordPlayed(sys, 1, { met: false, second: 10, words: '' });

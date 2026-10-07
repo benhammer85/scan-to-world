@@ -118,6 +118,8 @@
       #finish.shown { opacity: 0.6; pointer-events: auto; }
       #keep { position: fixed; top: calc(116px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); font: italic 12px "Newsreader", "Iowan Old Style", Georgia, serif; color: #2e2118; background: none; border: none; opacity: 0; pointer-events: none; transition: opacity 2s; cursor: pointer; padding: 4px; }
       #keep.shown { opacity: 0.65; pointer-events: auto; }
+      #retry { position: fixed; top: calc(140px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); font: italic 13px "Newsreader", "Iowan Old Style", Georgia, serif; color: #2e2118; background: none; border: none; border-bottom: 1px solid rgba(46,33,24,0.35); opacity: 0; pointer-events: none; transition: opacity 2s; cursor: pointer; padding: 4px 2px; white-space: nowrap; }
+      #retry.shown { opacity: 0.75; pointer-events: auto; }
       /* The worlds, in a corner off the world: back to the card that lists them. */
       #worlds { position: fixed; top: calc(22px + env(safe-area-inset-top)); left: 20px; font: 12px "Newsreader", "Iowan Old Style", Georgia, serif; letter-spacing: 0.12em; color: #2e2118; background: none; border: none; opacity: 0.6; cursor: pointer; padding: 12px; min-width: 44px; min-height: 44px; }
       #worlds .n { display: block; }
@@ -135,6 +137,7 @@
     <div id="legend" class="engraved"></div>
     <p id="again" class="engraved">touch to start again</p>
     <button id="keep">keep the plate</button>
+    <button id="retry">try again from a minute before</button>
     <button id="finish">end the fire</button>
     <button id="worlds" aria-label="All worlds"></button>
     <div id="atlas" class="engraved"><div class="head"><h2>Celestial Chart</h2><button class="close">back</button></div><div class="sky"></div><p class="credit">The figures after Johann Bayer's Uranometria, engraved by Alexander Mair, 1603</p><p class="plates-head"></p><div class="pages"></div><div class="view"><img alt=""></div><div class="pick"><div class="card"><div class="globe"></div><p class="t"></p><p class="k"></p><p class="m"></p><div class="acts"><button class="go">Play</button><button class="plates">its plates</button></div></div></div></div>

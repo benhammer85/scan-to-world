@@ -123,7 +123,7 @@ export const WORLDS: World[] = [
       terrain: 'mars', basins: 0, craters: 18, floor: 0.05, rough: 0.025,
       waves: 0, rain: 0, sink: 0, life: false,
       talus: 1.65, flow: 8, channel: 2, coolLand: 1, // (its gravity makes slopes stand steeper still; and it sets fast, so poured lava stacks into a mountain rather than running off)
-      drift: 0, rises: 0, heat: 250, rising: 0.8, steady: true, // (the heat comes back quickly: the first world, so waiting is short)
+      drift: 0, rises: 0, heat: 210, rising: 0.8, steady: true, // (the heat comes back quickly: the first world, so waiting is short)
       impactEvery: [60, 100], impactWarning: 14, impactHeat: 6,
       stormEvery: [110, 160], stormWarning: 12, stormLasts: 22, stormWear: 0.003, softer: 7, // (rarer, and wearing mostly loose ash: poured rock lasts, so a storm doesn't feel like losing)
     },
@@ -133,7 +133,7 @@ export const WORLDS: World[] = [
       landInk: '#7a4a2e', landInkHigh: '#5a321c', pencil: '#cfae8e', seaInk: '#5b82a3',
     },
     goal: 'height',
-    height: { target: 22, kmPerUnit: 40 }, // (as high as Olympus Mons)
+    height: { target: 18, kmPerUnit: 40 }, // (twice Everest; Olympus Mons is 22, which took too long)
   },
   {
     id: 'moon',
@@ -152,7 +152,7 @@ export const WORLDS: World[] = [
       realBasins: [[33, -16, 550], [27, 18, 330], [8.5, 31, 350], [17, 59, 280], [-15, 35, 170], [-8, 51, 300], [-21, -17, 350], [-24, -39, 190], [-19, -95, 320]],
       waves: 0, rain: 0, sink: 0, swell: 0, life: false,
       flow: 16, channel: 1, coolLand: 0.06,
-      drift: 0, rises: 0.035, heat: 270, rising: 1.0, // (its seas lie close together, as the real ones do: less heat, so they're still a fire's work)
+      drift: 0, rises: 0.035, heat: 200, rising: 1.0, // (its seas lie close together, as the real ones do: less heat, so they're still a fire's work)
       impactEvery: [12, 22], impactWarning: 12, crater: 0.08, craterDepth: 0.05, impactHeat: 4, ageCraters: 0.12,
     },
     palette: {
@@ -175,7 +175,7 @@ export const WORLDS: World[] = [
       terrain: 'ice', basins: 0, craters: 40, floor: 0.05, rough: 0.015,
       waves: 0, rain: 0, sink: 0, life: false,
       flow: 20, channel: 1, coolLand: 0.08,
-      drift: 0, rises: 0.02, heat: 380, rising: 1.4, ashShare: 0.75,
+      drift: 0, rises: 0.02, heat: 280, rising: 1.4, ashShare: 0.75,
       impactEvery: [50, 90], impactWarning: 12, impactHeat: 4, ageCraters: 0.06,
     },
     palette: {
@@ -185,7 +185,7 @@ export const WORLDS: World[] = [
       landInk: '#5a7080', landInkHigh: '#3c5463', pencil: '#b3bfc6', seaInk: '#5b82a3',
     },
     goal: 'cover',
-    cover: 0.7,
+    cover: 0.55,
     contour: 0.07,
   },
   {
@@ -201,7 +201,7 @@ export const WORLDS: World[] = [
       terrain: 'asteroid', basins: 0, craters: 25, floor: 0.3, rough: 0.015, lumps: 0.15, selfGravity: 1,
       waves: 0, rain: 0, sink: 0, swell: 0, life: false,
       flow: 14, channel: 1, coolLand: 0.08,
-      drift: 0, rises: 0.045, heat: 800, rising: 1.8, steady: true, pourLeast: 2.6, pourMost: 4, // (its heat rises fast, so tipped it pours faster, or tipping wouldn't drain it)
+      drift: 0, rises: 0.045, heat: 560, rising: 1.8, steady: true, pourLeast: 2.6, pourMost: 4, // (its heat rises fast, so tipped it pours faster, or tipping wouldn't drain it)
       impactEvery: [55, 95], impactWarning: 14, impactHeat: 4, ageCraters: 0.06,
     },
     palette: {
@@ -211,7 +211,7 @@ export const WORLDS: World[] = [
       landInk: '#4f463c', landInkHigh: '#342c24', pencil: '#b2a796', seaInk: '#5b82a3',
     },
     goal: 'round',
-    round: 0.31,
+    round: 0.18,
     contour: 0.05,
   },
   {
@@ -252,8 +252,8 @@ export const WORLDS: World[] = [
       waves: 0, rain: 0, sink: 0, swell: 0, life: false,
       magma: 0.012, impactMelt: 0.02, // (molten at first, crusting over as it cools; each stone melts its crater again)
       talus: 2.2, flow: 10, channel: 2, coolLand: 0.05,
-      drift: 0, rises: 0.12, heat: 420, rising: 1.0, steady: true, // (the glow follows a turn quickly, so a catch is one turn, not a chase)
-      impactEvery: [18, 24], impactWarning: 12, impactNear: 0.75, // (a breath between stones: one unhurried turn each, then a rest) impactHeat: 3, crater: 0.07, craterDepth: 0.04,
+      drift: 0, rises: 0.12, heat: 300, rising: 1.0, steady: true, // (the glow follows a turn quickly, so a catch is one turn, not a chase)
+      impactEvery: [14, 18], impactWarning: 12, impactNear: 0.75, // (a breath between stones: one unhurried turn each, then a rest) impactHeat: 3, crater: 0.07, craterDepth: 0.04,
     },
     palette: {
       paper: '#d9cbb8', basalt: '#8a7a6c', ash: '#a69888', lava: '#c25a36', deepLava: '#94402a',
@@ -261,7 +261,7 @@ export const WORLDS: World[] = [
       landInk: '#4f3e30', landInkHigh: '#33271c', pencil: '#b9a892', seaInk: '#5b82a3',
     },
     goal: 'gather',
-    gather: 8, // (eight, with a breath between each: ten, so far apart, outlasted the fire)
+    gather: 6, // (six, with a breath between each: ten, so far apart, outlasted the fire, and eight made a long first world)
   },
   {
     id: 'young',
@@ -275,7 +275,7 @@ export const WORLDS: World[] = [
       terrain: 'young', basins: 0, craters: 25, floor: 0.05, rough: 0.02,
       waves: 0, rain: 0, sink: 0, swell: 0, life: false,
       talus: 2.2, flow: 9, channel: 2, coolLand: 0.2,
-      drift: 0, rises: 0, heat: 420, rising: 1.0, steady: true,
+      drift: 0, rises: 0, heat: 300, rising: 1.0, steady: true,
       cap: 12, lid: 15, orbitShare: 0.6,
       impactEvery: [45, 75], impactWarning: 14, impactHeat: 6,
     },
@@ -285,7 +285,7 @@ export const WORLDS: World[] = [
       landInk: '#4e3f33', landInkHigh: '#33271d', pencil: '#b8aa96', seaInk: '#5b82a3',
     },
     goal: 'orbit',
-    orbit: 75,
+    orbit: 38,
   },
   {
     id: 'archean',
@@ -316,8 +316,8 @@ export const WORLDS: World[] = [
     then: 'It thawed because volcanoes breathed out gas that warmed the sky, until the ice gave way.',
     second: 'Build up through the ice, then let the gas out into the sky.',
     rules: {
-      drift: 0, rises: 0, heat: 420, rising: 1.3, steady: true, sink: 0,
-      gas: 1, gasPour: 0.35, drawdown: 0.012, thawAt: 100,
+      drift: 0, rises: 0, heat: 320, rising: 1.3, steady: true, sink: 0,
+      gas: 1, gasPour: 0.35, drawdown: 0.012, thawAt: 70,
     },
     palette: {
       paper: '#e6e0d2', basalt: '#8a8478', ash: '#a39d92', lava: '#b8563c', deepLava: '#8f3b28',
@@ -334,7 +334,7 @@ export const WORLDS: World[] = [
     first: 'Open water, and a fire far below.',
     then: 'The sea floor drifts over the fire, leaving a trail of islands.',
     second: 'Tip the world as the fire moves, and islands rise along the line.',
-    rules: { drift: 0.0125, rises: 0, heat: 740, rising: 1.4, steady: true, reseed: 15, floor: -0.22, sink: 0.0001, impactEvery: [60, 100], atolls: true }, // (islands sinking slowly, so the chain is built steadily, not raced)
+    rules: { drift: 0.0125, rises: 0, heat: 600, rising: 1.4, steady: true, reseed: 15, floor: -0.22, sink: 0.0001, impactEvery: [60, 100], atolls: true }, // (islands sinking slowly, so the chain is built steadily, not raced)
     palette: {
       paper: '#ecdfc2', basalt: '#9a8a76', ash: '#b3ada2', lava: '#b8563c', deepLava: '#8f3b28',
       shallow: '#d4e3ec', deep: '#b1c8d8',
@@ -354,7 +354,7 @@ export const WORLDS: World[] = [
       terrain: 'young', basins: 0, craters: 0, floor: 0.05, rough: 0.025,
       waves: 0, rain: 0, sink: 0, swell: 0, life: false,
       talus: 2, flow: 12, channel: 2, coolLand: 1.2, // (carbonatite: thin as oil, but cool, so it sets soon, in narrow tongues)
-      drift: 0, rises: 0, heat: 380, rising: 1.3, steady: true,
+      drift: 0, rises: 0, heat: 330, rising: 1.3, steady: true,
       whiteAt: 30, whiteReach: 0.55, cap: 75, // (the cone holds a long breath: time for the summit to whiten)
       impactEvery: [0, 0],
     },
@@ -364,7 +364,7 @@ export const WORLDS: World[] = [
       landInk: '#5a4632', landInkHigh: '#3b2c1e', pencil: '#c4b294', seaInk: '#5b82a3',
     },
     goal: 'white',
-    height: { target: 28, kmPerUnit: 40 },
+    height: { target: 24, kmPerUnit: 40 },
     whiteness: 0.9,
   },
   {
@@ -424,7 +424,7 @@ export const WORLDS: World[] = [
       terrain: 'io', basins: 0, craters: 0, floor: 0.05, rough: 0.02,
       waves: 0, rain: 0, sink: 0, swell: 0, life: false,
       flow: 12, channel: 2, coolLand: 0.15,
-      drift: 0, rises: 0.03, heat: 520, rising: 1.2, steady: true, tide: 0.9, tidePeriod: 50, tideThrow: 0.7,
+      drift: 0, rises: 0.03, heat: 400, rising: 1.2, steady: true, tide: 0.9, tidePeriod: 50, tideThrow: 0.7,
       ashShare: 0.8, ashRing: 2.0, great: 18, plumesApart: 0.5,
       impactEvery: [0, 0],
     },
@@ -435,7 +435,7 @@ export const WORLDS: World[] = [
       landInk: '#7a5a22', landInkHigh: '#55390f', pencil: '#c8b478', seaInk: '#5b82a3',
     },
     goal: 'plumes',
-    plumes: 8,
+    plumes: 5,
   },
   {
     id: 'europa',
@@ -450,7 +450,7 @@ export const WORLDS: World[] = [
       terrain: 'ice', basins: 0, craters: 6, floor: 0.05, rough: 0.012,
       waves: 0, rain: 0, sink: 0, life: false,
       flow: 20, channel: 1, coolLand: 0.08,
-      drift: 0, rises: 0.03, heat: 380, rising: 1.4, ashShare: 0.75, explosive: 9,
+      drift: 0, rises: 0.03, heat: 280, rising: 1.4, ashShare: 0.75, explosive: 9,
       chaos: 5, plumesApart: 0.55, // (let out between 5 and the burst point, the heat breaks the ice; a burst doesn't)
       impactEvery: [80, 120], impactWarning: 12, impactHeat: 4,
     },
@@ -460,7 +460,7 @@ export const WORLDS: World[] = [
       landInk: '#7a5a46', landInkHigh: '#5a3e2e', pencil: '#c6b29c', seaInk: '#5b82a3',
     },
     goal: 'chaos',
-    fields: 10,
+    fields: 8,
     contour: 0.07,
   },
   {
@@ -476,7 +476,7 @@ export const WORLDS: World[] = [
       terrain: 'ice', basins: 0, craters: 30, floor: 0.05, rough: 0.012,
       waves: 0, rain: 0, sink: 0, swell: 0, life: false,
       flow: 20, channel: 1, coolLand: 0.08,
-      drift: 0, rises: 0, heat: 380, rising: 1.0, steady: true, ashShare: 0.75,
+      drift: 0, rises: 0, heat: 320, rising: 1.0, steady: true, ashShare: 0.75,
       ringShare: 0.8, ringAim: 0.7, ringThins: 0.003,
       impactEvery: [50, 90], impactWarning: 12, impactHeat: 4, ageCraters: 0.04,
     },
@@ -532,7 +532,7 @@ export const WORLDS: World[] = [
       terrain: 'moon', basins: 0, craters: 30, floor: 0.05, rough: 0.02,
       // (Airless, as the other moons are: it grew life, a sea and rain without these.)
       waves: 0, rain: 0, sink: 0, swell: 0, life: false, drift: 0,
-      rises: 0.03, heat: 560, rising: 1.3, steady: true, impactEvery: [70, 110],
+      rises: 0.03, heat: 420, rising: 1.3, steady: true, impactEvery: [70, 110],
       tumble: 0.3, tumbleGrow: 0.0018, tumbleKick: 0.4, // (once calmed, slow to build again, so holding it takes patience, not effort)
     },
     palette: {
@@ -582,7 +582,7 @@ export const WORLDS: World[] = [
       terrain: 'magma', basins: 0, craters: 8, floor: 0.1, rough: 0.02,
       waves: 0, rain: 0, sink: 0, swell: 0, life: false,
       flow: 14, channel: 1, coolLand: 0.3, dayCool: 0.04, vapour: 0.05,
-      drift: 0, rises: 0, heat: 420, rising: 1.2, steady: true,
+      drift: 0, rises: 0, heat: 330, rising: 1.2, steady: true,
       impactEvery: [90, 140], impactWarning: 14, impactHeat: 6,
     },
     palette: {
@@ -592,7 +592,7 @@ export const WORLDS: World[] = [
     },
     sun: [0.88, 0.25, 0.2], // (towards us a little: day and the edge of night both in view, and the vent starting in the morning)
     goal: 'snow',
-    snowfall: 130,
+    snowfall: 95,
   },
   {
     id: 'dust',
@@ -607,7 +607,7 @@ export const WORLDS: World[] = [
       terrain: 'dust', basins: 0, craters: 10, floor: 0.3, rough: 0.02,
       waves: 0, rain: 0, sink: 0, swell: 0, life: false,
       talus: 2.2, flow: 9, channel: 2, coolLand: 0.3,
-      drift: 0, rises: 0, heat: 420, rising: 1.2, steady: true,
+      drift: 0, rises: 0, heat: 330, rising: 1.2, steady: true,
       boil: 0.03,
       impactEvery: [90, 140], impactWarning: 14, impactHeat: 6,
     },
@@ -618,7 +618,7 @@ export const WORLDS: World[] = [
     },
     sun: [0.9, 0.2, 0.25],
     goal: 'outbuild',
-    outbuild: 350,
+    outbuild: 190,
   },
   {
     id: 'spin',
@@ -630,10 +630,10 @@ export const WORLDS: World[] = [
     second: 'Pour, and a ridge rises all the way round its middle.',
     rules: {
       g: 0.04, // (Haumea's gravity, Earth's being 1)
-      terrain: 'spin', basins: 0, craters: 25, floor: 0.05, rough: 0.015, bulge: 0.08, spin: 2.5, ridge: 0.07,
+      terrain: 'spin', basins: 0, craters: 25, floor: 0.05, rough: 0.015, bulge: 0.08, spin: 2.5, ridge: 0.045,
       waves: 0, rain: 0, sink: 0, swell: 0, life: false,
       flow: 10, channel: 2, coolLand: 0.12,
-      drift: 0, rises: 0.04, heat: 520, rising: 1.2, steady: true,
+      drift: 0, rises: 0.04, heat: 400, rising: 1.2, steady: true,
       impactEvery: [55, 95], impactWarning: 14, impactHeat: 5,
     },
     palette: {
@@ -657,7 +657,7 @@ export const WORLDS: World[] = [
       terrain: 'ocean', floor: -0.45, sink: 0, swell: 0,
       // (Life comes to the island only once it's risen, as it came to Surtsey: from elsewhere, not at the vents; and no reefs.)
       origin: 1e9, arrives: 20, reef: 0, wishes: false,
-      drift: 0, rises: 0, heat: 450, rising: 1.2, steady: true,
+      drift: 0, rises: 0, heat: 380, rising: 1.2, steady: true,
       tubes: 0.02, tubeFresh: 40, bankFar: 0.52, selfGravity: 0, breakout: 0, // (here the tilt steers, aimed at the bank; and the lava runs on in its tubes, without breaking out)
       impactEvery: [60, 100],
     },
@@ -681,7 +681,7 @@ export const WORLDS: World[] = [
       terrain: 'glass', basins: 0, craters: 0, floor: 0.05, rough: 0.004,
       waves: 0, rain: 0, sink: 0, swell: 0, life: false,
       lamp: true, blobSpeed: 0.07, blobHot: 45,
-      drift: 0, rises: 0, heat: 400, rising: 1.0, steady: true,
+      drift: 0, rises: 0, heat: 340, rising: 1.0, steady: true,
       impactEvery: [0, 0],
     },
     palette: {
@@ -691,7 +691,7 @@ export const WORLDS: World[] = [
       landInk: '#5a4f6b', landInkHigh: '#3e3450', pencil: '#b9afc7', seaInk: '#5b82a3',
     },
     goal: 'lamp',
-    pool: 140,
+    pool: 115,
   },
   {
     id: 'hollow',

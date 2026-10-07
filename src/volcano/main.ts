@@ -1902,8 +1902,14 @@ let steamIn = 0, sparkIn = 0, smokeIn = 0, momentAt = -100, wasBrink = false;
 const UPWARD = new THREE.Vector3(), INVERSE_RIGHT = new THREE.Vector3(), NORMAL_C = new THREE.Vector3(), TAN_C = new THREE.Vector3(), TAN2_C = new THREE.Vector3();
 function effects(dt: number): void {
   const p = topo.positions, v0 = planet.plumeVertex;
-  // Up the page, in the planet's frame: the way smoke drifts, as a map draws it.
-  UPWARD.set(0, 1, 0).applyQuaternion(INVERSE.copy(group.quaternion).invert());
+  // The wind at the vent: the world's own, blowing east along the ground, so the smoke keeps its way as
+  // the world is turned. (It drifted up the page, which turning the world swung round; and on the lower
+  // half of the world, up the page ran into the ground, and the smoke with it.)
+  INVERSE.copy(group.quaternion).invert();
+  NORMAL_C.set(p[v0 * 3], p[v0 * 3 + 1], p[v0 * 3 + 2]).normalize();
+  UPWARD.set(0, 1, 0).cross(NORMAL_C);
+  if (UPWARD.lengthSq() < 0.06) UPWARD.addScaledVector(TAN_C.set(1, 0, 0).cross(NORMAL_C), 0.5); // (near a pole, east is no way at all)
+  UPWARD.normalize();
   const up = { x: UPWARD.x, y: UPWARD.y, z: UPWARD.z };
   // Across the page, the way the storm drives the dust.
   INVERSE_RIGHT.set(1, 0.15, 0).normalize().applyQuaternion(INVERSE);
@@ -2056,7 +2062,7 @@ const LONG_AGE = 360, AGE_SPEED = 14, DRAWING = 7, TURN_AGAIN = 2.6;
  * what was made, before the long age and the chart.
  */
 const REPLAY_EVERY = 4, REPLAY_MOST = 100, REPLAY_SECONDS = 8;
-const replayFrames: { rock: Int16Array; lava: Uint16Array; age: Uint16Array }[] = [];
+const replayFrames: { t: number; rock: Int16Array; lava: Uint16Array; age: Uint16Array }[] = [];
 let replayKeptAt = -1e9, replayShown = -1;
 let replaying: { at: number; rock: Float32Array; lava: Float32Array; age: Float32Array } | null = null;
 function keepReplayFrame(): void {
@@ -2068,7 +2074,7 @@ function keepReplayFrame(): void {
     lava[v] = Math.min(65535, Math.round(planet.lava[v] * 50000));
     age[v] = planet.age[v] >= 1e5 ? 65535 : Math.min(65534, Math.round(planet.age[v]));
   }
-  replayFrames.push({ rock, lava, age });
+  replayFrames.push({ t: planet.seconds, rock, lava, age });
   // (Too many: every other one goes, and they're kept half as often from now on.)
   if (replayFrames.length > REPLAY_MOST) { for (let i = replayFrames.length - 1; i > 0; i -= 2) replayFrames.splice(i - 1, 1); }
 }
@@ -2134,7 +2140,7 @@ function tale(met: boolean): string {
   switch (WORLD.goal) {
     case 'ring': return met ? 'A chain of living islands half the world long, the oldest already sinking' : `Living islands along ${aimDone} of the ${aimOf} stretches; the sea took the rest`;
     case 'basins': return met ? `All ${aimOf} old basins filled with new, dark seas` : `${aimDone} of ${aimOf} old basins filled with new seas`;
-    case 'height': { const km = Math.round(aimDone); return met ? `A mountain ${km} km high, three times the height of Everest` : `A mountain ${km} km high, still rising when the fire went out`; }
+    case 'height': { const km = Math.round(aimDone); return met ? `A mountain ${km} km high, ${km >= 26 ? 'three times' : 'twice'} the height of Everest` : `A mountain ${km} km high, still rising when the fire went out`; }
     case 'cover': return `${Math.round(aimDone)}% of the old grey ice made new and white`;
     case 'plumes': return `${aimDone} great plumes, their sulphur rings laid side by side`;
     case 'calm': return met ? 'A moon that tumbled, now turning steadily' : `A moon still tumbling, ${aimDone}% calmer than it was`;
@@ -2164,6 +2170,7 @@ const MARKS_KEY = (id: WorldId) => `volcano.marks.${id}`;
 function markTheWin(): void {
   if (FREE || RUN !== null) return; // (free play has no clock; a system's world has its own twist)
   marksNow = earned(WORLD.id, planet.heatLeft, planet.tally.calderas, planet.seconds);
+  if (toppedUp) marksNow[0] = false; // (heat was given back: none to spare of its own)
   const before = readMarks(remembered(MARKS_KEY(WORLD.id)));
   remember(MARKS_KEY(WORLD.id), writeMarks(mergeMarks(before, marksNow)));
   // (Not said: the aim met and the long age are said then, and two lines are all that's shown. They're on the plate.)
@@ -2202,6 +2209,7 @@ function theEnd(): void {
     queue.length = 0;
     announce(`The fire is out. ${AGE_WORDS(ending.won)}`);
     measureTheSecond();
+    if (MAY_RETRY && !ending.won && looks.length) $('retry').classList.add('shown');
   }
   // Met, the chart comes a few moments later; not, after a long age has worn at what was made.
   if (ending && !ending.shown && planet.seconds - ending.from >= LONG_AGE && (!ending.won || seconds - wonAt() > 4)) {
@@ -2277,7 +2285,7 @@ function drawEnding(): void {
     const next = ending.won ? nextWorld(WORLD) : null;
     // (Into a new chapter, its name: the last world of one is a threshold.)
     const newChapter = next && chapterOf(next.id) !== chapterOf(WORLD.id) ? chapterOf(next.id) : null;
-    $('again').textContent = RUN !== null ? 'touch to go back to the solar system' : newChapter ? `${chapterOf(WORLD.id).title}: done. Touch to begin chapter ${newChapter.numeral}, ${newChapter.title.toLowerCase()}` : next ? `touch to go on to ${next.title.replace(/^An? /, 'an ').replace(/^The /, 'the ')}` : ending.won ? 'Every world made. Touch to start again' : 'touch to try again';
+    $('again').textContent = RUN !== null ? 'touch to go back to the solar system' : newChapter ? `${chapterOf(WORLD.id).title}: done. Touch to begin chapter ${newChapter.numeral}, ${newChapter.title.toLowerCase()}` : next ? `touch to go on to ${next.title.replace(/^An? /, 'an ').replace(/^The /, 'the ')}` : ending.won ? 'Every world made. Touch to start again' : 'touch to begin it again';
     $('again').classList.add('shown');
     intoTheAtlas();
     // The chart can be kept as a picture where the page may hand over a file: not inside a frame (as a hosted preview), which can't.
@@ -2295,7 +2303,7 @@ addEventListener('pointerup', (e) => {
   const from = tapFrom;
   tapFrom = null;
   if (!from || !ending?.shown || seconds - ending.at < DRAWING || ending.turned < 0) return;
-  if ((e.target as HTMLElement).closest?.('#keep, #worlds')) return;
+  if ((e.target as HTMLElement).closest?.('#keep, #worlds, #retry')) return;
   if (performance.now() - from.t < 350 && Math.hypot(e.clientX - from.x, e.clientY - from.y) < 12) { ending.turned = -1e9; anew(); }
 });
 // The worlds, off the world in a corner: touch to go back to the card that lists them (the world is kept, to come back to).
@@ -2317,6 +2325,47 @@ function turnedSince(): void {
   LAST_DOWN.copy(NOW_DOWN);
   if (ending.turned > TURN_AGAIN) { ending.turned = -1e9; anew(); }
 }
+// ---------------------------------------------------------------- try again from a minute before
+/**
+ * The world every ten seconds of the fire, kept for the last two minutes or so (in memory, a whole
+ * copy each): so that when the fire goes out with the aim unmet, it can be taken up again from a
+ * minute before, rather than begun again from bare ground. If the heat was nearly gone by then, it's
+ * given back up to a quarter, so there's something to try with; that game earns no mark for heat.
+ */
+const LOOK_EVERY = 10, LOOKS_KEPT = 14, BACK = 60, HEAT_BACK = 0.25;
+const looks: { t: number; w: Kept }[] = [];
+let lookedAt = -1e9, toppedUp = false;
+const MAY_RETRY = !FREE && RUN === null;
+function keepLook(): void {
+  if (!MAY_RETRY || !begun || planet.seconds - lookedAt < LOOK_EVERY) return;
+  lookedAt = planet.seconds;
+  try { looks.push({ t: planet.seconds, w: structuredClone(world()) }); } catch { return; } // (not kept, and that's all)
+  if (looks.length > LOOKS_KEPT) looks.shift();
+}
+function tryAgain(): void {
+  if (!ending || ending.won || !looks.length) return;
+  const back = ending.from - BACK, look = [...looks].reverse().find((l) => l.t <= back) ?? looks[0];
+  // What the end began, undone: the replay, the chart, the words and the buttons.
+  if (replaying) { replaying = null; replayHides(false); }
+  for (let i = replayFrames.length - 1; i >= 0; i--) if (replayFrames[i].t > look.t) replayFrames.splice(i, 1);
+  replayKeptAt = look.t;
+  while (looks.length && looks[looks.length - 1].t > look.t) looks.pop();
+  lookedAt = look.t;
+  ending = null; wonSeen = -1; paged = false; second = null; marksNow = null;
+  frameInk.clearRect(0, 0, frameCanvas.width, frameCanvas.height); frameDrawn = -1;
+  for (const id of ['again', 'keep', 'retry']) $(id).classList.remove('shown');
+  $('worlds').classList.remove('ended');
+  $('goal').style.opacity = '';
+  queue.length = 0;
+  takeUp(structuredClone(look.w));
+  const left = planet.heatLeft;
+  if (left < HEAT_BACK) { planet.reserve += (HEAT_BACK - left) * planet.k.heat; toppedUp = true; }
+  lastDraw = -1;
+  announce(left < HEAT_BACK ? 'A minute back, with a little heat given back' : 'A minute back');
+}
+$('retry').addEventListener('pointerdown', (e) => e.stopPropagation());
+$('retry').addEventListener('click', tryAgain);
+
 /** A new world: the page fades to paper, and comes back with nothing on it. */
 function anew(): void {
   void forget();
@@ -2488,6 +2537,10 @@ async function resume(): Promise<boolean> {
   if (wanted) return false;
   const w = await recall<Kept>();
   if (!w || !w.planet || (w.world ?? 'ocean') !== WORLD.id || w.run !== RUN_TAG || !!w.free !== FREE) return false;
+  return takeUp(w);
+}
+/** Put a kept world back: the planet, its life and islands, and where the page had got to. */
+function takeUp(w: Kept): boolean {
   if (w.way && chain) chain = new Chain(w.way.a, w.way.b);
   seed = w.seed;
   // (A save from an older game kept its rules too: they are the game's own now.)
@@ -2805,7 +2858,7 @@ const loop = (): void => {
     // (In the long age, four larger steps rather than fourteen small ones: it was 14 to 43 ms a frame.)
     const steps = speed > 1 ? 4 : 1;
     for (let k = 0; k < steps; k++) planet.step((dt * speed) / steps);
-    if (!ending) keepReplayFrame();
+    if (!ending) { keepReplayFrame(); keepLook(); }
     // A tumbling moon rolls of itself, about its spin's axis (in its own frame), as fast as it tumbles.
     if (planet.k.tumble > 0) {
       const w = planet.spinNow, r = Math.hypot(w.x, w.y, w.z);
