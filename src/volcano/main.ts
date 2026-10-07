@@ -47,7 +47,7 @@ import { handleDrafts } from './drafts';
 import { handleSurface } from './surface';
 import { offThread } from './offthread';
 import { snapshotOf, restoreInto, keep, recall, forget, keepGround, recallGround, keepPage, pages, type Page } from './save';
-import { worldOf, nextWorld, chapterOf, type WorldId } from './worlds';
+import { worldOf, nextWorld, chapterOf, CHAPTERS, type WorldId } from './worlds';
 import { openGlobe, type Globe } from './atlasGlobe';
 import { keepsakeOf, turningGlobe } from './keepsakeGlobe';
 import { Chain, CHAIN } from './chain';
@@ -486,7 +486,13 @@ function crossFade(): void {
   landPens[back].opacity = seaPens[back].opacity = e;
   landPens[frontPen].opacity = seaPens[frontPen].opacity = 1 - e;
 }
-/** Life by the sign of its kind; and breakers, short blue strokes, where the sea is wearing at a coast. */
+/**
+ * Life by the sign of its kind; and breakers, short blue strokes, where the sea is wearing at a coast.
+ * (The kinds of life, each with its sign, its own wash and its name on the plate, only on the ocean world,
+ * where living islands are the aim. Elsewhere life is one green wash: mangroves and forests on the orange
+ * Earth, two billion years before plants, were wrong there, and only something more to read.)
+ */
+const KIND_SIGNS = WORLD.id === 'ocean';
 const kindDots = KINDS.map((k) => new Stipple(k.ink, k.sign, k.sign === 'dot' ? 1.7 : k.sign === 'tree' ? 5.5 : 4.5, { ink2: k.ink2 }));
 const foam = new Stipple('#46708f', 'dash', 6);
 for (const s of [...kindDots, foam]) {
@@ -495,7 +501,7 @@ for (const s of [...kindDots, foam]) {
   // Signs are printed on the map, over the ground, not cut by it where a slope rises past them
   // (the far side of the world fades them away regardless).
   (s.object.material as THREE.Material).depthTest = false;
-  group.add(s.object);
+  if (s === foam || KIND_SIGNS) group.add(s.object);
 }
 const puffs = new Puffs(renderer.getPixelRatio());
 puffs.calm = QUIET;
@@ -598,7 +604,7 @@ const glowField = new Float32Array(N), glowNext = new Float32Array(N);
  * maps washed woods green, in a thin watercolour over the paper, stronger the more there is.
  * (The reef's is left to its signs: the sea's colour is its depth alone.)
  */
-const WASH = KINDS.map((k) => (k.kind === 'reef' ? null : rgb(new THREE.Color(k.ink).lerp(PAPER, 0.25))));
+const WASH = KINDS.map((k) => (k.kind === 'reef' ? null : rgb(new THREE.Color(KIND_SIGNS ? k.ink : '#6f8a55').lerp(PAPER, KIND_SIGNS ? 0.25 : 0.3))));
 const WASH_STRENGTH = 0.9;
 /** The wash as it's drawn, each vertex's colour and strength eased toward what lives there, so it comes and goes softly. */
 const washTint = new Float32Array(N * 3), washWeight = new Float32Array(N);
@@ -1496,7 +1502,7 @@ const TIP: Record<string, string> = {
   waves: `Build the cone until it is just under the sea, not above it. Then ${BURST}. Each burst knocks the cone down, so build it up again.`,
   antipode: `${BURST_}. Hold longer for more. Turn the world over to see the dotted ring on the far side rise.`,
   gather: 'A pale dotted circle shows where each stone will land. Turn it to the top: the gold ring follows, and a stone landing inside the gold ring is caught. No need to pour.',
-  oxygen: 'Life in shallow water makes oxygen. Raise the sea floor to just under the surface, then move on: lava kills the life it covers.',
+  oxygen: "Green life grows in shallow water and breathes out oxygen. Build the sea floor up until it's just under the surface, and life gathers there. Then move the volcano on, so the lava doesn't cover it. The sky slowly turns from orange to blue.",
   chaos: BREATHE ? "Hold for a few seconds, and let go before the smoke turns grey. A burst won't break the ice. Move away from the last field each time." : "Hold a finger on the world for a few seconds, and lift it before the smoke turns grey. Pouring or a burst won't break the ice. Move away from the last field each time.",
   streaks: `Wait until the sun is over the volcano, then ${BURST}. For the next one, move outside the dotted ring. The smoke's edge turns gold when it's time.`,
   snow: 'Pour on the sunlit side, under the star. The lava boils away and falls just inside the night.',
@@ -1887,6 +1893,7 @@ let quietUntil = 0;
  * burst would come and gold when it's time. Every card, tip and message passes through here, so the words say so.
  */
 const WASH_WORDS: [RegExp, string][] = [
+  [/The smoke has turned grey/g, 'The wash at the vent has a grey edge'],
   [/until the smoke is grey/g, 'until the wash at the vent has a grey edge'],
   [/before the smoke turns grey/g, 'before the wash at the vent goes grey at its edge'],
   [/until the smoke turns grey/g, 'until the wash at the vent has a grey edge'],
@@ -2411,7 +2418,7 @@ function chartInfo(): ChartInfo {
   return {
     title: words.title[met ? 0 : 1],
     subtitle: `${WORLD.numeral} · ${WORLD.title} · ${FIRES ? `fire ${FIRES + 1} · ` : ''}${mm} of fire`,
-    kinds: LIFE ? KINDS.map((k) => ({ name: k.name, ink: k.ink, sign: k.sign, living: living.has(k.kind) })) : [],
+    kinds: LIFE && KIND_SIGNS ? KINDS.map((k) => ({ name: k.name, ink: k.ink, sign: k.sign, living: living.has(k.kind) })) : [],
     // The first aim, how far it got; and the second, as the fire left it.
     summary: tale(met) + (second ? ` · ${second.words}` : ''),
     marks: marksNow ? markNames(WORLD.id).map((name, i) => ({ name, got: marksNow![i] })) : undefined,
@@ -2467,12 +2474,56 @@ addEventListener('pointerup', (e) => {
 // (Only this world's numeral, so six of them don't run into the title: touched, the card shows them all.)
 // (Said in words under the numeral, and straight to the chart of every world: a numeral alone, going back to
 // the card, wasn't found, and from a world's own chart at its end there was no way back at all.)
-$('worlds').innerHTML = `<span class="n">${WORLD.numeral}</span><span class="w">${RUN === null ? 'all worlds' : 'the system'}</span>`;
+$('worlds').innerHTML = `<span class="n">${WORLD.numeral}</span><span class="w">${RUN === null ? 'menu' : 'the system'}</span>`;
 $('worlds').addEventListener('click', () => {
   save();
-  if (RUN === null) void pages().then((all) => openAtlas(all));
+  if (RUN === null) openMenu();
   else setTimeout(() => location.reload(), 300);
 });
+// ---------------------------------------------------------------- getting about
+/**
+ * From the corner while a world is played: begin it again, choose another, or the title page. And the
+ * worlds as a plain list, chapter by chapter, with the marks each has earned: the Celestial Chart is the
+ * beautiful view of them, but as the only way to another world it wasn't found.
+ */
+function openMenu(): void {
+  ($('menu').querySelector('.where') as HTMLElement).textContent = `${WORLD.numeral} · ${WORLD.title}`;
+  $('menu').hidden = false;
+}
+$('menu').addEventListener('pointerdown', (e) => e.stopPropagation());
+$('menu').addEventListener('click', (e) => { if (e.target === $('menu')) $('menu').hidden = true; });
+$('menu').querySelector('.close')!.addEventListener('click', () => { $('menu').hidden = true; });
+$('menu').querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', () => {
+  const go = (b as HTMLElement).dataset.go;
+  if (go === 'list') { $('menu').hidden = true; openList(); return; }
+  document.body.classList.add('leaving');
+  // (Again: the kept world let go, and a fresh one on new ground. The title page: as if the game were opened afresh.)
+  if (go === 'again') { void forget().then(() => setTimeout(() => { location.search = `?world=${WORLD.id}`; }, 400)); return; }
+  try { sessionStorage.removeItem('volcano.titled'); } catch { /* none */ }
+  setTimeout(() => { location.href = location.pathname; }, 400);
+}));
+function openList(): void {
+  const box = $('list').querySelector('.chapters') as HTMLElement;
+  box.replaceChildren();
+  for (const c of CHAPTERS) {
+    const sec = document.createElement('section'); sec.className = 'chapter';
+    const h = document.createElement('h3'); h.textContent = `${c.numeral} · ${c.title}`;
+    sec.append(h);
+    for (const id of c.worlds) {
+      const w = worldOf(id), kept = remembered(MARKS_KEY(id)), m = kept === null ? '' : readMarks(kept).map((x) => (x ? '●' : '○')).join('');
+      const row = document.createElement('button'); row.className = 'row' + (id === WORLD.id ? ' here' : '');
+      row.innerHTML = `<span class="n">${w.numeral}</span><span class="t"></span><span class="m">${m}</span>`;
+      (row.querySelector('.t') as HTMLElement).textContent = w.title;
+      row.addEventListener('click', () => { remember('volcano.world', id); document.body.classList.add('leaving'); setTimeout(() => { location.search = `?world=${id}`; }, 400); });
+      sec.append(row);
+    }
+    box.append(sec);
+  }
+  $('list').hidden = false;
+}
+$('list').addEventListener('pointerdown', (e) => e.stopPropagation());
+$('list').querySelector('.close')!.addEventListener('click', () => { $('list').hidden = true; });
+$('list').querySelector('.chart')!.addEventListener('click', () => { $('list').hidden = true; void pages().then((all) => openAtlas(all)); });
 /** How far the world has been turned since the chart was drawn, by any means: gravity's swing in the planet's frame. */
 const LAST_DOWN = new THREE.Vector3(), NOW_DOWN = new THREE.Vector3();
 function turnedSince(): void {
@@ -2754,8 +2805,8 @@ cardWords();
 // The worlds: one touch to the atlas's sky, where every world stands in its chapter's constellation.
 if (RUN === null) {
   const b = document.createElement('button');
-  b.textContent = 'the chart';
-  b.addEventListener('pointerdown', (e) => { e.stopPropagation(); void pages().then((all) => openAtlas(all)); });
+  b.textContent = 'the worlds';
+  b.addEventListener('pointerdown', (e) => { e.stopPropagation(); openList(); });
   $('begin').querySelector('.worlds')!.appendChild(b);
 }
 // The card's foot, one quiet row: the chart, free play, and (on a phone) breathing. (Once there was a
@@ -2906,7 +2957,7 @@ titlePage.querySelector('.go')!.addEventListener('click', () => {
 });
 titlePage.querySelectorAll('nav [data-to]').forEach((b) => b.addEventListener('click', () => {
   const to = (b as HTMLElement).dataset.to;
-  if (to === 'worlds') { leaveTitle(); void pages().then((all) => openAtlas(all)); }
+  if (to === 'worlds') openList();
   else if (to === 'voyage') { document.body.classList.add('leaving'); setTimeout(() => { location.search = '?system'; }, 500); }
   else if (to === 'free') { document.body.classList.add('leaving'); setTimeout(() => { location.search = `?world=${WORLD.id}&free`; }, 500); }
   else if (to === 'settings') openSettings(true);

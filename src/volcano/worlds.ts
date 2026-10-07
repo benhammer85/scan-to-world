@@ -293,7 +293,7 @@ export const WORLDS: World[] = [
     id: 'archean',
     kind: 'A young blue world, its sky still orange',
     numeral: 'VIII',
-    title: 'The orange Earth',
+    title: 'The Orange Earth',
     first: 'Shallow green seas under an orange sky.',
     then: 'For two billion years Earth had no oxygen, until life in the shallows breathed it out, and the sky turned blue.',
     second: 'Pour a shallow shelf, then turn and pour the next, and leave each to life.',
