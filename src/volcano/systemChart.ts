@@ -6,7 +6,7 @@
  * world has been played, the chart goes into the atlas.
  */
 import { worldOf } from './worlds';
-import { finished, loadSystem, madeCount, nameOf, newSystem, saveSystem, twistOf, type System } from './system';
+import { finished, keepSystem, loadSystem, madeCount, nameOf, newSystem, saveSystem, twistOf, type System } from './system';
 import { keepPage } from './save';
 
 const INK = '#2e2118', PENCIL = '#a8987f', W = 360;
@@ -112,7 +112,9 @@ function begin(box: HTMLElement): void {
 
 /** The finished system's chart, kept as a page of the atlas. */
 async function intoTheAtlas(sys: System): Promise<void> {
+  const when = Date.now();
   saveSystem({ ...sys, kept: true });
+  keepSystem(sys, when); // (and kept for the Celestial Chart, where it circles its star among the constellations)
   const img = new Image(), url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgOf(sys).replace('width="100%" style="display:block;max-width:520px;margin:0 auto"', `width="${W * 2}"`));
   await new Promise<void>((resolve) => { img.onload = () => resolve(); img.onerror = () => resolve(); img.src = url; });
   if (!img.width) return;
@@ -120,7 +122,7 @@ async function intoTheAtlas(sys: System): Promise<void> {
   cv.width = 480; cv.height = Math.round((480 * img.height) / img.width);
   const g = cv.getContext('2d')!;
   g.drawImage(img, 0, 0, cv.width, cv.height);
-  await keepPage({ world: 'system', numeral: '☉', title: 'A solar system', subtitle: `round ${sys.star}`, summary: `${madeCount(sys)} of ${sys.bodies.length} worlds made`, when: Date.now(), image: cv.toDataURL('image/jpeg', 0.85) });
+  await keepPage({ world: 'system', numeral: '☉', title: 'A solar system', subtitle: `round ${sys.star}`, summary: `${madeCount(sys)} of ${sys.bodies.length} worlds made`, when, image: cv.toDataURL('image/jpeg', 0.85) });
 }
 
 /** Close the chart. */

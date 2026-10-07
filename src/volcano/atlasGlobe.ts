@@ -11,6 +11,7 @@
 import * as THREE from 'three';
 import { CHAPTERS, worldOf, type WorldId } from './worlds';
 import type { Page } from './save';
+import type { KeptSystem } from './system';
 import ursa from './figures/ursa.webp';
 import scorpius from './figures/scorpius.webp';
 import sagittarius from './figures/sagittarius.webp';
@@ -95,7 +96,7 @@ function onFigure(f: Figure, u: number, v: number, r = 1): THREE.Vector3 {
 export interface Globe { dispose(): void }
 
 /** Open the globe in `box`; `pick` is asked for a world's card when one is touched. */
-export function openGlobe(box: HTMLElement, pages: Page[], here: WorldId, pick: (id: WorldId) => void): Globe {
+export function openGlobe(box: HTMLElement, pages: Page[], here: WorldId, pick: (id: WorldId) => void, systems: KeptSystem[] = [], pickSystem?: (i: number) => void): Globe {
   const latest = new Map<string, Page>();
   for (const p of pages) if (p.world) latest.set(p.world, p);
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -268,6 +269,35 @@ export function openGlobe(box: HTMLElement, pages: Page[], here: WorldId, pick: 
     labels.push({ at: top, sprite: label, weight: 0.95 });
   });
 
+  // ---- the solar systems finished, each a small star of its own in a patch of open sky, its worlds circling it
+  // on faint dotted rings, slowly: those made filled in their own colours, those not, an empty ring. (Placed
+  // in the gaps between the figures, one after another as they're finished.)
+  const SKY_GAPS: [number, number][] = [[14.4, 30], [8.4, 22], [2.6, 14], [12.6, -14], [20.9, -6], [5.0, 30], [17.8, 2], [10.0, 6], [0.2, -18], [23.4, 42], [13.8, 2], [7.0, 0]];
+  const orbits: { at: THREE.Vector3; planets: { sprite: THREE.Sprite; r: number; phase: number; speed: number }[]; t1: THREE.Vector3; t2: THREE.Vector3; parts: THREE.Object3D[]; label: THREE.Sprite }[] = [];
+  systems.slice(0, SKY_GAPS.length).forEach((sys, i) => {
+    const [ra, dec] = SKY_GAPS[i], at = skyAt(ra, dec).multiplyScalar(1.004);
+    const t1 = new THREE.Vector3(0, 1, 0).cross(at).normalize(), t2 = at.clone().normalize().cross(t1);
+    const parts: THREE.Object3D[] = [];
+    const sun = new THREE.Sprite(keep(new THREE.SpriteMaterial({ map: keep(sunTexture()), depthTest: false, depthWrite: false, transparent: true })));
+    sun.scale.set(0.095, 0.095, 1); sun.position.copy(at); globe.add(sun); parts.push(sun);
+    const planets: (typeof orbits)[number]['planets'] = [];
+    sys.worlds.forEach((w, k) => {
+      const r = 0.062 + k * 0.034, pts: THREE.Vector3[] = [];
+      for (let a = 0; a <= 64; a++) { const th = (a / 64) * Math.PI * 2; pts.push(at.clone().addScaledVector(t1, Math.cos(th) * r).addScaledVector(t2, Math.sin(th) * r * 0.62).normalize().multiplyScalar(1.004)); }
+      const ring = new THREE.Line(keep(new THREE.BufferGeometry().setFromPoints(pts)), keep(new THREE.LineDashedMaterial({ color: GOLD, transparent: true, opacity: 0.35, dashSize: 0.004, gapSize: 0.006, depthWrite: false })));
+      ring.computeLineDistances(); globe.add(ring); parts.push(ring);
+      const p = new THREE.Sprite(keep(new THREE.SpriteMaterial({ map: keep(planetTexture(worldOf(w.world).palette.paper, w.met)), depthTest: false, depthWrite: false, transparent: true })));
+      const sz = 0.034; p.scale.set(sz, sz, 1); globe.add(p); parts.push(p);
+      planets.push({ sprite: p, r, phase: (sys.seed % 97) * 0.37 + k * 2.1, speed: 0.22 / Math.pow(k + 1, 1.3) });
+    });
+    const made = sys.worlds.filter((w) => w.met).length;
+    const label = new THREE.Sprite(keep(new THREE.SpriteMaterial({ map: keep(labelTexture(`System ${['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'][i]}`, `round ${sys.star} · ${made} of ${sys.worlds.length} made`)), depthTest: false, depthWrite: false, transparent: true })));
+    const below = at.clone().addScaledVector(t2, -(0.08 + sys.worlds.length * 0.024)).normalize().multiplyScalar(1.004);
+    label.scale.set(0.5, 0.125, 1); label.position.copy(below); label.center.set(0.5, 0.8);
+    globe.add(label);
+    orbits.push({ at, planets, t1, t2, parts, label });
+  });
+
   // ---- turning it
   const q = new THREE.Quaternion(), target = new THREE.Quaternion();
   /** The turn that brings a place on the globe to face us, its north up. */
@@ -323,6 +353,15 @@ export function openGlobe(box: HTMLElement, pages: Page[], here: WorldId, pick: 
       const s = w.clone().project(camera), x = r.left + (s.x + 1) / 2 * r.width, y = r.top + (1 - s.y) / 2 * r.height, d = Math.hypot(x - cx, y - cy);
       if (d < bd) { bd = d; best = m; }
     }
+    // (Or a solar system's star, if nearer: its chart.)
+    let sysBest = -1;
+    orbits.forEach((o, i) => {
+      const w = o.at.clone().applyQuaternion(q);
+      if (w.z < 0.15) return;
+      const s = w.clone().project(camera), x = r.left + (s.x + 1) / 2 * r.width, y = r.top + (1 - s.y) / 2 * r.height, d = Math.hypot(x - cx, y - cy);
+      if (d < bd + 10) { bd = d; sysBest = i; best = null; }
+    });
+    if (sysBest >= 0) { pickSystem?.(sysBest); return; }
     if (!best) return;
     const w = best.at.clone().applyQuaternion(q);
     if (w.z < 0.6) { target.copy(facing(best.at)); easing = 0.9; const id = best.id; setTimeout(() => { if (alive) pick(id); }, 700); return; }
@@ -357,6 +396,16 @@ export function openGlobe(box: HTMLElement, pages: Page[], here: WorldId, pick: 
     // Worlds and names fade as they turn away, and are gone before the rim.
     for (const m of markers) { const z = tmp.copy(m.at).applyQuaternion(q).z; (m.sprite.material as THREE.SpriteMaterial).opacity = THREE.MathUtils.smoothstep(z, 0.12, 0.42); }
     for (const l of labels) { const z = tmp.copy(l.at).applyQuaternion(q).z; (l.sprite.material as THREE.SpriteMaterial).opacity = THREE.MathUtils.smoothstep(z, 0.25, 0.6) * l.weight; }
+    const t = now / 1000;
+    for (const o of orbits) {
+      const fade = THREE.MathUtils.smoothstep(tmp.copy(o.at).applyQuaternion(q).z, 0.12, 0.42);
+      for (const p of o.planets) {
+        const th = p.phase + t * p.speed;
+        p.sprite.position.copy(o.at).addScaledVector(o.t1, Math.cos(th) * p.r).addScaledVector(o.t2, Math.sin(th) * p.r * 0.62).normalize().multiplyScalar(1.005);
+      }
+      for (const part of o.parts) { const m = (part as THREE.Sprite | THREE.Line).material as THREE.Material & { opacity: number }; m.opacity = part instanceof THREE.Line ? 0.35 * fade : fade; }
+      (o.label.material as THREE.SpriteMaterial).opacity = fade * 0.8;
+    }
     renderer.render(scene, camera);
   };
   raf = requestAnimationFrame(frame);
@@ -435,6 +484,26 @@ function labelTexture(name: string, chapter: string): THREE.CanvasTexture {
   g.fillText(spaced, 320, 62);
   g.fillStyle = PALE; g.globalAlpha = 0.8; g.font = 'italic 30px Newsreader, "Iowan Old Style", Georgia, serif';
   g.fillText(chapter, 320, 112);
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+/** A solar system's own star: a small gold point with a soft glow, as the old charts mark a star of note. */
+function sunTexture(): THREE.CanvasTexture {
+  const cv = document.createElement('canvas'); cv.width = cv.height = 64;
+  const g = cv.getContext('2d')!, rg = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  rg.addColorStop(0, 'rgba(255,240,200,1)'); rg.addColorStop(0.18, 'rgba(226,194,122,1)'); rg.addColorStop(0.45, 'rgba(226,194,122,0.35)'); rg.addColorStop(1, 'rgba(226,194,122,0)');
+  g.fillStyle = rg; g.fillRect(0, 0, 64, 64);
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+/** One of its worlds: filled in that world's own colour if it was made, an empty ring if not. */
+function planetTexture(colour: string, made: boolean): THREE.CanvasTexture {
+  const cv = document.createElement('canvas'); cv.width = cv.height = 64;
+  const g = cv.getContext('2d')!;
+  g.beginPath(); g.arc(32, 32, 22, 0, Math.PI * 2);
+  if (made) { g.fillStyle = colour; g.fill(); g.lineWidth = 4; g.strokeStyle = GOLD; g.stroke(); }
+  else { g.lineWidth = 4; g.strokeStyle = 'rgba(239,231,211,0.7)'; g.stroke(); }
   const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }

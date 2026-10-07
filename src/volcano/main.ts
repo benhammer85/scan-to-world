@@ -52,7 +52,7 @@ import { openGlobe, type Globe } from './atlasGlobe';
 import { keepsakeOf, turningGlobe } from './keepsakeGlobe';
 import { Chain, CHAIN } from './chain';
 import { measureSecond, type Second } from './second';
-import { loadSystem, saveSystem, worldFor, recordPlayed } from './system';
+import { loadSystem, saveSystem, worldFor, recordPlayed, finished, keepSystem, keptSystems } from './system';
 import { openSystem, closeSystem } from './systemChart';
 import { feel, keepImage, NATIVE, rumble, rumbles, tap } from './native';
 import { SmokeSign } from './smokeSign';
@@ -2860,6 +2860,9 @@ function openAtlas(all: Page[], only: string | null = null): void {
   // you left it (or still to make), its name, and Play.
   const sky = box.querySelector('.sky') as HTMLElement;
   const pick = box.querySelector('.pick') as HTMLElement;
+  // (A system finished before they were kept for the chart: kept now.)
+  { const s = loadSystem(); if (s && finished(s)) keepSystem(s, all.find((p) => p.world === 'system')?.when ?? Date.now()); }
+  const kept = keptSystems();
   globeView?.dispose();
   globeView = openGlobe(sky, all, WORLD.id, atlasPick = (id) => {
     const w = worldOf(id), made = all.filter((p) => p.world === id), last = made[made.length - 1];
@@ -2873,6 +2876,10 @@ function openAtlas(all: Page[], only: string | null = null): void {
     (pick.querySelector('.plates') as HTMLElement).hidden = !made.length;
     pick.dataset.world = id;
     pick.classList.add('shown');
+  }, kept, (i) => {
+    // A solar system's star: the chart of it as it was finished, kept as a page.
+    const page = all.find((p) => p.world === 'system' && p.when === kept[i].when);
+    if (page) { view.src = page.image; view.alt = page.title; box.classList.add('viewing'); }
   });
   const head = box.querySelector('.plates-head') as HTMLElement;
   // (The plates only for one world, asked for from its card: the sky itself shows every world made, so

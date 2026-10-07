@@ -251,3 +251,22 @@ export function loadSystem(): System | null {
 export function saveSystem(sys: System): void {
   try { localStorage.setItem(KEY, JSON.stringify(sys)); } catch { /* not kept, and that's all */ }
 }
+
+/** A finished system as the Celestial Chart keeps it: its star, its worlds from the star out (made or not), and when it was done. */
+export interface KeptSystem { seed: number; star: string; worlds: { world: WorldId; met: boolean }[]; when: number }
+const KEPT = 'volcano.systems.kept';
+export function keptSystems(): KeptSystem[] {
+  try {
+    const s = JSON.parse(localStorage.getItem(KEPT) ?? '[]') as KeptSystem[];
+    return Array.isArray(s) ? s.filter((k) => Array.isArray(k.worlds)) : [];
+  } catch {
+    return [];
+  }
+}
+/** Keep a finished system for the chart (once: kept again, it's left as it was). */
+export function keepSystem(sys: System, when: number): void {
+  const all = keptSystems();
+  if (all.some((k) => k.seed === sys.seed)) return;
+  all.push({ seed: sys.seed, star: sys.star, worlds: sys.bodies.filter((b) => b.moonOf === undefined).map((b) => ({ world: b.world, met: !!b.made?.met })), when });
+  try { localStorage.setItem(KEPT, JSON.stringify(all)); } catch { /* not kept, and that's all */ }
+}
