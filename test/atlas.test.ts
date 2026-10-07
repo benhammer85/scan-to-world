@@ -1,0 +1,116 @@
+import { describe, expect, it } from 'vitest';
+import * as THREE from 'three';
+import { ATLAS, SKY, chartLines, constellations, layout, magnitudeLines, othersOf, skyLimit, railwayCurve, railwayLines, starsOf, STARS, trainAt } from '../src/atlas/atlas';
+
+describe('the atlas', () => {
+  it('lays the worlds out so none crowds another: the first in the middle, the rest spiralling out', () => {
+    const names = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+    const at = layout(names);
+    expect(at.get('a')!.length()).toBe(0);
+    for (const x of names) for (const y of names) if (x < y) expect(at.get(x)!.distanceTo(at.get(y)!)).toBeGreaterThan(2.6); // worlds are about 2 across
+    expect(layout(names).get('e')!.toArray()).toEqual(at.get('e')!.toArray()); // always the same places
+  });
+});
+
+describe('the celestial railway', () => {
+  const a = { at: new THREE.Vector3(1, 0, 0), up: new THREE.Vector3(1, 0, 0) };
+  const b = { at: new THREE.Vector3(5, 0, 0), up: new THREE.Vector3(-1, 0, 0) };
+
+  it('runs from one station to the other, climbing straight up off each world first', () => {
+    const c = railwayCurve(a, b);
+    expect(c.getPoint(0).distanceTo(a.at)).toBeLessThan(1e-9);
+    expect(c.getPoint(1).distanceTo(b.at)).toBeLessThan(1e-9);
+    expect(c.getTangent(0).dot(a.up)).toBeGreaterThan(0.5); // leaves along the ground's up
+    expect(c.getTangent(1).dot(b.up)).toBeLessThan(-0.5); // and comes down onto the other
+    // And it bows across the chart rather than running straight.
+    expect(Math.abs(c.getPoint(0.5).y)).toBeGreaterThan(0.3);
+  });
+
+  it('is laid from both ends, meeting in the middle, and only then gets its halfway station', () => {
+    const c = railwayCurve(a, b), eye = new THREE.Vector3(3, 0, 10);
+    const count = (g: number) => railwayLines(c, new THREE.Vector3(0, 0, 0), new THREE.Vector3(6, 0, 0), eye, g).reduce((n, l) => n + l.length, 0);
+    expect(count(0.3)).toBeLessThan(count(0.7));
+    expect(count(0.7)).toBeLessThan(count(1));
+  });
+
+  it("the train goes out, rests, comes back, rests, and never leaves the line", () => {
+    const c = railwayCurve(a, b);
+    let seenEnd = false, seenStart = false;
+    for (let s = 0; s < 40; s += 0.05) {
+      const { t } = trainAt(c, s, 0);
+      expect(t).toBeGreaterThanOrEqual(0);
+      expect(t).toBeLessThanOrEqual(1);
+      if (t === 1) seenEnd = true;
+      if (t === 0 && s > 5) seenStart = true;
+    }
+    expect(seenEnd && seenStart).toBe(true);
+    // It comes in again and again: that is when settlers arrive.
+    expect(trainAt(c, 60, 0).arrivals).toBeGreaterThan(trainAt(c, 10, 0).arrivals);
+    void ATLAS;
+  });
+});
+
+describe('the chart of the heavens', () => {
+  const O = new THREE.Vector3(0, 0, 0);
+  it('keeps its stars where they are when the chart grows, and keeps them off the worlds', () => {
+    const key = (v: THREE.Vector3) => `${v.x.toFixed(6)},${v.y.toFixed(6)}`;
+    const small = new Set(starsOf(O, 8).map((s) => key(s.at)));
+    const big = new Set(starsOf(new THREE.Vector3(0.7, -0.3, 0), 14).map((s) => key(s.at)));
+    for (const k of small) expect(big.has(k)).toBe(true);
+    const worlds = [new THREE.Vector3(0, 0, 0), new THREE.Vector3(5, 0, 0)];
+    for (const s of starsOf(O, 10, worlds)) for (const w of worlds) expect(Math.hypot(s.at.x - w.x, s.at.y - w.y)).toBeGreaterThanOrEqual(STARS.clear);
+  });
+
+  it('is mostly dots, with fewer bright crosses, joined here and there into figures that stop short of their stars', () => {
+    const stars = starsOf(O, 14);
+    const dots = stars.filter((s) => s.magnitude === 0).length, bright = stars.filter((s) => s.magnitude === 2).length;
+    expect(dots).toBeGreaterThan(stars.length / 2);
+    expect(bright).toBeGreaterThan(0);
+    const figures = constellations(stars);
+    expect(figures.length).toBeGreaterThan(3);
+    for (const [a, b] of figures) for (const s of stars.filter((x) => x.bright >= 0.25)) { // the charted stars; a quiet sky's faint ones are only background
+      expect(a.distanceTo(s.at)).toBeGreaterThan(0.05);
+      expect(b.distanceTo(s.at)).toBeGreaterThan(0.05);
+    }
+    expect(chartLines(O, 14).figures.length).toBe(constellations(starsOf(O, 14 * 1.15)).length); // the chart runs its stars a little past its rim
+  });
+});
+
+describe('magnitudes', () => {
+  const O = new THREE.Vector3(0, 0, 0);
+  const extent = (lines: THREE.Vector3[][]) => lines.reduce((s, [a, b]) => s + a.distanceTo(b), 0);
+  it('a world nobody lives on has no rays; the more its people build, the more and longer its rays', () => {
+    expect(magnitudeLines(O, 0)).toHaveLength(0);
+    const hamlet = magnitudeLines(O, 5), town = magnitudeLines(O, 60), city = magnitudeLines(O, 600);
+    expect(hamlet.length).toBeGreaterThan(0);
+    expect(extent(town)).toBeGreaterThan(extent(hamlet));
+    expect(extent(city)).toBeGreaterThan(extent(town));
+    // Rays stand clear of the world itself (about 1 across its middle).
+    for (const [a] of city) expect(a.length()).toBeGreaterThan(1.1);
+  });
+});
+
+describe('your light hides the sky', () => {
+  const O = new THREE.Vector3(0, 0, 0);
+  it('a quiet universe shows every star; the louder it is, the fewer, the faintest going first; the brightest always show', () => {
+    expect(skyLimit(0)).toBe(0);
+    expect(skyLimit(10)).toBeLessThan(skyLimit(40));
+    expect(skyLimit(1e6)).toBeLessThanOrEqual(SKY.most);
+    const stars = starsOf(O, 14);
+    const seen = (limit: number) => stars.filter((s) => s.bright > limit).length;
+    expect(seen(skyLimit(0))).toBe(stars.length);
+    expect(seen(skyLimit(20))).toBeLessThan(stars.length * 0.7);
+    expect(seen(skyLimit(1e6))).toBeGreaterThan(0);
+    // Bright stars outshine dots, and the dots a quiet sky adds are fainter than any charted star.
+    expect(Math.min(...stars.filter((s) => s.magnitude === 2).map((s) => s.bright))).toBeGreaterThan(Math.max(...stars.filter((s) => s.magnitude === 1).map((s) => s.bright)) - 0.01);
+    expect(stars.filter((s) => s.bright < 0.25).length).toBeGreaterThan(stars.length / 3);
+  });
+
+  it('others keep dark in the spaces between the worlds, never on one', () => {
+    const worlds = [new THREE.Vector3(0, 0, 0), new THREE.Vector3(5.2, 0, 0), new THREE.Vector3(-3, 4, 0)];
+    const places = othersOf(O, 18, worlds);
+    expect(places.length).toBeGreaterThan(0);
+    for (const at of places) for (const w of worlds) expect(Math.hypot(at.x - w.x, at.y - w.y)).toBeGreaterThanOrEqual(SKY.otherClear);
+    expect(chartLines(O, 18, worlds).others.length).toBeGreaterThan(0);
+  });
+});
