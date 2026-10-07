@@ -149,7 +149,7 @@ if (RUN === null) remember('volcano.world', WORLD.id);
 // (A world that tries another ink first keeps its own choice: chosen on its card, it's remembered for it alone.)
 // The quiet print is every world's ink, unless another is chosen for it (and remembered, world by world).
 // (A new key: inks chosen while comparing the print and the quiet print aren't carried over.)
-const LOOK_ID = ASKED.get('look') ?? remembered('volcano.ink') ?? 'quiet'; // (the quiet print, unless the engraving is chosen in the title page's settings; any other ink by address only)
+const LOOK_ID = ASKED.get('look') ?? remembered('volcano.ink') ?? 'water'; // (watercolour, unless the quiet print is chosen in the title page's settings; any other ink by address only)
 const LOOK: Look = LOOKS.find((l) => l.id === LOOK_ID)?.look ?? 6; // (an ink not known any more: the quiet print)
 /** The quiet print: lava the one warm accent on a calm map; burps only at the brink, splatter only when it bursts, the smoke lighter. */
 const QUIET = LOOK === 6;
@@ -341,6 +341,13 @@ material.onBeforeCompile = (shader) => {
   shader.uniforms.uCreepTo = { value: creepTo };
   shader.uniforms.uCreepOn = creepOn;
   shader.uniforms.uCatchR = { value: WORLD.goal === 'gather' ? 2 * Math.asin(Math.min(1, planet.k.warmth * Math.sqrt(Math.LN2) / 2)) : 0 }; // (the glow a stone is caught in, ringed: where warmth is a half)
+  shader.uniforms.uRings = { value: ringU };
+  shader.uniforms.uRingInk = { value: new THREE.Color(SULPHUR ? '#a0791e' : ICE || WORLD.id === 'ijen' ? '#5f86a3' : '#3a2e25') };
+  shader.uniforms.uBreath = breathU;
+  shader.uniforms.uVentH = ventHU;
+  shader.uniforms.uBloom = { value: bloomU };
+  shader.uniforms.uBloomCol = { value: new THREE.Color(SULPHUR ? '#f4e6b8' : ICE || WORLD.id === 'ijen' ? '#dde8f2' : '#e0d3c2') };
+  shader.uniforms.uBurstWash = { value: burstWashU };
   shader.uniforms.uVentMark = { value: LAMP ? 0 : 1 }; // (the vent marked on the map, as a chart marks a volcano)
   shader.uniforms.uFlash = flash;
   shader.uniforms.uDark = { value: DARK_LAVA ? 1 : 0 };
@@ -487,9 +494,10 @@ puffs.calm = QUIET;
 puffs.ice = ICE;
 group.add(puffs.object);
 /** The vent's smoke as a map's sign (smokeSign.ts), not as smoke: the drifting puffs are still there with ?smoke=real. */
-const SIGN = ASKED.get('smoke') !== 'real';
-const smokeSign = new SmokeSign(new THREE.Color(P.landInk), new THREE.Color('#b8892a'));
-if (SIGN) group.add(smokeSign.object);
+const SMOKE = ASKED.get('smoke') ?? (LOOK === 2 ? 'bloom' : 'puffs'); // (in watercolour, the pressure is a bloom of wash round the vent)
+const RING_SIGN = SMOKE === 'rings' || SMOKE === 'ringsglow' || SMOKE === 'bloom', WASHED = SMOKE === 'bloom', SIGN = SMOKE !== 'real';
+const smokeSign = new SmokeSign(new THREE.Color(P.landInk), new THREE.Color('#b8892a'), ASKED.get('smoke') === 'wash' ? 'wash' : 'puffs');
+if (SIGN && !RING_SIGN) group.add(smokeSign.object);
 group.add(puffs.shadow);
 
 /**
@@ -645,7 +653,7 @@ function coarse(): void {
     glowAt = now;
     const o = topo.nbrOffsets, l = topo.nbrList;
     let any = false;
-    for (let v = 0; v < N; v++) { const lv = planet.lava[v]; glowField[v] = lv > 0.002 ? Math.min(1, lv * 60) : planet.age[v] < 25 && planet.ash[v] < 0.25 ? Math.exp(-planet.age[v] / 8) * 0.45 : 0; if (glowField[v] > 0) any = true; }
+    for (let v = 0; v < N; v++) { const lv = planet.lava[v]; glowField[v] = lv > 0.002 ? Math.min(1, lv * 60) : !WASHED && planet.age[v] < 25 && planet.ash[v] < 0.25 ? Math.exp(-planet.age[v] / 8) * 0.45 : 0; if (glowField[v] > 0) any = true; } // (in watercolour, only round running paint: ground just set glowing drew a hot ring round each burst)
     if (any) for (let pass = 0; pass < 3; pass++) { // (close round the lava: spread wider, on pale worlds it read as a stain)
       for (let v = 0; v < N; v++) { let m = glowField[v]; for (let k = o[v]; k < o[v + 1]; k++) m = Math.max(m, glowField[l[k]] * 0.62); glowNext[v] = m; }
       glowField.set(glowNext);
@@ -1954,7 +1962,7 @@ function effects(dt: number): void {
     burstSeen = true;
     bigMoment(great ? 6.5 : 4.5, great ? 1.3 : 1.16, great ? 0.4 : 1);
     knock(great ? 1 : 0.6);
-    if (fell) {
+    if (fell && !WASHED) {
       // The summit falling in: no fountain and no flare, but dust rising all round the rim as it drops.
       const q = planet.plume, r = planet.k.caldera * 2.2;
       let made = 0;
@@ -1965,7 +1973,12 @@ function effects(dt: number): void {
       cloudLeft = 50; cloudBig = 0.8; // (and a lower, greyer cloud than a burst's)
     }
   }
-  if ((planet.tally.bursts > tallied.bursts || planet.tally.calderas > tallied.calderas) && !(planet.k.hollow > 0 && planet.tally.calderas > tallied.calderas)) {
+  if (WASHED && (planet.tally.bursts > tallied.bursts || planet.tally.calderas > tallied.calderas)) {
+    // (In watercolour, no fountain and no cloud of puffs: a drop of ash pigment blooming out from the vent.)
+    const torn = planet.tally.calderas > tallied.calderas;
+    burstWashAt = seconds; burstWashReach = torn ? 0.3 : 0.2;
+    landing = { at: seconds, n: torn ? 9 : 6 };
+  } else if ((planet.tally.bursts > tallied.bursts || planet.tally.calderas > tallied.calderas) && !(planet.k.hollow > 0 && planet.tally.calderas > tallied.calderas)) {
     const torn = planet.tally.calderas > tallied.calderas;
     landing = { at: seconds, n: torn ? 9 : 6 }; // (and then what it threw, coming down)
     spray.value = 1; // (a burst throws its splatter, whatever the ink)
@@ -1992,7 +2005,7 @@ function effects(dt: number): void {
   // Over open lava: a few sparks lifted on the heat, and a faint warm haze rising: heat you can see, kept sparse.
   flash.value *= Math.exp(-dt * 1.8);
   sparkIn -= dt;
-  if (sparkIn <= 0 && (planet.pouring || planet.erupting) && !LAMP) {
+  if (sparkIn <= 0 && (planet.pouring || planet.erupting) && !LAMP && !WASHED) { // (not in watercolour: the paint says it's hot)
     sparkIn = 0.22;
     for (let tries = 0; tries < 30; tries++) {
       const v = Math.floor(Math.random() * N);
@@ -2045,7 +2058,8 @@ function effects(dt: number): void {
     // (Seen only while the vent faces us, and only while it smokes: not while lava pours, which says itself.)
     const facing = NORMAL_C.set(base[v0 * 3], base[v0 * 3 + 1], base[v0 * 3 + 2]).applyQuaternion(group.quaternion).z;
     const smoking = begun && !LAMP && !planet.over && !planet.pouring && planet.pressure > 0.05 ? 1 : 0;
-    smokeSign.update(dt, PLUME.set(p[v0 * 3], p[v0 * 3 + 1], p[v0 * 3 + 2]), smoking * THREE.MathUtils.smoothstep(facing, -0.08, 0.2), share, stage);
+    if (RING_SIGN) ringing(dt, smoking, share, stage);
+    else smokeSign.update(dt, PLUME.set(p[v0 * 3], p[v0 * 3 + 1], p[v0 * 3 + 2]), smoking * THREE.MathUtils.smoothstep(facing, -0.08, 0.2), share, stage);
   } else if (QUIET) {
     // Quiet: the smoke reads the pressure. A thin wisp at rest; a taller, fuller column as it builds;
     // grey once letting it out would burst (on Io, burst as a great plume); dark only at the brink.
@@ -2080,6 +2094,54 @@ function effects(dt: number): void {
 }
 
 const PLUME = new THREE.Vector3(), SWING = new THREE.Quaternion();
+/**
+ * The pressure as rings on the ground (?smoke=rings): one born at the vent now and then, widening slowly and
+ * fading as it goes; more often, and further, as the heat builds; heavier once a burst would come; and once
+ * it's time, a gold ring holding still round the mouth. (With ?smoke=ringsglow, a warm breath at the vent too.)
+ */
+const RING_SPEED = 0.022, ringU = Array.from({ length: 6 }, () => new THREE.Vector4());
+const ringsLive: { born: number; reach: number; kind: number; speed: number }[] = [];
+let ringPhase = 0.7, readyRing = 0;
+const breathU = { value: 0 }, ventHU = { value: 0 };
+const bloomU = new THREE.Vector3();
+/** A burst as a drop of pigment (see print.ts): when it fell, and how far it will spread. */
+const burstWashU = new THREE.Vector3();
+let burstWashAt = -100, burstWashReach = 0;
+function burstWash(): void {
+  // (Out fast, easing as it reaches; dark at first, paling and settling over some seconds as it dries.)
+  const t = seconds - burstWashAt;
+  if (t > 14) { burstWashU.y = 0; return; }
+  burstWashU.set(0.015 + burstWashReach * (1 - Math.exp(-t / 0.9)), Math.min(1, t / 0.25) * (0.35 + 0.65 * Math.exp(-t / 4)) * (1 - Math.max(0, t - 9) / 5), t);
+}
+function ringing(dt: number, smoking: number, share: number, stage: number): void {
+  ventHU.value = coarseHeight[planet.plumeVertex];
+  burstWash();
+  if (SMOKE === 'bloom') {
+    // (Growing slowly as the heat builds; drawn back a little quicker as it's let out; the gold edge coming in over a second or two.)
+    const want = smoking ? 0.03 + 0.12 * share : 0.02;
+    bloomU.x += (want - bloomU.x) * Math.min(1, dt * (want < bloomU.x ? 0.9 : 0.35));
+    bloomU.y += (smoking - bloomU.y) * Math.min(1, dt * 0.8);
+    bloomU.z += ((stage >= 1.75 ? 1 : 0) - bloomU.z) * Math.min(1, dt * 0.8);
+    return;
+  }
+  const kind = stage >= 0.5 ? 1 : 0, gold = stage >= 1.75;
+  ringPhase += dt * smoking * (0.13 + 0.42 * share);
+  // (Quicker as well as more often as the heat builds, so there are never more than about three at once.)
+  if (ringPhase >= 1) { ringPhase -= 1; ringsLive.push({ born: seconds, reach: 0.07 + 0.19 * share, kind, speed: RING_SPEED * (1 + 1.6 * share) }); if (ringsLive.length > 4) ringsLive.shift(); }
+  for (let i = ringsLive.length - 1; i >= 0; i--) if ((seconds - ringsLive[i].born) * ringsLive[i].speed > ringsLive[i].reach) ringsLive.splice(i, 1);
+  const vr = 0.012;
+  for (let i = 0; i < 5; i++) {
+    const r = ringsLive[i];
+    if (!r) { ringU[i].set(0, 0, 0, 0); continue; }
+    const age = seconds - r.born, at = vr + age * r.speed, f = (at - vr) / r.reach;
+    // (Coming in over a moment and going out as it reaches its furthest: nothing pops.)
+    ringU[i].set(at, Math.min(1, age / 0.8) * Math.pow(Math.max(0, 1 - f), 1.2) * (0.72 + 0.25 * share), r.kind, 0);
+  }
+  readyRing += ((gold && smoking ? 1 : 0) - readyRing) * Math.min(1, dt * 1.5);
+  ringU[5].set(vr * 2.6, readyRing * (0.75 + 0.15 * Math.sin(seconds * 1.6)), 2, 0);
+  // (The breath swells as each ring is born, and settles.)
+  breathU.value = SMOKE === 'ringsglow' ? smoking * (0.35 + 0.65 * Math.exp(-((ringPhase < 0.5 ? ringPhase : ringPhase - 1) ** 2) / 0.02)) : 0;
+}
 
 // ---------------------------------------------------------------- the end
 /**
@@ -2818,7 +2880,7 @@ const SETTINGS: Record<string, { now: () => string; set: (v: string) => void; an
   hands: { now: () => (remembered('volcano.controls') === 'breathe' ? 'breathe' : 'tilt'), set: (v) => remember('volcano.controls', v), anew: true },
   haptics: { now: () => (remembered('volcano.haptics') === 'off' ? 'off' : 'on'), set: (v) => remember('volcano.haptics', v), anew: false },
   motion: { now: () => (remembered('volcano.motion') === 'still' ? 'still' : 'phone'), set: (v) => remember('volcano.motion', v), anew: true },
-  ink: { now: () => (remembered('volcano.ink') === 'engrave' ? 'engrave' : 'quiet'), set: (v) => remember('volcano.ink', v), anew: true },
+  ink: { now: () => (remembered('volcano.ink') === 'quiet' ? 'quiet' : 'water'), set: (v) => remember('volcano.ink', v), anew: true },
 };
 let settingsChanged = false;
 // (A computer has no tipping: it always plays by holding, so the choice isn't offered there.)

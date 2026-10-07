@@ -12,7 +12,43 @@
 import * as THREE from 'three';
 
 /** How many strokes at most, and how tall the sign stands at its fullest (the world's radius is 1). */
-const STROKES = 5, TALL = 0.34;
+const TALL = 0.34;
+export type SignKind = 'puffs' | 'wash';
+
+/** A woodblock's smoke: a short stack of round billows, flat paper with a fine inked edge, rising slowly and melting away at the top. */
+const PUFFS = `
+          float d = 1e3;
+          float ph = fract(uTime * 0.045);
+          for (int i = 0; i < 6; i++) {
+            float k = (float(i) + ph) / 6.0;
+            float r = mix(0.045, 0.125, k) * (0.8 + 0.4 * uShare) * smoothstep(0.0, 0.12, k) * (1.0 - smoothstep(0.7, 1.0, k));
+            vec2 c = vec2(0.025 * sin(k * 5.0 + uTime * 0.18) + 0.05 * k * k, k * tall + 0.03);
+            d = smin(d, length(p - c) - r, 0.025);
+          }
+          float aa = fwidth(d) * 1.2;
+          float fill = 1.0 - smoothstep(-aa, 0.0, d);
+          float edge = 1.0 - smoothstep(0.0025, 0.0025 + aa, abs(d + 0.001));
+          vec3 paper = mix(vec3(0.985, 0.968, 0.93), vec3(0.62, 0.58, 0.53), dark * 0.85);
+          vec3 line = gold > 0.5 ? uGold : uInk;
+          float a = max(fill * 0.9, edge * 0.75) * uShow * foot;
+          if (a < 0.004) discard;
+          gl_FragColor = vec4(mix(paper, line, edge * (1.0 - fill * 0.4)), a);`;
+
+/** A watercolour's smoke: a soft column of pale wash, its edge ragged and a little darker where the pigment pooled, drifting slowly up. */
+const WASH = `
+          float cx = 0.03 * sin(p.y * 3.0 + uTime * 0.15) + 0.06 * p.y * p.y;
+          float hw = mix(0.03, 0.12, clamp(p.y / tall, 0.0, 1.0)) * (0.8 + 0.4 * uShare);
+          float n = n2(vec2(p.x * 9.0, p.y * 6.0 - uTime * 0.12)) * 0.6 + n2(vec2(p.x * 23.0, p.y * 17.0 - uTime * 0.2)) * 0.4;
+          float off = abs(p.x - cx) + (n - 0.5) * 0.045;
+          float body = 1.0 - smoothstep(hw * 0.75, hw, off);
+          float pooled = smoothstep(hw * 0.5, hw * 0.92, off) * body;
+          float top = 1.0 - smoothstep(tall - 0.18, tall + 0.04, p.y + (n - 0.5) * 0.1);
+          vec3 col = mix(vec3(0.80, 0.75, 0.68), vec3(0.37, 0.32, 0.27), dark);
+          col = mix(col, uGold, gold * 0.45);
+          col = mix(col, col * 0.78, pooled);
+          float a = (body * (0.38 + 0.32 * dark) + pooled * 0.18) * top * uShow * foot;
+          if (a < 0.004) discard;
+          gl_FragColor = vec4(col, a);`;
 
 export class SmokeSign {
   readonly object: THREE.Mesh;
@@ -21,7 +57,7 @@ export class SmokeSign {
   private share = 0;
   private stage = 0;
 
-  constructor(ink: THREE.Color, gold: THREE.Color) {
+  constructor(ink: THREE.Color, gold: THREE.Color, kind: SignKind = 'puffs') {
     this.u = {
       uTime: { value: 0 },
       uShow: { value: 0 },
@@ -51,43 +87,17 @@ export class SmokeSign {
         uniform float uTime, uShow, uShare, uStage;
         uniform vec3 uInk, uGold;
         varying vec2 vUv;
+        float h2(vec2 p) { vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
+        float n2(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(h2(i), h2(i + vec2(1.0, 0.0)), f.x), mix(h2(i + vec2(0.0, 1.0)), h2(i + 1.0), f.x), f.y); }
+        float smin(float a, float b, float k) { float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0); return mix(b, a, h) - k * h * (1.0 - h); }
         void main() {
-          // (Worked out before any branch: phones leave derivatives inside one undefined.)
-          float aa = fwidth(vUv.x) * 1.2;
-          float y = vUv.y;
-          // As tall as the heat is high: a short wisp at rest, the whole sign at the brink.
-          float tall = 0.42 + 0.58 * uShare;
-          float top = 1.0 - smoothstep(tall - 0.22, tall, y);
-          float foot = smoothstep(0.0, 0.05, y);
+          // Across and up, in the same measure (the sign's height is 1).
+          vec2 p = vec2((vUv.x - 0.5) * 0.9, vUv.y);
+          float tall = 0.38 + 0.62 * uShare;
           float dark = uStage - 2.0 * step(1.75, uStage); // (0 white, 0.5 grey, 1 at the brink; past 2, the same with gold)
           float gold = step(1.75, uStage);
-          float ink = 0.0, goldInk = 0.0;
-          for (int i = 0; i < ${STROKES}; i++) {
-            float fi = float(i), seed = fi * 2.399;
-            // Each stroke comes in as the heat builds: one at rest, all of them near the brink.
-            float on = smoothstep(fi / ${STROKES}.0 - 0.05, fi / ${STROKES}.0 + 0.15, uShare + 0.12);
-            // Fanning a little as they rise, each swaying slowly on its own, wider the higher it goes,
-            // and leaning a touch the same way, as a sign's smoke is drawn.
-            float side = (fi - 2.0) * (0.012 + 0.11 * y * y);
-            float sway = (sin(y * 4.6 - uTime * 0.5 + seed * 3.1) * 0.07 + sin(y * 2.1 + seed - uTime * 0.19) * 0.03) * y;
-            // (Each hooks over at its tip, as an engraver ends a wisp of smoke in a curl, the outer ones outward.)
-            float hook = smoothstep(tall - 0.3, tall, y) * (fi < 2.0 ? -1.0 : 1.0) * (0.03 + 0.03 * abs(fi - 2.0));
-            float x = 0.5 + side + sway + hook + 0.06 * y * y;
-            // Engraved: swelling at the foot and thinning to a hair, heavier the darker the smoke.
-            float w = mix(0.0065, 0.0022, y) * (0.9 + 0.35 * dark);
-            float d = abs(vUv.x - x);
-            float line = (1.0 - smoothstep(w, w + aa, d)) * on;
-            // (Broken now and then, as a burin's line lifts: not a tube.)
-            line *= 0.8 + 0.2 * smoothstep(0.15, 0.4, sin(y * 23.0 + seed * 5.0) * 0.5 + 0.5);
-            if (gold > 0.5 && mod(fi, 2.0) < 0.5) goldInk = max(goldInk, line); else ink = max(ink, line);
-          }
-          float fade = top * foot * uShow;
-          float a = ink * (0.5 + 0.45 * dark) * fade;
-          float g = goldInk * 0.95 * fade;
-          float alpha = max(a, g);
-          if (alpha < 0.004) discard;
-          vec3 col = g > a ? uGold : uInk;
-          gl_FragColor = vec4(col, alpha);
+          float foot = smoothstep(0.0, 0.03, p.y);
+${kind === 'wash' ? WASH : PUFFS}
         }`,
     });
     this.object = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), material);

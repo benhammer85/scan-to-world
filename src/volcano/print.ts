@@ -39,6 +39,13 @@ export const PRINT_FUNCTIONS = /* glsl */ `
   #define uFeedingGlow (0.4 + 0.6 * uFeeding)
   uniform vec3 uVent;
   uniform float uVentMark;
+  uniform vec4 uRings[6]; // (the pressure, as rings spreading from the vent: each one's reach, strength, and 0 ink, 1 grey, 2 gold)
+  uniform vec3 uRingInk; // (in the world's own colour: sulfur on Io, pale blue on the ice)
+  uniform float uBreath; // (and a warm breath at the vent with each ring, 0 for none)
+  uniform vec3 uBloom; // (the pressure as a watercolour bloom round the vent: its reach, strength, and how gold its edge)
+  uniform vec3 uBloomCol;
+  uniform vec3 uBurstWash; // (a burst, as a drop of ash pigment in wet paint: its reach, strength, and how long it's spread)
+  uniform float uVentH; // (the ground's height at the vent, as drawn: the rings climb from it)
   uniform vec3 uCreepTo; uniform float uCreepOn; // (where the volcano is creeping to, and how much to show it)
   uniform float uCatchR; // (the first world: the glow a stone is caught in)
   uniform float uHollow; // (the hollow world: how empty the chamber under the vent is)
@@ -334,7 +341,6 @@ export function printFragment(look: Look, sea: boolean): string {
         }
       }
       float darkL = ${sea ? 'exp(-hl / 0.005) * 0.9 + exp(-hl / 0.02) * 0.3 + ' : ''}relief + ${sea ? '0.02' : '0.06 + smoothstep(0.35, -0.25, dot(S, L)) * 0.22'} + floodDark; // (a dry world is shaded round, away from the light, as an engraved globe is)
-      ${look === 2 ? 'darkL += 0.45 * sin(black * 3.14159) * setOn; // the dried wash giving way to stipple' : ''}
       darkL = darkL * (1.0 - 0.85 * litWall) + crDark;
       ${look === 1 ? 'darkL += 0.18 * pow(black, 1.2) * setOn * (1.0 - smoothstep(0.5 - lw, 0.5 + lw, lv)); // set rock: a little stipple under its engraved lines' : ''}
       ${look >= 2 ? 'darkL *= 1.0 - 0.95 * smoothstep(0.45, 0.7, lv); // (running lava covers the ground\'s stipple)' : ''}
@@ -349,6 +355,7 @@ export function printFragment(look: Look, sea: boolean): string {
 
       float glowInk = 0.0; // (lava's inks glow by their own light, and are not shaded with the ground)
       ${look === 1 ? ENGRAVE : look === 2 ? WATER : look === 3 ? STIPPLE : look === 4 ? GLOW : PRINT(look === 6)}
+      ${VENT_SIGNS}
       // The hollow world: as the chamber under the vent empties, the ground round it cracks in rings, as round
       // a summit about to fall in: one, then two, then three, each broken (running a way round, stopping, running
       // again) and jagged, inked firmly, the ground inside each a little darker where it has sunk.
@@ -378,6 +385,92 @@ export function printFragment(look: Look, sea: boolean): string {
       diffuseColor.rgb *= col * (1.0 - glowInk);
       totalEmissiveRadiance += col * glowInk;`;
 }
+
+const VENT_SIGNS = /* glsl */ `
+        // (Worked out here for every ink: the vent's own place.)
+        vec3 vmt1 = normalize(cross(uVent, abs(uVent.y) < 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0))), vmt2 = cross(uVent, vmt1);
+        float vmFar = acos(clamp(dot(vDir, uVent), -1.0, 1.0)), vmAng = atan(dot(vDir, vmt2), dot(vDir, vmt1));
+        float vmCov = smoothstep(0.45, 0.55, lv);
+        // The vent, marked as an engraved map marks a volcano: a small ring, its rim hatched outward in short
+        // strokes, so you always know where the heat is and the smoke has somewhere to rise from. (With
+        // nothing there before the first pour, the smoke seemed to come from nowhere.) Over running lava,
+        // pale, as the crater's lip.
+        if (uVentMark > 0.5) {
+          float vr = max(0.011, 5.0 * px), vlw = max(0.7 * uPx * px, 1e-5);
+          // (By hand: a little out of round, the strokes not all one length, and a small gap where the pen lifted.)
+          float vrW = vr * (1.0 + 0.12 * (noise3(vec3(cos(vmAng) * 1.6, sin(vmAng) * 1.6, 3.0)) - 0.5));
+          float rimV = (1.0 - smoothstep(vlw * 0.6, vlw * 1.6, abs(vmFar - vrW))) * smoothstep(0.0, 0.05, fract(vmAng / 6.2832 + 0.37));
+          float tickA = abs(fract(vmAng / 6.2832 * 14.0) - 0.5) / 14.0 * 6.2832 * vmFar; // (how far round, along the ground, from the nearest stroke)
+          float tickL = 1.3 + 0.35 * fract(sin(floor(vmAng / 6.2832 * 14.0 + 0.5) * 12.9898) * 43758.5);
+          float tick = (1.0 - smoothstep(vlw * 0.5, vlw * 1.4, tickA)) * step(vrW, vmFar) * (1.0 - smoothstep(vr * tickL, vr * (tickL + 0.12), vmFar));
+          float mark = max(rimV, tick * 0.8) * onLand;
+          col = mix(col, mix(vec3(0.2, 0.16, 0.13) * uCrustTint * 1.6, vec3(0.86, 0.6, 0.38), vmCov), mark * 0.85);
+          // As the pressure builds, the mouth warms: a dull red ember inside the ring from the start,
+          // going orange, then gold, as it nears what the cone can hold.
+          float warmV = smoothstep(0.02, 0.15, uBuild) * (1.0 - smoothstep(vr * 0.55, vr * 0.85, vmFar)) * onLand * (1.0 - vmCov);
+          vec3 emberC = mix(vec3(0.55, 0.12, 0.05), vec3(0.95, 0.42, 0.1), smoothstep(0.2, 0.6, uBuild));
+          emberC = mix(emberC, vec3(0.99, 0.78, 0.4), smoothstep(0.6, 0.9, uBuild));
+          col = mix(col, emberC, warmV * (0.55 + 0.35 * uBuild) * (0.85 + 0.15 * noise3(vDir * 140.0 + vec3(0.0, uTime * 0.6, 0.0))));
+          glowInk = max(glowInk, warmV * (0.3 + 0.5 * uBuild));
+        }
+        // The pressure, read in rings: drawn flat on the ground, spreading slowly from the vent as rings spread on
+        // still water, a little out of round as if drawn by hand, fading as they go. (Smoke drawn as smoke read
+        // differently from every side and never kept still; rings on the map read the same from anywhere.)
+        {
+          vec3 rt1 = normalize(cross(uVent, abs(uVent.y) < 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0))), rt2 = cross(uVent, rt1);
+          float rFar = acos(clamp(dot(vDir, uVent), -1.0, 1.0)), rAng = atan(dot(vDir, rt2), dot(vDir, rt1));
+          // (Not perfect circles: each ring goes over the ground as a wave would, slower where it has to climb and
+          // running ahead into hollows, so it bends round a crater, lags on a ridge and reaches down a valley, and
+          // reads as one more of the map's contours. Laid perfectly round, they read as a target.)
+          rFar = max(0.0, rFar + 0.35 * clamp(vH - uVentH, -0.3, 0.3) + 0.012 * (noise3(vDir * 9.0) - 0.5));
+          float rw0 = max(0.85 * uPx * px, 1e-5);
+          for (int i = 0; i < 6; i++) {
+            vec4 R = uRings[i];
+            if (R.y > 0.003) {
+              float rr = R.x * (1.0 + 0.05 * (noise3(vec3(cos(rAng) * 1.4, sin(rAng) * 1.4, float(i) * 3.1)) - 0.5));
+              float rw = rw0 * (1.0 + 0.25 * step(0.5, R.z));
+              float rl = (1.0 - smoothstep(rw * 0.5, rw * 1.5, abs(rFar - rr))) * R.y * onLand;
+              vec3 rc = R.z > 1.5 ? vec3(0.86, 0.63, 0.22) : mix(uRingInk, uRingInk * 0.55, step(0.5, R.z));
+              col = mix(col, rc, rl * 0.85);
+            }
+          }
+          // The pressure as a watercolour bloom: one pale wash spreading slowly from the vent as a drop of pigment
+          // spreads on wet paper, wider as the heat builds, its edge ragged and a little darker where the pigment
+          // gathered as it dried, gold there once it's time, and drawing back into the vent as the heat is let out.
+          if (uBloom.y > 0.003) {
+            float bR = uBloom.x;
+            float bn = noise3(vDir * 13.0 + vec3(0.0, uTime * 0.015, 0.0)) * 0.65 + noise3(vDir * 41.0) * 0.35;
+            float dEdge = rFar + (bn - 0.5) * 0.4 * bR - bR; // (below 0, inside)
+            float bw = max(1.4 * uPx * px, 1e-5);
+            float inside = 1.0 - smoothstep(-bw, bw, dEdge);
+            float pooled = (1.0 - smoothstep(0.0, bR * 0.16 + bw * 2.0, -dEdge)) * inside;
+            float bS = uBloom.y * onLand;
+            col = mix(col, col * uBloomCol, inside * 0.32 * bS);
+            col = mix(col, col * uBloomCol * 0.88, pooled * 0.32 * bS);
+            col = mix(col, vec3(0.86, 0.63, 0.24), pooled * uBloom.z * 0.55 * bS);
+          }
+          // A burst, in watercolour: a drop of ash-dark pigment falling into wet paint and blooming out from the vent
+          // fast, its edge frilled (the backrun watercolourists call a cauliflower), then paling and settling as it dries.
+          if (uBurstWash.y > 0.003) {
+            float uR = uBurstWash.x;
+            float fr = noise3(vDir * 11.0 + vec3(1.3, 0.0, 2.1)) * 0.55 + noise3(vDir * 33.0) * 0.3 + noise3(vDir * 95.0) * 0.15;
+            float dB = rFar + (fr - 0.5) * 0.5 * uR - uR;
+            float bwB = max(1.4 * uPx * px, 1e-5);
+            float inB = 1.0 - smoothstep(-bwB, bwB, dB);
+            float frill = (1.0 - smoothstep(0.0, uR * 0.12 + bwB * 2.0, -dB)) * inB;
+            float settle = noise3(vDir * 26.0 + vec3(0.0, 0.0, uBurstWash.z * 0.05)) * 0.5 + noise3(vDir * 230.0) * 0.25;
+            vec3 ashC = vec3(0.42, 0.39, 0.41);
+            float bA = uBurstWash.y * onLand;
+            col = mix(col, col * ashC, inB * (0.35 + 0.35 * settle) * bA);
+            col = mix(col, col * ashC * 0.7, frill * 0.55 * bA);
+          }
+          if (uBreath > 0.002) {
+            float vrB = max(0.011, 5.0 * px);
+            float halo = exp(-max(0.0, rFar - vrB * 0.6) / (vrB * (1.6 + 2.2 * uBuild))) * uBreath * onLand * (1.0 - smoothstep(0.45, 0.55, lv));
+            col = mix(col, mix(vec3(0.95, 0.55, 0.22), vec3(1.0, 0.8, 0.45), uBuild), halo * 0.38);
+          }
+        }
+`;
 
 const ENGRAVE = /* glsl */ `
       // Engraved, as an old atlas's plates were, but plainly molten: running lava is laid with a warm
@@ -412,38 +505,71 @@ const ENGRAVE = /* glsl */ `
       col = mix(col, uBlockDeep, (1.0 - smoothstep(0.85 * uPx - 0.5, 0.85 * uPx + 0.5, abs(lv - 0.5) / lw)) * step(0.5 - 2.0 * lw, lv) * 0.92);`;
 
 const WATER = /* glsl */ `
-      // Watercolour lava, coloured by its heat as real lava is: yellow-white at the core, through orange
-      // and red, to a dark crust that forms from the edges in. No outline: a wet wash with a ragged edge,
-      // pigment drifting in it, pooling a little at its edge; a warm glow on the ground round it; drying
-      // to sienna and grey once set, then fading.
+      // Watercolour lava. Watercolour is a fluid itself, and behaves as lava does: it runs, pools, spreads into
+      // what's wet and hardens as it dries. So the lava is the paint: while it runs, several pigments (gold at
+      // the hot heart, cadmium orange, vermilion, alizarin) drift and swirl into one another wet-in-wet, moving
+      // slowly out from the vent while it's fed, its edge soft and bleeding into the paper; as it cools the
+      // swirling slows and stops where it was, the pigment gathers into a darker line at the edge as a drying
+      // wash does, settles into the paper's grain, and blooms here and there with the pale, frilled marks where
+      // wet paint meets drying; set, it dries to sienna and umber, then fades.
       float wFar = acos(clamp(dot(vDir, uVent), -1.0, 1.0));
-      // Set: the wash dries to sienna, then grey, then goes.
+      float icy = step(uBlock.r, uBlock.b); // (water's blues on the ice moons, blue fire at Kawah Ijen)
+      // The paint's own movement: a slow flow, the pattern carried out from the vent and folded on itself
+      // (noise bent by noise, as wet pigment curls). Frozen where the paint has dried.
+      float wet = smoothstep(0.5, 0.95, lv);
+      float tW = uTime * 0.035 * (0.35 + 0.65 * uFeedingGlow);
+      vec3 qW = vDir * 7.0 - uVent * tW * 2.2;
+      vec3 bend = vec3(noise3(qW + vec3(0.0, tW, 0.0)), noise3(qW + vec3(5.2, -tW, 1.3)), noise3(qW + vec3(2.1, 3.4, tW))) - 0.5;
+      vec3 q2 = qW + 2.6 * bend;
+      float swirl = noise3(q2 * 1.6 + vec3(tW * 0.6));
+      float swirl2 = noise3(q2 * 3.7 - vec3(tW * 0.9, 0.0, tW * 0.5));
+      // The paper's tooth, where pigment settles as it dries (granulation).
+      float tooth = noise3(vDir * 240.0) * 0.6 + noise3(vDir * 95.0) * 0.4;
+      // Set: the wash dried to sienna, then umber-grey, its edge a darker line where the pigment gathered, then fading.
       {
-        float inS = (here - 0.5) / hw, rimS = exp(-max(inS, 0.0) / (3.0 * uPx)) * 0.6;
-        vec3 sc = mix(vec3(0.42, 0.42, 0.46), vec3(0.62, 0.32, 0.2), smoothstep(0.7, 1.0, black));
-        float sa = 0.6 * smoothstep(0.0, 0.55, black) * (0.4 + 0.8 * b2 * b2 + rimS) * grain;
-        col *= 1.0 - clamp(sa, 0.0, 0.9) * setOn * (1.0 - smoothstep(0.5 - lw, 0.5 + lw, lv)) * (1.0 - sc);
+        float inS = (here - 0.5) / hw, rimS = exp(-max(inS, 0.0) / (2.5 * uPx)) * 0.85;
+        vec3 sc = mix(vec3(0.5, 0.44, 0.42), vec3(0.66, 0.36, 0.22), smoothstep(0.6, 1.0, black));
+        sc = mix(sc, vec3(0.48, 0.24, 0.2), smoothstep(0.55, 0.7, swirl2) * 0.5); // (the frozen swirl: a crimson left where it lay)
+        sc = mix(sc, mix(vec3(0.72, 0.8, 0.88), vec3(0.55, 0.66, 0.8), smoothstep(0.55, 0.7, swirl2)), icy); // (dried blue-grey on the ice)
+        float sa = 0.62 * smoothstep(0.0, 0.5, black) * (0.45 + 0.55 * swirl + rimS) * (0.8 + 0.4 * tooth) * grain;
+        col *= 1.0 - clamp(sa, 0.0, 0.92) * setOn * (1.0 - smoothstep(0.5 - lw, 0.5 + lw, lv)) * (1.0 - sc);
       }
       {
-        float lvr = lv + 0.14 * (noise3(vDir * 40.0) - 0.5) + 0.06 * (noise3(vDir * 110.0) - 0.5);
-        float lwr = max(fwidth(lvr), 1e-4) * 1.5, cov = smoothstep(0.5 - lwr, 0.5 + lwr, lvr);
+        // A soft, bleeding edge while hot; crisp once it cools.
+        float lvr = lv + (0.16 + 0.12 * wet) * (noise3(vDir * 34.0 + bend * 2.0) - 0.5) + 0.05 * (noise3(vDir * 120.0) - 0.5);
+        float lwr = max(fwidth(lvr), 1e-4) * (1.5 + 3.5 * smoothstep(0.7, 1.4, lv));
+        float cov = smoothstep(0.5 - lwr, 0.5 + lwr, lvr);
         // Its heat: deeper and nearer the vent is hotter; the edge cools first.
         float T = clamp(smoothstep(0.5, 1.6, lv) * 0.65 + exp(-wFar / 0.1) * 0.45, 0.0, 1.0) * smoothstep(0.5, 0.95, lv);
-        T = clamp(T + 0.12 * (noise3(vDir * 14.0 + vec3(0.0, -uTime * 0.06, uTime * 0.04)) - 0.5), 0.0, 1.0);
-        vec3 wc = mix(vec3(0.52, 0.24, 0.17), vec3(0.66, 0.17, 0.1), smoothstep(0.0, 0.2, T));
-        wc = mix(wc, vec3(0.86, 0.24, 0.11), smoothstep(0.15, 0.45, T));
-        wc = mix(wc, vec3(0.94, 0.48, 0.18), smoothstep(0.4, 0.7, T));
-        wc = mix(wc, vec3(0.99, 0.78, 0.4), smoothstep(0.65, 0.9, T));
-        wc = mix(wc, vec3(1.0, 0.94, 0.72), smoothstep(0.85, 1.0, T));
-        float rim = exp(-max((lvr - 0.5) / lwr, 0.0) / (3.0 * uPx)) * 0.5;
-        float body = 0.35 + 0.8 * pow(noise3(vDir * 16.0 + vec3(uTime * 0.04, -uTime * 0.05, uTime * 0.03)), 1.5);
-        float a = clamp(1.15 * (body + rim) * (0.75 + 0.35 * T), 0.0, 0.95) * cov * grain;
+        // Which pigment shows is carried by the swirl, so the colours drift into one another in bands.
+        float P = clamp(T + (swirl - 0.5) * 0.55 * (0.4 + 0.6 * wet), 0.0, 1.0);
+        vec3 wc = mix(vec3(0.5, 0.22, 0.16), vec3(0.62, 0.11, 0.18), smoothstep(0.0, 0.2, P)); // burnt sienna, alizarin
+        wc = mix(wc, vec3(0.86, 0.22, 0.11), smoothstep(0.15, 0.42, P)); // vermilion
+        wc = mix(wc, vec3(0.95, 0.47, 0.15), smoothstep(0.38, 0.66, P)); // cadmium orange
+        wc = mix(wc, vec3(0.99, 0.76, 0.32), smoothstep(0.62, 0.86, P)); // gold
+        wc = mix(wc, vec3(1.0, 0.93, 0.7), smoothstep(0.86, 1.0, P)); // the white heat
+        // (On the ice moons the paint is water, and at Kawah Ijen the fire is blue: the same swirl in blues,
+        // Prussian at the cool edge through cerulean to a pale, almost white heart.)
+        vec3 wcB = mix(vec3(0.16, 0.25, 0.45), vec3(0.24, 0.5, 0.78), smoothstep(0.1, 0.55, P));
+        wcB = mix(wcB, vec3(0.78, 0.9, 0.98), smoothstep(0.55, 1.0, P));
+        wc = mix(wc, wcB, icy);
+        // And a second pigment glazed through it in finer curls: alizarin into the cool, gold into the hot.
+        wc = mix(wc, mix(vec3(0.6, 0.12, 0.2), vec3(1.0, 0.8, 0.4), T), smoothstep(0.58, 0.8, swirl2) * 0.35);
+        // How much pigment lies here: uneven, in the swirl's eddies, gathered at the edge as it dries.
+        float rim = exp(-max((lvr - 0.5) / lwr, 0.0) / (3.0 * uPx)) * (0.35 + 0.45 * (1.0 - wet));
+        float body = 0.35 + 0.45 * swirl + 0.25 * swirl2;
+        // A bloom: in cooling paint, a pale patch with a frilled darker edge, where wet ran into drying.
+        float bl = noise3(vDir * 19.0 + vec3(3.7, 1.1, 0.0)) + 0.08 * (noise3(vDir * 70.0) - 0.5);
+        float cool = smoothstep(0.7, 0.25, T) * cov;
+        body *= 1.0 - 0.45 * smoothstep(0.6, 0.64, bl) * cool;
+        rim += (1.0 - smoothstep(0.0, 0.025, abs(bl - 0.62))) * 0.55 * cool;
+        float a = clamp((body + rim) * (0.8 + 0.3 * T), 0.0, 0.95) * cov * grain * (0.85 + 0.3 * tooth * (1.0 - T));
         // (Its hottest part glows: lighter than the paper's tint, laid over rather than multiplied.)
         col *= 1.0 - a * (1.0 - wc);
         col = mix(col, wc, a * smoothstep(0.6, 1.0, T) * 0.6);
         // The ground just beyond it warms in its glow.
         float near = smoothstep(0.08, 0.5, lv) * (1.0 - cov) * smoothstep(-0.5, 0.0, -wFar + 1.0);
-        col *= mix(vec3(1.0), vec3(1.0, 0.82, 0.66), near * 0.55 * uFeedingGlow);
+        col *= mix(vec3(1.0), vec3(1.0, 0.84, 0.7), near * 0.45 * uFeedingGlow);
       }`;
 
 /** The lava lamp's blobs, as woodblock prints too: a flat block, hot orange at a hot heart, in a black outline. */
@@ -750,28 +876,6 @@ const PRINT = (q: boolean) => /* glsl */ `
           float core = (1.0 - smoothstep(fr2 * 0.6, fr2, far)) * min(1.0, uFlash), ring = exp(-far / (0.04 + 0.1 * (1.0 - min(1.0, uFlash)))) * min(1.0, uFlash) * 0.75;
           col = mix(col, mix(vec3(1.0, 0.62, 0.22), vec3(1.0, 0.95, 0.8), core), clamp(max(core, ring * onLand), 0.0, 1.0));
           glowInk = max(glowInk, max(core, ring * 0.7));
-        }
-        // The vent, marked as an engraved map marks a volcano: a small ring, its rim hatched outward in short
-        // strokes, so you always know where the heat is and the smoke has somewhere to rise from. (With
-        // nothing there before the first pour, the smoke seemed to come from nowhere.) Over running lava,
-        // pale, as the crater's lip.
-        if (uVentMark > 0.5) {
-          float vr = max(0.011, 5.0 * px), vlw = max(0.7 * uPx * px, 1e-5);
-          // (By hand: a little out of round, the strokes not all one length, and a small gap where the pen lifted.)
-          float vrW = vr * (1.0 + 0.12 * (noise3(vec3(cos(ang) * 1.6, sin(ang) * 1.6, 3.0)) - 0.5));
-          float rimV = (1.0 - smoothstep(vlw * 0.6, vlw * 1.6, abs(far - vrW))) * smoothstep(0.0, 0.05, fract(ang / 6.2832 + 0.37));
-          float tickA = abs(fract(ang / 6.2832 * 14.0) - 0.5) / 14.0 * 6.2832 * far; // (how far round, along the ground, from the nearest stroke)
-          float tickL = 1.3 + 0.35 * fract(sin(floor(ang / 6.2832 * 14.0 + 0.5) * 12.9898) * 43758.5);
-          float tick = (1.0 - smoothstep(vlw * 0.5, vlw * 1.4, tickA)) * step(vrW, far) * (1.0 - smoothstep(vr * tickL, vr * (tickL + 0.12), far));
-          float mark = max(rimV, tick * 0.8) * onLand;
-          col = mix(col, mix(vec3(0.2, 0.16, 0.13) * uCrustTint * 1.6, vec3(0.86, 0.6, 0.38), cov), mark * 0.85);
-          // As the pressure builds, the mouth warms: a dull red ember inside the ring from the start,
-          // going orange, then gold, as it nears what the cone can hold.
-          float warmV = smoothstep(0.02, 0.15, uBuild) * (1.0 - smoothstep(vr * 0.55, vr * 0.85, far)) * onLand * (1.0 - cov);
-          vec3 emberC = mix(vec3(0.55, 0.12, 0.05), vec3(0.95, 0.42, 0.1), smoothstep(0.2, 0.6, uBuild));
-          emberC = mix(emberC, yel, smoothstep(0.6, 0.9, uBuild));
-          col = mix(col, emberC, warmV * (0.55 + 0.35 * uBuild) * (0.85 + 0.15 * noise3(vDir * 140.0 + vec3(0.0, uTime * 0.6, 0.0))));
-          glowInk = max(glowInk, warmV * (0.3 + 0.5 * uBuild));
         }
         // Where the volcano is creeping to: a faint dotted trail along the ground from it, ending in a small open ring,
         // so a turn is seen to have worked at once. (The volcano creeps slowly, and with nothing to show the turn
