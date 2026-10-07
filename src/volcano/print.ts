@@ -37,6 +37,10 @@ export const PRINT_FUNCTIONS = /* glsl */ `
   uniform float uHaze; // (the orange Earth: its orange haze, 1 at first, gone once the sky is blue)
   uniform vec4 uSky; // (its star's direction, as seen, and w: 0 no star in it, 1 a star, 2 none at all, a rogue planet)
   #define uFeedingGlow (0.4 + 0.6 * uFeeding)
+  // (Clocks that run faster while the vent feeds the flow, kept by the page: uTime times the feeding jumped the
+  // whole pattern on by all the time played, every time a pour began or ended, which read as a stutter.)
+  uniform float uPaintTime; // (the time, at 0.35 plus 0.65 of uFeedingGlow a second)
+  uniform float uFedTime; // (the time, at uFeeding a second)
   uniform vec3 uVent;
   uniform float uVentMark;
   uniform vec4 uRings[6]; // (the pressure, as rings spreading from the vent: each one's reach, strength, and 0 ink, 1 grey, 2 gold)
@@ -492,7 +496,7 @@ const ENGRAVE = /* glsl */ `
       float taper = smoothstep(0.5, 0.64, lv);
       float k = floor(rays + 0.5);
       // Whole lines, each swelling and thinning a little along its length; the swellings drift outward while it's fed.
-      float swellAlong = 0.75 + 0.5 * noise3(vec3(k * 3.1, far * 40.0 - uTime * 0.25 * uFeeding, 0.0));
+      float swellAlong = 0.75 + 0.5 * noise3(vec3(k * 3.1, far * 40.0 - uFedTime * 0.25, 0.0));
       float lnRun = max(engrave(rays, fwR, heat * swellAlong, taper), engrave(rays2, fwR2, heat * swellAlong, taper) * between);
       vec3 warm = mix(vec3(0.99, 0.74, 0.58), vec3(0.95, 0.47, 0.3), heat);
       col *= mix(vec3(1.0), warm, onL * 0.85);
@@ -519,7 +523,7 @@ const WATER = /* glsl */ `
       // The paint's own movement: a slow flow, the pattern carried out from the vent and folded on itself
       // (noise bent by noise, as wet pigment curls). Frozen where the paint has dried.
       float wet = smoothstep(0.5, 0.95, lv);
-      float tW = uTime * 0.035 * (0.35 + 0.65 * uFeedingGlow);
+      float tW = uPaintTime * 0.035;
       vec3 qW = vDir * 7.0 - uVent * tW * 2.2;
       vec3 bend = vec3(noise3(qW + vec3(0.0, tW, 0.0)), noise3(qW + vec3(5.2, -tW, 1.3)), noise3(qW + vec3(2.1, 3.4, tW))) - 0.5;
       vec3 q2 = qW + 2.6 * bend;

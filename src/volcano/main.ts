@@ -270,7 +270,7 @@ const blend = { value: 1 }, blendFrom = { at: 0, span: 0.5 };
 /** How strongly ground lava has lain on is marked: less, as the ice moon's new ice greys in its long age. */
 const floodStrength = { value: 0.85 };
 /** The shader's clock (for lava that moves), and the pixel ratio (for lines so many CSS pixels apart). */
-const lavaClock = { value: 0 }, pxRatio = { value: 1 };
+const lavaClock = { value: 0 }, pxRatio = { value: 1 }, paintClock = { value: 0 }, fedClock = { value: 0 };
 
 /**
  * The ground's colour is chosen in each pixel rather than at each vertex: land and sea each have
@@ -353,6 +353,8 @@ material.onBeforeCompile = (shader) => {
   shader.uniforms.uLightObj = { value: lightObj };
   shader.uniforms.uVent = { value: ventObj };
   shader.uniforms.uFeeding = fed;
+  shader.uniforms.uPaintTime = paintClock;
+  shader.uniforms.uFedTime = fedClock;
   shader.uniforms.uBuild = building;
   shader.uniforms.uHollow = hollowU;
   shader.uniforms.uCreepTo = { value: creepTo };
@@ -913,7 +915,8 @@ drafts.onmessage = (data) => {
     const got = d.life;
     // A kind to a frame.
     kindDots.forEach((s, k) => chores.push(() => s.set(got.kinds[k])));
-    chores.push(() => foam.set(got.foam));
+    // (No breakers in watercolour: short blue dashes along the coast read as stray marks on the wash; the coast's own ink says where the sea is.)
+    if (!WASHED) chores.push(() => foam.set(got.foam));
     lifeOut = false;
   }
 };
@@ -3257,6 +3260,7 @@ const loop = (): void => {
   redrawLines(seconds);
   redrawLife(seconds);
   blend.value = Math.min(1, (performance.now() / 1000 - blendFrom.at) / blendFrom.span);
+  { const step = Math.max(0, seconds - lavaClock.value); paintClock.value += step * (0.35 + 0.65 * (0.4 + 0.6 * fed.value)); fedClock.value += step * fed.value; }
   lavaClock.value = seconds;
   pxRatio.value = renderer.getPixelRatio();
   if (LOOK) cratering();
