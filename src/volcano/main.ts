@@ -1482,7 +1482,25 @@ function reckonAim(): void {
   else { aimDone = planet.basins.filter((b) => planet.flooded(b) >= FLOODED_ENOUGH).length; aimOf = planet.basins.length; }
 }
 let calmHeld = 0, calmAt = 0, litFor = 0, litAt = 0;
-const story: { t: number; v: number; sky: number }[] = [];
+const story: { t: number; v: number; sky: number; n: number }[] = [];
+/**
+ * How each world's story is drawn along its plate's timeline (see chart.ts): where the aim changes the
+ * world's colour, a strip of that colour changing (orange sky to blue, ice to open sea, grey ice to new,
+ * a dark crater to blue fire, cold rock to living green); where it's a count, a mark for each as it came,
+ * drawn as itself (a dome, a plume's ring, rafts, a streak, a wave, a stone); otherwise a wash rising
+ * as the aim came on, in an ink of the world's.
+ */
+const BAND: { kind: 'sky' | 'gradient' | 'count' | 'rise'; ink: string; from?: string; to?: string; shape?: 'dome' | 'ring' | 'rafts' | 'streak' | 'wave' | 'dot' } = (() => {
+  const g = WORLD.goal;
+  if (g === 'oxygen') return { kind: 'sky', ink: P.lava };
+  const grad: Partial<Record<typeof g, [string, string]>> = { thaw: ['#e4ebef', '#7fa8c8'], cover: ['#b9b1a5', '#cfe1ec'], glow: ['#3b4565', '#5d9fe2'], hearth: ['#4b5064', '#8aa858'] };
+  if (grad[g]) return { kind: 'gradient', ink: P.lava, from: grad[g]![0], to: grad[g]![1] };
+  const count: Partial<Record<typeof g, 'dome' | 'ring' | 'rafts' | 'streak' | 'wave' | 'dot'>> = { domes: 'dome', plumes: 'ring', chaos: 'rafts', streaks: 'streak', waves: 'wave', gather: 'dot' };
+  if (count[g]) return { kind: 'count', ink: g === 'plumes' ? '#c4603a' : g === 'streaks' ? P.ash : g === 'chaos' || g === 'waves' ? '#5b82a3' : g === 'gather' ? P.landInkHigh : P.lava, shape: count[g] };
+  // (A mountain's height, a ridge, a bank, the far side's rise: in the land's own ink, as a profile; a town by its houses kept; the rest in the lava's.)
+  const land = ['height', 'white', 'antipode', 'ridge', 'bank', 'round', 'town', 'calm'].includes(g);
+  return { kind: 'rise', ink: land ? P.landInk : g === 'feed' || g === 'orbit' ? '#8f9bb0' : g === 'snow' ? P.ash : P.lava };
+})();
 /** How long Kawah Ijen's night must be kept lit, in all, in seconds. */
 const LIT_FOR = 120;
 /** How long the tumbling moon must be kept calm, in seconds. */
@@ -1639,7 +1657,7 @@ function drawAim(now: number): void {
   // (Taken back to now first, in case the world was taken up again from a minute before.)
   if (!ending && begun) {
     while (story.length && story[story.length - 1].t >= planet.seconds) story.pop();
-    story.push({ t: planet.seconds, v: aimOf > 0 ? Math.max(0, Math.min(1, aimDone / aimOf)) : 0, sky: haze.value });
+    story.push({ t: planet.seconds, v: TOWN ? planet.housesKept / Math.max(1, planet.houses.length) : aimOf > 0 ? Math.max(0, Math.min(1, aimDone / aimOf)) : 0, sky: haze.value, n: aimDone }); // (a town by its houses standing, not its share of the fire)
   }
   if (begun) tellAim();
   const inked: number[] = [], pencilled: number[] = [], next: number[] = [];
@@ -2506,7 +2524,8 @@ function chartInfo(): ChartInfo {
   }
   // And the aim's own way there: a quarter, half, three quarters, and met.
   const OXY = WORLD.goal === 'oxygen', STEPS: [number, string][] = [[0.25, OXY ? 'a quarter of the oxygen' : 'a quarter'], [0.5, OXY ? 'half the oxygen' : 'halfway'], [0.75, OXY ? 'three quarters' : 'three quarters']];
-  for (const [at, text] of STEPS) { const s = story.find((p) => p.v >= at); if (s && !(ending?.won && at >= 1)) events.push({ t: s.t, text }); }
+  // (Not where the aim is a count, whose marks show each as it came; nor a town, whose band is its houses.)
+  if (BAND.kind !== 'count' && !TOWN) for (const [at, text] of STEPS) { const s = story.find((p) => p.v >= at); if (s && !(ending?.won && at >= 1)) events.push({ t: s.t, text }); }
   if (ending?.won) events.push({ t: ending.from, text: GOAL_WORDS[WORLD.goal].title[0].replace(/^An? |^The /, (m) => m.toLowerCase()).replace(/^./, (c) => c.toLowerCase()) });
   events.sort((a, b) => a.t - b.t);
   const length = ending!.from, mm = `${Math.floor(length / 60)}:${String(Math.floor(length % 60)).padStart(2, '0')}`;
@@ -2523,7 +2542,7 @@ function chartInfo(): ChartInfo {
     length,
     eras,
     events,
-    story: { samples: story.slice(), kind: OXY ? 'sky' : 'rise', ink: P.lava },
+    story: { samples: story.slice(), ...BAND },
   };
 }
 

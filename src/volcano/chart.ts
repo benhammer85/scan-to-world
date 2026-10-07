@@ -23,7 +23,15 @@ export interface ChartInfo {
    * The aim's story, for a band along the rule: how far it had come over the fire (0 to 1), drawn as a
    * wash rising in the world's own pigment; or, on the orange Earth, the sky's own colour, orange to blue.
    */
-  story?: { samples: { t: number; v: number; sky: number }[]; kind: 'sky' | 'rise'; ink: string };
+  story?: {
+    samples: { t: number; v: number; sky: number; n?: number }[];
+    /** sky: the orange Earth's sky; gradient: the world's colour from `from` to `to` as the aim came on; count: a mark (`shape`) for each counted; rise: a wash rising. */
+    kind: 'sky' | 'gradient' | 'count' | 'rise';
+    ink: string;
+    from?: string;
+    to?: string;
+    shape?: 'dome' | 'ring' | 'rafts' | 'streak' | 'wave' | 'dot';
+  };
   /** How it was done (see marks.ts): each mark, earned or not. Only when the aim was met. */
   marks?: { name: string; got: boolean }[];
 }
@@ -82,7 +90,7 @@ function drawTimeline(g: CanvasRenderingContext2D, info: ChartInfo, x0: number, 
   const at = (t: number) => x0 + (x1 - x0) * Math.min(1, t / Math.max(1, info.length));
   g.textAlign = 'center';
   // The band: the aim's story along the rule, as a strip of wash (see drawBand), with what happened set above it.
-  const band = info.story && info.story.samples.length > 1 ? (info.story.kind === 'sky' ? 20 : 36) * k : 0; // (a rising wash needs height to be read)
+  const band = info.story && info.story.samples.length > 1 ? (info.story.kind === 'sky' || info.story.kind === 'gradient' ? 20 : info.story.kind === 'count' ? 28 : 36) * k : 0; // (a rising wash needs height to be read)
   if (band) drawBand(g, info.story!, info.length, x0, x1, y - band, y, k);
   g.strokeStyle = INK; g.lineWidth = 1.5 * k;
   g.beginPath(); g.moveTo(x0, y); g.lineTo(x1, y); g.stroke();
@@ -124,10 +132,32 @@ function drawBand(g: CanvasRenderingContext2D, story: NonNullable<ChartInfo['sto
   const rag = (x: number, seed: number) => (Math.sin(x * 0.11 + seed) + Math.sin(x * 0.037 + seed * 2.3) * 0.7) * 1.2 * k;
   const step = Math.max(1, 2 * k), h = bottom - top;
   g.save();
-  if (story.kind === 'sky') {
-    const orange = [233, 164, 106], blue = [150, 184, 212];
+  const hex = (c: string) => [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16));
+  if (story.kind === 'count') {
+    // A mark for each, where it came, drawn as what it is; a faint wash under them all along the fire.
+    g.globalAlpha = 0.12; g.fillStyle = story.ink; g.fillRect(x0, bottom - h * 0.18, at(S[S.length - 1].t) - x0, h * 0.18);
+    let had = 0;
+    const r = h * 0.4, cy = bottom - h * 0.5;
+    for (const p of S) {
+      const n = Math.floor((p.n ?? 0) + 1e-6);
+      for (; had < n; had++) {
+        const x = at(p.t), [cr, cg, cb] = hex(story.ink);
+        g.globalAlpha = 1; g.fillStyle = `rgba(${cr},${cg},${cb},0.55)`; g.strokeStyle = `rgba(${cr},${cg},${cb},0.85)`; g.lineWidth = 1.3 * k;
+        switch (story.shape) {
+          case 'dome': g.beginPath(); g.ellipse(x, bottom, r * 1.2, r * 1.3, 0, Math.PI, 0); g.fill(); g.stroke(); break; // (flat-topped, standing on the rule)
+          case 'ring': g.beginPath(); g.arc(x, cy, r, 0, Math.PI * 2); g.stroke(); g.beginPath(); g.arc(x, cy, r * 0.35, 0, Math.PI * 2); g.fill(); break;
+          case 'rafts': for (let i = 0; i < 4; i++) { g.save(); g.translate(x + (i % 2 - 0.5) * r * 0.9, cy + (i < 2 ? -0.45 : 0.45) * r); g.rotate(0.3 + i * 0.7); g.fillRect(-r * 0.32, -r * 0.24, r * 0.64, r * 0.48); g.restore(); } break;
+          case 'streak': g.lineWidth = 3 * k; g.lineCap = 'round'; g.beginPath(); g.moveTo(x - r * 0.3, cy + r * 0.5); g.lineTo(x + r * 1.4, cy - r * 0.6); g.stroke(); break;
+          case 'wave': for (let i = 1; i <= 3; i++) { g.beginPath(); g.arc(x, bottom, r * 0.4 * i, Math.PI, 0); g.stroke(); } break;
+          default: g.beginPath(); g.arc(x, cy, r * 0.45, 0, Math.PI * 2); g.fill();
+        }
+      }
+    }
+  } else if (story.kind === 'sky' || story.kind === 'gradient') {
+    // (The orange Earth by its sky, orange to blue; the others from their colour before to after, by how far the aim had come.)
+    const orange = story.kind === 'sky' ? [233, 164, 106] : hex(story.to!), blue = story.kind === 'sky' ? [150, 184, 212] : hex(story.from!);
     for (let x = x0; x < x1; x += step) {
-      const t = ((x - x0) / (x1 - x0)) * length, haze = Math.max(0, Math.min(1, valueAt(t, (p) => p.sky)));
+      const t = ((x - x0) / (x1 - x0)) * length, haze = Math.max(0, Math.min(1, story.kind === 'sky' ? valueAt(t, (p) => p.sky) : valueAt(t, (p) => p.v)));
       const c = blue.map((b, i) => Math.round(b + (orange[i] - b) * haze));
       g.fillStyle = `rgba(${c[0]},${c[1]},${c[2]},0.62)`;
       g.fillRect(x, top + rag(x, 1), step + 0.5, h - rag(x, 1)); // (its foot on the rule, its top as the brush left it)
