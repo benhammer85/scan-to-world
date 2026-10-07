@@ -125,6 +125,8 @@ let seed = wanted || 1 + Math.floor(Math.random() * 1e6);
  * own rules, aim and colours (worlds.ts).
  */
 const ASKED = new URLSearchParams(location.search);
+/** On trial (?bare): only the lava, the ground, the pressure's bloom and the map's ink; no dial, no words while it's played, no steam, dust or debris, no lean. */
+const BARE = ASKED.has('bare');
 /**
  * Or one of the worlds of a solar system being played as a run (?run=, its place in the system):
  * its kind's world, with its twist and whatever the last world made gives it (see system.ts).
@@ -351,6 +353,7 @@ material.onBeforeCompile = (shader) => {
   shader.uniforms.uBreath = breathU;
   shader.uniforms.uVentH = ventHU;
   shader.uniforms.uBloom = { value: bloomU };
+  shader.uniforms.uBloomGrey = bloomGreyU;
   shader.uniforms.uBloomCol = { value: new THREE.Color(SULPHUR ? '#f4e6b8' : ICE || WORLD.id === 'ijen' ? '#dde8f2' : '#e0d3c2') };
   shader.uniforms.uBurstWash = { value: burstWashU };
   shader.uniforms.uVentMark = { value: LAMP ? 0 : 1 }; // (the vent marked on the map, as a chart marks a volcano)
@@ -968,8 +971,8 @@ function drawMarks(): void {
     // Landed: a burst of dust and broken rock where it struck.
     const v = stoneWas.vertex, p = topo.positions;
     STONE_UP.set(base[v * 3], base[v * 3 + 1], base[v * 3 + 2]).normalize();
-    for (let i = 0; i < 6; i++) puffs.add('ash', p[v * 3], p[v * 3 + 1], p[v * 3 + 2], 0.35, Math.random);
-    for (let i = 0; i < 14; i++) puffs.add('ember', p[v * 3], p[v * 3 + 1], p[v * 3 + 2], 0.6, Math.random);
+    if (!BARE && !WASHED) for (let i = 0; i < 6; i++) puffs.add('ash', p[v * 3], p[v * 3 + 1], p[v * 3 + 2], 0.35, Math.random);
+    if (!BARE && !WASHED) for (let i = 0; i < 14; i++) puffs.add('ember', p[v * 3], p[v * 3 + 1], p[v * 3 + 2], 0.6, Math.random);
     stoneWas = null;
   }
   const w = ecology.wish;
@@ -1030,6 +1033,7 @@ for (const s of [aimInk, aimPencil, aimNext, gaugeInk, gaugePencil]) { s.byDirec
 for (const s of [aimInk, aimPencil, aimNext]) group.add(s.object);
 gauge.add(gaugeInk.object, gaugePencil.object);
 group.add(gauge);
+if (BARE || WASHED) gauge.visible = false; // (in watercolour the bloom reads the pressure: the dial said it twice)
 /**
  * On a young Earth, the moon to be: a ring of dots in the sky round the world, not on it, so it
  * stays where it is however the world is turned. Pale until rock reaches it, inked as it does, and
@@ -1476,12 +1480,12 @@ const TIP: Record<string, string> = {
   basins: 'Turn a basin to the top and pour into it.',
   height: BREATHE ? 'Lava pours out by itself, down the screen. Turn the planet now and then, so it builds up on every side.' : 'Tip gently, a different way each time, so it builds up on every side.',
   cover: 'Pour over the grey ice, turning the planet to reach more of it. Bursts spread frost that counts too.',
-  plumes: `Wait for high tide. Then ${BURST}. Each time, move outside the old rings The smoke's edge turns gold when it's time.`,
-  feed: `The giant is at the top left. Lean the volcano towards it until its ring darkens. ${BURST_}. The ring fades, so keep feeding it The smoke's edge turns gold when it's time.`,
+  plumes: `Wait for high tide. Then ${BURST}. Each time, move outside the old rings. The smoke's edge turns gold when it's time.`,
+  feed: `The giant is at the top left. Lean the volcano towards it until its ring darkens. ${BURST_}. The ring fades, so keep feeding it. The smoke's edge turns gold when it's time.`,
   round: 'Turn a speckled hollow to the top and pour into it. Lava on high ground makes it lumpier.',
   ridge: 'The spin carries lava to the dotted equator. Turn a bare stretch to the top: the volcano creeps there.',
   lamp: 'Blobs float to the small ring, which marks the top. Turn the dotted shore up there. Let blobs grow big, but not too big, or they burst.',
-  calm: `Turn the dotted ring to the top so the volcano sits on it. Then ${BURST}. The tumbling builds again, so keep going The smoke's edge turns gold when it's time.`,
+  calm: `Turn the dotted ring to the top so the volcano sits on it. Then ${BURST}. The tumbling builds again, so keep going. The smoke's edge turns gold when it's time.`,
   bank: BREATHE ? 'Turn the world so the dotted bank is below the volcano. Pour the same way again and again: fresh crust lets lava run further.' : 'Tilt towards the dotted bank, the same way again and again: fresh crust lets lava run further.',
   orbit: BREATHE ? 'Let it pour to build a tall cone. Then hold until the smoke turns dark, and let go. The longer you hold, the more rock flies up.' : 'Pour first to build a tall cone. Then keep level until the smoke turns dark, and tilt. The longer you wait, the more rock flies up.',
   hearth: 'Life gathers on warm new rock and fades as it cools. Pour beside the green, never on it.',
@@ -1494,7 +1498,7 @@ const TIP: Record<string, string> = {
   gather: 'A pale dotted circle shows where each stone will land. Turn it to the top: the gold ring follows, and a stone landing inside the gold ring is caught. No need to pour.',
   oxygen: 'Life in shallow water makes oxygen. Raise the sea floor to just under the surface, then move on: lava kills the life it covers.',
   chaos: BREATHE ? "Hold for a few seconds, and let go before the smoke turns grey. A burst won't break the ice. Move away from the last field each time." : "Hold a finger on the world for a few seconds, and lift it before the smoke turns grey. Pouring or a burst won't break the ice. Move away from the last field each time.",
-  streaks: `Wait until the sun is over the volcano, then ${BURST}. For the next one, move outside the dotted ring The smoke's edge turns gold when it's time.`,
+  streaks: `Wait until the sun is over the volcano, then ${BURST}. For the next one, move outside the dotted ring. The smoke's edge turns gold when it's time.`,
   snow: 'Pour on the sunlit side, under the star. The lava boils away and falls just inside the night.',
 };
 /** A world's own tip, where its aim is shared with others but the way to it isn't. */
@@ -1838,7 +1842,7 @@ if (WORLD.goal === 'gather') CUES.splice(0, CUES.length,
 );
 else if (!NEWCOMER) CUES.splice(0, 3, { ready: () => true, done: (s: number) => {
   const tried = planet.tally.flows + planet.tally.bursts > 0;
-  if (!tried && !stuckSaid && s > 20) { stuckSaid = true; announce(HANDS.join('   ')); }
+  if (!tried && !stuckSaid && s > 20) { stuckSaid = true; announce(HANDS.join('   '), true); }
   return tried || (stuckSaid && s > 34);
 } });
 let lesson = 0, lessonSince = 0, lessonShown = false, embersSaid = false;
@@ -1850,7 +1854,7 @@ function lessons(): void {
       if (!L.ready()) return;
       lessonShown = true; lessonSince = seconds;
       L.begin?.();
-      if (L.say) announce(L.say);
+      if (L.say) announce(L.say, true);
       return;
     }
     if (L.done(seconds - lessonSince) && seconds - lessonSince > 6) { lesson++; lessonShown = false; $('legend').classList.remove('new'); }
@@ -1878,7 +1882,32 @@ let showingUntil = 0;
 // of the page is calm: back to back, they came in a stream. A repeat is let go, and if several gather, only the
 // newest two are kept.)
 let quietUntil = 0;
-function announce(text: string): void {
+/**
+ * In watercolour there's no smoke: the pressure is the wash blooming round the vent, its edge going grey when a
+ * burst would come and gold when it's time. Every card, tip and message passes through here, so the words say so.
+ */
+const WASH_WORDS: [RegExp, string][] = [
+  [/until the smoke is grey/g, 'until the wash at the vent has a grey edge'],
+  [/before the smoke turns grey/g, 'before the wash at the vent goes grey at its edge'],
+  [/until the smoke turns grey/g, 'until the wash at the vent has a grey edge'],
+  [/once the smoke is grey/g, 'once the wash at the vent has a grey edge'],
+  [/until the smoke turns dark/g, 'until the edge of the wash turns dark'],
+  [/grey smoke/g, 'a grey edge on the wash'],
+  [/[Tt]he smoke's edge turns gold/g, "The wash's edge turns gold"],
+  [/under the smoke/g, 'at the vent'],
+  [/the smoke/g, 'the wash at the vent'],
+];
+function words$(text: string): string {
+  if (!WASHED) return text;
+  for (const [re, to] of WASH_WORDS) text = text.replace(re, to);
+  return text;
+}
+/** In watercolour, only what asks something of the player is said while it's played (and the lessons, for a player's first games). */
+const ACTION_WORDS = /^(A stone is coming|The ground is sinking|The heat is nearly|A dust storm|Held too long|Missed|High tide|The fire is out)/;
+function announce(text: string, lesson = false): void {
+  text = words$(text);
+  if (BARE && !ending) return;
+  if (WASHED && !ending && !ACTION_WORDS.test(text) && !(lesson && NEWCOMER)) return;
   if (queue.includes(text) || $('event').textContent === text && seconds < showingUntil) return;
   queue.push(text);
   if (queue.length > 2) queue.splice(0, queue.length - 2);
@@ -1981,7 +2010,7 @@ function effects(dt: number): void {
   if (WASHED && (planet.tally.bursts > tallied.bursts || planet.tally.calderas > tallied.calderas)) {
     // (In watercolour, no fountain and no cloud of puffs: a drop of ash pigment blooming out from the vent.)
     const torn = planet.tally.calderas > tallied.calderas;
-    burstWashAt = seconds; burstWashReach = torn ? 0.3 : 0.2;
+    burstWashAt = seconds; burstWashReach = torn ? 0.2 : 0.13; // (no wider than the lava it throws out, or the ash outshone it)
     landing = { at: seconds, n: torn ? 9 : 6 };
   } else if ((planet.tally.bursts > tallied.bursts || planet.tally.calderas > tallied.calderas) && !(planet.k.hollow > 0 && planet.tally.calderas > tallied.calderas)) {
     const torn = planet.tally.calderas > tallied.calderas;
@@ -2025,7 +2054,7 @@ function effects(dt: number): void {
     steamIn = 0.6;
     for (let v = 0; v < N; v++) {
       const l = planet.lava[v];
-      if (l > 0.004 && planet.rock[v] < 0.005 && Math.random() < Math.min(0.02, l * 0.35)) puffs.add('steam', p[v * 3], p[v * 3 + 1], p[v * 3 + 2], 1, Math.random, up);
+      if (l > 0.004 && planet.rock[v] < 0.005 && Math.random() < Math.min(0.02, l * 0.35) && !BARE && !WASHED) puffs.add('steam', p[v * 3], p[v * 3 + 1], p[v * 3 + 2], 1, Math.random, up);
     }
   }
   // The lava world: rock boiling off lava in the starlight, rising pale.
@@ -2033,7 +2062,7 @@ function effects(dt: number): void {
     vapourIn -= dt;
     if (vapourIn <= 0) {
       vapourIn = 0.3;
-      for (let v = 0; v < N; v++) if (planet.lava[v] > 0.002 && Math.random() < 0.05 * planet.dayAt(v)) puffs.add('steam', p[v * 3], p[v * 3 + 1], p[v * 3 + 2], 0.8, Math.random, up);
+      for (let v = 0; v < N; v++) if (planet.lava[v] > 0.002 && Math.random() < 0.05 * planet.dayAt(v) && !BARE && !WASHED) puffs.add('steam', p[v * 3], p[v * 3 + 1], p[v * 3 + 2], 0.8, Math.random, up);
     }
   }
   // A dust storm: dust driven across the face of the world, low and fast.
@@ -2041,7 +2070,7 @@ function effects(dt: number): void {
     for (let i = 0; i < 3; i++) {
       const v = Math.floor(Math.random() * N);
       NORMAL.set(base[v * 3], base[v * 3 + 1], base[v * 3 + 2]).applyQuaternion(group.quaternion);
-      if (NORMAL.z > 0.2) puffs.add('dust', p[v * 3], p[v * 3 + 1], p[v * 3 + 2], 0.3, Math.random, { x: INVERSE_RIGHT.x, y: INVERSE_RIGHT.y, z: INVERSE_RIGHT.z });
+      if (NORMAL.z > 0.2 && !BARE) puffs.add('dust', p[v * 3], p[v * 3 + 1], p[v * 3 + 2], 0.3, Math.random, { x: INVERSE_RIGHT.x, y: INVERSE_RIGHT.y, z: INVERSE_RIGHT.z });
     }
   }
   // The vent smokes as the heat gathers: a wisp now and then while there's little, more and
@@ -2108,7 +2137,7 @@ const RING_SPEED = 0.022, ringU = Array.from({ length: 6 }, () => new THREE.Vect
 const ringsLive: { born: number; reach: number; kind: number; speed: number }[] = [];
 let ringPhase = 0.7, readyRing = 0;
 const breathU = { value: 0 }, ventHU = { value: 0 };
-const bloomU = new THREE.Vector3();
+const bloomU = new THREE.Vector3(), bloomGreyU = { value: 0 };
 /** A burst as a drop of pigment (see print.ts): when it fell, and how far it will spread. */
 const burstWashU = new THREE.Vector3();
 let burstWashAt = -100, burstWashReach = 0;
@@ -2127,6 +2156,8 @@ function ringing(dt: number, smoking: number, share: number, stage: number): voi
     bloomU.x += (want - bloomU.x) * Math.min(1, dt * (want < bloomU.x ? 0.9 : 0.35));
     bloomU.y += (smoking - bloomU.y) * Math.min(1, dt * 0.8);
     bloomU.z += ((stage >= 1.75 ? 1 : 0) - bloomU.z) * Math.min(1, dt * 0.8);
+    // (Its edge going ash-grey once a burst would come, darker at the brink: the cue the smoke's grey was.)
+    bloomGreyU.value += ((smoking ? stage % 2 : 0) - bloomGreyU.value) * Math.min(1, dt * 1.2);
     return;
   }
   const kind = stage >= 0.5 ? 1 : 0, gold = stage >= 1.75;
@@ -2217,7 +2248,7 @@ function showReplayFrame(i: number): void {
 function replayHides(hide: boolean): void {
   for (const pen of [...landPens, ...seaPens]) pen.object.visible = !hide;
   for (const st of [aimInk, aimPencil, aimNext, ...kindDots]) st.object.visible = !hide;
-  gauge.visible = !hide;
+  gauge.visible = !hide && !BARE && !WASHED;
 }
 function startReplay(): void {
   if (replayFrames.length < 4 || STILL) return;
@@ -2709,15 +2740,15 @@ let begun = false;
 const cardWords = () => {
   const el = $('begin').querySelector('.second') as HTMLElement;
   el.replaceChildren();
-  const aim = document.createElement('b'); aim.className = 'aim'; aim.textContent = FREE ? 'No aim and no clock.' : AIM[WORLD.goal] ?? WORLD.second;
-  el.append(aim, document.createTextNode(FREE ? 'The fire never cools.' : OWN_TIP[WORLD.id] ?? TIP[WORLD.goal] ?? ''));
+  const aim = document.createElement('b'); aim.className = 'aim'; aim.textContent = words$(FREE ? 'No aim and no clock.' : AIM[WORLD.goal] ?? WORLD.second);
+  el.append(aim, document.createTextNode(words$(FREE ? 'The fire never cools.' : OWN_TIP[WORLD.id] ?? TIP[WORLD.goal] ?? '')));
   // (Once the world has been won: the marks there are still to earn on it.)
   ($('begin').querySelector('.marks') as HTMLElement).textContent = FREE || RUN !== null ? '' : marksLine(WORLD.id);
 };
 cardWords();
 // The hands, the same on every card.
 // (Only where the hands are new: the first world, and the lamp, where they work the other way round.)
-($('begin').querySelector('.hands') as HTMLElement).textContent = NEWCOMER ? HANDS.join('\n') : '';
+($('begin').querySelector('.hands') as HTMLElement).textContent = NEWCOMER ? words$(HANDS.join('\n')) : '';
 // The worlds, along the card's foot, as an atlas lists its plates: touch another to go to it.
 // (Not for a world of a solar system: it's reached from the system's chart.)
 // The worlds: one touch to the atlas's sky, where every world stands in its chapter's constellation.
@@ -2964,7 +2995,7 @@ function breathe(dt: number): void {
   const gathering = !!ending?.won && WORLD.goal === 'orbit' && !ending.shown;
   document.body.classList.toggle('hush', held);
   // While lava runs, the view leans in a little, so the flow is big when it matters; and eases back after.
-  const running = !ending && !held && (planet.pouring || (planet.erupting && planet.molten > 0.01)) && !STILL;
+  const running = !BARE && !WASHED && !ending && !held && (planet.pouring || (planet.erupting && planet.molten > 0.01)) && !STILL;
   lean += ((running ? 0.82 : 1) - lean) * Math.min(1, dt * (running ? 0.9 : 0.45));
   const want = ending?.shown ? farthest * 0.92 : reachDist * (held && !STILL ? moment.back : gathering && !STILL ? 1.3 : 1) * lean, wantLift = ending?.shown ? 0.09 : 0;
   if (!ending?.shown && seconds - zoomedAt < 10) return;

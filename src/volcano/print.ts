@@ -44,6 +44,7 @@ export const PRINT_FUNCTIONS = /* glsl */ `
   uniform float uBreath; // (and a warm breath at the vent with each ring, 0 for none)
   uniform vec3 uBloom; // (the pressure as a watercolour bloom round the vent: its reach, strength, and how gold its edge)
   uniform vec3 uBloomCol;
+  uniform float uBloomGrey; // (the bloom's edge: 0 its own colour, 0.5 ash-grey once a burst would come, 1 dark at the brink)
   uniform vec3 uBurstWash; // (a burst, as a drop of ash pigment in wet paint: its reach, strength, and how long it's spread)
   uniform float uVentH; // (the ground's height at the vent, as drawn: the rings climb from it)
   uniform vec3 uCreepTo; uniform float uCreepOn; // (where the volcano is creeping to, and how much to show it)
@@ -447,6 +448,7 @@ const VENT_SIGNS = /* glsl */ `
             float bS = uBloom.y * onLand;
             col = mix(col, col * uBloomCol, inside * 0.32 * bS);
             col = mix(col, col * uBloomCol * 0.88, pooled * 0.32 * bS);
+            col = mix(col, col * mix(vec3(0.62, 0.6, 0.6), vec3(0.42, 0.39, 0.4), smoothstep(0.5, 1.0, uBloomGrey)), pooled * smoothstep(0.1, 0.5, uBloomGrey) * 0.75 * bS);
             col = mix(col, vec3(0.86, 0.63, 0.24), pooled * uBloom.z * 0.55 * bS);
           }
           // A burst, in watercolour: a drop of ash-dark pigment falling into wet paint and blooming out from the vent

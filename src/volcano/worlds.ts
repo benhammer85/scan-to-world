@@ -122,7 +122,7 @@ export const WORLDS: World[] = [
       g: 0.38, // (Mars's gravity, Earth's being 1)
       terrain: 'mars', basins: 0, craters: 18, floor: 0.05, rough: 0.025,
       waves: 0, rain: 0, sink: 0, life: false,
-      talus: 1.65, flow: 8, channel: 2, coolLand: 1, // (its gravity makes slopes stand steeper still; and it sets fast, so poured lava stacks into a mountain rather than running off)
+      talus: 1.65, flow: 8, channel: 4, coolLand: 1, // (its gravity makes slopes stand steeper still; and it sets fast, so poured lava stacks into a mountain rather than running off)
       drift: 0, rises: 0, heat: 210, rising: 0.8, steady: true, // (the heat comes back quickly: the first world, so waiting is short)
       impactEvery: [60, 100], impactWarning: 14, impactHeat: 6,
       stormEvery: [110, 160], stormWarning: 12, stormLasts: 22, stormWear: 0.003, softer: 7, // (rarer, and wearing mostly loose ash: poured rock lasts, so a storm doesn't feel like losing)
@@ -144,6 +144,7 @@ export const WORLDS: World[] = [
     then: 'These are its real basins. Lava flooded them once, and made the face we know.',
     second: 'Turn a basin uppermost and tip gently, and it fills dark.',
     rules: {
+      thin: 0.0015, // (runny, as the Moon's flood basalts were: its aim is to cover ground, and stiff lava covers less)
       g: 0.17, // (the Moon's gravity, Earth's being 1)
       terrain: 'moon', basins: 9, floor: 0.4, rough: 0.008, craters: 0,
       // (Its real heights, and its real seas, where they are and as wide (latitude, longitude, km): Imbrium,
@@ -171,6 +172,7 @@ export const WORLDS: World[] = [
     then: 'Here water is the lava, and it freezes into fresh white ice.',
     second: 'Tip the world to pour, and the old grey ice turns new.',
     rules: {
+      thin: 0.0015, // (runny, as water is: its aim is to cover ground, and stiff lava covers less)
       g: 0.15, // (an icy moon, as Ganymede's gravity, Earth's being 1)
       terrain: 'ice', basins: 0, craters: 40, floor: 0.05, rough: 0.015,
       waves: 0, rain: 0, sink: 0, life: false,
@@ -578,6 +580,7 @@ export const WORLDS: World[] = [
     then: 'On worlds like this, rock boils into the air on the day side and falls as rock snow in the night.',
     second: 'Turn the vent into the starlight, and pour.',
     rules: {
+      thin: 0.0015, // (runny, as a lava ocean is: its aim is to cover ground, and stiff lava covers less)
       g: 2.3, // (55 Cancri e, a super-Earth's gravity, Earth's being 1)
       terrain: 'magma', basins: 0, craters: 8, floor: 0.1, rough: 0.02,
       waves: 0, rain: 0, sink: 0, swell: 0, life: false,

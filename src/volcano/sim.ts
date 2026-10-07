@@ -147,12 +147,15 @@ export const VOLCANO = {
   rises: 0.016,
   /** How strongly lava keeps to the steepest way down (1 spreads evenly; higher runs in tongues). */
   channel: 3,
+  /** How much the ground's grain steers the lava (each way down weighted by 0.35 plus this times its grain), and how much of that grain is fine, point to point, so a flow splits round small rises into tongues. */
+  grainPull: 3,
+  grainFine: 1.2, // (so a front splits round small rises: grained only broadly, flows spread as round lobes)
   flow: 10,
   /** Lava cools into rock at these rates per second: slowly on land, fast in the sea. */
   coolLand: 0.2,
   coolSea: 2.4,
   /** Thinner than this, lava is simply rock; thicker than `cover`, it clears the ground it runs over. */
-  thin: 0.0015,
+  thin: 0.003, // (stiff, as lava is: a thin front stops rather than creeping on, so a flow runs on in tongues where it's deep instead of spreading in a sheet; 0.0015 made balloons)
   cover: 0.006,
 
   /** The plume creeps on its own at this many radians a second, and towards where you call it at this. */
@@ -650,6 +653,7 @@ export class Planet {
     for (let v = 0; v < n; v++) {
       const x = p[v * 3], y = p[v * 3 + 1], z = p[v * 3 + 2];
       this.grainOf[v] = 0.5 + (Math.sin(x * 23.1 + y * 9.7 + 0.7) + Math.sin(y * 21.3 - z * 11.9 + 1.9) + Math.sin(z * 24.7 + x * 8.3 - 2.3) + Math.sin((x + y - z) * 37.9)) / 8;
+      if (this.k.grainFine > 0) { const h = Math.sin(x * 412.7 + y * 289.3 + z * 157.1) * 43758.5453; this.grainOf[v] = Math.max(0, this.grainOf[v] + this.k.grainFine * (h - Math.floor(h) - 0.5)); }
       const fine = (Math.sin(x * 13.1 + z * 7.3) + Math.sin(y * 11.7 - x * 9.1 + 2.1) + Math.sin(z * 12.3 + y * 8.9 - 1.3)) / 3;
       this.firmness[v] = 0.55 + 0.9 * (0.5 + 0.5 * Math.sin(x * 17.3 + y * 5.1 - z * 11.9) * Math.sin(y * 13.7 + z * 6.3 + 0.7));
       this.rock[v] = this.k.floor + this.k.rough * fine + (this.k.real ? this.k.realScale * realHeight(this.k.real, x, y, z) : 0);
@@ -1553,7 +1557,7 @@ export class Planet {
       // Spun fast, lava is flung outwards from the axis: towards the equator, as much as down.
       const drop = spin > 0 ? (w: number) => base(w) + spin * (p[v * 3 + 1] ** 2 - p[w * 3 + 1] ** 2) : base;
       let sum = 0, weights = 0;
-      const grain = this.grainOf, along = (w: number, d: number) => Math.pow(d, this.k.channel) * (0.35 + 1.3 * grain[w]);
+      const grain = this.grainOf, along = (w: number, d: number) => Math.pow(d, this.k.channel) * (0.35 + this.k.grainPull * grain[w]);
       for (let q = a; q < b; q++) { const w = t.nbrList[q], d = drop(w); if (d > 0) { sum += d; weights += along(w, d); } }
       if (sum <= 0) continue;
       // Viscous, as lava is: it runs fast where it lies deep and hardly at all where it's thin (its
