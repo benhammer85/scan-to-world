@@ -35,6 +35,31 @@
       /* A burst's moment: the words fall quiet. */
       #stage-name, #legend { transition: opacity 1.2s ease; }
       body.hush #event, body.hush #stage-name, body.hush #goal, body.hush #legend { opacity: 0.12 !important; transition: opacity 0.6s ease; }
+      /* The title page, every time the game is opened: its name above, the world turning in the middle, and where to go beneath. */
+      #title { position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column; align-items: center; justify-content: space-between; box-sizing: border-box; padding: calc(9vh + env(safe-area-inset-top)) 16px calc(26px + env(safe-area-inset-bottom)); transition: opacity 1s; background: linear-gradient(to bottom, #f4efe4 0, rgba(244, 239, 228, 0) 26%, rgba(244, 239, 228, 0) 52%, #f4efe4 70%); }
+      #title.gone { opacity: 0; pointer-events: none; }
+      #title .head { text-align: center; }
+      #title h1 { margin: 0; font-weight: normal; font-size: clamp(30px, 9vw, 44px); letter-spacing: 0.02em; text-wrap: balance; }
+      #title .sub { margin: 8px 0 0; font-style: italic; font-size: 15px; opacity: 0.6; }
+      #title .rule { width: 46px; height: 0; border-top: 1px solid rgba(46, 33, 24, 0.4); margin: 14px auto 0; }
+      #title nav { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 100%; max-width: 22em; }
+      #title button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; padding: 9px 14px; font-size: 17px; letter-spacing: 0.04em; min-height: 44px; }
+      #title button:not(.go) { opacity: 0.72; }
+      #title.newcomer button:not(.go):not(.set) { opacity: 0.32; }
+      #title .go { font-size: 19px; padding: 12px 38px; border: 1px solid rgba(46, 33, 24, 0.38); border-radius: 999px; margin-bottom: 10px; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+      #title .go small { font-size: 13px; font-style: italic; opacity: 0.6; letter-spacing: 0.02em; }
+      #title .go small:empty { display: none; }
+      #title .set { font-size: 14px !important; opacity: 0.5 !important; margin-top: 6px; }
+      #title .settings { display: flex; flex-direction: column; align-items: center; gap: 14px; width: 100%; max-width: 22em; }
+      #title .settings[hidden], #title nav[hidden], #title .row[hidden] { display: none; }
+      #title .row { display: flex; flex-direction: column; align-items: center; gap: 0; }
+      #title .row .label { font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.5; }
+      #title .row .opts { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; }
+      #title .row .opts button { font-size: 16px; opacity: 0.55; padding: 6px 10px; min-height: 40px; }
+      #title .row .opts button + button::before { content: '·'; margin-right: 12px; opacity: 0.6; }
+      #title .row .opts button.on { opacity: 1; text-decoration: underline; text-underline-offset: 6px; }
+      #title .note { font-size: 13px; font-style: italic; opacity: 0.55; margin: 0; min-height: 1.2em; text-align: center; }
+      body.titled #begin, body.titled #worlds { opacity: 0 !important; pointer-events: none; }
       /* The card the world begins from: one touch, which lets the phone share how it's held. */
       /* The card: the world itself above (seen whole, turning slowly), the words beneath on the paper. */
       #begin { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 14px; padding-bottom: calc(18px + env(safe-area-inset-bottom)); box-sizing: border-box; background: transparent; transition: opacity 1.5s; cursor: pointer; }
@@ -142,6 +167,24 @@
     <button id="worlds" aria-label="All worlds"></button>
     <div id="atlas" class="engraved"><div class="head"><h2>Celestial Chart</h2><button class="close">back</button></div><div class="sky"></div><p class="credit">The figures after Johann Bayer's Uranometria, engraved by Alexander Mair, 1603</p><p class="plates-head"></p><div class="pages"></div><div class="view"><img alt=""></div><div class="pick"><div class="card"><div class="globe"></div><p class="t"></p><p class="k"></p><p class="m"></p><div class="acts"><button class="go">Play</button><button class="plates">its plates</button></div></div></div></div>
     <div id="system" class="engraved"><div class="head"><h2>A solar system</h2><button class="close">back</button></div><p class="about"></p><div class="plate"></div><div class="foot"></div></div>
+    <div id="title" class="engraved" hidden>
+      <div class="head"><h1>Warm to the Touch</h1><p class="sub">volcanoes on other worlds</p><div class="rule"></div></div>
+      <nav>
+        <button class="go"><span class="what">Begin</span><small></small></button>
+        <button data-to="worlds">The worlds</button>
+        <button data-to="voyage">A voyage</button>
+        <button data-to="free">Free play</button>
+        <button class="set" data-to="settings">settings</button>
+      </nav>
+      <div class="settings" hidden>
+        <div class="row" data-row="hands"><span class="label">How to play</span><span class="opts"><button data-v="tilt">tilt the phone</button><button data-v="breathe">hold and let go</button></span></div>
+        <div class="row" data-row="haptics"><span class="label">In the hand</span><span class="opts"><button data-v="on">felt</button><button data-v="off">not felt</button></span></div>
+        <div class="row" data-row="motion"><span class="label">Motion</span><span class="opts"><button data-v="phone">as the phone is set</button><button data-v="still">gentler</button></span></div>
+        <div class="row" data-row="ink"><span class="label">Ink</span><span class="opts"><button data-v="quiet">quiet print</button><button data-v="engrave">engraving</button></span></div>
+        <p class="note"></p>
+        <button class="back">done</button>
+      </div>
+    </div>
     <div id="begin" class="engraved loading"><p class="chapter"></p><p class="world"></p><h1 class="name"></h1><p class="first"></p><p class="second"></p><p class="marks"></p><p class="hands"></p><button class="touch">Begin</button><button class="calmer" hidden>or play without tilting the phone</button><div class="worlds"></div><button class="more-toggle">more</button><div class="more" hidden></div></div>
     <script type="module" src="/src/volcano/main.ts"></script>
   </body>

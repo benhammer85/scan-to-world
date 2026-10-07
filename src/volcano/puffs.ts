@@ -247,7 +247,7 @@ export class Puffs {
     this.seed[this.nextSlot === 0 ? MOST - 1 : this.nextSlot - 1] = rand();
     if (kind === 'steam') { p.life = 2.6 + rand(); p.rise = 0.035; p.size = 0.03 + 0.02 * rand(); p.grow = 0.1; }
     else if (kind === 'ash') { p.life = 5 + rand() * 3; p.rise = 0.14 * strength * (0.6 + rand() * 0.8); p.size = 0.05 + 0.04 * rand(); p.grow = 0.2 + 0.12 * rand(); }
-    if (kind === 'ash' && cloud) { p.life = 10 + rand() * 4; p.rise = 0.55 + 0.25 * rand(); p.size = 0.06 + 0.04 * rand(); p.grow = 0.4 + 0.2 * rand(); } // (big and overlapping, so they merge into one cloud)
+    if (kind === 'ash' && cloud) { p.life = 6.5 + rand() * 2.5; p.rise = 0.55 + 0.25 * rand(); p.size = 0.075 + 0.045 * rand(); p.grow = 0.45 + 0.2 * rand(); } // (fewer than they were, so each a little bigger, and gone in six to nine seconds, not ten to fourteen) // (big and overlapping, so they merge into one cloud)
     else if (kind === 'dust') { p.life = 4 + rand() * 3; p.rise = 0.06 * strength; p.size = 0.0035 + 0.0015 * strength; p.grow = 0.002; }
     else if (kind === 'ember' || kind === 'fall') {
       // Thrown up from the vent, out to one side, and falling back: an arc, not a drift.

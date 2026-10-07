@@ -55,6 +55,7 @@ import { measureSecond, type Second } from './second';
 import { loadSystem, saveSystem, worldFor, recordPlayed } from './system';
 import { openSystem, closeSystem } from './systemChart';
 import { feel, keepImage, NATIVE, rumble, rumbles, tap } from './native';
+import { SmokeSign } from './smokeSign';
 import { earned, markNames, mergeMarks, readMarks, stillToEarn, writeMarks, type Marks } from './marks';
 import './fonts.css';
 import { LOOKS, PRINT_FUNCTIONS, LAMP_PRINT_FUNCTIONS, LAMP_PRINT, LAMP_QUIET, printFragment, type Look } from './print';
@@ -148,7 +149,7 @@ if (RUN === null) remember('volcano.world', WORLD.id);
 // (A world that tries another ink first keeps its own choice: chosen on its card, it's remembered for it alone.)
 // The quiet print is every world's ink, unless another is chosen for it (and remembered, world by world).
 // (A new key: inks chosen while comparing the print and the quiet print aren't carried over.)
-const LOOK_ID = ASKED.get('look') ?? 'quiet'; // (the quiet print, for everyone: the other inks are by address only now, as a choice once made can't be unmade from the card any more)
+const LOOK_ID = ASKED.get('look') ?? remembered('volcano.ink') ?? 'quiet'; // (the quiet print, unless the engraving is chosen in the title page's settings; any other ink by address only)
 const LOOK: Look = LOOKS.find((l) => l.id === LOOK_ID)?.look ?? 6; // (an ink not known any more: the quiet print)
 /** The quiet print: lava the one warm accent on a calm map; burps only at the brink, splatter only when it bursts, the smoke lighter. */
 const QUIET = LOOK === 6;
@@ -485,6 +486,10 @@ const puffs = new Puffs(renderer.getPixelRatio());
 puffs.calm = QUIET;
 puffs.ice = ICE;
 group.add(puffs.object);
+/** The vent's smoke as a map's sign (smokeSign.ts), not as smoke: the drifting puffs are still there with ?smoke=real. */
+const SIGN = ASKED.get('smoke') !== 'real';
+const smokeSign = new SmokeSign(new THREE.Color(P.landInk), new THREE.Color('#b8892a'));
+if (SIGN) group.add(smokeSign.object);
 group.add(puffs.shadow);
 
 /**
@@ -1971,8 +1976,8 @@ function effects(dt: number): void {
     // With air, a great cloud: a column climbing to its ceiling and spreading there into an umbrella, drifting
     // downwind, its shadow on the map. Without, no billows: its dust thrown out in clean arcs, falling back in a
     // ring round the vent, as Io's plumes do. (A few round puffs read as a steam engine's, not a world's.)
-    if (AIRLESS.has(WORLD.id)) for (let i = 0; i < (torn ? 320 : 230); i++) puffs.add('fall', p[v0 * 3], p[v0 * 3 + 1], p[v0 * 3 + 2], (torn ? 1.4 : 1.1) * (0.6 + 0.8 * Math.random()));
-    else { cloudLeft = torn ? 100 : 70; cloudBig = torn ? 1.35 : 1; }
+    if (AIRLESS.has(WORLD.id)) for (let i = 0; i < (torn ? 200 : 140); i++) puffs.add('fall', p[v0 * 3], p[v0 * 3 + 1], p[v0 * 3 + 2], (torn ? 1.4 : 1.1) * (0.6 + 0.8 * Math.random()));
+    else { cloudLeft = torn ? 60 : 40; cloudBig = torn ? 1.35 : 1; } // (fewer, and gone sooner: a moment, then quiet again)
   }
   Object.assign(tallied, planet.tally);
   // The eruption cloud's billows, a few a frame: low ones first, the column, then those that rise to the ceiling and spread.
@@ -2031,7 +2036,17 @@ function effects(dt: number): void {
   if (brink && !wasBrink && !LAMP && !planet.pouring && !NO_BURST) feel([70, 60, 90]);
   wasBrink = brink;
   const full = planet.k.great > 0 ? planet.throwOf(planet.pressure) >= planet.k.great : planet.bursting;
-  if (QUIET) {
+  if (SIGN) {
+    const ready = planet.k.great > 0 ? planet.throwOf(planet.pressure) / planet.k.great : planet.pressure / planet.k.explosive;
+    let stage = Math.max(0.5 * THREE.MathUtils.smoothstep(ready, 0.88, 1), share > 0.75 ? 0.5 + 0.5 * Math.min(1, (share - 0.75) / 0.2) : 0);
+    if (NO_BURST) stage = Math.min(stage, 0.5);
+    const both = WORLD.goal === 'streaks' ? planet.dayAt(planet.plumeVertex) > 0.2 : WORLD.goal === 'feed' ? !!planet.towardGiant : WORLD.goal === 'calm' ? onTumbleRing() : WORLD.goal === 'plumes';
+    if (stage >= 0.5 && both) stage += 2;
+    // (Seen only while the vent faces us, and only while it smokes: not while lava pours, which says itself.)
+    const facing = NORMAL_C.set(base[v0 * 3], base[v0 * 3 + 1], base[v0 * 3 + 2]).applyQuaternion(group.quaternion).z;
+    const smoking = begun && !LAMP && !planet.over && !planet.pouring && planet.pressure > 0.05 ? 1 : 0;
+    smokeSign.update(dt, PLUME.set(p[v0 * 3], p[v0 * 3 + 1], p[v0 * 3 + 2]), smoking * THREE.MathUtils.smoothstep(facing, -0.08, 0.2), share, stage);
+  } else if (QUIET) {
     // Quiet: the smoke reads the pressure. A thin wisp at rest; a taller, fuller column as it builds;
     // grey once letting it out would burst (on Io, burst as a great plume); dark only at the brink.
     // Small puffs in a close stream, so it's one column, leaning with the breeze.
@@ -2749,10 +2764,92 @@ $('begin').addEventListener('pointerdown', () => {
 const cardReady = () => requestAnimationFrame(() => { cardView(); $('begin').classList.remove('loading'); });
 void resume().then((back) => {
   cardReady();
+  keptBack = back;
+  titleWords();
   if (!back) return;
   ($('begin').querySelector('.first') as HTMLElement).textContent = 'Your world, as you left it.';
   cardWords();
   ($('begin').querySelector('.touch') as HTMLElement).textContent = 'Continue';
+});
+
+// ---------------------------------------------------------------- the title page
+/**
+ * Every time the game is opened: its name, the world turning beneath it, and where to go: on with the
+ * world you were on (straight back into it, if it was kept), any world from the chart, a voyage round
+ * another star, free play, and the settings. Not when the game goes from one world to the next, or a
+ * world is asked for by its address: only once each time it's opened. New to it, only Begin is lit.
+ */
+const titlePage = $('title');
+let keptBack = false, settingsOpen = false;
+const INNER = ['world', 'run', 'system', 'free', 'seed', 'look', 'lava'].some((k) => ASKED.has(k));
+const TITLE = !INNER && (() => { try { return !sessionStorage.getItem('volcano.titled'); } catch { return true; } })();
+if (TITLE) {
+  try { sessionStorage.setItem('volcano.titled', '1'); } catch { /* shown again next time, and that's all */ }
+  titlePage.hidden = false;
+  document.body.classList.add('titled');
+  if (Number(remembered('volcano.played') ?? '0') === 0) titlePage.classList.add('newcomer');
+}
+function titleWords(): void {
+  (titlePage.querySelector('.go .what') as HTMLElement).textContent = keptBack ? 'Continue' : 'Begin';
+  (titlePage.querySelector('.go small') as HTMLElement).textContent = `${WORLD.numeral} · ${WORLD.title}`;
+}
+titleWords();
+function leaveTitle(): void {
+  titlePage.classList.add('gone');
+  document.body.classList.remove('titled');
+  cardView();
+  setTimeout(() => { titlePage.hidden = true; }, 1000);
+}
+titlePage.addEventListener('pointerdown', (e) => e.stopPropagation());
+titlePage.querySelector('.go')!.addEventListener('click', () => {
+  leaveTitle();
+  // (A world kept as it was left: straight back into it, the one touch beginning it. A new one: its card, to read what it asks.)
+  if (keptBack) $('begin').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+});
+titlePage.querySelectorAll('nav [data-to]').forEach((b) => b.addEventListener('click', () => {
+  const to = (b as HTMLElement).dataset.to;
+  if (to === 'worlds') { leaveTitle(); void pages().then((all) => openAtlas(all)); }
+  else if (to === 'voyage') { document.body.classList.add('leaving'); setTimeout(() => { location.search = '?system'; }, 500); }
+  else if (to === 'free') { document.body.classList.add('leaving'); setTimeout(() => { location.search = `?world=${WORLD.id}&free`; }, 500); }
+  else if (to === 'settings') openSettings(true);
+}));
+/** The settings: each kept on the phone, as chosen. Those that change how a world is made take hold as the page comes back. */
+const SETTINGS: Record<string, { now: () => string; set: (v: string) => void; anew: boolean }> = {
+  hands: { now: () => (remembered('volcano.controls') === 'breathe' ? 'breathe' : 'tilt'), set: (v) => remember('volcano.controls', v), anew: true },
+  haptics: { now: () => (remembered('volcano.haptics') === 'off' ? 'off' : 'on'), set: (v) => remember('volcano.haptics', v), anew: false },
+  motion: { now: () => (remembered('volcano.motion') === 'still' ? 'still' : 'phone'), set: (v) => remember('volcano.motion', v), anew: true },
+  ink: { now: () => (remembered('volcano.ink') === 'engrave' ? 'engrave' : 'quiet'), set: (v) => remember('volcano.ink', v), anew: true },
+};
+let settingsChanged = false;
+// (A computer has no tipping: it always plays by holding, so the choice isn't offered there.)
+if (COMPUTER) (titlePage.querySelector('[data-row="hands"]') as HTMLElement).hidden = true;
+function showSettings(): void {
+  for (const [row, s] of Object.entries(SETTINGS)) {
+    titlePage.querySelectorAll(`[data-row="${row}"] .opts button`).forEach((b) => b.classList.toggle('on', (b as HTMLElement).dataset.v === s.now()));
+  }
+  (titlePage.querySelector('.note') as HTMLElement).textContent = settingsChanged ? 'Kept: the page will come back with it.' : '';
+}
+function openSettings(open: boolean): void {
+  settingsOpen = open;
+  (titlePage.querySelector('nav') as HTMLElement).hidden = open;
+  (titlePage.querySelector('.settings') as HTMLElement).hidden = !open;
+  if (open) showSettings();
+  cardView();
+}
+titlePage.querySelectorAll('.settings .opts button').forEach((b) => b.addEventListener('click', () => {
+  const row = (b.closest('.row') as HTMLElement).dataset.row!, s = SETTINGS[row], v = (b as HTMLElement).dataset.v!;
+  if (s.now() === v) return;
+  s.set(v);
+  if (s.anew) settingsChanged = true;
+  if (row === 'haptics' && v === 'on') tap('medium'); // (felt, to say so)
+  showSettings();
+}));
+titlePage.querySelector('.settings .back')!.addEventListener('click', () => {
+  if (!settingsChanged) { openSettings(false); return; }
+  // (Back to the title page, with the world made as now chosen.)
+  try { sessionStorage.removeItem('volcano.titled'); } catch { /* none */ }
+  document.body.classList.add('leaving');
+  setTimeout(() => location.reload(), 500);
 });
 
 // ---------------------------------------------------------------- the camera, and the pace
@@ -2768,8 +2865,10 @@ function cardView(): void {
   if (begun) return;
   // Sized and placed in the room above the card's words, however tall the phone (and whatever the card says).
   const w = stage.clientWidth || innerWidth, h = stage.clientHeight || innerHeight;
-  const words = (($('begin').querySelector('.chapter') as HTMLElement).textContent ? ($('begin').querySelector('.chapter') as HTMLElement) : ($('begin').querySelector('.world') as HTMLElement)).getBoundingClientRect().top; // (above the chapter's name, when there is one)
-  const above = 56, room = Math.max(80, words - 22 - above);
+  // (Under the title page, between the game's name and where to go.)
+  const titledNow = document.body.classList.contains('titled');
+  const words = titledNow ? (titlePage.querySelector(settingsOpen ? '.settings' : 'nav') as HTMLElement).getBoundingClientRect().top : (($('begin').querySelector('.chapter') as HTMLElement).textContent ? ($('begin').querySelector('.chapter') as HTMLElement) : ($('begin').querySelector('.world') as HTMLElement)).getBoundingClientRect().top; // (above the chapter's name, when there is one)
+  const above = titledNow ? (titlePage.querySelector('.head') as HTMLElement).getBoundingClientRect().bottom + 6 : 56, room = Math.max(80, words - 22 - above);
   const r = Math.min(room, w * 0.7) / 2, middle = above + room / 2;
   dist = (1.08 * (h / 2)) / (r * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
   lift = (h / 2 - middle) / h;
@@ -2781,7 +2880,7 @@ function cardView(): void {
 const CARD_TURN = new THREE.Quaternion();
 let cardTurned = false;
 /** Asked for less motion: no sudden step back at a burst (the slow breathing of the view stays). */
-const STILL = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const STILL = matchMedia('(prefers-reduced-motion: reduce)').matches || remembered('volcano.motion') === 'still'; // (or chosen in the settings)
 function breathe(dt: number): void {
   if (seconds - lastReach > 2) {
     lastReach = seconds;

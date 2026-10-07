@@ -15,7 +15,11 @@ export const NATIVE = Capacitor.isNativePlatform();
  * A touch in the hand. The browser's pattern (buzz, pause, buzz… in ms) is played on the phone's
  * haptic engine: each buzz a tap, light, firm or heavy by its length, a long one a rumble.
  */
+/** Whether the hand is to feel nothing (chosen in the settings). */
+const unfelt = (): boolean => { try { return localStorage.getItem('volcano.haptics') === 'off'; } catch { return false; } };
+
 export function feel(pattern: number | number[]): void {
+  if (unfelt()) return;
   if (!NATIVE) {
     try { navigator.vibrate?.(pattern); } catch { /* none */ }
     return;
@@ -53,6 +57,7 @@ export const rumbles = () => warm;
 
 /** One tap in the hand: light, firm or heavy, or a strength (0 to 1) and sharpness (0, a soft thump, to 1, a click). */
 export function tap(weight: 'light' | 'medium' | 'heavy' | { strength: number; sharpness: number }): void {
+  if (unfelt()) return;
   const o = typeof weight === 'object' ? weight : weight === 'heavy' ? { strength: 1, sharpness: 0.35 } : weight === 'medium' ? { strength: 0.6, sharpness: 0.45 } : { strength: 0.3, sharpness: 0.5 };
   if (warm) { void Warm.tap(o).catch(() => {}); return; }
   if (!NATIVE) { try { navigator.vibrate?.(o.strength > 0.8 ? 26 : o.strength > 0.45 ? 14 : 6); } catch { /* none */ } return; }
@@ -63,6 +68,7 @@ let rumbleSent = -1;
 /** The rumble, on the phone's engine: strength 0 stops it. (Sent only when it changes enough to feel.) */
 export function rumble(strength: number, grain = 0.3): void {
   if (!warm) return;
+  if (unfelt()) strength = 0;
   const s = strength < 0.02 ? 0 : Math.round(strength * 25) / 25;
   if (s === rumbleSent) return;
   rumbleSent = s;
