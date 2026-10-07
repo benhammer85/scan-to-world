@@ -16,12 +16,13 @@
 import * as THREE from 'three';
 import { rimGlsl } from '../render/rim';
 
-export type PuffKind = 'steam' | 'ash' | 'smoke' | 'ember' | 'dust' | 'spark' | 'haze';
+export type PuffKind = 'steam' | 'ash' | 'smoke' | 'ember' | 'dust' | 'spark' | 'haze' | 'fall';
 
-const TINT: Record<PuffKind, number> = { steam: 0, ash: 1, smoke: 2, ember: 3, dust: 4, spark: 5, haze: 6 };
+// ('fall': dust thrown up on a world without air, drawn as the dust is but flying as the embers do, in clean arcs.)
+const TINT: Record<PuffKind, number> = { steam: 0, ash: 1, smoke: 2, ember: 3, dust: 4, spark: 5, haze: 6, fall: 4 };
 const MOST = 1200;
 
-interface Puff { alive: boolean; age: number; life: number; x: number; y: number; z: number; ux: number; uy: number; uz: number; rise: number; size: number; grow: number; kind: number; nx: number; ny: number; nz: number; vz: number; warm: number; dark: number; sx: number; sy: number; sz: number }
+interface Puff { alive: boolean; age: number; life: number; x: number; y: number; z: number; ux: number; uy: number; uz: number; rise: number; size: number; grow: number; kind: number; nx: number; ny: number; nz: number; vz: number; warm: number; dark: number; sx: number; sy: number; sz: number; arc: boolean; ceil: number; ox: number; oy: number; oz: number; out: number; spd: number }
 
 export class Puffs {
   readonly object: THREE.Points;
@@ -50,7 +51,7 @@ export class Puffs {
   private risen = new Float32Array(MOST);
 
   constructor(pixelRatio: number) {
-    for (let i = 0; i < MOST; i++) this.puffs.push({ alive: false, age: 0, life: 1, x: 0, y: 0, z: 0, ux: 0, uy: 0, uz: 0, rise: 0, size: 0, grow: 0, kind: 0, nx: 0, ny: 0, nz: 0, vz: 0, warm: 0, dark: 0, sx: 0, sy: 0, sz: 0 });
+    for (let i = 0; i < MOST; i++) this.puffs.push({ alive: false, age: 0, life: 1, x: 0, y: 0, z: 0, ux: 0, uy: 0, uz: 0, rise: 0, size: 0, grow: 0, kind: 0, nx: 0, ny: 0, nz: 0, vz: 0, warm: 0, dark: 0, sx: 0, sy: 0, sz: 0, arc: false, ceil: 0, ox: 0, oy: 0, oz: 0, out: 0, spd: 0 });
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(this.position, 3));
     g.setAttribute('aAlpha', new THREE.BufferAttribute(this.alpha, 1));
@@ -92,7 +93,13 @@ export class Puffs {
           ${shadow ? 'v.xy += vec2(0.55, -0.8) * aRise * 0.9; // the shadow: down and to the right, away from the light, as far as it has risen' : ''}
           gl_Position = projectionMatrix * v;
           gl_PointSize = aSize * uScale / -v.z;
-          vAlpha = aAlpha * rimFade(position, v);
+          ${shadow ? 'vec4 cS = modelViewMatrix * vec4(0.0, 0.0, 0.0, 1.0); vAlpha = aAlpha * rimFade(position, v) * (1.0 - smoothstep(-0.06, 0.0, length(v.xy - cS.xy) - 1.0)); // (its shadow lies on the map, so it thins at the rim as the map\'s ink does; and only on the world: past its edge there is no ground for it to fall on)' : `// Hidden only where the world stands in front of it: on its far side and inside its outline. (It was faded as
+          // the map's ink is, by how squarely the ground under it faced us, so a column turned towards the rim vanished,
+          // even where it rose into open sky beyond the edge.)
+          vec4 cW = modelViewMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+          vec3 dW = v.xyz - cW.xyz;
+          float behindW = smoothstep(0.03, -0.05, dW.z), outsideW = smoothstep(-0.04, 0.02, length(dW.xy) - 1.0);
+          vAlpha = aAlpha * (1.0 - behindW * (1.0 - outsideW));`}
           vTint = aTint;
           vSeed = aSeed;
           vPx = gl_PointSize;
@@ -175,7 +182,7 @@ export class Puffs {
             if (uCalm > 0.5 && vTint > 1.5) {
               // Engraved, so it reads on pale ground: white steam outlined in fine ink round each billow;
               // grey stippled in dots, as an engraver tones a middle grey; black solid.
-              float ring = (1.0 - smoothstep(0.0, 1.6 / max(vPx, 1.0) + 0.04, abs(d - edge))) * (1.0 - smoothstep(0.4, 0.9, vLife));
+              float ring = (1.0 - smoothstep(0.0, 1.6 / max(vPx, 1.0) + 0.04, abs(d - edge))) * (1.0 - smoothstep(0.4, 0.9, vLife)) * smoothstep(0.38, 0.62, n2(ca * 2.2 + vSeed * 11.0)); // (sketched, broken: a whole ring round every puff read as a cartoon's)
               c = mix(c, vec3(0.3, 0.26, 0.22), ring * mix(0.75, 0.3, gS) * (1.0 - bS) * (1.0 - rdy));
               // Ready, both ways: the outline gold, a little bolder, the one sign for "now".
               float ringG = (1.0 - smoothstep(0.0, 2.4 / max(vPx, 1.0) + 0.06, abs(d - edge))) * (1.0 - smoothstep(0.5, 0.95, vLife));
@@ -205,18 +212,26 @@ export class Puffs {
    * A puff at a point on the ground (in the planet's frame), rising along its up; or, given a
    * way to drift (`dir`, in the same frame), mostly that way, as smoke drawn on a map goes up the page.
    */
-  add(kind: PuffKind, x: number, y: number, z: number, strength = 1, rand = Math.random, dir?: { x: number; y: number; z: number }, warm = 0, dark = 0): void {
+  /**
+   * A billow of an eruption cloud (`cloud`): it rises up its column to `ceil` (as far as the world's radius
+   * is one), then spreads out along the ground's way `out`, flattening into the umbrella a great eruption
+   * spreads at the top of its column, and drifts with the wind (`dir`).
+   */
+  add(kind: PuffKind, x: number, y: number, z: number, strength = 1, rand = Math.random, dir?: { x: number; y: number; z: number }, warm = 0, dark = 0, cloud?: { ceil: number; out: { x: number; y: number; z: number } }): void {
     const p = this.puffs[this.nextSlot];
     this.nextSlot = (this.nextSlot + 1) % MOST;
     const l = Math.hypot(x, y, z) || 1;
     // Up, tipped a little at random, so a column of them spreads as it goes.
     // (Calm, the smoke keeps closer together, so it's one column.)
-    const d = dir ?? { x: 0, y: 0, z: 0 }, lean = dir ? 1.6 : 0, spread = this.calm && kind === 'smoke' ? 0.2 : 0.5;
+    const d = dir ?? { x: 0, y: 0, z: 0 }, lean = dir ? (this.calm && kind === 'smoke' ? 2.1 : 1.6) : 0, spread = this.calm && kind === 'smoke' ? 0.3 : 0.5; // (calm smoke bent further downwind, and looser: a stack of round puffs straight up read as a chimney's)
     p.ux = x / l * 0.4 + d.x * lean + (rand() - 0.5) * spread; p.uy = y / l * 0.4 + d.y * lean + (rand() - 0.5) * spread; p.uz = z / l * 0.4 + d.z * lean + (rand() - 0.5) * spread;
     const ul = Math.hypot(p.ux, p.uy, p.uz); p.ux /= ul; p.uy /= ul; p.uz /= ul;
     p.x = x; p.y = y; p.z = z;
     p.sx = x; p.sy = y; p.sz = z;
     p.dark = dark;
+    p.arc = kind === 'ember' || kind === 'fall';
+    p.ceil = cloud ? cloud.ceil : 0; p.out = 0; p.spd = 0.12 + 0.88 * rand() * rand(); // (most spread little and some far, so the umbrella fills from the middle, not a ring)
+    if (cloud) { p.ox = cloud.out.x; p.oy = cloud.out.y; p.oz = cloud.out.z; p.nx = x / l; p.ny = y / l; p.nz = z / l; }
     p.alive = true;
     p.age = 0;
     p.kind = TINT[kind];
@@ -224,8 +239,9 @@ export class Puffs {
     this.seed[this.nextSlot === 0 ? MOST - 1 : this.nextSlot - 1] = rand();
     if (kind === 'steam') { p.life = 2.6 + rand(); p.rise = 0.035; p.size = 0.03 + 0.02 * rand(); p.grow = 0.1; }
     else if (kind === 'ash') { p.life = 5 + rand() * 3; p.rise = 0.14 * strength * (0.6 + rand() * 0.8); p.size = 0.05 + 0.04 * rand(); p.grow = 0.2 + 0.12 * rand(); }
+    if (kind === 'ash' && cloud) { p.life = 10 + rand() * 4; p.rise = 0.55 + 0.25 * rand(); p.size = 0.06 + 0.04 * rand(); p.grow = 0.4 + 0.2 * rand(); } // (big and overlapping, so they merge into one cloud)
     else if (kind === 'dust') { p.life = 4 + rand() * 3; p.rise = 0.06 * strength; p.size = 0.0035 + 0.0015 * strength; p.grow = 0.002; }
-    else if (kind === 'ember') {
+    else if (kind === 'ember' || kind === 'fall') {
       // Thrown up from the vent, out to one side, and falling back: an arc, not a drift.
       p.nx = x / l; p.ny = y / l; p.nz = z / l;
       const t = { x: p.ny * 0.3 - p.nz * 0.7, y: p.nz * 0.5 - p.nx * 0.3, z: p.nx * 0.7 - p.ny * 0.5 };
@@ -235,6 +251,7 @@ export class Puffs {
       p.rise = (0.02 + 0.05 * rand()) * strength;
       p.vz = (0.1 + 0.12 * rand()) * strength;
       p.life = 1.4 + rand() * 1.2; p.size = 0.009 + 0.004 * rand(); p.grow = -0.004; // (big enough to see as sparks, not specks)
+      if (kind === 'fall') { p.rise *= 3.6; p.vz *= 1.6; p.life = 3.6 + rand() * 1.8; p.size = 0.013 + 0.008 * rand(); p.grow = 0; } // (far and high, nothing to slow it: out towards where its ring will lie) // (thrown far and high, as nothing slows it, and falling back in a ring)
     }
     else if (kind === 'spark') {
       // A spark off open lava: lifted slowly on the heat, wandering a little, fading as it cools.
@@ -259,14 +276,22 @@ export class Puffs {
         // A spark: carried up on the heat, slowing as it rises.
         const slow = Math.exp(-p.age * 0.5);
         p.x += (p.ux * p.rise + p.nx * p.vz * slow) * dt; p.y += (p.uy * p.rise + p.ny * p.vz * slow) * dt; p.z += (p.uz * p.rise + p.nz * p.vz * slow) * dt;
-      } else if (p.kind === 3) {
+      } else if (p.arc) {
         // An ember: out and up, and gravity bringing it back down.
         p.vz -= 0.2 * dt;
         p.x += (p.ux * p.rise + p.nx * p.vz) * dt; p.y += (p.uy * p.rise + p.ny * p.vz) * dt; p.z += (p.uz * p.rise + p.nz * p.vz) * dt;
       } else {
         // Rising, and slowing as it goes, as a column does once the heat has left it.
+        if (p.ceil > 0) {
+          // An eruption cloud's billow: up its column fast, then out along the ground at its ceiling, slowing as
+          // it spreads, and carried with the wind.
+          const up = Math.hypot(p.x - p.sx, p.y - p.sy, p.z - p.sz);
+          if (up < p.ceil && p.out === 0) { const sp = p.rise * dt; p.x += p.nx * sp; p.y += p.ny * sp; p.z += p.nz * sp; }
+          else { p.out += dt; const sp = 0.2 * p.spd * Math.exp(-p.out * 0.35) * dt; p.x += p.ox * sp + p.ux * 0.02 * dt; p.y += p.oy * sp + p.uy * 0.02 * dt; p.z += p.oz * sp + p.uz * 0.02 * dt; }
+        } else {
         const slow = Math.exp(-p.age * (p.kind === 2 ? 0.18 : 0.45)) * (p.kind === 2 && this.calm ? Math.min(1, 0.3 + p.age * 1.4) : 1); // (smoke keeps rising, so the column stands tall; calm, it leaves the mouth slowly, so the column's foot stays on the vent)
         p.x += p.ux * p.rise * slow * dt; p.y += p.uy * p.rise * slow * dt; p.z += p.uz * p.rise * slow * dt;
+        }
       }
       const f = p.age / p.life;
       this.position[i * 3] = p.x; this.position[i * 3 + 1] = p.y; this.position[i * 3 + 2] = p.z;

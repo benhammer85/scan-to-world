@@ -1893,8 +1893,12 @@ function onTumbleRing(): boolean {
   const w = planet.spinNow, p = planet.plume, r = Math.hypot(w.x, w.y, w.z);
   return r > 1e-6 && (1 - Math.abs(w.x * p.x + w.y * p.y + w.z * p.z) / r) ** 2 > 0.6;
 }
+/** Worlds without air to speak of: there a burst doesn't billow, it throws its dust in clean arcs that fall back in a ring. */
+const AIRLESS = new Set<WorldId>(['moon', 'asteroid', 'mercury', 'io', 'europa', 'enceladus', 'ice', 'tumble', 'first', 'spin', 'dust']);
+/** An eruption cloud still to come out: its billows let out over a second or two, so the column climbs. */
+let cloudLeft = 0, cloudBig = 1;
 let steamIn = 0, sparkIn = 0, smokeIn = 0, momentAt = -100, wasBrink = false;
-const UPWARD = new THREE.Vector3(), INVERSE_RIGHT = new THREE.Vector3();
+const UPWARD = new THREE.Vector3(), INVERSE_RIGHT = new THREE.Vector3(), NORMAL_C = new THREE.Vector3(), TAN_C = new THREE.Vector3(), TAN2_C = new THREE.Vector3();
 function effects(dt: number): void {
   const p = topo.positions, v0 = planet.plumeVertex;
   // Up the page, in the planet's frame: the way smoke drifts, as a map draws it.
@@ -1913,9 +1917,21 @@ function effects(dt: number): void {
     // The column of ash: many puffs from the vent, rising and spreading.
     // And a fountain of embers, thrown up and falling back glowing.
     for (let i = 0; i < (torn ? 110 : 70); i++) puffs.add('ember', p[v0 * 3], p[v0 * 3 + 1], p[v0 * 3 + 2], (torn ? 1.5 : 1.15) * (0.7 + 0.6 * Math.random()));
-    for (let i = 0; i < (torn ? 26 : 14); i++) puffs.add('ash', p[v0 * 3], p[v0 * 3 + 1], p[v0 * 3 + 2], torn ? 1.5 : 1, Math.random, up, 1); // (fewer: each is a billow now)
+    // With air, a great cloud: a column climbing to its ceiling and spreading there into an umbrella, drifting
+    // downwind, its shadow on the map. Without, no billows: its dust thrown out in clean arcs, falling back in a
+    // ring round the vent, as Io's plumes do. (A few round puffs read as a steam engine's, not a world's.)
+    if (AIRLESS.has(WORLD.id)) for (let i = 0; i < (torn ? 320 : 230); i++) puffs.add('fall', p[v0 * 3], p[v0 * 3 + 1], p[v0 * 3 + 2], (torn ? 1.4 : 1.1) * (0.6 + 0.8 * Math.random()));
+    else { cloudLeft = torn ? 100 : 70; cloudBig = torn ? 1.35 : 1; }
   }
   Object.assign(tallied, planet.tally);
+  // The eruption cloud's billows, a few a frame: low ones first, the column, then those that rise to the ceiling and spread.
+  for (let k = 0; k < 4 && cloudLeft > 0; k++, cloudLeft--) {
+    const n = NORMAL_C.set(p[v0 * 3], p[v0 * 3 + 1], p[v0 * 3 + 2]).normalize(), a = Math.random() * Math.PI * 2;
+    const t1 = TAN_C.set(0, 1, 0).cross(n); if (t1.lengthSq() < 1e-6) t1.set(1, 0, 0); t1.normalize();
+    const t2 = TAN2_C.copy(n).cross(t1);
+    const o = { x: t1.x * Math.cos(a) + t2.x * Math.sin(a), y: t1.y * Math.cos(a) + t2.y * Math.sin(a), z: t1.z * Math.cos(a) + t2.z * Math.sin(a) };
+    puffs.add('ash', p[v0 * 3], p[v0 * 3 + 1], p[v0 * 3 + 2], cloudBig, Math.random, up, 1, 0, { ceil: (0.14 + 0.1 * Math.random()) * cloudBig * (cloudLeft > 30 ? 1 : 0.75 + 0.25 * Math.random()), out: o });
+  }
   // Steam where lava runs into the sea, as much as there is lava there.
   // Over open lava: a few sparks lifted on the heat, and a faint warm haze rising: heat you can see, kept sparse.
   flash.value *= Math.exp(-dt * 1.8);
@@ -1985,6 +2001,8 @@ function effects(dt: number): void {
       // (From the vent's mouth itself, so the column stands on it: started a little off it, the way it
       // leaned, and coming in faint, it seemed to float on its own.)
       puffs.add('smoke', p[v0 * 3], p[v0 * 3 + 1], p[v0 * 3 + 2], 0.25 + 1.3 * share + 0.5 * Math.max(0, stage - 0.5), Math.random, lean, 0, stage);
+      // Once it would burst, a low dirty veil spreads round the vent too, thickening: the mountain straining. (Not without air.)
+      if ((stage % 2) >= 0.5 && !AIRLESS.has(WORLD.id) && Math.random() < 0.35) puffs.add('ash', p[v0 * 3], p[v0 * 3 + 1], p[v0 * 3 + 2], 0.22, Math.random, lean);
     }
   } else if (!LAMP && !planet.over && !planet.pouring && planet.pressure > 0.5 && smokeIn <= 0) {
     smokeIn = brink ? 0.14 : full ? 0.22 : 0.7 - 0.4 * Math.min(1, planet.pressure / VOLCANO.explosive);
