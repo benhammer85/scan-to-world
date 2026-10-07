@@ -603,7 +603,8 @@ const SNOW_SHOWN = WORLD.goal === 'snow' ? 0.6 : 0.22;
  * little proud of what it covers, the newest the highest (FLOW_PROUD), for the lamp to shade.
  */
 const FLOWS = DARK_LAVA && !!LOOK && !planet.k.whiteAt, FLOW_PROUD = FLOWS ? 0.025 : 0, FLOW_STEP = 0.25;
-const flowShown = new Float32Array(N), coarseFlow = new Float32Array(N), flowNext = new Float32Array(N);
+const flowShown = new Float32Array(N), coarseFlow = new Float32Array(N), flowNext = new Float32Array(N), flowsEased = new Float32Array(N);
+let glowAt = -1, flowsAt = -1;
 /** How long each point has lain under lava too thin to run (drawn set): such a sheet chills at once, though the simulation still counts it molten. */
 const chilled = new Float32Array(N);
 let chilledAt = -1;
@@ -633,16 +634,20 @@ function coarse(): void {
   }
   // How much the heat of lava near it lights each point: from lava running or only just set, spread a few
   // rings out over the ground and weakening as it goes, so the light falls round the lava, not only on it.
-  {
+  // (Worked out at most five times a second, and not at all with nothing hot: it was the dearest part of a
+  // redraw, a third of it, and the light round lava changes slowly.)
+  if (now - glowAt > 0.2) {
+    glowAt = now;
     const o = topo.nbrOffsets, l = topo.nbrList;
-    for (let v = 0; v < N; v++) { const lv = planet.lava[v]; glowField[v] = lv > 0.002 ? Math.min(1, lv * 60) : planet.age[v] < 25 && planet.ash[v] < 0.25 ? Math.exp(-planet.age[v] / 8) * 0.45 : 0; }
-    for (let pass = 0; pass < 3; pass++) { // (close round the lava: spread wider, on pale worlds it read as a stain)
+    let any = false;
+    for (let v = 0; v < N; v++) { const lv = planet.lava[v]; glowField[v] = lv > 0.002 ? Math.min(1, lv * 60) : planet.age[v] < 25 && planet.ash[v] < 0.25 ? Math.exp(-planet.age[v] / 8) * 0.45 : 0; if (glowField[v] > 0) any = true; }
+    if (any) for (let pass = 0; pass < 3; pass++) { // (close round the lava: spread wider, on pale worlds it read as a stain)
       for (let v = 0; v < N; v++) { let m = glowField[v]; for (let k = o[v]; k < o[v + 1]; k++) m = Math.max(m, glowField[l[k]] * 0.62); glowNext[v] = m; }
       glowField.set(glowNext);
     }
     // (Then eased, as the marks are: spread by the strongest neighbour alone, its edge stepped round the
     // simulation's triangles, and the warm wash it lays on the ground had a saw-toothed edge.)
-    for (let pass = 0; pass < 4; pass++) {
+    if (any) for (let pass = 0; pass < 4; pass++) {
       for (let v = 0; v < N; v++) { let s = 0; for (let k = o[v]; k < o[v + 1]; k++) s += glowField[l[k]]; glowNext[v] = glowField[v] * 0.4 + (s / Math.max(1, o[v + 1] - o[v])) * 0.6; }
       glowField.set(glowNext);
     }
@@ -717,7 +722,10 @@ function coarse(): void {
   // (Flows: each one's shade carried on its own, not as a share of where it lies, and spread a few
   // points out past its edge, so it can be eased less than the edge is: where a new flow lies on one
   // several pours older, the shades between them then pass in a hair, not a band like another flow.)
-  if (FLOWS) {
+  // (The flows' shades change only as lava sets: eased at most twice a second, and the last kept between.)
+  if (FLOWS && now - flowsAt <= 0.5) coarseFlow.set(flowsEased);
+  else if (FLOWS) {
+    flowsAt = now;
     for (let pass = 0; pass < 4; pass++) {
       for (let v = 0; v < N; v++) {
         if (coarseFlow[v] >= 0) { flowNext[v] = coarseFlow[v]; continue; }
@@ -731,6 +739,7 @@ function coarse(): void {
       for (let v = 0; v < N; v++) { let sum = 0; for (let k = o[v]; k < o[v + 1]; k++) sum += coarseFlow[l[k]]; flowNext[v] = coarseFlow[v] * 0.4 + (sum / Math.max(1, o[v + 1] - o[v])) * 0.6; }
       coarseFlow.set(flowNext);
     }
+    flowsEased.set(coarseFlow);
   }
   // (What lies before easing, so a narrow tongue of lava, two or three points wide, isn't eased away below the
   // edge: eased more once set than while running, a tongue that ran down a slope vanished as it set, and the flow
@@ -1328,7 +1337,7 @@ function lamping(): void {
   }
 }
 const TUMBLE = new THREE.Quaternion(), TUMBLE_AXIS = new THREE.Vector3();
-let orbitShown = -1;
+let orbitShown = -1, moonFelt = false;
 /** The ring turns slowly; it's inked as far as the rock thrown up goes, and in the long age the rock gathers into the moon. */
 function orbiting(dt: number): void {
   orbitSpin.rotation.z += dt * 0.03;
@@ -1350,6 +1359,7 @@ function orbiting(dt: number): void {
     orbitInk.set(ink);
     orbitPencil.set(pencil);
   }
+  if (made && age >= 1 && !moonFelt) { moonFelt = true; knock(0.5); } // (and once it's whole, a softer one)
   if (made) {
     const size = 0.34 * Math.cbrt(Math.max(1, planet.orbit / ORBIT)) * age;
     moonMark.scale.setScalar(Math.max(0.001, size));
@@ -1685,7 +1695,10 @@ const NORMAL = new THREE.Vector3(), EYE = new THREE.Vector3();
 
 const spin = new THREE.Vector2();
 const turn = new THREE.Quaternion(), axis = new THREE.Vector3();
+/** When the world was last turned while it's played (by hand, or still spinning from a flick). */
+let turnedAt = -10;
 function rotate(ax: number, ay: number): void {
+  if (begun) turnedAt = seconds;
   turn.setFromAxisAngle(axis.set(0, 1, 0), ax); group.quaternion.premultiply(turn);
   turn.setFromAxisAngle(axis.set(1, 0, 0), ay); group.quaternion.premultiply(turn);
 }
@@ -1898,7 +1911,21 @@ function onTumbleRing(): boolean {
 const AIRLESS = new Set<WorldId>(['moon', 'asteroid', 'mercury', 'io', 'europa', 'enceladus', 'ice', 'tumble', 'first', 'spin', 'dust']);
 /** An eruption cloud still to come out: its billows let out over a second or two, so the column climbs. */
 let cloudLeft = 0, cloudBig = 1;
-let steamIn = 0, sparkIn = 0, smokeIn = 0, momentAt = -100, wasBrink = false;
+let steamIn = 0, sparkIn = 0, smokeIn = 0, momentAt = -100, wasBrink = false, burstSeen = false;
+/** A moment: how long the view holds, how far back it goes (a share of its reach), and how slow time runs at first (1: not slowed). */
+let moment = { hold: 4.5, back: 1.16, slow: 1 };
+function bigMoment(hold: number, back: number, slow: number): void { momentAt = seconds; moment = { hold, back, slow }; }
+/** How fast the world runs now: slowed for the first moments of a great one, easing back to its pace. */
+function pace01(): number {
+  const t = seconds - momentAt;
+  if (moment.slow >= 1 || t > 3) return 1;
+  return t < 1.8 ? moment.slow : moment.slow + (1 - moment.slow) * (t - 1.8) / 1.2;
+}
+/** A double knock in the hand, as strong as asked (to 1). */
+function knock(strength: number): void {
+  tap({ strength, sharpness: 0.3 });
+  setTimeout(() => tap({ strength: strength * 0.8, sharpness: 0.22 }), 170);
+}
 const UPWARD = new THREE.Vector3(), INVERSE_RIGHT = new THREE.Vector3(), NORMAL_C = new THREE.Vector3(), TAN_C = new THREE.Vector3(), TAN2_C = new THREE.Vector3();
 function effects(dt: number): void {
   const p = topo.positions, v0 = planet.plumeVertex;
@@ -1914,10 +1941,27 @@ function effects(dt: number): void {
   // Across the page, the way the storm drives the dust.
   INVERSE_RIGHT.set(1, 0.15, 0).normalize().applyQuaternion(INVERSE);
   if (planet.tally.bursts > tallied.bursts || planet.tally.calderas > tallied.calderas) {
+    const torn = planet.tally.calderas > tallied.calderas, fell = torn && planet.k.hollow > 0;
+    // A burst is a moment: the view eases back and holds, and the words fall quiet, so it has the screen,
+    // with a double knock in the hand. A great one (the world's first, the mountain blown apart, the summit
+    // fallen in) is bigger: the view goes further back and holds longer, and time slows as it goes up.
+    const great = torn || !burstSeen;
+    burstSeen = true;
+    bigMoment(great ? 6.5 : 4.5, great ? 1.3 : 1.16, great ? 0.4 : 1);
+    knock(great ? 1 : 0.6);
+    if (fell) {
+      // The summit falling in: no fountain and no flare, but dust rising all round the rim as it drops.
+      const q = planet.plume, r = planet.k.caldera * 2.2;
+      let made = 0;
+      for (let v = 0; v < N && made < 90; v++) {
+        const a = Math.acos(Math.max(-1, Math.min(1, base[v * 3] * q.x + base[v * 3 + 1] * q.y + base[v * 3 + 2] * q.z)));
+        if (Math.abs(a - r) < r * 0.18 && Math.random() < 0.3) { puffs.add('ash', p[v * 3], p[v * 3 + 1], p[v * 3 + 2], 0.5, Math.random, up, 0, 0.6); made++; }
+      }
+      cloudLeft = 50; cloudBig = 0.8; // (and a lower, greyer cloud than a burst's)
+    }
+  }
+  if ((planet.tally.bursts > tallied.bursts || planet.tally.calderas > tallied.calderas) && !(planet.k.hollow > 0 && planet.tally.calderas > tallied.calderas)) {
     const torn = planet.tally.calderas > tallied.calderas;
-    // A burst is a moment: the view eases back and holds, and the words fall quiet, so it has the screen.
-    momentAt = seconds;
-    feel(torn ? [40, 60, 90] : 25);
     landing = { at: seconds, n: torn ? 9 : 6 }; // (and then what it threw, coming down)
     spray.value = 1; // (a burst throws its splatter, whatever the ink)
     flash.value = torn ? 1.3 : 1; // (and the mouth flares white-gold for a moment: the burst plain to see)
@@ -2194,7 +2238,7 @@ function theEnd(): void {
     startReplay();
     queue.length = 0;
     announce(GOAL_WORDS[WORLD.goal].done);
-    feel([30, 50, 30]);
+    knock(WORLD.goal === 'orbit' ? 1 : 0.7);
     measureTheSecond();
     markTheWin();
     // On a world with a sea, the fire goes out and the long age follows even so, for its atolls.
@@ -2749,15 +2793,17 @@ function breathe(dt: number): void {
     reachDist = THREE.MathUtils.clamp(3.4 + 2 * Math.acos(least), 3.4, 4.8) * (WORLD.goal === 'orbit' ? 1.3 : WORLD.goal === 'feed' ? 1.15 : 1);
   }
   // At the end, the world steps back and up the page, leaving the foot for the chart.
-  const moment = !ending && seconds - momentAt < 4.5;
-  document.body.classList.toggle('hush', moment);
+  const held = !ending && seconds - momentAt < moment.hold;
+  // (A moon gathering after the aim is met: back, so the ring and the moon are both in view, and held there.)
+  const gathering = !!ending?.won && WORLD.goal === 'orbit' && !ending.shown;
+  document.body.classList.toggle('hush', held);
   // While lava runs, the view leans in a little, so the flow is big when it matters; and eases back after.
-  const running = !ending && !moment && (planet.pouring || (planet.erupting && planet.molten > 0.01)) && !STILL;
+  const running = !ending && !held && (planet.pouring || (planet.erupting && planet.molten > 0.01)) && !STILL;
   lean += ((running ? 0.82 : 1) - lean) * Math.min(1, dt * (running ? 0.9 : 0.45));
-  const want = ending?.shown ? farthest * 0.92 : reachDist * (moment && !STILL ? 1.16 : 1) * lean, wantLift = ending?.shown ? 0.09 : 0;
+  const want = ending?.shown ? farthest * 0.92 : reachDist * (held && !STILL ? moment.back : gathering && !STILL ? 1.3 : 1) * lean, wantLift = ending?.shown ? 0.09 : 0;
   if (!ending?.shown && seconds - zoomedAt < 10) return;
   const gliding = seconds - begunAt < 5; // (from the card's view: quicker, so the world comes to hand)
-  const d = dist + (want - dist) * Math.min(1, (moment ? 0.9 : gliding ? 0.9 : Math.abs(lean - 1) > 0.01 ? 1.4 : 0.15) * dt), l = lift + (wantLift - lift) * Math.min(1, (gliding ? 1.2 : 0.6) * dt);
+  const d = dist + (want - dist) * Math.min(1, (held || gathering ? 0.9 : gliding ? 0.9 : Math.abs(lean - 1) > 0.01 ? 1.4 : 0.15) * dt), l = lift + (wantLift - lift) * Math.min(1, (gliding ? 1.2 : 0.6) * dt);
   if (Math.abs(d - dist) > 1e-4 || Math.abs(l - lift) > 1e-5) { dist = d; lift = l; look(); }
 }
 /** If the phone can't keep up, draw a little less finely: the pixel ratio comes down a half at a time, but never below two to a point (see FINEST). */
@@ -2850,7 +2896,8 @@ const loop = (): void => {
   if (SUN) { const s = GIANT_DIR.copy(SUN).applyQuaternion(INVERSE); planet.star = { x: s.x, y: s.y, z: s.z }; }
   drawLevel();
   // Once the fire is out, the long age runs quickly, in small steps so the sea's work stays as it would be.
-  const speed = ending && !ending.shown && (!ending.won || seconds - wonAt() > 4) ? AGE_SPEED : 1;
+  // (A moon gathering goes at half that, to be watched: it's the world's great moment.)
+  const speed = ending && !ending.shown && (!ending.won || seconds - wonAt() > 4) ? (ending.won && WORLD.goal === 'orbit' ? AGE_SPEED / 2 : AGE_SPEED) : pace01();
   // Nothing happens until the world is begun.
   if (replaying) replayStep();
   else if (begun && !ending?.shown) {
@@ -2875,7 +2922,12 @@ const loop = (): void => {
   // The surface is redrawn often while lava runs, and now and then while only the slow forces work.
   const flowing = planet.erupting || planet.molten > 0.01;
   let heavy = false;
-  if (!replaying && seconds - lastDraw >= (flowing || speed > 1 ? 1 / 20 : 0.5)) { lastDraw = seconds; draw(); heavy = true; }
+  // (Only what's changed is worth a redraw, and each one costs a phone a frame or more: none at all on the card,
+  // where nothing changes; with nothing running, every second and a half, and not while the world is being
+  // turned, so a turn is never caught on one. It was twice a second always, and the world's slow turn above
+  // the card, and every turn by hand, went in steps.)
+  const every = flowing || speed !== 1 ? 1 / 20 : !begun ? Infinity : seconds - turnedAt < 0.6 ? Infinity : 1.5;
+  if (!replaying && seconds - lastDraw >= every) { lastDraw = seconds; draw(); heavy = true; }
   if (LIFE && begun && seconds - lastEcology >= 1) { ecology.update((seconds - lastEcology) * speed); lastEcology = seconds; }
   if (LIFE && begun && seconds - lastIslands >= 2) {
     lastIslands = seconds;
@@ -2893,7 +2945,7 @@ const loop = (): void => {
   if (WORLD.goal === 'cover' && ending) floodStrength.value = 0.85 * (1 - 0.5 * Math.min(1, (planet.seconds - ending.from) / LONG_AGE));
   crossFade();
   drawMarks();
-  effects(dt);
+  effects(dt * Math.min(1, speed));
   for (const pen of [...landPens, ...seaPens]) pen.update(dt, camera);
   if (begun) drawAim(seconds);
   aimInk.update(dt);
