@@ -54,6 +54,8 @@ const FIGURES: Record<string, Figure> = {
   // V · Far worlds: Pegasus, flying: muzzle, neck, wing, wingtip, cloud.
   // VI · Slow fires: Orion, the hunter: Betelgeuse, his shoulder, and Rigel, his foot.
   VI: { name: 'Orion', src: orion, w: 536, h: 559, stars: [[160, 150], [340, 418]], ra: 5.6, dec: 4, span: 26 },
+  // VII · Earth's fires: Eridanus, the river, as lava runs to the sea: its bend, then on up towards its source.
+  VII: { name: 'Eridanus', src: eridanus, w: 457, h: 560, stars: [[270, 408], [320, 165], [272, 35]], ra: 3.7, dec: -32, span: 36 },
   V: { name: 'Pegasus', src: pegasus, w: 820, h: 573, stars: [[57, 232], [265, 158], [372, 186], [616, 72], [671, 292], [455, 380]], ra: 22.6, dec: 17, span: 52 },
 };
 
@@ -70,7 +72,6 @@ const BACKGROUND: Figure[] = [
   { name: 'Canis Major', src: canis, w: 462, h: 559, stars: [], ra: 6.9, dec: -22, span: 22 },
   // The southern sky, from the same atlas's southern plates, so it isn't left bare.
   { name: 'Cetus', src: cetus, w: 560, h: 470, stars: [], ra: 1.7, dec: -8, span: 36 },
-  { name: 'Eridanus', src: eridanus, w: 457, h: 560, stars: [], ra: 3.7, dec: -32, span: 36 },
   { name: 'Argo Navis', src: argo, w: 560, h: 425, stars: [], ra: 8.2, dec: -44, span: 46 },
   { name: 'Centaurus', src: centaurus, w: 532, h: 560, stars: [], ra: 13.0, dec: -48, span: 34 },
   { name: 'Lupus', src: lupus, w: 525, h: 560, stars: [], ra: 15.3, dec: -43, span: 18 },
@@ -196,10 +197,13 @@ export function openGlobe(box: HTMLElement, pages: Page[], here: WorldId, pick: 
 
   // ---- the figures, laid on the globe where they stand in the sky
   const loader = new THREE.TextureLoader();
-  const markers: { id: WorldId; at: THREE.Vector3; sprite: THREE.Sprite; made: boolean }[] = [];
-  const labels: { at: THREE.Vector3; sprite: THREE.Sprite; weight: number }[] = [];
+  const markers: { id: WorldId; at: THREE.Vector3; sprite: THREE.Sprite; made: boolean; chapter: number }[] = [];
+  const labels: { at: THREE.Vector3; sprite: THREE.Sprite; weight: number; near?: boolean; chapter?: number }[] = [];
+  /** Each chapter: the middle of its figure on the globe, and how far it is in front (eased, 0 to 1). */
+  const chapters: { at: THREE.Vector3; focus: { value: number }; lines: THREE.Line[] }[] = [];
   /** A figure laid on the globe: `lit` the stars to ink it round, `base` how strongly it shows uninked. */
-  const layFigure = (f: Figure, lit: THREE.Vector3[], all: boolean, base: number) => {
+  const layFigure = (f: Figure, lit: THREE.Vector3[], all: boolean, base: number): { value: number } => {
+    const focus = { value: 1 };
     while (lit.length < 6) lit.push(new THREE.Vector3(0, 0, 0));
     // The picture as a gore: a grid of points on the globe, its texture the engraving.
     const S = 48, geo = keep(new THREE.BufferGeometry()), pos: number[] = [], uv: number[] = [], idx: number[] = [];
@@ -209,12 +213,12 @@ export function openGlobe(box: HTMLElement, pages: Page[], here: WorldId, pick: 
     const tex = keep(loader.load(f.src)); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
     const mat = keep(new THREE.ShaderMaterial({
       transparent: true, depthWrite: false,
-      uniforms: { map: { value: tex }, uLit: { value: lit }, uAll: { value: all ? 1 : 0 }, uLight: { value: LIGHT }, uAspect: { value: f.w / f.h }, uBase: { value: base } },
+      uniforms: { map: { value: tex }, uLit: { value: lit }, uAll: { value: all ? 1 : 0 }, uLight: { value: LIGHT }, uAspect: { value: f.w / f.h }, uBase: { value: base }, uFocus: focus },
       vertexShader: /* glsl */ `
         varying vec2 vUv; varying vec3 vN;
         void main() { vUv = uv; vN = normalize(normalMatrix * normalize(position)); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
       fragmentShader: /* glsl */ `
-        uniform sampler2D map; uniform vec3 uLit[6]; uniform float uAll, uAspect, uBase; uniform vec3 uLight; varying vec2 vUv; varying vec3 vN;
+        uniform sampler2D map; uniform vec3 uLit[6]; uniform float uAll, uAspect, uBase, uFocus; uniform vec3 uLight; varying vec2 vUv; varying vec3 vN;
         void main() {
           vec4 t = texture2D(map, vUv);
           // Inked round each world made: a soft circle of the figure; all of it, once the chapter is played through.
@@ -222,26 +226,30 @@ export function openGlobe(box: HTMLElement, pages: Page[], here: WorldId, pick: 
           vec2 q = vec2(vUv.x, 1.0 - vUv.y);
           for (int i = 0; i < 6; i++) { if (uLit[i].z > 0.5) { vec2 d = (q - uLit[i].xy) * vec2(uAspect, 1.0); shown = max(shown, 1.0 - smoothstep(0.1, 0.28, length(d) / max(uAspect, 1.0) * 1.6)); } }
           float lam = max(dot(normalize(vN), uLight), 0.0);
-          float a = clamp(t.a * 1.6, 0.0, 1.0) * mix(uBase, 1.0, shown) * (0.62 + 0.55 * lam);
+          // (A chapter not the one in front is drawn faint, so one figure at a time is read.)
+          float a = clamp(t.a * 1.6, 0.0, 1.0) * mix(uBase, 1.0, shown) * (0.62 + 0.55 * lam) * mix(0.32, 1.0, uFocus);
           gl_FragColor = vec4(t.rgb * (0.85 + 0.25 * lam), a);
           #include <colorspace_fragment>
         }`,
     }));
     globe.add(new THREE.Mesh(geo, mat));
+    return focus;
   };
   // The rest of the sky first, faint, its names lettered small.
   for (const f of BACKGROUND) {
-    layFigure(f, [], false, 0.3);
+    // (Half as strong as it was, its name only near the middle of the view: it was as bright as the chapters' figures, and its names crowded theirs.)
+    layFigure(f, [], false, 0.16);
     const top = onFigure(f, 0.5, -0.05, 1.004), label = new THREE.Sprite(keep(new THREE.SpriteMaterial({ map: keep(labelTexture(f.name, '')), depthTest: false, depthWrite: false, transparent: true })));
-    label.scale.set(0.42, 0.105, 1); label.position.copy(top); label.center.set(0.5, 0.1);
+    label.scale.set(0.36, 0.09, 1); label.position.copy(top); label.center.set(0.5, 0.1);
     globe.add(label);
-    labels.push({ at: top, sprite: label, weight: 0.55 });
+    labels.push({ at: top, sprite: label, weight: 0.32, near: true });
   }
   CHAPTERS.forEach((c) => {
     const f = FIGURES[c.numeral];
     if (!f) return;
+    const ci = chapters.length, lines: THREE.Line[] = [];
     const all = c.worlds.every((w) => latest.has(w));
-    layFigure(f, c.worlds.map((w, i) => new THREE.Vector3(f.stars[i][0] / f.w, f.stars[i][1] / f.h, latest.has(w) ? 1 : 0)), all, 0.42);
+    const focus = layFigure(f, c.worlds.map((w, i) => new THREE.Vector3(f.stars[i][0] / f.w, f.stars[i][1] / f.h, latest.has(w) ? 1 : 0)), all, 0.42);
     // Its worlds joined, star to star, along the globe: dashed in gold.
     for (let i = 1; i < c.worlds.length; i++) {
       const a = onFigure(f, f.stars[i - 1][0] / f.w, f.stars[i - 1][1] / f.h), b = onFigure(f, f.stars[i][0] / f.w, f.stars[i][1] / f.h), pts: THREE.Vector3[] = [];
@@ -249,25 +257,27 @@ export function openGlobe(box: HTMLElement, pages: Page[], here: WorldId, pick: 
       const both = latest.has(c.worlds[i]) && latest.has(c.worlds[i - 1]);
       const line = new THREE.Line(keep(new THREE.BufferGeometry().setFromPoints(pts)), keep(new THREE.LineDashedMaterial({ color: GOLD, transparent: true, opacity: both ? 0.75 : 0.45, dashSize: both ? 1 : 0.008, gapSize: both ? 0 : 0.012, depthWrite: false })));
       line.computeLineDistances();
-      globe.add(line);
+      globe.add(line); lines.push(line);
     }
+    chapters.push({ at: onFigure(f, 0.5, 0.5), focus, lines });
     // Its worlds, on its stars.
     c.worlds.forEach((id, i) => {
       const at = onFigure(f, f.stars[i][0] / f.w, f.stars[i][1] / f.h, 1.004), page = latest.get(id);
       const sprite = new THREE.Sprite(keep(new THREE.SpriteMaterial({ map: keep(markerTexture(id, page, id === here)), depthTest: false, depthWrite: false, transparent: true })));
-      const k = page ? 0.17 : 0.13;
-      sprite.scale.set(k, k * 1.4, 1);
-      sprite.center.set(0.5, 1 - 0.5 / 1.4); // (the globe's middle on the star; the numeral under it)
+      const k = page || id === here ? 0.15 : 0.1;
+      sprite.scale.set(k * 2, k, 1);
+      sprite.center.set(0.25, 0.5); // (the world's middle on the star; its numeral beside it, to the right)
       sprite.position.copy(at);
       globe.add(sprite);
-      markers.push({ id, at, sprite, made: !!page });
+      markers.push({ id, at, sprite, made: !!page, chapter: ci });
     });
     // Its name, as the old globes letter a constellation, above it; the chapter's beneath, in italic.
     const top = onFigure(f, 0.5, c.numeral === 'I' ? 1.06 : -0.04, 1.004), // (the Bear's name under its feet: over its back, it ran into the Dragon's)
-      label = new THREE.Sprite(keep(new THREE.SpriteMaterial({ map: keep(labelTexture(f.name, `${c.numeral} · ${c.title}`)), depthTest: false, depthWrite: false, transparent: true })));
+      made = c.worlds.filter((w) => latest.has(w)).length,
+      label = new THREE.Sprite(keep(new THREE.SpriteMaterial({ map: keep(labelTexture(f.name, `${c.numeral} · ${c.title} · ${made} of ${c.worlds.length}`)), depthTest: false, depthWrite: false, transparent: true })));
     label.scale.set(0.62, 0.155, 1); label.position.copy(top); label.center.set(0.5, 0.2);
     globe.add(label);
-    labels.push({ at: top, sprite: label, weight: 0.95 });
+    labels.push({ at: top, sprite: label, weight: 0.95, chapter: ci });
   });
 
   // ---- the solar systems finished, each a small star of its own in a patch of open sky, its worlds circling it
@@ -350,7 +360,7 @@ export function openGlobe(box: HTMLElement, pages: Page[], here: WorldId, pick: 
     let best: (typeof markers)[number] | null = null, bd = 30;
     for (const m of markers) {
       const w = m.at.clone().applyQuaternion(q);
-      if (w.z < 0.15) continue;
+      if (w.z < 0.3) continue;
       const s = w.clone().project(camera), x = r.left + (s.x + 1) / 2 * r.width, y = r.top + (1 - s.y) / 2 * r.height, d = Math.hypot(x - cx, y - cy);
       if (d < bd) { bd = d; best = m; }
     }
@@ -395,8 +405,19 @@ export function openGlobe(box: HTMLElement, pages: Page[], here: WorldId, pick: 
     globe.quaternion.copy(q);
     camera.position.z += (dist - camera.position.z) * (1 - Math.exp(-dt * 8));
     // Worlds and names fade as they turn away, and are gone before the rim.
-    for (const m of markers) { const z = tmp.copy(m.at).applyQuaternion(q).z; (m.sprite.material as THREE.SpriteMaterial).opacity = THREE.MathUtils.smoothstep(z, 0.12, 0.42); }
-    for (const l of labels) { const z = tmp.copy(l.at).applyQuaternion(q).z; (l.sprite.material as THREE.SpriteMaterial).opacity = THREE.MathUtils.smoothstep(z, 0.25, 0.6) * l.weight; }
+    // The chapter most in front is the one read: its figure, worlds and name full; the others faint, easing across as the globe turns.
+    let front = -1, fz = -2;
+    chapters.forEach((c, i) => { const z = tmp.copy(c.at).applyQuaternion(q).z; if (z > fz) { fz = z; front = i; } });
+    chapters.forEach((c, i) => {
+      c.focus.value += ((i === front ? 1 : 0) - c.focus.value) * (1 - Math.exp(-dt * 3));
+      for (const l of c.lines) (l.material as THREE.LineDashedMaterial).opacity = (l.userData.base ??= (l.material as THREE.LineDashedMaterial).opacity) * (0.25 + 0.75 * c.focus.value);
+    });
+    // (Worlds gone well before the rim: drawn over everything, one there stood out past the globe's edge.)
+    for (const m of markers) { const z = tmp.copy(m.at).applyQuaternion(q).z; (m.sprite.material as THREE.SpriteMaterial).opacity = THREE.MathUtils.smoothstep(z, 0.3, 0.55) * (0.18 + 0.82 * chapters[m.chapter].focus.value); }
+    for (const l of labels) {
+      const z = tmp.copy(l.at).applyQuaternion(q).z;
+      (l.sprite.material as THREE.SpriteMaterial).opacity = (l.near ? THREE.MathUtils.smoothstep(z, 0.8, 0.95) : THREE.MathUtils.smoothstep(z, 0.25, 0.6)) * l.weight * (l.chapter === undefined ? 1 : 0.35 + 0.65 * chapters[l.chapter].focus.value);
+    }
     const t = now / 1000;
     for (const o of orbits) {
       const fade = THREE.MathUtils.smoothstep(tmp.copy(o.at).applyQuaternion(q).z, 0.12, 0.42);
@@ -432,41 +453,47 @@ const portraitFor = (id: WorldId): string | undefined => PORTRAITS[`./portraits/
  * left as a ball is, ringed in gold; one not yet come to, only a dotted ring; its numeral under it.
  */
 function markerTexture(id: WorldId, page: Page | undefined, here: boolean): THREE.CanvasTexture {
+  // (Twice as wide as tall: the world on the left half, centred on its star; its numeral to the right of it,
+  // so neighbouring worlds' numerals don't fall on each other's rings, as they did set beneath.)
   const w = worldOf(id), S = 192, cv = document.createElement('canvas');
-  cv.width = S; cv.height = Math.round(S * 1.4);
-  const g = cv.getContext('2d')!, cx = S / 2, cy = S / 2, r = page ? 66 : 54;
+  cv.width = S * 2; cv.height = S;
+  const g = cv.getContext('2d')!, cx = S / 2, cy = S / 2, r = 62;
   const tex = new THREE.CanvasTexture(cv);
   tex.colorSpace = THREE.SRGBColorSpace;
+  const numeral = (alpha: number) => {
+    g.font = 'italic 64px Newsreader, "Iowan Old Style", Georgia, serif'; g.textAlign = 'left'; g.textBaseline = 'middle'; g.fillStyle = PALE;
+    g.globalAlpha = alpha; g.fillText(w.numeral, S + 4, cy + 4); g.globalAlpha = 1;
+  };
   const ring = () => {
-    g.lineWidth = page ? 5 : 3;
-    g.strokeStyle = page ? GOLD : 'rgba(239,231,211,0.6)';
-    if (!page) g.setLineDash([7, 8]);
-    g.beginPath(); g.arc(cx, cy, r + (page ? 5 : 6), 0, Math.PI * 2); g.stroke(); g.setLineDash([]);
-    if (here) { g.lineWidth = 3; g.strokeStyle = GOLD; g.beginPath(); g.arc(cx, cy, r + 20, 0, Math.PI * 2); g.stroke(); }
-    g.font = 'italic 38px Newsreader, "Iowan Old Style", Georgia, serif'; g.textAlign = 'center'; g.fillStyle = PALE;
-    g.globalAlpha = page ? 0.95 : 0.7; g.fillText(w.numeral, cx, S + 60); g.globalAlpha = 1;
+    g.lineWidth = 6; g.strokeStyle = GOLD;
+    g.beginPath(); g.arc(cx, cy, r + 6, 0, Math.PI * 2); g.stroke();
+    if (here) { g.lineWidth = 3; g.beginPath(); g.arc(cx, cy, r + 22, 0, Math.PI * 2); g.stroke(); }
+    numeral(0.95);
     tex.needsUpdate = true;
   };
+  // A world not yet come to: a small pale star on its star, waiting to be found (the one you're on, ringed).
+  if (!page) {
+    const st = g.createRadialGradient(cx, cy, 0, cx, cy, 30);
+    st.addColorStop(0, 'rgba(239,231,211,0.95)'); st.addColorStop(0.35, 'rgba(239,231,211,0.5)'); st.addColorStop(1, 'rgba(239,231,211,0)');
+    g.fillStyle = st; g.beginPath(); g.arc(cx, cy, 30, 0, Math.PI * 2); g.fill();
+    if (here) { g.lineWidth = 4; g.strokeStyle = GOLD; g.beginPath(); g.arc(cx, cy, 50, 0, Math.PI * 2); g.stroke(); }
+    numeral(here ? 0.9 : 0.5);
+    return tex;
+  }
   // (Its roundness: the lamp's light on it, falling away to the lower right, and a darker rim.)
   const shade = () => {
     const lit = g.createRadialGradient(cx - r * 0.38, cy - r * 0.42, r * 0.1, cx, cy, r * 1.02);
     lit.addColorStop(0, 'rgba(255,248,232,0.16)'); lit.addColorStop(0.55, 'rgba(27,35,65,0)'); lit.addColorStop(1, 'rgba(27,35,65,0.5)');
     g.save(); g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.clip(); g.fillStyle = lit; g.fillRect(0, 0, S, S); g.restore();
   };
-  // (Failing a picture: the world small in its own colours.)
-  const disc = () => {
-    g.save(); g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.clip();
-    g.fillStyle = w.palette.paper; g.fillRect(0, 0, S, S);
-    g.restore();
-  };
-  // A world not yet come to: only its dotted outline on its star, waiting to be found.
-  if (!page) { ring(); return tex; }
+  // A world made: itself, as it was left, filled and ringed in gold.
+  g.save(); g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.clip(); g.fillStyle = w.palette.paper; g.fillRect(0, 0, S, S); g.restore();
+  shade(); ring();
   const src = page.portrait || portraitFor(id);
-  disc(); shade(); ring();
   if (src) {
     const img = new Image();
     img.onload = () => {
-      g.clearRect(0, 0, S, S);
+      g.clearRect(0, 0, cv.width, cv.height);
       g.save(); g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.clip(); g.drawImage(img, cx - r, cy - r, r * 2, r * 2); g.restore();
       shade(); ring();
     };
