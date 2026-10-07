@@ -2960,7 +2960,10 @@ $('atlas').querySelector('.view')!.addEventListener('click', () => $('atlas').cl
     void pages().then((all) => { openAtlas(all, pick.dataset.world!); $('atlas').querySelector('.plates-head')!.scrollIntoView({ behavior: 'smooth' }); });
   });
 }
-$('atlas').querySelector('.close')!.addEventListener('click', () => { $('atlas').classList.remove('open', 'viewing'); globeView?.dispose(); globeView = null; cardGlobe?.dispose(); cardGlobe = null; $('atlas').querySelector('.pick')!.classList.remove('shown'); });
+const closeAtlas = () => { $('atlas').classList.remove('open', 'viewing'); globeView?.dispose(); globeView = null; cardGlobe?.dispose(); cardGlobe = null; $('atlas').querySelector('.pick')!.classList.remove('shown'); };
+$('atlas').querySelector('.close')!.addEventListener('click', closeAtlas);
+// (The plain list of every world, from the chart: the chart is the beautiful view of them, the list the quick way to one.)
+$('atlas').querySelector('.tolist')!.addEventListener('click', () => { closeAtlas(); openList(); });
 // A world with a past can be begun afresh, on new ground.
 // A world without life has no key of its kinds.
 // (The key to life's signs is not shown: the aim is the chain, not the kinds, and the key was one more thing to read.)

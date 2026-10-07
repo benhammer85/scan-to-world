@@ -131,9 +131,10 @@
       #system .foot .again { opacity: 0.55; font-size: 13px; cursor: pointer; padding: 8px; }
       #atlas { position: fixed; inset: 0; z-index: 35; display: none; overflow-y: auto; background: #1b2341; color: #efe7d3; padding: calc(20px + env(safe-area-inset-top)) 16px 40px; box-sizing: border-box; touch-action: pan-y; }
       #atlas.open { display: block; }
-      #atlas .head { display: flex; justify-content: space-between; align-items: baseline; margin: 0 4px 18px; }
-      #atlas h2 { margin: 0; font-weight: normal; font-style: italic; font-size: 22px; letter-spacing: 0.04em; }
-      #atlas .close { font: italic 14px "Newsreader", "Iowan Old Style", Georgia, serif; color: #efe7d3; background: none; border: none; opacity: 0.6; padding: 6px; cursor: pointer; }
+      #atlas .head { position: sticky; top: calc(-20px - env(safe-area-inset-top)); z-index: 2; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; margin: calc(-20px - env(safe-area-inset-top)) -16px 10px; padding: calc(12px + env(safe-area-inset-top)) 12px 10px; background: #1b2341; border-bottom: 1px solid rgba(226, 194, 122, 0.25); } /* (a plain dark band: over the sky's fade, its words were lost) */
+      #atlas .head .close { justify-self: start; } #atlas .head .tolist { justify-self: end; }
+      #atlas h2 { margin: 0; font-weight: normal; font-style: italic; font-size: 20px; letter-spacing: 0.04em; text-align: center; }
+      #atlas .close, #atlas .tolist { font: 16px "Newsreader", "Iowan Old Style", Georgia, serif; color: #efe7d3; background: none; border: none; opacity: 0.9; padding: 10px 6px; min-height: 44px; cursor: pointer; }
       #atlas .sky { position: relative; height: max(320px, min(calc(100svh - 120px - env(safe-area-inset-top) - env(safe-area-inset-bottom)), 1000px)); margin: 0 -16px 8px; } /* (the whole screen's height: capped at the width's, the globe sat in a short band with the page empty below) */
       #atlas .credit { text-align: center; font-style: italic; font-size: 11px; opacity: 0.45; margin: 0 0 30px; }
       #atlas .plates-head { text-align: center; font-style: italic; font-size: 14px; opacity: 0.7; margin: 0 0 14px; }
@@ -187,7 +188,7 @@
     <button id="retry">try again from a minute before</button>
     <button id="finish">end the fire</button>
     <button id="worlds" aria-label="Menu"></button>
-    <div id="atlas" class="engraved"><div class="head"><h2>Celestial Chart</h2><button class="close">back</button></div><div class="sky"></div><p class="credit">The figures after Johann Bayer's Uranometria, engraved by Alexander Mair, 1603</p><p class="plates-head"></p><div class="pages"></div><div class="view"><img alt=""></div><div class="pick"><div class="card"><div class="globe"></div><p class="t"></p><p class="k"></p><p class="m"></p><div class="acts"><button class="go">Play</button><button class="plates">its plates</button></div></div></div></div>
+    <div id="atlas" class="engraved"><div class="head"><button class="close">‹ back</button><h2>Celestial Chart</h2><button class="tolist">the worlds</button></div><div class="sky"></div><p class="credit">The figures after Johann Bayer's Uranometria, engraved by Alexander Mair, 1603</p><p class="plates-head"></p><div class="pages"></div><div class="view"><img alt=""></div><div class="pick"><div class="card"><div class="globe"></div><p class="t"></p><p class="k"></p><p class="m"></p><div class="acts"><button class="go">Play</button><button class="plates">its plates</button></div></div></div></div>
     <div id="system" class="engraved"><div class="head"><h2>A solar system</h2><button class="close">back</button></div><p class="about"></p><div class="plate"></div><div class="foot"></div></div>
     <div id="menu" class="engraved" hidden><div class="card"><p class="where"></p><button data-go="again">Begin this world again</button><button data-go="list">Choose another world</button><button data-go="title">The title page</button><button class="close">back to the world</button></div></div>
     <div id="list" class="engraved" hidden><div class="head"><h2>The worlds</h2><button class="close">back</button></div><div class="chapters"></div><button class="chart">see them on the Celestial Chart</button></div>
