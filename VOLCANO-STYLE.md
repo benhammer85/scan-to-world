@@ -21,7 +21,7 @@ The game was drifting towards realism: each effect true to nature (smoke on a wi
 
 ## The medium
 
-**Watercolour, over an ink map.** Watercolour is a fluid and behaves as lava does (it runs, pools, spreads into what's wet, and hardens as it dries), so the lava is drawn as paint, cooling as drying. The rule that keeps it from turning to mush: **ink for what stays, watercolour for what changes.** The coast, the contours, the vent's mark and the aim's dots are fine ink lines, the map's skeleton; everything alive (the lava, the pressure, a burst, cooling) is wash. It's the tradition of the hand-coloured maps of the 1700s. Watercolour must be beautiful: varied, never one flat colour, and showing the swirl of wet pigment while it's wet.
+**Watercolour, over an ink map.** Watercolour is a fluid and behaves as lava does (it runs, pools, spreads into what's wet, and hardens as it dries), so the lava is drawn as paint, cooling as drying. The rule that keeps it from turning to mush: **ink for what stays, watercolour for what changes.** The coast, the contours, the vent's mark and the aim's dots are fine ink lines, the map's skeleton; everything alive (the lava, the pressure, a burst, cooling, and life itself, each kind its own pigment, deeper where it has taken hold) is wash. No signs or symbols for things that grow or change. It's the tradition of the hand-coloured maps of the 1700s. Watercolour must be beautiful: varied, never one flat colour, and showing the swirl of wet pigment while it's wet.
 
 ## Rules
 
