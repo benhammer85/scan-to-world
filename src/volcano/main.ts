@@ -1882,6 +1882,7 @@ const upMark = WORLD.rules.lamp ? mark((g) => { g.lineWidth = 2.5; g.beginPath()
 let holding = false;
 function holdShut(): void {
   if (!begun || ending || planet.over) return;
+  if (TOWN) return; // (Grindavík: the fissure isn't yours to hold; a finger only raises walls)
   holding = planet.clamped = true;
   feel(15);
 }
