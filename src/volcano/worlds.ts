@@ -788,9 +788,9 @@ export const WORLDS: World[] = [
       g: 1,
       terrain: 'mars', basins: 0, craters: 0, floor: 0.15, rough: 0.012,
       waves: 0, rain: 0, sink: 0, swell: 0, life: false,
-      flow: 2, channel: 3, coolLand: 0.3, thin: 0.0015, // (runny, and slow to set: it creeps on, a front you can see coming)
-      drift: 0, rises: 0, heat: 180, rising: 1.0, steady: true, pulse: 3, tipPour: 5, // (it pours by itself, however the world is held: the walls are all you do)
-      town: 0.38, townR: 0.07, slope: 0.1, byGround: true, walls: 14, wallHeight: 0.06,
+      flow: 0.6, channel: 3, coolLand: 0.3, thin: 0.0015, // (runny, and slow to set: it creeps on down to the town, arriving in about fifty seconds, a front you can see coming)
+      drift: 0, rises: 0, heat: 100, rising: 0.7, steady: true, pulse: 0.4, tipPour: 5, // (it pours by itself, however the world is held, often and a little at a time, so a flow is thinner than a wall is high: the walls are all you do)
+      town: 0.38, townR: 0.07, slope: 0.1, byGround: true, fallTilt: 0.6, walls: 20, wallHeight: 0.35, // (walls well above a flow, as the real ones were: lava ponds behind a wall and sets, and rides over one no higher than that)
       impactEvery: [0, 0], stormEvery: [0, 0],
     },
     palette: {

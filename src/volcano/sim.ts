@@ -364,8 +364,12 @@ export const VOLCANO = {
   townR: 0.08,
   slope: 0,
   byGround: false,
+  /** ...and how far (radians) the way down is tipped from straight into the ground, towards the town. */
+  fallTilt: 0.8,
   walls: 0,
   wallHeight: 0.035,
+  /** How wide a wall is, on a world of the drawn detail (scaled with the ground's points elsewhere). */
+  wallWidth: 0.026,
   /**
    * Triton: a burst in sunlight is a geyser, its dark plume blown downwind (east, along the
    * world's turning) into a streak this long (radians), counted if it's `plumesApart` from the last.
@@ -724,6 +728,8 @@ export class Planet {
       const q = this.plume, t1 = unit(cross(q, Math.abs(q.y) < 0.9 ? { x: 0, y: 1, z: 0 } : { x: 1, y: 0, z: 0 })), r = this.k.town;
       const c = unit({ x: q.x * Math.cos(r) - t1.x * Math.sin(r), y: q.y * Math.cos(r) - t1.y * Math.sin(r), z: q.z * Math.cos(r) - t1.z * Math.sin(r) });
       this.townAt = c;
+      { const m = unit({ x: q.x + c.x, y: q.y + c.y, z: q.z + c.z }), dd = c.x * m.x + c.y * m.y + c.z * m.z, t = unit({ x: c.x - dd * m.x, y: c.y - dd * m.y, z: c.z - dd * m.z }), tilt = this.k.fallTilt;
+        this.fall = unit({ x: -m.x * Math.cos(tilt) + t.x * Math.sin(tilt), y: -m.y * Math.cos(tilt) + t.y * Math.sin(tilt), z: -m.z * Math.cos(tilt) + t.z * Math.sin(tilt) }); }
       // (A tilt about the midway point, half the fall above it and half below, fading out a little way beyond the two.)
       const m = unit({ x: q.x + c.x, y: q.y + c.y, z: q.z + c.z }), fall = 2 * (1 - Math.cos(r));
       for (let v = 0; v < n; v++) {
@@ -757,6 +763,15 @@ export class Planet {
   domeCentre: { x: number; y: number; z: number } | null = null;
   /** Grindavík: where the town is, its houses (and the vertex each stands on), the walls raised, and how many taps of earth are left. */
   townAt: { x: number; y: number; z: number } | null = null;
+  /**
+   * Grindavík: which way is down for the lava, whatever way the world is held: into the ground under the fissure
+   * and the town, tipped well over towards the town, so a flow runs down the land to it as a tongue. (By the
+   * ground's own slope alone, a flow piled as high as the slope fell from one point to the next, and spread every
+   * way in a round pool, uphill too; steep enough to stop that, the land would have stood as a great hump.)
+   */
+  fall: { x: number; y: number; z: number } | null = null;
+  /** Which way the lava runs down: the fixed fall where lava runs by the ground, or as the world is held. */
+  private get downward(): { x: number; y: number; z: number } | null { return this.k.byGround ? this.fall : this.gravity; }
   readonly houses: { x: number; y: number; z: number; v: number }[] = [];
   readonly walls: { a: { x: number; y: number; z: number }; b: { x: number; y: number; z: number } }[] = [];
   wallsLeft = 0;
@@ -1444,7 +1459,7 @@ export class Planet {
 
   /** Where lava poured the way the world is held breaks out: a few steps from the vent, down the tip; null if it's held level. */
   private aimedFlank(vent: number): number | null {
-    const g = this.gravity, p = this.topo.basePositions, t = this.topo;
+    const g = this.downward, p = this.topo.basePositions, t = this.topo;
     if (!g) return null;
     const n = { x: p[vent * 3], y: p[vent * 3 + 1], z: p[vent * 3 + 2] }, along = g.x * n.x + g.y * n.y + g.z * n.z;
     const dx = g.x - along * n.x, dy = g.y - along * n.y, dz = g.z - along * n.z, l = Math.hypot(dx, dy, dz);
@@ -1467,7 +1482,7 @@ export class Planet {
    * as far as `steps` or until nowhere is lower. For the faint line that shows a pour's way before it goes.
    */
   pathFrom(from: number, steps: number): number[] {
-    const t = this.topo, p = t.basePositions, G = this.gravity, R = this.k.relief, out = [from];
+    const t = this.topo, p = t.basePositions, G = this.downward, R = this.k.relief, out = [from];
     let v = from;
     const seen = new Set([from]);
     for (let k = 0; k < steps; k++) {
@@ -1537,8 +1552,9 @@ export class Planet {
     const l = this.lastWall, joins = l && Math.acos(Math.min(1, l.x * c.x + l.y * c.y + l.z * c.z)) < 0.14;
     const a = joins ? l! : c;
     const p = this.topo.basePositions, n = this.rock.length, h = this.k.wallHeight;
-    // (At least as wide as the ground's own points are apart, so a wall has no gaps on a coarser world.)
-    const width = Math.max(0.016, 0.55 * Math.sqrt((4 * Math.PI) / n));
+    // (Wider than the ground's own points are apart: narrower, lava slipped across the line between two points
+    // either side of it, each raised less than half the wall's height, and the walls hardly held anything.)
+    const width = this.k.wallWidth * Math.sqrt((4 * Math.PI) / n) / Math.sqrt((4 * Math.PI) / 16002);
     const ab = { x: c.x - a.x, y: c.y - a.y, z: c.z - a.z }, len2 = ab.x * ab.x + ab.y * ab.y + ab.z * ab.z;
     for (let v = 0; v < n; v++) {
       const x = p[v * 3], y = p[v * 3 + 1], z = p[v * 3 + 2];
@@ -1649,14 +1665,14 @@ export class Planet {
   private flow(dt: number): void {
     this.moltenKnown = false;
     const t = this.topo, n = this.rock.length, next = this.next, p = t.basePositions;
-    const G = this.gravity, R = this.k.relief;
+    const G = this.downward, R = this.k.relief;
     next.set(this.lava);
     for (let v = 0; v < n; v++) {
       const l = this.lava[v];
       if (l < this.k.thin) continue;
       const s = this.rock[v] + l, a = t.nbrOffsets[v], b = t.nbrOffsets[v + 1];
       const own = (w: number) => s - (this.rock[w] + this.lava[w]), selfG = this.k.selfGravity;
-      const held = G && !this.k.byGround
+      const held = G
         // Held like a globe: how far down the neighbour is along gravity, the ground raised as it
         // is drawn, counted back into the ground's own heights. Near the top the relief is all of
         // it; further round, the curve of the world pulls the lava down its side.
