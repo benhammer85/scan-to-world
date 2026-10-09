@@ -369,6 +369,7 @@ material.onBeforeCompile = (shader) => {
   shader.uniforms.uBloomCol = { value: new THREE.Color(SULPHUR ? '#f4e6b8' : ICE || WORLD.id === 'ijen' ? '#dde8f2' : '#e0d3c2') };
   shader.uniforms.uBurstWash = { value: burstWashU };
   shader.uniforms.uStone = stoneU; shader.uniforms.uStoneHit = stoneHitU;
+  shader.uniforms.uFissure = { value: planet.fissureAxis ? new THREE.Vector4(planet.fissureAxis.x, planet.fissureAxis.y, planet.fissureAxis.z, planet.k.fissure) : new THREE.Vector4(0, 0, 1, 0) };
   shader.uniforms.uVentMark = { value: LAMP ? 0 : 1 }; // (the vent marked on the map, as a chart marks a volcano)
   shader.uniforms.uFlash = flash;
   shader.uniforms.uDark = { value: DARK_LAVA ? 1 : 0 };
