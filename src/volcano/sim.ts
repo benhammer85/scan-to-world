@@ -341,8 +341,8 @@ export const VOLCANO = {
   /** The orange Earth: life in the shallows breathes out this much oxygen a second, at full strength over a planet of the drawn detail's worth of shallows. 0: none. */
   breathe: 0,
   /**
-   * Europa: let out held, between `chaos` and the burst point, the heat melts up through the ice
-   * and breaks it into rafts: a chaos field, counted if it's `plumesApart` from the last. 0: none.
+   * Europa: let out held, from `chaos` up, the heat melts up through the ice and breaks it into
+   * rafts: a chaos field, counted if it's `plumesApart` from the last. 0: none.
    */
   chaos: 0,
   /**
@@ -1034,7 +1034,7 @@ export class Planet {
     const v = this.plumeVertex, s = this.scale;
     if (volume < this.k.explosive) {
       this.tally.flows++;
-      if (this.k.chaos > 0 && !blast && volume >= this.k.chaos) this.counted(Math.sqrt(volume / this.k.explosive) * 0.16, 'The ice breaks into rafts: a chaos field', 'Rafts, but too near an earlier chaos field');
+      if (this.k.chaos > 0 && !blast && volume >= this.k.chaos) this.counted(Math.sqrt(volume / this.k.explosive) * 0.16, 'The ice cracks', 'The ice cracks, but too close to an earlier crack: move further away');
       // (It lasts by its size, so lava comes out at much the same pace whatever the eruption: it
       // lasted the same whatever its size, so a small one dribbled and a big one gushed.)
       const dur = this.k.pour * Math.min(3.2, 0.8 + volume * 0.16);
@@ -1047,12 +1047,15 @@ export class Planet {
     // A burst: most of it thrown up as ash that falls round the vent, the rest welling out.
     // Torn open, it throws its ash far and wide rather than piling it on the summit.
     // Where it can, the biggest throw some clear of the world altogether, into orbit.
+    // (Europa: a burst breaks the ice too, as a release short of one does. Held past a window that only a colour
+    // showed, it broke nothing, and there was no way to tell why without being told.)
+    if (this.k.chaos > 0 && !blast) this.counted(Math.sqrt(Math.min(volume, this.k.explosive) / this.k.explosive) * 0.16, 'The ice cracks', 'The ice cracks, but too close to an earlier crack: move further away');
     let left = volume;
     if (!blast && this.k.ringShare > 0 && this.towardGiant) {
       const fed = volume * this.k.ringShare;
       this.orbit += fed;
       left -= fed;
-      this.tell('The plume reaches the ring');
+      this.tell('Ice reaches the ring');
     }
     if (!blast && this.k.orbitShare > 0 && volume > this.k.explosive) {
       // (Any burst throws some: counted from a little under the burst point, so a burst when the smoke
@@ -1071,7 +1074,7 @@ export class Planet {
       for (let w = 0; w < this.rock.length; w++) { const d = Math.hypot(p[w * 3] - p[v * 3], p[w * 3 + 1] - p[v * 3 + 1], p[w * 3 + 2] - p[v * 3 + 2]); if (d < 0.14) this.rock[w] -= this.k.waveDig * (1 - (d / 0.14) ** 2); }
       if (shallow) {
         this.waves.push({ x: p[v * 3], y: p[v * 3 + 1], z: p[v * 3 + 2], at: this.seconds });
-        this.tell(`The air shakes round the world: ${this.waves.length}`);
+        this.tell(`A giant wave: ${this.waves.length}`);
       } else this.tell('The island is blown apart, but in the open air the shock dies away');
     }
     // (On Triton, a burst in sunlight is a geyser: all its plume blown downwind into a streak.)
@@ -1382,7 +1385,7 @@ export class Planet {
         if (d < r && this.rock[v] > this.k.floor) this.rock[v] -= sink * (1 - (d / r) ** 2);
       }
     }
-    if (h > 0.6 && !this.sinkingSaid) { this.sinkingSaid = true; this.tell('The ground is sinking: let it rest'); }
+    if (h > 0.6 && !this.sinkingSaid) { this.sinkingSaid = true; this.tell('The ground is sinking: stop pouring for a while'); }
     else if (h < 0.3) this.sinkingSaid = false;
     if (h >= 1) {
       // (Wide as well as deep: the whole summit over the chamber, not a pit at its tip.)
@@ -1425,7 +1428,7 @@ export class Planet {
     this.reserve += this.k.impactHeat * (1 + (this.k.caught - 1) * caught);
     this.tally.stones++;
     if (caught > 0.5) { this.tally.caught++; this.tell('Stone caught: more heat'); }
-    else if (this.k.impactNear > 0) this.tell('Missed: the stone fell outside the glow'); // (where catching them is the aim, a miss is said too)
+    else if (this.k.impactNear > 0) this.tell('Missed: the stone landed outside the gold ring'); // (where catching them is the aim, a miss is said too)
   }
 
   /** The share of the world that is land (above the sea). */
@@ -1613,8 +1616,8 @@ export class Planet {
     if (this.domeRise < this.k.dome) return;
     const q = this.plume, apart = Math.cos(this.k.plumesApart), quiet = this.seconds - this.domeTold < 20;
     if (this.plumes.some((o) => o.x * q.x + o.y * q.y + o.z * q.z > apart)) return; // (the one it's on, or too near one: said once, below)
-    if (this.offRing > this.k.domeBand) { if (!quiet) { this.domeTold = this.seconds; this.tell('A dome, but off the ring round the hollow'); } return; }
-    this.counted(this.k.plumesApart, this.domeCentre ? 'A mound on the ring' : 'A pancake dome', '');
+    if (this.offRing > this.k.domeBand) { if (!quiet) { this.domeTold = this.seconds; this.tell('A mound, but not on the dotted circle'); } return; }
+    this.counted(this.k.plumesApart, this.domeCentre ? 'A mound on the dotted circle' : 'A lava dome', '');
   }
 
   /** Triton: a geyser's plume, blown downwind into a long dark streak. */
@@ -1633,14 +1636,14 @@ export class Planet {
     }
     if (!(sum > 0)) return;
     for (let v = 0; v < n; v++) if (w[v]) { const add = (volume * w[v]) / sum; this.rock[v] += add * 0.3; this.ash[v] = Math.min(0.8, this.ash[v] + add * 45); }
-    this.counted(len, 'A geyser streaks the ice', 'A geyser, but its streak crosses an earlier one');
+    this.counted(len, 'A dark streak', 'A streak, but it crosses another: move further away');
   }
 
   private greatPlume(reach: number): void {
     const q = this.plume, apart = Math.cos(this.k.plumesApart);
-    if (this.plumes.some((o) => o.x * q.x + o.y * q.y + o.z * q.z > apart)) { this.tell('A great plume, but too near an earlier one'); return; }
+    if (this.plumes.some((o) => o.x * q.x + o.y * q.y + o.z * q.z > apart)) { this.tell('A big eruption, but too close to an earlier one: move further away'); return; }
     this.plumes.push({ x: q.x, y: q.y, z: q.z, reach });
-    this.tell(`A great plume: ${this.plumes.length}`);
+    this.tell(`A big eruption: ${this.plumes.length}`);
   }
 
   /** Ash falls round a vent, thickest nearest: a cone of soft ground, and death further out. Or, where there's no air, in a ring. */

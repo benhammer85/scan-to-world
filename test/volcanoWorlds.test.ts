@@ -565,13 +565,16 @@ describe('the orange Earth', () => {
 });
 
 describe('Europa', () => {
-  it('breaks the ice into a chaos field when let out before the burst point, and not after', () => {
+  it('cracks the ice when let out once the heat is enough, a burst too; not before', () => {
     const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('europa').rules);
     pl.pressure = pl.k.chaos + 1; pl.erupt();
     expect(pl.plumes.length).toBe(1);
     const pl2 = new Planet(topo, nearest(0, 0, 1), 3, worldOf('europa').rules);
     pl2.pressure = pl2.k.explosive + 1; pl2.erupt();
-    expect(pl2.plumes.length).toBe(0);
+    expect(pl2.plumes.length).toBe(1);
+    const pl3 = new Planet(topo, nearest(0, 0, 1), 3, worldOf('europa').rules);
+    pl3.pressure = pl3.k.chaos * 0.5; pl3.erupt();
+    expect(pl3.plumes.length).toBe(0);
   });
 });
 
