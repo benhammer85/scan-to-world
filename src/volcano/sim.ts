@@ -364,6 +364,13 @@ export const VOLCANO = {
   townR: 0.08,
   slope: 0,
   byGround: false,
+  /**
+   * Grindavík: the heat comes up along a fissure, not a point: a line this long either side of the vent (radians),
+   * across the slope but turned `fissureTurn` (radians) from straight across, lava welling out all along it, most
+   * in its middle. 0: a single vent.
+   */
+  fissure: 0,
+  fissureTurn: 0.35,
   /** ...and how far (radians) the way down is tipped from straight into the ground, towards the town. */
   fallTilt: 0.8,
   walls: 0,
@@ -730,6 +737,22 @@ export class Planet {
       this.townAt = c;
       { const m = unit({ x: q.x + c.x, y: q.y + c.y, z: q.z + c.z }), dd = c.x * m.x + c.y * m.y + c.z * m.z, t = unit({ x: c.x - dd * m.x, y: c.y - dd * m.y, z: c.z - dd * m.z }), tilt = this.k.fallTilt;
         this.fall = unit({ x: -m.x * Math.cos(tilt) + t.x * Math.sin(tilt), y: -m.y * Math.cos(tilt) + t.y * Math.sin(tilt), z: -m.z * Math.cos(tilt) + t.z * Math.sin(tilt) }); }
+      if (this.k.fissure > 0) {
+        // Across the slope at the vent, turned a little: down from the vent towards the town, and square to it.
+        const dq = c.x * q.x + c.y * q.y + c.z * q.z, down = unit({ x: c.x - dq * q.x, y: c.y - dq * q.y, z: c.z - dq * q.z }), across = unit(cross(q, down)), tn = this.k.fissureTurn;
+        const ax = unit({ x: across.x * Math.cos(tn) + down.x * Math.sin(tn), y: across.y * Math.cos(tn) + down.y * Math.sin(tn), z: across.z * Math.cos(tn) + down.z * Math.sin(tn) });
+        this.fissureAxis = ax;
+        const L = this.k.fissure, seen = new Map<number, number>();
+        for (let i = -12; i <= 12; i++) {
+          const a = (i / 12) * L, w = 1 - 0.6 * Math.abs(i / 12);
+          const pt = { x: q.x * Math.cos(a) + ax.x * Math.sin(a), y: q.y * Math.cos(a) + ax.y * Math.sin(a), z: q.z * Math.cos(a) + ax.z * Math.sin(a) };
+          let best = 0, bd = Infinity;
+          for (let v = 0; v < n; v++) { const d = (p[v * 3] - pt.x) ** 2 + (p[v * 3 + 1] - pt.y) ** 2 + (p[v * 3 + 2] - pt.z) ** 2; if (d < bd) { bd = d; best = v; } }
+          seen.set(best, Math.max(seen.get(best) ?? 0, w));
+        }
+        const sum = [...seen.values()].reduce((x, y) => x + y, 0);
+        this.fissureVents = [...seen].map(([v, w]) => ({ v, share: w / sum }));
+      }
       // (A tilt about the midway point, half the fall above it and half below, fading out a little way beyond the two.)
       const m = unit({ x: q.x + c.x, y: q.y + c.y, z: q.z + c.z }), fall = 2 * (1 - Math.cos(r));
       for (let v = 0; v < n; v++) {
@@ -770,6 +793,9 @@ export class Planet {
    * way in a round pool, uphill too; steep enough to stop that, the land would have stood as a great hump.)
    */
   fall: { x: number; y: number; z: number } | null = null;
+  /** Grindavík's fissure: which way it runs along the ground through the vent, and the points lava wells out of along it, each with its share. */
+  fissureAxis: { x: number; y: number; z: number } | null = null;
+  fissureVents: { v: number; share: number }[] = [];
   /** Which way the lava runs down: the fixed fall where lava runs by the ground, or as the world is held. */
   private get downward(): { x: number; y: number; z: number } | null { return this.k.byGround ? this.fall : this.gravity; }
   readonly houses: { x: number; y: number; z: number; v: number }[] = [];
@@ -1011,7 +1037,10 @@ export class Planet {
       if (this.k.chaos > 0 && !blast && volume >= this.k.chaos) this.counted(Math.sqrt(volume / this.k.explosive) * 0.16, 'The ice breaks into rafts: a chaos field', 'Rafts, but too near an earlier chaos field');
       // (It lasts by its size, so lava comes out at much the same pace whatever the eruption: it
       // lasted the same whatever its size, so a small one dribbled and a big one gushed.)
-      this.eruptions.push({ vertex: v, flank: this.aimedFlank(v) ?? this.flankOf(v), left: volume * s, rate: (volume * s) / this.k.pour, total: volume * s, t: 0, dur: this.k.pour * Math.min(3.2, 0.8 + volume * 0.16) });
+      const dur = this.k.pour * Math.min(3.2, 0.8 + volume * 0.16);
+      // (Along a fissure, a share out of each point of it, straight out where it is: a curtain of lava, not one mouth.)
+      if (this.fissureVents.length) for (const f of this.fissureVents) this.eruptions.push({ vertex: f.v, flank: f.v, left: volume * s * f.share, rate: (volume * s * f.share) / this.k.pour, total: volume * s * f.share, t: 0, dur });
+      else this.eruptions.push({ vertex: v, flank: this.aimedFlank(v) ?? this.flankOf(v), left: volume * s, rate: (volume * s) / this.k.pour, total: volume * s, t: 0, dur });
       this.kick(volume, 0.35);
       return 'flow';
     }

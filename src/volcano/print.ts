@@ -43,6 +43,7 @@ export const PRINT_FUNCTIONS = /* glsl */ `
   uniform float uFedTime; // (the time, at uFeeding a second)
   uniform vec3 uVent;
   uniform float uVentMark;
+  uniform vec4 uFissure; // (Grindavík's fissure: which way it runs through the vent, and how long either side; w 0, a single vent)
   uniform vec4 uStone, uStoneHit; // (a falling stone's shadow, and where one struck: see main.ts)
   uniform vec4 uRings[6]; // (the pressure, as rings spreading from the vent: each one's reach, strength, and 0 ink, 1 grey, 2 gold)
   uniform vec3 uRingInk; // (in the world's own colour: sulfur on Io, pale blue on the ice)
@@ -480,6 +481,15 @@ const VENT_SIGNS = /* glsl */ `
         // running in, as a sliced lemon.)
         if (uVentMark > 0.5) {
           float vr = max(0.022, 11.0 * px), vlw = max(0.65 * uPx * px, 1e-5);
+          // (Along a fissure: the same crater drawn as a crack, the distance to it measured from its line, widest in the
+          // middle and closing to nothing at its ends, as a fissure opens.)
+          if (uFissure.w > 0.0) {
+            vec3 fN = normalize(cross(uVent, uFissure.xyz));
+            float fAlong = atan(dot(vDir, uFissure.xyz), dot(vDir, uVent)), fAcross = asin(clamp(dot(vDir, fN), -1.0, 1.0));
+            float fOpen = sqrt(max(0.0, 1.0 - (fAlong / uFissure.w) * (fAlong / uFissure.w)));
+            vmFar = abs(fAcross) / max(0.18, fOpen) * 2.4 + max(0.0, abs(fAlong) - uFissure.w) * 3.0;
+            vmAng = fAlong * 40.0;
+          }
           float wob = 1.0 + 0.1 * (noise3(vec3(cos(vmAng) * 1.6, sin(vmAng) * 1.6, 3.0)) - 0.5);
           float vrW = vr * wob;
           float rimV = (1.0 - smoothstep(vlw * 0.5, vlw * 1.5, abs(vmFar - vrW))) * smoothstep(0.0, 0.06, fract(vmAng / 6.2832 + 0.37)) * 0.75 * onLand;
