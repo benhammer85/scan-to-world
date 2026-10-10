@@ -391,6 +391,7 @@ material.onBeforeCompile = (shader) => {
   shader.uniforms.uIceLine = iceLine;
   shader.uniforms.uSky = sky;
   shader.uniforms.uHaze = haze;
+  shader.uniforms.uDust = dustVeil;
   // Each world's own basalt, as a tint on the dark lava (a multiplier: 1 is a plain black-brown).
   const CRUST: Record<string, [number, number, number]> = { rogue: [0.9, 0.95, 1.1], dust: [1.25, 0.95, 0.8], magma: [1.1, 0.96, 0.9], snowball: [0.9, 0.97, 1.08], mars: [1.35, 0.9, 0.75], io: [0.78, 0.84, 0.86], moon: [0.95, 0.98, 1.08], ocean: [0.88, 0.97, 1.08], deep: [0.85, 0.97, 1.12], spin: [0.9, 0.98, 1.12], asteroid: [1.05, 0.98, 0.92], young: [1.25, 0.92, 0.82], tumble: [1.0, 0.97, 0.95] };
   shader.uniforms.uCrustTint = { value: new THREE.Vector3(...(CRUST[WORLD.id] ?? [1, 1, 1])) };
@@ -1394,7 +1395,7 @@ if (WORLD.goal === 'feed') {
  * on the world boiling away, its dust streaming off the day side, away from the star, as a comet's tail.
  */
 const SUN = WORLD.sun ? new THREE.Vector3(...WORLD.sun).normalize() : null, SUN_AT = new THREE.Vector3(0.85, 2.05, -4.6);
-const sky = { value: new THREE.Vector4(0, 0, 1, WORLD.id === 'rogue' || WORLD.id === 'ijen' ? 2 : SUN ? 1 : 0) }, iceLine = { value: planet.k.gas > 0 ? 0 : -1 }, haze = { value: planet.k.breathe > 0 ? 1 : 0 };
+const sky = { value: new THREE.Vector4(0, 0, 1, WORLD.id === 'rogue' || WORLD.id === 'ijen' ? 2 : SUN ? 1 : 0) }, iceLine = { value: planet.k.gas > 0 ? 0 : -1 }, haze = { value: planet.k.breathe > 0 ? 1 : 0 }, dustVeil = { value: 0 };
 let sunDisc: THREE.Mesh | null = null;
 /**
  * The star itself, worked out at every pixel as the world is, so it's as crisp as the world at any
@@ -1516,6 +1517,8 @@ function skyNow(dt: number): void {
   if (planet.k.gas > 0) iceLine.value = planet.iceLine;
   // (The haze clears with the oxygen, and goes on clearing once the sky has turned.)
   if (planet.k.breathe > 0) haze.value += (Math.min(1, Math.max(0, 1 - planet.oxygen / OXYGEN)) - haze.value) * Math.min(1, dt * 0.5);
+  // (A dust storm veils the world as it blows, a little already as it comes, and clears as it passes.)
+  if (planet.k.stormEvery[1] > 0) dustVeil.value += ((planet.storm ? 1 : planet.stormComing !== null ? 0.25 : 0) - dustVeil.value) * Math.min(1, dt * 0.6);
   // On Triton the sun moves across the sky, slowly, and its picture with it.
   if (SUN && WORLD.sunTurns && !planet.over) {
     SUN.applyAxisAngle(SKY_UP, WORLD.sunTurns * dt);
@@ -1881,7 +1884,7 @@ function nextLine(): string {
   const stone = planet.stoneDue;
   if (stone !== null && stone <= SAY_BEFORE) out.push(planet.impact ? `A stone lands in ${Math.ceil(stone)} s` : 'A stone is coming');
   const storm = planet.stormDue;
-  if (storm !== null && storm <= SAY_BEFORE) out.push(storm <= 0 ? 'A dust storm' : `A dust storm in ${Math.ceil(storm)} s`);
+  if (storm !== null && storm <= SAY_BEFORE) out.push(storm <= 0 ? 'Dust storm: old rock wears down, fresh lava holds' : `A dust storm in ${Math.ceil(storm)} s: pour now`);
   if (planet.k.tide > 0) {
     const p = planet.k.tidePeriod, phase = ((planet.seconds / p) % 1 + 1) % 1, until = ((0.25 - phase + 1) % 1) * p;
     if (planet.tideNow > 0.8) out.push('High tide'); else if (until <= SAY_BEFORE) out.push(`High tide in ${Math.ceil(until)} s`);
@@ -2622,7 +2625,7 @@ function effects(dt: number): void {
   }
   // A dust storm: dust driven across the face of the world, low and fast.
   if (planet.storm) {
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 10; i++) {
       const v = Math.floor(Math.random() * N);
       NORMAL.set(base[v * 3], base[v * 3 + 1], base[v * 3 + 2]).applyQuaternion(group.quaternion);
       if (NORMAL.z > 0.2 && !BARE) puffs.add('dust', p[v * 3], p[v * 3 + 1], p[v * 3 + 2], 0.3, Math.random, { x: INVERSE_RIGHT.x, y: INVERSE_RIGHT.y, z: INVERSE_RIGHT.z });
@@ -2973,8 +2976,8 @@ function chartInfo(): ChartInfo {
   // And the aim's own way there: a quarter, half, three quarters, and met.
   const OXY = WORLD.goal === 'oxygen', STEPS: [number, string][] = [[0.25, '25% done'], [0.5, 'halfway'], [0.75, '75% done']]; void OXY;
   // (Not where the aim is a count, whose marks show each as it came; nor a town, whose band is its houses.)
-  if (BAND.kind !== 'count' && !TOWN) for (const [at, text] of STEPS) { const s = story.find((p) => p.v >= at); if (s && !(ending?.won && at >= 1)) events.push({ t: s.t, text }); }
-  if (ending?.won) events.push({ t: ending.from, text: 'goal reached' });
+  // (Not said any more: the band rising says it, and the labels crowded the plate.)
+  void STEPS;
   events.sort((a, b) => a.t - b.t);
   const length = ending!.from, mm = `${Math.floor(length / 60)}:${String(Math.floor(length % 60)).padStart(2, '0')}`;
   const eras = eraFrom.filter((e) => e.from < length).map((e, i, all) => ({ name: e.name.replace(/^The /, ''), from: e.from, to: i + 1 < all.length ? all[i + 1].from : length }));
@@ -2986,7 +2989,7 @@ function chartInfo(): ChartInfo {
     kinds: LIFE && KIND_NAMES ? KINDS.map((k) => ({ name: k.name, ink: PIGMENT[k.kind] ?? k.ink, sign: k.sign, living: living.has(k.kind) })) : [],
     // The first aim, how far it got; and the second, as the fire left it.
     // (And the world's own true story, last, as a reward: it was on the card, where it read as homework before play.)
-    summary: tale(met) + ` · ${WORLD.why}` + (WORLD.real && WORLD.goal === 'height' ? ` · The real ${WORLD.real.name} is ${WORLD.real.km} km high.` : ''),
+    summary: tale(met) + ` · ${WORLD.why}`, // (Mars's true height is in its story already: said twice, it was)
     marks: marksNow ? markNames(WORLD.id).map((name, i) => ({ name, got: marksNow![i] })) : undefined,
     length,
     eras,
@@ -3786,4 +3789,4 @@ const loop = (): void => {
 };
 renderer.setAnimationLoop(loop);
 
-if (import.meta.env.DEV) (window as unknown as { volcano: unknown }).volcano = { atlas: (all: Page[]) => openAtlas(all), sky, haze, planet, held, keepsake: () => keepsakeOf(planet), pick: (id: WorldId) => atlasPick?.(id), portrait: () => { renderer.render(scene, camera); return portraitOf(renderer.domElement); }, group, base, renderer, scene, camera, puffs, ecology, islands, rotate, draw, save, effects: (dt: number) => { effects(dt); puffs.update(dt); }, world, frameCost, kindDots, chain: () => chain, aim: () => aimInk, pencil: () => aimPencil, lines: () => { lastLines = -1; redrawLines(1e6); }, life: () => { lastLife = -10; redrawLife(1e6); }, replayKeep: () => keepReplayFrame(), replayCount: () => replayFrames.length, replaying: () => (replaying ? replayShown : -1), pause: () => renderer.setAnimationLoop(null), frame: () => loop(), readyState: () => ({ share: readyShare(), begun, readyAt, seconds, least: planet.k.least, pressure: planet.pressure, ink: readyInk.object.geometry.getAttribute('position')?.count, pencil: readyPencil.object.geometry.getAttribute('position')?.count, aim: aimInk.object.geometry.getAttribute('position')?.count, vis: readyInk.object.visible, parent: readyInk.object.parent === group, ending: !!ending }), settle: (d = 3.6) => { lift = 0; dist = d; begunAt = -100; zoomedAt = seconds; look(); } };
+if (import.meta.env.DEV) (window as unknown as { volcano: unknown }).volcano = { atlas: (all: Page[]) => openAtlas(all), sky, haze, dustVeil, planet, held, keepsake: () => keepsakeOf(planet), pick: (id: WorldId) => atlasPick?.(id), portrait: () => { renderer.render(scene, camera); return portraitOf(renderer.domElement); }, group, base, renderer, scene, camera, puffs, ecology, islands, rotate, draw, save, effects: (dt: number) => { effects(dt); puffs.update(dt); }, world, frameCost, kindDots, chain: () => chain, aim: () => aimInk, pencil: () => aimPencil, lines: () => { lastLines = -1; redrawLines(1e6); }, life: () => { lastLife = -10; redrawLife(1e6); }, replayKeep: () => keepReplayFrame(), replayCount: () => replayFrames.length, replaying: () => (replaying ? replayShown : -1), pause: () => renderer.setAnimationLoop(null), frame: () => loop(), readyState: () => ({ share: readyShare(), begun, readyAt, seconds, least: planet.k.least, pressure: planet.pressure, ink: readyInk.object.geometry.getAttribute('position')?.count, pencil: readyPencil.object.geometry.getAttribute('position')?.count, aim: aimInk.object.geometry.getAttribute('position')?.count, vis: readyInk.object.visible, parent: readyInk.object.parent === group, ending: !!ending }), settle: (d = 3.6) => { lift = 0; dist = d; begunAt = -100; zoomedAt = seconds; look(); } };

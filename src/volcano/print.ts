@@ -35,6 +35,7 @@ export const PRINT_FUNCTIONS = /* glsl */ `
   uniform vec3 uCrustTint; // (each world's own basalt: redder on Mars, olive on Io, grey on the Moon)
   uniform float uIceLine; // (Snowball Earth: the ice from this latitude's sine to the poles; below 0, no ice)
   uniform float uHaze; // (the orange Earth: its orange haze, 1 at first, gone once the sky is blue)
+  uniform float uDust; // (Mars: a dust storm's veil, 0 clear, 1 at its height)
   uniform vec4 uSky; // (its star's direction, as seen, and w: 0 no star in it, 1 a star, 2 none at all, a rogue planet)
   #define uFeedingGlow (0.4 + 0.6 * uFeeding)
   // (Clocks that run faster while the vent feeds the flow, kept by the page: uTime times the feeding jumped the
@@ -297,6 +298,13 @@ export function printFragment(look: Look, sea: boolean): string {
       // The orange Earth's haze, over everything, clearing as life breathes out oxygen.
       // (Toward a warm orange of the same lightness, not the blue sea dimmed to mud.)
       if (uHaze > 0.0) col = mix(col, vec3(1.0, 0.74, 0.47) * dot(col, vec3(0.3, 0.59, 0.11)) * 1.08, uHaze * 0.72);
+      // A dust storm: the world veiled in ochre dust, in long streaks across it, its detail softened.
+      if (uDust > 0.0) {
+        float band = noise3(vec3(vDir.x * 1.5, vDir.y * 11.0, vDir.z * 1.5)), fine = noise3(vec3(vDir.x * 4.0, vDir.y * 40.0, vDir.z * 4.0));
+        float streaks = smoothstep(0.25, 0.75, band * 0.75 + fine * 0.25);
+        vec3 dust = mix(vec3(0.80, 0.58, 0.40), vec3(0.90, 0.74, 0.56), streaks);
+        col = mix(col, dust, uDust * (0.45 + 0.25 * streaks));
+      }
 
       // Lava's marks.
       float lv = vMarks.y * onLand, lw = max(fwidth(lv), 1e-4); // (under the sea it's hidden, as it always was)
