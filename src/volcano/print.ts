@@ -36,6 +36,7 @@ export const PRINT_FUNCTIONS = /* glsl */ `
   uniform float uIceLine; // (Snowball Earth: the ice from this latitude's sine to the poles; below 0, no ice)
   uniform float uHaze; // (the orange Earth: its orange haze, 1 at first, gone once the sky is blue)
   uniform float uDust; // (Mars: a dust storm's veil, 0 clear, 1 at its height)
+  uniform float uTide; // (Io: its ground flushed warm towards high tide, 0 to 1)
   uniform vec4 uSky; // (its star's direction, as seen, and w: 0 no star in it, 1 a star, 2 none at all, a rogue planet)
   #define uFeedingGlow (0.4 + 0.6 * uFeeding)
   // (Clocks that run faster while the vent feeds the flow, kept by the page: uTime times the feeding jumped the
@@ -298,6 +299,8 @@ export function printFragment(look: Look, sea: boolean): string {
       // The orange Earth's haze, over everything, clearing as life breathes out oxygen.
       // (Toward a warm orange of the same lightness, not the blue sea dimmed to mud.)
       if (uHaze > 0.0) col = mix(col, vec3(1.0, 0.74, 0.47) * dot(col, vec3(0.3, 0.59, 0.11)) * 1.08, uHaze * 0.72);
+      // Io at high tide: the ground flushed warm, the squeeze's heat showing through.
+      if (uTide > 0.0) col = mix(col, col * vec3(1.12, 0.8, 0.6), uTide * 0.4);
       // A dust storm: the world veiled in ochre dust, in long streaks across it, its detail softened.
       if (uDust > 0.0) {
         float band = noise3(vec3(vDir.x * 1.5, vDir.y * 11.0, vDir.z * 1.5)), fine = noise3(vec3(vDir.x * 4.0, vDir.y * 40.0, vDir.z * 4.0));

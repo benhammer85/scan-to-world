@@ -392,6 +392,7 @@ material.onBeforeCompile = (shader) => {
   shader.uniforms.uSky = sky;
   shader.uniforms.uHaze = haze;
   shader.uniforms.uDust = dustVeil;
+  shader.uniforms.uTide = tideWarm;
   // Each world's own basalt, as a tint on the dark lava (a multiplier: 1 is a plain black-brown).
   const CRUST: Record<string, [number, number, number]> = { rogue: [0.9, 0.95, 1.1], dust: [1.25, 0.95, 0.8], magma: [1.1, 0.96, 0.9], snowball: [0.9, 0.97, 1.08], mars: [1.35, 0.9, 0.75], io: [0.78, 0.84, 0.86], moon: [0.95, 0.98, 1.08], ocean: [0.88, 0.97, 1.08], deep: [0.85, 0.97, 1.12], spin: [0.9, 0.98, 1.12], asteroid: [1.05, 0.98, 0.92], young: [1.25, 0.92, 0.82], tumble: [1.0, 0.97, 0.95] };
   shader.uniforms.uCrustTint = { value: new THREE.Vector3(...(CRUST[WORLD.id] ?? [1, 1, 1])) };
@@ -1389,6 +1390,41 @@ if (WORLD.goal === 'feed') {
   scene.add(giant);
 }
 /**
+ * In Io's sky, Jupiter: an engraved disc, upper left, its belts and its great red spot, and no ring. Io's orbit
+ * isn't quite round: nearest Jupiter, the squeeze is hardest and the heat comes fastest, which is high tide. So
+ * Jupiter looms a little larger towards high tide and draws back after, and Io's ground flushes warm (`tideWarm`).
+ */
+const JUPITER = WORLD.id === 'io' ? (() => {
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 256;
+  const g = cv.getContext('2d')!;
+  g.fillStyle = '#eadcc0'; g.strokeStyle = P.landInkHigh; g.lineWidth = 3;
+  g.beginPath(); g.arc(128, 128, 122, 0, Math.PI * 2); g.fill();
+  g.save(); g.beginPath(); g.arc(128, 128, 121, 0, Math.PI * 2); g.clip();
+  // Its belts, broad washes between fine engraved lines.
+  g.globalAlpha = 0.16; g.fillStyle = '#b07a52';
+  for (const [y, h] of [[70, 16], [102, 20], [150, 22], [184, 12]]) g.fillRect(0, y, 256, h);
+  g.globalAlpha = 0.45; g.lineWidth = 1.5;
+  for (const y of [62, 70, 86, 102, 122, 150, 172, 184, 196]) { g.beginPath(); g.moveTo(0, y); g.bezierCurveTo(80, y + 6, 176, y + 6, 256, y); g.stroke(); }
+  // The great red spot.
+  g.globalAlpha = 0.55; g.fillStyle = '#c0704c'; g.beginPath(); g.ellipse(160, 161, 20, 11, 0, 0, Math.PI * 2); g.fill();
+  g.globalAlpha = 0.7; g.lineWidth = 1.4; g.stroke();
+  // Its night side hatched.
+  g.globalAlpha = 0.3; g.lineWidth = 1.4;
+  for (let x = 170; x < 330; x += 9) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x - 70, 256); g.stroke(); }
+  g.restore();
+  g.globalAlpha = 1; g.lineWidth = 4;
+  g.beginPath(); g.arc(128, 128, 122, 0, Math.PI * 2); g.stroke();
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const disc = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, alphaTest: 0.5 }));
+  disc.position.set(-2.05, 1.55, -4.8); // (low at the left, partly off the page: clear of the words at the top)
+  scene.add(disc);
+  return disc;
+})() : null;
+/** How warm Io's ground is flushed by the tide: 0 at low and mid tide, up to 1 at its highest. */
+const tideWarm = { value: 0 };
+/**
  * A star in the sky, for the worlds it boils or bakes: an engraved disc with short rays, upper right,
  * fixed there as the giant is, so "towards the star" is always the same way; the world's night side
  * in shadow. (A rogue planet has none: all of it is in the dark, and only the lava gives light.) And
@@ -1518,6 +1554,11 @@ function skyNow(dt: number): void {
   // (The haze clears with the oxygen, and goes on clearing once the sky has turned.)
   if (planet.k.breathe > 0) haze.value += (Math.min(1, Math.max(0, 1 - planet.oxygen / OXYGEN)) - haze.value) * Math.min(1, dt * 0.5);
   // (A dust storm veils the world as it blows, a little already as it comes, and clears as it passes.)
+  // (The tide, seen: Io's ground warm towards high tide, and Jupiter nearer.)
+  if (planet.k.tide > 0) {
+    tideWarm.value = Math.max(0, (planet.tideNow - 0.3) / 0.7);
+    if (JUPITER) JUPITER.scale.setScalar(GIANT_R * 3 * (1 + 0.14 * planet.tideNow));
+  }
   if (planet.k.stormEvery[1] > 0) dustVeil.value += ((planet.storm ? 1 : planet.stormComing !== null ? 0.25 : 0) - dustVeil.value) * Math.min(1, dt * 0.6);
   // On Triton the sun moves across the sky, slowly, and its picture with it.
   if (SUN && WORLD.sunTurns && !planet.over) {
@@ -3610,6 +3651,31 @@ function breathe(dt: number): void {
   const d = dist + (want - dist) * Math.min(1, (held || gathering ? 0.9 : gliding ? 0.9 : Math.abs(lean - 1) > 0.01 ? 1.4 : 0.15) * dt), l = lift + (wantLift - lift) * Math.min(1, (gliding ? 1.2 : 0.6) * dt);
   if (Math.abs(d - dist) > 1e-4 || Math.abs(l - lift) > 1e-5) { dist = d; lift = l; look(); }
 }
+/**
+ * Mercury: what a burst does happens on the far side, out of view. So as its shock nears the far side, the world
+ * turns itself round to show it, holds while the ground there breaks open, and turns back. A finger on the world
+ * stops it where it is, and it's left there.
+ */
+let farBursts = 0, farAt = -1, farFrom: THREE.Quaternion | null = null;
+const farTo = new THREE.Quaternion(), FAR_V = new THREE.Vector3(), TOWARD_US = new THREE.Vector3(0, 0, 1);
+const FAR_IN = 1.6, FAR_HOLD = 3.5, FAR_OUT = 1.6;
+function farLook(): void {
+  if (WORLD.goal !== 'antipode' || !planet.far) return;
+  if (planet.tally.bursts > farBursts) { farBursts = planet.tally.bursts; if (farAt < 0) farAt = planet.seconds + planet.k.antipodeDelay - FAR_IN; }
+  if (farAt < 0) return;
+  const t = planet.seconds - farAt;
+  if (t < 0) return;
+  if (document.body.classList.contains('touching') || ending) { farAt = -1; farFrom = null; return; }
+  if (!farFrom) {
+    farFrom = group.quaternion.clone();
+    FAR_V.set(planet.far.x, planet.far.y, planet.far.z).normalize().applyQuaternion(farFrom);
+    farTo.setFromUnitVectors(FAR_V, TOWARD_US).multiply(farFrom);
+  }
+  const ease = (u: number) => u * u * (3 - 2 * u);
+  if (t >= FAR_IN + FAR_HOLD + FAR_OUT) { group.quaternion.copy(farFrom); farFrom = null; farAt = -1; return; }
+  const u = t < FAR_IN ? ease(t / FAR_IN) : t < FAR_IN + FAR_HOLD ? 1 : 1 - ease((t - FAR_IN - FAR_HOLD) / FAR_OUT);
+  group.quaternion.slerpQuaternions(farFrom, farTo, u);
+}
 /** If the phone can't keep up, draw a little less finely: the pixel ratio comes down a half at a time, but never below two to a point (see FINEST). */
 let slowFor = 0, frameTime = 1 / 60;
 /** Never coarser than this, however slow the phone: below two pixels to a point, lines and edges look pixelated. */
@@ -3710,6 +3776,7 @@ const loop = (): void => {
     const steps = speed > 1 ? 4 : 1;
     for (let k = 0; k < steps; k++) planet.step((dt * speed) / steps);
     if (!ending) { keepReplayFrame(); keepLook(); }
+    farLook();
     // A tumbling moon rolls of itself, about its spin's axis (in its own frame), as fast as it tumbles.
     if (planet.k.tumble > 0) {
       const w = planet.spinNow, r = Math.hypot(w.x, w.y, w.z);
