@@ -35,6 +35,7 @@
  */
 import type { Topology } from '../mesh/topology';
 import { realHeight, pointAt, type RealName } from './real';
+import { Marble } from './marble';
 
 const REFERENCE = 16002; // an icosphere of detail 40
 /** The depth about which lava runs freely: much thinner, and it hardly moves (see `flow`). */
@@ -372,17 +373,21 @@ export const VOLCANO = {
   fissure: 0,
   fissureTurn: 0.35,
   /**
-   * Io's two fires, marbled: within this far (radians) of where the heat begins, lava doesn't run as lava but is
-   * dropped as colour into a pool, as ink is on water for marbled paper, pushing what's there straight outward (each
-   * point to where the same area round the drop stays between it and the drop: the rule of ink on water, which makes
-   * the rings). Your lava is one colour; a sulphur spring in the middle drops the other by itself, every
-   * `sulphurEvery` seconds, `sulphurArea` (square radians) at a time; a pour drops `marbleArea` for each unit of heat.
-   * 0: none.
+   * Io's two fires, a lava lamp: within this far (radians) of where the heat begins is a round pool of two fluids
+   * that never mix, marbled as ink is on water (see marble.ts). A finger held in it pours your lava there, `marblePour`
+   * heat a second, each unit of heat covering `marbleArea` (square radians); drawn through it, it drags the colours
+   * along. Blue wells up by itself somewhere in the pool every `sulphurEvery` seconds, `sulphurArea` at a time, and
+   * slow currents turn the colours round, one every `currentEvery` seconds, as far as `currentTurn` (radians) at their
+   * middle. Marbled is when the two colours meet along `marbleLines` (see Marble.measure). 0: none.
    */
   marble: 0,
-  sulphurEvery: 6,
+  sulphurEvery: 4,
   sulphurArea: 0.006,
   marbleArea: 0.0016,
+  marblePour: 3,
+  currentEvery: 2.5,
+  currentTurn: 0.7,
+  marbleLines: 600,
   /** ...and how far (radians) the way down is tipped from straight into the ground, towards the town. */
   fallTilt: 0.8,
   walls: 0,
@@ -785,8 +790,9 @@ export class Planet {
     }
     // Io's two fires: the pool round where the heat begins, and the sulphur spring in its middle.
     if (this.k.marble > 0) {
-      this.marbleAt = { ...this.plume };
-      this.sulphurIn = this.k.sulphurEvery * 0.5;
+      this.marble = new Marble(unit(this.plume), this.k.marble);
+      this.sulphurIn = 1;
+      this.currentIn = this.k.currentEvery;
     }
     this.start = this.rock.slice();
     // The lava lamp's far shore: well round the world from where the heat is.
@@ -801,16 +807,12 @@ export class Planet {
   readonly start: Float32Array;
   /** Wright Mons: the middle of its great hollow, the mounds to be raised round it (null on other worlds). */
   domeCentre: { x: number; y: number; z: number } | null = null;
-  /**
-   * Io's two fires: the pool's middle, and every drop of colour into it, oldest first (where, how much it covered,
-   * and which colour: 1 your lava, 2 sulphur). The colour anywhere is found by going back through the drops, newest
-   * first, each pulling the point in towards it as it pushed it out, until a drop is found that covered it: exact
-   * at any size, as the drawing needs it (kept on the ground's points, rings finer than the points apart were lost).
-   */
-  marbleAt: { x: number; y: number; z: number } | null = null;
-  readonly marbleDrops: { x: number; y: number; z: number; area: number; kind: number }[] = [];
-  static readonly MARBLE_DROPS = 48;
+  /** Io's two fires: the pool (null on other worlds). */
+  marble: Marble | null = null;
+  /** The pool's middle (null on other worlds). */
+  get marbleAt(): { x: number; y: number; z: number } | null { return this.marble ? this.marble.centre : null; }
   private sulphurIn = 0;
+  private currentIn = 0;
   /** How many drops of each colour have fallen. */
   readonly drops = { lava: 0, sulphur: 0 };
   /** Grindavík: where the town is, its houses (and the vertex each stands on), the walls raised, and how many taps of earth are left. */
@@ -1063,7 +1065,8 @@ export class Planet {
     const v = this.plumeVertex, s = this.scale;
     // Io's two fires: let out in the pool, it's dropped as colour, not run as lava.
     if (this.marbleAt && this.angleTo(this.plume, this.marbleAt) < this.k.marble) {
-      this.marbleDrop(this.plume, 1, Math.min(0.03, volume * this.k.marbleArea));
+      this.marble!.drop(0, 0, 1, Math.min(0.03, volume * this.k.marbleArea), this.seconds);
+      this.pressure = 0;
       this.drops.lava++;
       if (volume < this.k.explosive) this.tally.flows++; else this.tally.bursts++;
       return volume < this.k.explosive ? 'flow' : 'burst';
@@ -1313,7 +1316,7 @@ export class Planet {
     // The store is spent: whatever pressure is left comes out by itself, the last of the fire.
     if (this.reserve < 0.01 && this.pressure >= this.k.least && !this.erupting) { this.erupt(); this.tell('The last of the heat escapes'); }
     if (this.reserve < 0.01 && this.pressure < this.k.least) this.pressure = 0;
-    if (this.gravity) this.tipped(dt);
+    if (this.gravity && !this.marble) this.tipped(dt); // (Io's two fires: lava is poured with a finger, not by tipping)
     if (this.pouring || this.erupting) { if (this.seconds - this.pouredAt > 20) this.flowsPoured++; this.pouredAt = this.seconds; }
     for (let v = 0; v < this.lava.length; v++) if (this.lava[v] > 0.002) this.flowOf[v] = this.flowsPoured;
     if (this.k.pulse > 0 && !this.clamped && !this.k.lamp && this.pressure >= this.k.pulse && (!this.erupting || (this.pressure >= this.k.explosive * 0.9 && this.rock[this.plumeVertex] > 0))) this.erupt(); // (and again before the last is done, rather than let it build to a burst; under the sea it may, as Surtsey did)
@@ -1335,7 +1338,7 @@ export class Planet {
     else if (this.livingDue) { this.livingDue = false; this.living(0.25); }
     else if (this.slowIn <= 0) { this.slow(0.25, 0, half); this.slowIn = 0.25; this.slowHalf = true; }
     if (this.k.dome > 0 && (this.domeIn -= dt) <= 0) { this.domeIn = 0.5; this.domed(); }
-    if (this.marbleAt && !this.over && this.reserve > 0.01 && (this.sulphurIn -= dt) <= 0) { this.sulphurIn = this.k.sulphurEvery; this.marbleDrop(this.marbleAt, 2, this.k.sulphurArea); this.drops.sulphur++; }
+    if (this.marble && !this.over) this.lampOfIo(dt);
     this.stones(dt);
     this.storms(dt);
     // The long age on an airless world: small stones still fall, and pock what the fire left.
@@ -1642,46 +1645,60 @@ export class Planet {
   }
 
   private angleTo(a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }): number { return Math.acos(Math.max(-1, Math.min(1, (a.x * b.x + a.y * b.y + a.z * b.z) / (Math.hypot(a.x, a.y, a.z) * Math.hypot(b.x, b.y, b.z))))); }
-  /** A drop of colour into the pool at `at`, as much as covers `area` (square radians), pushing what's there straight out. */
-  private marbleDrop(at: { x: number; y: number; z: number }, kind: number, area: number): void {
-    const c = unit(at);
-    this.marbleDrops.push({ ...c, area, kind });
-    if (this.marbleDrops.length > Planet.MARBLE_DROPS) this.marbleDrops.shift(); // (the oldest are long since pushed out of the pool)
-  }
-  /** The colour at a point of the pool (0 none, 1 your lava, 2 sulphur): back through the drops, newest first. */
-  marbleKindAt(pt: { x: number; y: number; z: number }): number {
-    const c0 = this.marbleAt;
-    if (!c0 || this.angleTo(pt, c0) > this.k.marble) return 0;
-    let x = pt.x, y = pt.y, z = pt.z;
-    for (let i = this.marbleDrops.length - 1; i >= 0; i--) {
-      const d = this.marbleDrops[i], cr = Math.max(-1, Math.min(1, x * d.x + y * d.y + z * d.z)), r = Math.acos(cr);
-      if (r * r <= d.area) return d.kind;
-      // Where it was before this drop pushed it out: back along the line to the drop, to the radius that leaves its area between.
-      const r0 = Math.sqrt(r * r - d.area), tx = x - d.x * cr, ty = y - d.y * cr, tz = z - d.z * cr, tl = Math.hypot(tx, ty, tz) || 1;
-      x = d.x * Math.cos(r0) + (tx / tl) * Math.sin(r0); y = d.y * Math.cos(r0) + (ty / tl) * Math.sin(r0); z = d.z * Math.cos(r0) + (tz / tl) * Math.sin(r0);
+  /** Io's two fires: blue welling up by itself somewhere in the pool, and the slow currents turning the colours round. */
+  private lampOfIo(dt: number): void {
+    const m = this.marble!, R = m.R;
+    m.work();
+    const somewhere = (most: number): [number, number] => { const a = this.rand() * Math.PI * 2, r = R * most * Math.sqrt(this.rand()); return [r * Math.cos(a), r * Math.sin(a)]; };
+    if (this.reserve > 0.01 && (this.sulphurIn -= dt) <= 0) {
+      this.sulphurIn = this.k.sulphurEvery;
+      const [x, y] = somewhere(0.6);
+      m.drop(x, y, 2, this.k.sulphurArea * (0.7 + 0.6 * this.rand()), this.seconds);
+      this.drops.sulphur++;
     }
-    return 0;
+    if ((this.currentIn -= dt) <= 0) {
+      this.currentIn = this.k.currentEvery;
+      const [x, y] = somewhere(0.7);
+      m.turn(x, y, this.k.currentTurn * (0.6 + 0.4 * this.rand()) * (this.rand() < 0.5 ? -1 : 1), R * (0.3 + 0.25 * this.rand()), this.seconds);
+    }
   }
+  /** A finger held at `at` in the pool pours your lava there, as long as there's heat to pour. Returns whether it poured. */
+  marblePour(at: { x: number; y: number; z: number }, dt: number): boolean {
+    const m = this.marble;
+    if (!m || this.over || this.pressure <= 0.01) return false;
+    const [x, y] = m.toMap(unit(at));
+    if (!m.inPool(x, y)) return false;
+    const heat = Math.min(this.pressure, this.k.marblePour * dt);
+    this.pressure -= heat;
+    if (m.grow(x, y, heat * this.k.marbleArea, this.seconds)) { this.drops.lava++; this.tally.flows++; }
+    return true;
+  }
+  /** Where `at` is in the pool's flat map (for a finger that keeps pouring at one spot). */
+  marbleMap(at: { x: number; y: number; z: number }): [number, number] | null {
+    const m = this.marble;
+    if (!m) return null;
+    const p = m.toMap(unit(at));
+    return m.inPool(p[0], p[1]) ? p : null;
+  }
+  /** A finger drawn through the pool from `a` to `b`, dragging the colours along. */
+  marbleStir(a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }): void {
+    const m = this.marble;
+    if (!m) return;
+    const [x0, y0] = m.toMap(unit(a)), [x1, y1] = m.toMap(unit(b));
+    if (!m.inPool(x0, y0) && !m.inPool(x1, y1)) return;
+    m.stir(x0, y0, x1, y1, m.R * 0.16, this.seconds);
+  }
+  /** The colour at a point of the pool (0 none, 1 your lava, 2 the blue). */
+  marbleKindAt(pt: { x: number; y: number; z: number }): number { return this.marble ? this.marble.kindAtWorld(pt) : 0; }
   /**
-   * How many rings of colour the pool holds: along lines out from its middle in many directions, the bands crossed
-   * (each a change of colour), the middle value of them, so a swirl one way doesn't count for more than it is.
+   * How marbled the pool is, 0 to 1: how long the lines are where the two colours meet, against `marbleLines`, and
+   * only as far as each colour holds a fair share of the pool (a pool all blue, with a thread of lava, isn't it).
    */
-  get marbleRings(): number {
-    const c = this.marbleAt;
-    if (!c) return 0;
-    const R = this.k.marble, t1 = unit(cross(c, Math.abs(c.y) < 0.9 ? { x: 0, y: 1, z: 0 } : { x: 1, y: 0, z: 0 })), t2 = cross(c, t1);
-    const counts: number[] = [];
-    for (let a = 0; a < 16; a++) {
-      const th = (a / 16) * Math.PI * 2, dx = t1.x * Math.cos(th) + t2.x * Math.sin(th), dy = t1.y * Math.cos(th) + t2.y * Math.sin(th), dz = t1.z * Math.cos(th) + t2.z * Math.sin(th);
-      let last = 0, bands = 0;
-      for (let k = 0; k <= 160; k++) {
-        const r = (k / 160) * R * 0.999, kind = this.marbleKindAt({ x: c.x * Math.cos(r) + dx * Math.sin(r), y: c.y * Math.cos(r) + dy * Math.sin(r), z: c.z * Math.cos(r) + dz * Math.sin(r) });
-        if (kind && kind !== last) { bands++; last = kind; }
-      }
-      counts.push(bands);
-    }
-    counts.sort((a, b) => a - b);
-    return counts[counts.length >> 1];
+  get marbled(): number {
+    const m = this.marble;
+    if (!m) return 0;
+    const { pattern, lava, blue } = m.measure(this.k.marbleLines);
+    return pattern * Math.min(1, Math.min(lava, blue) / 0.25);
   }
 
   /** How high the ground at the vent stands above where it began (Venus's and Wright Mons's domes). */

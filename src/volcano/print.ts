@@ -44,10 +44,12 @@ export const PRINT_FUNCTIONS = /* glsl */ `
   uniform vec3 uVent;
   uniform float uVentMark;
   uniform vec4 uFissure; // (Grindavík's fissure: which way it runs through the vent, and how long either side; w 0, a single vent)
-  uniform vec4 uStone, uStoneHit;
+  uniform vec4 uStone, uStoneHit; // (a falling stone's shadow, and where one struck: see main.ts)
   uniform vec4 uMarble; // (Io's two fires: the pool's middle and how far it reaches; w 0, none)
-  uniform vec4 uDrops[48]; // (every drop of colour into it, oldest first: where, and how much it covered, + your lava, - sulphur)
-  uniform float uDropCount; // (a falling stone's shadow, and where one struck: see main.ts)
+  uniform vec4 uMarbleT1; uniform vec4 uMarbleT2; // (the pool's flat map: its two directions across; T1.w its radius there)
+  uniform vec4 uMoveA[64]; uniform vec4 uMoveB[64]; // (every move made in it, oldest first: see marble.ts. A where and which way; B kind, how much, how wide)
+  uniform float uMoveCount;
+  uniform sampler2D uMarbleBase; // (what lies under the moves: r your lava, g the blue)
   uniform vec4 uRings[6]; // (the pressure, as rings spreading from the vent: each one's reach, strength, and 0 ink, 1 grey, 2 gold)
   uniform vec3 uRingInk; // (in the world's own colour: sulfur on Io, pale blue on the ice)
   uniform float uBreath; // (and a warm breath at the vent with each ring, 0 for none)
@@ -476,29 +478,45 @@ const VENT_SIGNS = /* glsl */ `
           }
         }
 
-        // Io's two fires: the pool marbled, as ink on water. Each point's colour found by going back through the drops,
-        // newest first, each pulling the point back in towards it as it pushed it out, until one is found that covered it
-        // (exact at any size: the rings crisp however close the world is held). Deep indigo for the rock's lava, cadmium
-        // yellow for the sulphur, each a wash a little uneven, darker where it pooled against the next.
+        // Io's two fires, a lava lamp: the pool marbled, as ink on water. Each point's colour found by undoing every move
+        // made in the pool, newest first (a drop pulls the point back in towards it, a finger drags it back, a current turns
+        // it back), until a drop is found that covered it, or the picture the oldest moves were pressed into: exact at any
+        // size, so a line drawn out thin stays crisp. Molten lava glowing orange, deep red where it pooled at its edge;
+        // the other a deep blue; each a wash a little uneven.
         if (uMarble.w > 0.0) {
           float mR = acos(clamp(dot(vDir, uMarble.xyz), -1.0, 1.0));
           if (mR < uMarble.w) {
-            vec3 mq = normalize(vDir + 0.0035 * (vec3(noise3(vDir * 38.0), noise3(vDir * 38.0 + 7.1), noise3(vDir * 38.0 + 13.7)) - 0.5)); // (the hand's wobble)
-            float mKind = 0.0, mEdge = 1.0;
-            for (int i = 47; i >= 0; i--) {
-              if (float(i) >= uDropCount) continue;
-              vec4 d = uDrops[i];
-              float A = abs(d.w), cr = clamp(dot(mq, d.xyz), -1.0, 1.0), r = acos(cr), rA = sqrt(A);
-              if (r <= rA) { mKind = d.w > 0.0 ? 1.0 : 2.0; mEdge = (rA - r) / max(rA, 1e-4); break; }
-              float r0 = sqrt(max(0.0, r * r - A));
-              vec3 t = mq - d.xyz * cr;
-              mq = d.xyz * cos(r0) + normalize(t + 1e-6) * sin(r0);
+            vec3 mq = normalize(vDir + 0.0025 * (vec3(noise3(vDir * 38.0), noise3(vDir * 38.0 + 7.1), noise3(vDir * 38.0 + 13.7)) - 0.5)); // (the hand's wobble)
+            float md = dot(mq, uMarble.xyz);
+            vec2 mp = vec2(dot(mq, uMarbleT1.xyz), dot(mq, uMarbleT2.xyz)) / md;
+            float mKind = 0.0, mEdge = 1.0, mFound = 0.0;
+            for (int i = 63; i >= 0; i--) {
+              if (float(i) >= uMoveCount) continue;
+              vec4 A = uMoveA[i], B = uMoveB[i];
+              vec2 e = mp - A.xy;
+              if (B.x < 2.5) {
+                float r2 = dot(e, e);
+                if (r2 <= B.y) { mKind = B.x; mEdge = 1.0 - sqrt(r2 / max(B.y, 1e-8)); mFound = 1.0; break; }
+                mp = A.xy + e * sqrt((r2 - B.y) / r2);
+              } else if (B.x < 3.5) {
+                vec2 q = mp;
+                for (int k = 0; k < 3; k++) { vec2 f = q - A.xy; q = mp - A.zw * B.y * exp(-dot(f, f) / (B.z * B.z)); }
+                mp = q;
+              } else {
+                float th = -B.y * exp(-dot(e, e) / (B.z * B.z));
+                mp = A.xy + vec2(e.x * cos(th) - e.y * sin(th), e.x * sin(th) + e.y * cos(th));
+              }
+            }
+            if (mFound < 0.5 && dot(mp, mp) < uMarbleT1.w * uMarbleT1.w) {
+              vec2 mb = texture2D(uMarbleBase, mp / uMarbleT1.w * 0.5 + 0.5).rg;
+              if (mb.r > 0.5) { mKind = 1.0; mEdge = (mb.r - 0.5) * 0.4; }
+              else if (mb.g > 0.5) { mKind = 2.0; mEdge = (mb.g - 0.5) * 0.4; }
             }
             if (mKind > 0.0) {
-              vec3 mInk = mKind < 1.5 ? vec3(0.08, 0.11, 0.3) : vec3(0.96, 0.72, 0.1);
-              float mPool = (1.0 - smoothstep(0.0, 0.12, mEdge)) * 0.28; // (the pigment gathered at the drop's edge)
-              float mA = (0.9 + 0.08 * (noise3(vDir * 55.0) - 0.5)) * (1.0 - smoothstep(uMarble.w * 0.95, uMarble.w, mR)) * onLand;
-              col = mix(col, mInk * (1.0 - mPool) * (0.92 + 0.1 * noise3(vDir * 220.0)), mA);
+              float mCore = smoothstep(0.0, 0.35, mEdge);
+              vec3 mInk = mKind < 1.5 ? mix(vec3(0.66, 0.1, 0.05), vec3(0.95, 0.38, 0.08), mCore) : mix(vec3(0.04, 0.07, 0.3), vec3(0.1, 0.2, 0.62), mCore);
+              float mA = (0.92 + 0.08 * (noise3(vDir * 55.0) - 0.5)) * (1.0 - smoothstep(uMarble.w * 0.95, uMarble.w, mR)) * onLand;
+              col = mix(col, mInk * (0.92 + 0.12 * noise3(vDir * 220.0)), mA);
             }
           }
         }

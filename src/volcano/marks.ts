@@ -44,7 +44,7 @@ export const MARK_AT: Record<WorldId, { heat: number; minutes: number }> = {
   venus: { heat: 33, minutes: 3 },
   pluto: { heat: 33, minutes: 3 },
   grindavik: { heat: 50, minutes: 4 },
-  twofires: { heat: 25, minutes: 4 }, // (its first mark is the whole town kept, not heat: see HOUSES)
+  twofires: { heat: 25, minutes: 4 },
 };
 
 /** Worlds whose first mark is every house standing, not heat left (the fire there runs its course whatever you do). */

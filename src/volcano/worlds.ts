@@ -103,8 +103,6 @@ export interface World {
   pool?: number;
   /** For a world whose aim is great plumes: how many. */
   plumes?: number;
-  /** For Io's two fires: how many rings of colour to lay in the pool. */
-  bands?: number;
   /** For Grindavík: the share of the town's houses to keep, until the eruption ends. */
   keep?: number;
   /** For Venus and Pluto: how many domes (or mounds round the hollow), each apart from the others. */
@@ -783,26 +781,25 @@ export const WORLDS: World[] = [
     kind: 'A moon with two kinds of lava',
     numeral: 'XXVIII',
     title: 'The Two Fires of Io',
-    first: 'Two kinds of lava, side by side, that never mix.',
-    then: 'On Io, dark lava of molten rock and bright yellow lava of molten sulphur pour out together, and push each other aside rather than mix, as ink does on water for marbled paper.',
-    second: 'Pour once after each yellow drop, and the colours ring outward.',
+    first: 'Two kinds of lava that never mix, swirled like a lava lamp.',
+    then: 'On Io, lava of molten rock and lava of molten sulphur pour out side by side and push each other aside rather than mix, as oil does in water, or ink on water for marbled paper.',
+    second: 'Swirl it with heat to spare.',
     rules: {
       g: 0.18,
       terrain: 'io', basins: 0, craters: 0, floor: 0.05, rough: 0.012,
       waves: 0, rain: 0, sink: 0, swell: 0, life: false,
       flow: 8, channel: 2, coolLand: 0.2,
-      drift: 0, rises: 0, heat: 160, rising: 1.0, steady: true, // (the volcano stays in the middle of the pool: rings round one middle)
-      marble: 0.32, sulphurEvery: 8, sulphurArea: 0.006, marbleArea: 0.0016,
+      drift: 0, rises: 0, heat: 160, rising: 1.0, steady: true, // (the volcano stays in the middle of the pool)
+      marble: 0.32, // (the pool; the rest as sim.ts has it)
       impactEvery: [0, 0],
     },
     palette: {
-      // Pale paper, so both inks stand out: a deep indigo, nearly black, for the rock's lava; cadmium yellow for the sulphur.
-      paper: '#ebe5d6', basalt: '#b9b0a0', ash: '#d9cfb8', lava: '#2a3560', deepLava: '#1b2244',
+      // Pale paper, so both stand out: molten lava glowing orange, and a deep blue (drawn in print.ts).
+      paper: '#ebe5d6', basalt: '#b9b0a0', ash: '#d9cfb8', lava: '#e2561a', deepLava: '#a8180c',
       shallow: '#d4e3ec', deep: '#b1c8d8',
       landInk: '#6b6252', landInkHigh: '#4a4338', pencil: '#c9c0ac', seaInk: '#5b82a3',
     },
     goal: 'marble',
-    bands: 12,
   },
   {
     id: 'grindavik',

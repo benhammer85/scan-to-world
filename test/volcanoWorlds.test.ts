@@ -1,3 +1,4 @@
+import { Marble } from '../src/volcano/marble';
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { buildTopology } from '../src/mesh/topology';
@@ -606,23 +607,46 @@ describe('Venus and Pluto', () => {
 });
 
 describe('The Two Fires of Io', () => {
-  it('pushes earlier colour outward into rings, newest in the middle', () => {
+  it('pours lava where a finger is held, pushing what was there outward, newest in the middle', () => {
     const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('twofires').rules);
-    const c = pl.marbleAt!;
-    expect(c).not.toBeNull();
-    expect(pl.marbleRings).toBe(0);
-    const drop = (pl as unknown as { marbleDrop(at: typeof c, kind: number, area: number): void }).marbleDrop.bind(pl);
-    for (let i = 0; i < 6; i++) drop(c, i % 2 ? 2 : 1, 0.004);
+    const m = pl.marble!, c = m.centre;
+    pl.pressure = 10;
+    expect(pl.marblePour(c, 1)).toBe(true);
+    expect(pl.pressure).toBeLessThan(10);
+    expect(pl.marbleKindAt(c)).toBe(1);
+    m.drop(0, 0, 2, 0.002, 0);
     expect(pl.marbleKindAt(c)).toBe(2);
-    expect(pl.marbleRings).toBe(6);
-    // Outside the pool there's no colour.
+    // The lava is pushed out into a ring round the blue.
+    const [x, y] = [Math.sqrt(0.002) * 1.2, 0];
+    expect(m.kindAt(x, y)).toBe(1);
+    // Outside the pool there's no colour, and no pouring.
     expect(pl.marbleKindAt({ x: -c.x, y: -c.y, z: -c.z })).toBe(0);
+    expect(pl.marblePour({ x: -c.x, y: -c.y, z: -c.z }, 1)).toBe(false);
   });
-  it('a pour inside the pool drops colour, not running lava', () => {
+  it('swirling drags the colours along, and is undone exactly back to where they were', () => {
     const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('twofires').rules);
-    pl.pressure = 20; pl.erupt();
-    expect(pl.drops.lava).toBe(1);
-    expect(pl.marbleKindAt(pl.marbleAt!)).toBe(1);
+    const m = pl.marble!, R = m.R;
+    m.drop(0, 0, 1, (R * 0.3) ** 2, 0);
+    expect(m.kindAt(R * 0.45, 0)).toBe(0);
+    m.stir(0, -R * 0.6, 0, R * 0.6, R * 0.16, 0); // (a finger drawn up through the middle)
+    expect(m.kindAt(0, R * 0.45)).toBe(1); // (lava dragged up after it)
+    // Many moves are pressed into the picture underneath, and the colours stay where they were.
+    const before = [m.kindAt(0, R * 0.45), m.kindAt(0, -R * 0.2), m.kindAt(R * 0.8, 0)];
+    for (let i = 0; i < Marble.MOVES; i++) m.turn(R * 2, R * 2, 0, R * 0.1, 0); // (moves that move nothing in the pool)
+    expect(m.baked).toBeGreaterThan(0);
+    expect([m.kindAt(0, R * 0.45), m.kindAt(0, -R * 0.2), m.kindAt(R * 0.8, 0)]).toEqual(before);
+  });
+  it('counts as marbled only when the two colours are swirled together, each a fair share', () => {
+    const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('twofires').rules);
+    const m = pl.marble!, R = m.R;
+    expect(pl.marbled).toBe(0);
+    m.drop(0, 0, 2, R * R, 0);
+    expect(pl.marbled).toBe(0); // (all blue)
+    for (let i = 0; i < 4; i++) m.drop(0, 0, i % 2 ? 2 : 1, (R * R) / 4, 0);
+    const rings = pl.marbled;
+    expect(rings).toBeGreaterThan(0.2);
+    for (let i = 0; i < 6; i++) m.stir(-R, (i / 5 - 0.5) * R * 1.4, R, (i / 5 - 0.5) * R * 1.4, R * 0.16, 0);
+    expect(pl.marbled).toBeGreaterThan(rings);
   });
 });
 
