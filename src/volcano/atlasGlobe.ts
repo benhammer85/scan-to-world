@@ -52,8 +52,8 @@ const FIGURES: Record<string, Figure> = {
   // IV · Pressure: Hercules, kneeling: club, face, shoulder, hip, knee, foot.
   IV: { name: 'Hercules', src: hercules, w: 686, h: 819, stars: [[318, 44], [427, 213], [418, 392], [310, 494], [120, 600], [478, 770]], ra: 17.4, dec: 21, span: 36 },
   // V · Far worlds: Pegasus, flying: muzzle, neck, wing, wingtip, cloud.
-  // VI · Slow fires: Orion, the hunter: Betelgeuse, his shoulder, and Rigel, his foot.
-  VI: { name: 'Orion', src: orion, w: 536, h: 559, stars: [[160, 150], [340, 418]], ra: 5.6, dec: 4, span: 26 },
+  // VI · Slow fires: Orion, the hunter: Betelgeuse, his shoulder, Rigel, his foot, and Bellatrix, his other shoulder.
+  VI: { name: 'Orion', src: orion, w: 536, h: 559, stars: [[160, 150], [340, 418], [282, 162]], ra: 5.6, dec: 4, span: 26 },
   // VII · Earth's fires: Eridanus, the river, as lava runs to the sea: its bend, then on up towards its source.
   VII: { name: 'Eridanus', src: eridanus, w: 457, h: 560, stars: [[270, 408], [320, 165], [272, 35]], ra: 3.7, dec: -32, span: 36 },
   V: { name: 'Pegasus', src: pegasus, w: 820, h: 573, stars: [[57, 232], [265, 158], [372, 186], [616, 72], [671, 292], [455, 380]], ra: 22.6, dec: 17, span: 52 },

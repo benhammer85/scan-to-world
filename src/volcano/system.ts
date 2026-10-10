@@ -116,7 +116,7 @@ export interface System {
 }
 
 /** A good showing at each second aim: as good as this gives the most warmth (see `giftOf`). */
-const GOOD: Record<World['goal'], number> = { calm: 95, bank: 4500, ridge: 2, lamp: 60, round: 80, ring: 3, basins: 85, height: 700, cover: 30, plumes: 1400, feed: 15, orbit: 3474, hearth: 150, thaw: 60, outbuild: 70, snow: 2, gather: 15, oxygen: 30, chaos: 20, streaks: 8, antipode: 5, white: 60, glow: 20, waves: 7, domes: 2, town: 6 };
+const GOOD: Record<World['goal'], number> = { calm: 95, bank: 4500, ridge: 2, lamp: 60, round: 80, ring: 3, basins: 85, height: 700, cover: 30, plumes: 1400, feed: 15, orbit: 3474, hearth: 150, thaw: 60, outbuild: 70, snow: 2, gather: 15, oxygen: 30, chaos: 20, streaks: 8, antipode: 5, white: 60, glow: 20, waves: 7, domes: 2, town: 6, marble: 8 };
 /** The most warmth a world passes on: this share more heat. */
 export const MOST_WARMTH = 0.15;
 const STARS = ['a yellow star', 'an orange star', 'a pale white star', 'a small red star'];
