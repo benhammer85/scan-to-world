@@ -97,7 +97,7 @@ function fit(): void {
 /** How far the world is lifted up the page (a share of its height): at the end, to leave the foot for the chart. */
 let lift = 0;
 function look(): void {
-  dist = THREE.MathUtils.clamp(dist, TOWN ? 1.45 : 2.1, farthest * 1.3);
+  dist = THREE.MathUtils.clamp(dist, 2.1, farthest * 1.3);
   camera.position.set(0, 0, dist);
   camera.lookAt(0, 0, 0);
   const w = Math.max(1, stage.clientWidth || innerWidth), h = Math.max(1, stage.clientHeight || innerHeight);
@@ -138,8 +138,6 @@ const FREE = ASKED.has('free');
 const CHOSEN = worldOf(ASKED.get('world') ?? remembered('volcano.world'));
 const WORLD = FREE ? { ...CHOSEN, rules: { ...CHOSEN.rules, endless: true } } : CHOSEN;
 remember('volcano.world', WORLD.id);
-/** Grindavík: the town, and walls tapped up to turn the lava from it. */
-const TOWN = WORLD.goal === 'town';
 /** Io's two fires: a finger held in the pool pours lava there, drawn through it swirls the colours. */
 const MARBLE = WORLD.goal === 'marble';
 /**
@@ -211,18 +209,11 @@ const COMPUTER = (navigator.maxTouchPoints || 0) === 0 && matchMedia('(pointer: 
 /**
  * One hand, the same on every world it's tried on: drag to turn the world (lava runs down the screen), hold to pour
  * (the longer, the faster), tap to erupt (biggest once the circle round the volcano has closed). Nothing pours by
- * itself and nothing bursts by accident, so every eruption is chosen. Every world but two with hands of their own:
- * Io's two lavas (hold in the pool to pour, drag through it to swirl) and Grindavík (lava runs by itself; a tap
- * raises a wall). On the glass world, a tap lets the blob go.
+ * itself and nothing bursts by accident, so every eruption is chosen. Every world but Io's two lavas, with hands of
+ * its own (hold in the pool to pour, drag through it to swirl). On the glass world, a tap lets the blob go.
  */
-const HAND = !MARBLE && !TOWN;
-/** The old way of playing without tilting (lava pouring by itself in breaths): gone with one hand. Io's Two Lavas and Grindavík play as their bots were balanced, the same on a phone or a computer. */
-const BREATHE = false as boolean;
-if (BREATHE) planet.k.pulse = planet.k.explosive * 0.55;
+const HAND = !MARBLE;
 if (HAND) planet.burstOnPour = false;
-// (Breathing, a third more heat: its breaths spread wider and waste more than a steady pour, and it's the forgiving way
-// to play, which every computer plays.)
-if (BREATHE) { planet.k.heat *= 1.35; planet.reserve *= 1.35; }
 const ecology = new Ecology(planet, topo);
 const islands = new Islands(topo);
 
@@ -237,13 +228,6 @@ scene.add(group);
 const PROFILE = WORLD.goal === 'height' || WORLD.goal === 'white';
 const FACING = PROFILE ? new THREE.Vector3(0, Math.sin(0.75), Math.cos(0.75)) : new THREE.Vector3(0.1, 0.15, 0.98).normalize();
 if (GROUND || PROFILE) group.quaternion.setFromUnitVectors(new THREE.Vector3(base[START * 3], base[START * 3 + 1], base[START * 3 + 2]), FACING);
-// Grindavík: the fissure and the town both in view, the town below and the fissure above it, as a map of the place would have them.
-if (TOWN && planet.townAt) {
-  const q = new THREE.Vector3(planet.plume.x, planet.plume.y, planet.plume.z), c = new THREE.Vector3(planet.townAt.x, planet.townAt.y, planet.townAt.z);
-  const ez = q.clone().add(c).normalize(), ey = q.clone().sub(c), ex = new THREE.Vector3();
-  ey.addScaledVector(ez, -ey.dot(ez)).normalize(); ex.crossVectors(ey, ez);
-  group.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(ex, ey, ez).transpose());
-}
 
 /** Drawn on a surface of twice the detail, the values carried across smoothly (see fine.ts). */
 const fine = new FineSurface(topo, buildTopology(new THREE.IcosahedronGeometry(1, 80).attributes.position.array, null));
@@ -1124,10 +1108,6 @@ function nearestAbove(u: THREE.Vector3): number {
 const at = (v: number) => [base[v * 3], base[v * 3 + 1], base[v * 3 + 2]] as const;
 
 function drawMarks(): void {
-  // Where the heat was called by a tap, till it gets there.
-  const t = planet.called ? planet.target : null;
-  callMark.visible = !!t && !ending;
-  if (t) { setMark(callMark, nearestAbove(new THREE.Vector3(t.x, t.y, t.z)), 0.035); callMark.material.color.set(INK); }
   const s = planet.impact;
   // (In watercolour: a drop of pigment for the stone, its shadow and its landing in the ground's own wash, and only the dotted ring of ink; no sign.)
   stoneRing.visible = !!s && !ending;
@@ -1607,11 +1587,11 @@ function orbiting(dt: number): void {
 }
 const HEIGHT = WORLD.height ?? { target: 0, kmPerUnit: 40 };
 const CALM = WORLD.calm ?? 0, ISLAND = WORLD.island ?? 0, POOL = WORLD.pool ?? 0, ROUND = Math.round((WORLD.round ?? 0) * 100), COVER = Math.round((WORLD.cover ?? 0) * 100), PLUMES = WORLD.plumes ?? 0, ORBIT = WORLD.orbit ?? 0;
-const WATER = WORLD.water ?? 0, HEARTH = WORLD.hearth ?? 0, OUTBUILD = WORLD.outbuild ?? 0, SNOWFALL = WORLD.snowfall ?? 0, GATHER = WORLD.gather ?? 0, OXYGEN = WORLD.oxygen ?? 0, FIELDS = WORLD.fields ?? 0, FAR_KM = WORLD.farKm ?? 0, WHITENESS = Math.round((WORLD.whiteness ?? 0) * 100), GLOW = WORLD.glow ?? 0, RINGS = WORLD.rings ?? 0, DOMES = WORLD.domes ?? 0, KEEP = WORLD.keep ?? 0;
+const WATER = WORLD.water ?? 0, HEARTH = WORLD.hearth ?? 0, OUTBUILD = WORLD.outbuild ?? 0, SNOWFALL = WORLD.snowfall ?? 0, GATHER = WORLD.gather ?? 0, OXYGEN = WORLD.oxygen ?? 0, FIELDS = WORLD.fields ?? 0, FAR_KM = WORLD.farKm ?? 0, WHITENESS = Math.round((WORLD.whiteness ?? 0) * 100), GLOW = WORLD.glow ?? 0, RINGS = WORLD.rings ?? 0, DOMES = WORLD.domes ?? 0;
 /** Pluto: mounds round a hollow, rather than Venus's domes anywhere. */
 const MOUNDS = (WORLD.rules.domeRing ?? 0) > 0;
 let marbledAt = -1;
-let aimDone = 0, aimOf = WORLD.goal === 'white' ? 100 : WORLD.goal === 'waves' ? RINGS : WORLD.goal === 'glow' ? 100 : WORLD.goal === 'antipode' ? FAR_KM : WORLD.goal === 'gather' ? GATHER : WORLD.goal === 'water' ? WATER : WORLD.goal === 'chaos' || WORLD.goal === 'streaks' ? FIELDS : WORLD.goal === 'domes' ? DOMES : TOWN || MARBLE ? 100 : WORLD.goal === 'oxygen' || WORLD.goal === 'thaw' || WORLD.goal === 'outbuild' || WORLD.goal === 'snow' ? 100 : WORLD.goal === 'ring' ? CHAIN.stretches : WORLD.goal === 'height' ? HEIGHT.target : WORLD.goal === 'cover' ? COVER : WORLD.goal === 'round' ? ROUND : WORLD.goal === 'ridge' ? Planet.RIDGE_STRETCHES : WORLD.goal === 'lamp' || WORLD.goal === 'bank' ? 100 : WORLD.goal === 'calm' ? CALM : WORLD.goal === 'plumes' ? PLUMES : WORLD.goal === 'orbit' || WORLD.goal === 'feed' ? 100 : planet.basins.length, lastAim = -10;
+let aimDone = 0, aimOf = WORLD.goal === 'white' ? 100 : WORLD.goal === 'waves' ? RINGS : WORLD.goal === 'glow' ? 100 : WORLD.goal === 'antipode' ? FAR_KM : WORLD.goal === 'gather' ? GATHER : WORLD.goal === 'water' ? WATER : WORLD.goal === 'chaos' || WORLD.goal === 'streaks' ? FIELDS : WORLD.goal === 'domes' ? DOMES : MARBLE ? 100 : WORLD.goal === 'oxygen' || WORLD.goal === 'thaw' || WORLD.goal === 'outbuild' || WORLD.goal === 'snow' ? 100 : WORLD.goal === 'ring' ? CHAIN.stretches : WORLD.goal === 'height' ? HEIGHT.target : WORLD.goal === 'cover' ? COVER : WORLD.goal === 'round' ? ROUND : WORLD.goal === 'ridge' ? Planet.RIDGE_STRETCHES : WORLD.goal === 'lamp' || WORLD.goal === 'bank' ? 100 : WORLD.goal === 'calm' ? CALM : WORLD.goal === 'plumes' ? PLUMES : WORLD.goal === 'orbit' || WORLD.goal === 'feed' ? 100 : planet.basins.length, lastAim = -10;
 /** Lengai: whether its peak has reached its height (kept, once it has). */
 let peakReached = false;
 /** How much of the aim is done now, reckoned afresh. */
@@ -1649,8 +1629,6 @@ function reckonAim(): void {
   else if (WORLD.goal === 'domes') { aimDone = planet.plumes.length; aimOf = DOMES; }
   // (Io's two fires: measured twice a second, being slow to find.)
   else if (MARBLE) { if (planet.seconds - marbledAt >= 0.5) { marbledAt = planet.seconds; aimDone = Math.round(100 * planet.marbled); } aimOf = 100; }
-  // (Grindavík: how much of the eruption the town has outlasted, kept; met when it's over with enough of the town standing.)
-  else if (TOWN) { const kept = planet.housesKept >= KEEP * planet.houses.length, through = 100 * (1 - planet.reserve / planet.k.heat); aimDone = kept ? (planet.reserve < 0.01 ? 100 : Math.min(99, through)) : 0; aimOf = 100; }
   else { aimDone = planet.basins.filter((b) => planet.flooded(b) >= FLOODED_ENOUGH).length; aimOf = planet.basins.length; }
 }
 let calmHeld = 0, calmAt = 0, litFor = 0, litAt = 0;
@@ -1769,8 +1747,6 @@ const HANDS: string[] = LAMP
   ? ['Drag · turn the planet', `${COMPUTER ? 'Click' : 'Tap'} · let a blob go`]
   : MARBLE
   ? [COMPUTER ? 'Hold the mouse in the circle · pour lava' : 'Hold a finger in the circle · pour lava', 'Drag through the circle · swirl', 'Drag outside it · turn the world']
-  : TOWN
-  ? ['Drag · turn the world', `${COMPUTER ? 'Click' : 'Tap'} the ground · build a wall`]
   : ['Drag · turn the world', COMPUTER ? 'Hold the mouse · pour lava' : 'Hold · pour lava', `${COMPUTER ? 'Click' : 'Tap'} · erupt`];
 renderer.domElement.setAttribute('aria-label', `${WORLD.title}. ${HANDS.map((h) => h.replace(' · ', ' to ')).join('. ')}.`);
 /** Whether the hands are still new: the first two worlds played here, and the glass world, where they work the other way round. */
@@ -1852,8 +1828,8 @@ let paceAt = -1, paceSaid = '', lostHeatAt = -1, lostTimeAt = -1;
 const SAY_BEFORE = 12;
 function paceLine(): string {
   const at = MARK_AT[WORLD.id], t = planet.seconds;
-  if (at && t < 7) return TOWN ? `Stars: finish by ${at.minutes}:00` : `Stars: keep ${at.heat}% of the heat · finish by ${at.minutes}:00`;
-  if (at && !TOWN) {
+  if (at && t < 7) return `Stars: keep ${at.heat}% of the heat · finish by ${at.minutes}:00`;
+  if (at) {
     const heat = Math.round(100 * planet.heatLeft);
     if (lostHeatAt < 0 && heat < at.heat) lostHeatAt = t;
     if (lostHeatAt >= 0 && t - lostHeatAt < 5) return `Heat below ${at.heat}%: one star gone`;
@@ -1909,7 +1885,7 @@ function drawAim(now: number): void {
   // (Taken back to now first, in case the world was taken up again from a minute before.)
   if (!ending && begun) {
     while (story.length && story[story.length - 1].t >= planet.seconds) story.pop();
-    story.push({ t: planet.seconds, v: TOWN ? planet.housesKept / Math.max(1, planet.houses.length) : aimOf > 0 ? Math.max(0, Math.min(1, aimDone / aimOf)) : 0, sky: haze.value, n: aimDone }); // (a town by its houses standing, not its share of the fire)
+    story.push({ t: planet.seconds, v: aimOf > 0 ? Math.max(0, Math.min(1, aimDone / aimOf)) : 0, sky: haze.value, n: aimDone }); // (a town by its houses standing, not its share of the fire)
   }
   if (begun) tellAim();
   const inked: number[] = [], pencilled: number[] = [], next: number[] = [];
@@ -2036,16 +2012,6 @@ function drawAim(now: number): void {
       onGround(circleAt(g, planet.k.plumesApart), inked);
       if (g.x * q.x + g.y * q.y + g.z * q.z > apart) onGround(circleAt(g, planet.k.plumesApart * 0.9), inked);
     }
-  } else if (TOWN) {
-    // The town in ink, a dot for each house still standing; its edge pencilled; and the walls inked, as a map draws a dyke.
-    if (planet.townAt) onGround(circleAt(planet.townAt, planet.k.townR * 1.15), pencilled);
-    onGround(planet.houses.filter((_, i) => !planet.houseLost(i)), inked);
-    for (const w of planet.walls) {
-      const a = new THREE.Vector3(w.a.x, w.a.y, w.a.z), b = new THREE.Vector3(w.b.x, w.b.y, w.b.z), steps = Math.max(1, Math.round(a.angleTo(b) / 0.012));
-      const pts: THREE.Vector3[] = [];
-      for (let i = 0; i <= steps; i++) pts.push(a.clone().lerp(b, i / steps).normalize());
-      onGround(pts, inked);
-    }
   } else if (WORLD.goal === 'marble' && planet.marbleAt) {
     // The pool's edge, dotted, inked round as the rings come.
     const pts = circleAt(planet.marbleAt, planet.k.marble), filled = Math.round(pts.length * Math.min(1, aimDone / Math.max(1, aimOf)));
@@ -2106,7 +2072,6 @@ function onWorld(x: number, y: number): THREE.Vector3 | null {
   return hit ? hit.point.clone().applyQuaternion(INVERSE.copy(group.quaternion).invert()).normalize() : null;
 }
 /** Where the heat has been called to, by a tap: a small pencilled ring, until it gets there. */
-const callMark = mark((g) => { g.lineWidth = 3; g.setLineDash([4, 4]); g.beginPath(); g.arc(32, 32, 20, 0, Math.PI * 2); g.stroke(); });
 /** The glass world: where the warm blobs are rising to (whatever is uppermost as it's held), a small open ring and a dot, so it isn't guessed. */
 const upMark = WORLD.rules.lamp ? mark((g) => { g.lineWidth = 2.5; g.beginPath(); g.arc(32, 32, 16, 0, Math.PI * 2); g.stroke(); g.beginPath(); g.arc(32, 32, 3.5, 0, Math.PI * 2); g.fill(); }) : null;
 /** One hand: whether a finger is pouring, and since when. */
@@ -2121,7 +2086,6 @@ let holding = false;
 function holdShut(): void {
   if (HAND) { if (begun && !ending && !planet.over) { pourHeld = true; pourSince = seconds; feel(8); } return; }
   if (!begun || ending || planet.over) return;
-  if (TOWN) return; // (Grindavík: the fissure isn't yours to hold; a finger only raises walls)
   holding = planet.clamped = true;
   feel(15);
 }
@@ -2140,8 +2104,6 @@ const gestures = new GestureRecognizer(
     tap(x, y) {
       if (LAMP && COMPUTER) { holdShut(); letGo(); }
       if (HAND && onWorld(x, y)) tapErupt();
-      // (Grindavík: a tap raises a wall of earth where it touched.)
-      if (TOWN && begun && !ending) { const at = onWorld(x, y); if (at && planet.raiseWall(at)) { feel(10); lastAim = -10; } }
     },
     spin(dx, dy) { spin.set(0, 0); rotate(dx * 0.006, dy * 0.006); },
     fling(vx, vy) { spin.set(vx * 0.006, vy * 0.006); },
@@ -2232,16 +2194,9 @@ function stoneSpot(): { x: number; y: number; z: number } | null {
   const v = planet.impact?.vertex;
   return v === undefined ? null : { x: base[v * 3], y: base[v * 3 + 1], z: base[v * 3 + 2] };
 }
-/** Grindavík: a good first place for a wall, halfway down from the fissure to the town. */
-function townSpot(): { x: number; y: number; z: number } | null {
-  const q = planet.plume, c = planet.townAt;
-  if (!c) return null;
-  const x = q.x + c.x, y = q.y + c.y, z = q.z + c.z, l = Math.hypot(x, y, z);
-  return { x: x / l, y: y / l, z: z / l };
-}
 /** A first line: when it's ready, what it says, and when it's done; and, for a touch, the ghost finger showing it (where, if not the volcano). */
 type Cue = { ready: () => boolean; say?: string; begin?: () => void; done: (since: number) => boolean; hand?: 'hold' | 'drag' | 'tap'; at?: () => { x: number; y: number; z: number } | null };
-/** The controls, as they're first met: each said once, as it's what matters next (one set of hands; Io's Two Lavas and Grindavík have their own). */
+/** The controls, as they're first met: each said once, as it's what matters next (one set of hands; Io's Two Lavas has its own). */
 const TAP = COMPUTER ? 'Click' : 'Tap';
 const HAND_CUES: Cue[] = LAMP ? [
   { ready: () => true, say: 'A glowing blob grows at the volcano', done: () => planet.pressure > planet.k.least * 2 },
@@ -2249,9 +2204,6 @@ const HAND_CUES: Cue[] = LAMP ? [
 ] : MARBLE ? [
   { ready: () => true, hand: 'hold', at: () => marbleSpot(0.4), say: `${COMPUTER ? 'Hold the mouse' : 'Hold a finger'} in the circle to pour lava`, done: () => planet.tally.flows > 0 },
   { ready: () => true, hand: 'drag', at: () => planet.marbleAt, say: 'Drag through the circle to swirl the colours', done: (s) => s > 12 },
-] : TOWN ? [
-  { ready: () => true, hand: 'tap', at: () => townSpot(), say: `${TAP} the ground to build a wall`, done: () => planet.walls.length > 0 },
-  { ready: () => planet.walls.length > 0, say: `${TAP} again nearby to make the wall longer`, done: (s) => s > 12 },
 ] : [
   ...(LEARNED.hold ? [] : [{ ready: () => true, hand: 'hold' as const, say: `${HOLD} to pour lava`, done: () => planet.tally.flows > 0 }]),
   ...(LEARNED.drag ? [] : [{ ready: () => !planet.pouring, hand: 'drag' as const, at: () => null, say: 'Drag to turn the world: lava runs down the screen', done: (s: number) => (turnedAt > lessonSince && s > 3) || s > 14 }]),
@@ -2843,7 +2795,7 @@ function keptStars(id: WorldId): Marks | null {
 }
 function markTheWin(): void {
   if (FREE) return; // (free play has no clock)
-  marksNow = earned(WORLD.id, TOWN ? planet.housesKept / Math.max(1, planet.houses.length) : planet.heatLeft, planet.seconds);
+  marksNow = earned(WORLD.id, planet.heatLeft, planet.seconds);
   if (toppedUp) marksNow[1] = false; // (heat was given back: none to spare of its own)
   const before = keptStars(WORLD.id) ?? readMarks(null);
   remember(MARKS_KEY(WORLD.id), writeMarks(mergeMarks(before, marksNow)));
@@ -3499,7 +3451,6 @@ function breathe(dt: number): void {
     for (let v = 0; v < N; v += 3) if (planet.rock[v] > 0) least = Math.min(least, base[v * 3] * q.x + base[v * 3 + 1] * q.y + base[v * 3 + 2] * q.z);
     // (Further back on a young Earth, to leave room for the moon's ring round it.)
     reachDist = THREE.MathUtils.clamp(3.4 + 2 * Math.acos(least), 3.4, 4.8) * (WORLD.goal === 'orbit' ? 1.3 : WORLD.goal === 'feed' ? 1.15 : 1);
-    if (TOWN) reachDist = 2.3; // (Grindavík: close, at the town's scale, the fissure and the town both in view)
   }
   // At the end, the world steps back and up the page, leaving the foot for the chart.
   const held = !ending && seconds - momentAt < moment.hold;
@@ -3619,11 +3570,11 @@ const loop = (): void => {
   INVERSE.copy(group.quaternion).invert();
   // (Breathing, the world as if held a little tipped towards you, so each breath runs down the screen;
   // tipping, how far the phone is from level is what pours, however the world has been turned.)
-  if (BREATHE || HAND) GRAV.copy(BREATH_DOWN).applyQuaternion(INVERSE);
+  if (HAND) GRAV.copy(BREATH_DOWN).applyQuaternion(INVERSE);
   else GRAV.copy(held).normalize().applyQuaternion(INVERSE);
   planet.gravity = { x: GRAV.x, y: GRAV.y, z: GRAV.z };
   { const u = GIANT_DIR.copy(LEVEL).applyQuaternion(INVERSE); planet.upright = { x: u.x, y: u.y, z: u.z }; }
-  { const h = TIP_V.copy(held).normalize(), c = h.dot(LEVEL); planet.tilt = HAND ? (pourHeld && !LAMP ? Math.min(1, planet.k.tipPour + 0.3 + 0.35 * (seconds - pourSince)) : 0) : BREATHE ? 0 : Math.sqrt(Math.max(0, 1 - c * c)); } // (one hand: held, it pours, faster the longer it's held)
+  { const h = TIP_V.copy(held).normalize(), c = h.dot(LEVEL); planet.tilt = HAND ? (pourHeld && !LAMP ? Math.min(1, planet.k.tipPour + 0.3 + 0.35 * (seconds - pourSince)) : 0) : Math.sqrt(Math.max(0, 1 - c * c)); } // (one hand: held, it pours, faster the longer it's held)
   // And which way the giant is, on a world that has one in its sky.
   if (WORLD.goal === 'feed') { const s = GIANT_DIR.copy(GIANT_AT).normalize().applyQuaternion(INVERSE); planet.giant = { x: s.x, y: s.y, z: s.z }; }
   if (SUN) { const s = GIANT_DIR.copy(SUN).applyQuaternion(INVERSE); planet.star = { x: s.x, y: s.y, z: s.z }; }
@@ -3699,8 +3650,6 @@ const loop = (): void => {
   // (Breathing on Lengai: once the peak is tall enough, it stops breathing out, so its summit can rest and whiten;
   // pouring on by itself, the top never cooled and the world never ended.)
   // (Breathing on the hollow world, which can't be held back by tipping: it rests by itself as the ground starts to sink, and breathes again once it has.)
-  if (BREATHE && planet.k.hollow > 0) { planet.k.pulse = planet.hollowness > 0.55 ? 0 : planet.hollowness < 0.25 ? planet.k.explosive * 0.55 : planet.k.pulse; if (planet.k.pulse === 0 && planet.pressure > planet.k.explosive * 0.5) { planet.reserve += planet.pressure - planet.k.explosive * 0.5; planet.pressure = planet.k.explosive * 0.5; } } // (resting, the heat waits below rather than gathering into one burst that empties it at once)
-  if (BREATHE && WORLD.goal === 'white' && (peakReached || planet.summit * HEIGHT.kmPerUnit >= HEIGHT.target)) planet.k.pulse = 0;
   if (WORLD.goal === 'height' || WORLD.goal === 'cover' || WORLD.goal === 'round' || WORLD.goal === 'calm') {
     // The ring follows the heat, eased, so it glides as the heat creeps.
     gaugeAt.lerp(new THREE.Vector3(planet.plume.x, planet.plume.y, planet.plume.z), 1 - Math.exp(-dt / 1.5)).normalize();
