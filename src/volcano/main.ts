@@ -2161,29 +2161,50 @@ function arrows(dt: number): void {
  * and never over what the world is saying itself. Then nothing more, but the aim now and then.
  */
 const BURST_WORLDS = new Set(['plumes', 'feed', 'calm', 'orbit', 'thaw', 'waves', 'antipode', 'streaks']);
+/** Io's Two Lavas: a point in the pool, `f` of the way out from its middle. */
+function marbleSpot(f: number): { x: number; y: number; z: number } | null {
+  const m = planet.marble;
+  if (!m) return null;
+  const c = m.centre, t = m.t2, r = m.R * f, l = Math.hypot(c.x - t.x * r, c.y - t.y * r, c.z - t.z * r);
+  return { x: (c.x - t.x * r) / l, y: (c.y - t.y * r) / l, z: (c.z - t.z * r) / l };
+}
+/** Where the coming stone will land (null when none is coming). */
+function stoneSpot(): { x: number; y: number; z: number } | null {
+  const v = planet.impact?.vertex;
+  return v === undefined ? null : { x: base[v * 3], y: base[v * 3 + 1], z: base[v * 3 + 2] };
+}
+/** Grindavík: a good first place for a wall, halfway down from the fissure to the town. */
+function townSpot(): { x: number; y: number; z: number } | null {
+  const q = planet.plume, c = planet.townAt;
+  if (!c) return null;
+  const x = q.x + c.x, y = q.y + c.y, z = q.z + c.z, l = Math.hypot(x, y, z);
+  return { x: x / l, y: y / l, z: z / l };
+}
+/** A first line: when it's ready, what it says, and when it's done; and, for a touch, the ghost finger showing it (where, if not the volcano). */
+type Cue = { ready: () => boolean; say?: string; begin?: () => void; done: (since: number) => boolean; hand?: 'hold' | 'drag' | 'tap'; at?: () => { x: number; y: number; z: number } | null };
 /** The controls, as they're first met: each said once, as it's what matters next (one set of hands; Io's Two Lavas and Grindavík have their own). */
 const TAP = COMPUTER ? 'Click' : 'Tap';
-const HAND_CUES: { ready: () => boolean; say?: string; begin?: () => void; done: (since: number) => boolean }[] = LAMP ? [
+const HAND_CUES: Cue[] = LAMP ? [
   { ready: () => true, say: 'A glowing blob grows at the volcano', done: () => planet.pressure > planet.k.least * 2 },
-  { ready: () => true, say: `${TAP} the world to let the blob go`, done: (s) => planet.tally.flows + planet.tally.bursts > 0 || s > 40 },
+  { ready: () => true, hand: 'tap', say: `${TAP} the world to let the blob go`, done: (s) => planet.tally.flows + planet.tally.bursts > 0 || s > 40 },
 ] : MARBLE ? [
-  { ready: () => true, say: `${COMPUTER ? 'Hold the mouse' : 'Hold a finger'} in the circle to pour lava`, done: () => planet.tally.flows > 0 },
-  { ready: () => true, say: 'Drag through the circle to swirl the colours', done: (s) => s > 12 },
+  { ready: () => true, hand: 'hold', at: () => marbleSpot(0.4), say: `${COMPUTER ? 'Hold the mouse' : 'Hold a finger'} in the circle to pour lava`, done: () => planet.tally.flows > 0 },
+  { ready: () => true, hand: 'drag', at: () => planet.marbleAt, say: 'Drag through the circle to swirl the colours', done: (s) => s > 12 },
 ] : TOWN ? [
-  { ready: () => true, say: `${TAP} the ground to build a wall`, done: () => planet.walls.length > 0 },
+  { ready: () => true, hand: 'tap', at: () => townSpot(), say: `${TAP} the ground to build a wall`, done: () => planet.walls.length > 0 },
   { ready: () => planet.walls.length > 0, say: `${TAP} again nearby to make the wall longer`, done: (s) => s > 12 },
 ] : [
-  { ready: () => true, say: `${HOLD} to pour lava`, done: () => planet.tally.flows > 0 },
-  { ready: () => !planet.pouring, say: 'Drag to turn the world: lava runs down the screen', done: (s) => s > 10 },
+  { ready: () => true, hand: 'hold', say: `${HOLD} to pour lava`, done: () => planet.tally.flows > 0 },
+  { ready: () => !planet.pouring, hand: 'drag', at: () => null, say: 'Drag to turn the world: lava runs down the screen', done: (s) => (turnedAt > lessonSince && s > 3) || s > 14 },
 ];
 /** Then what's this world's own, each when it matters. */
-const CUES: { ready: () => boolean; say?: string; begin?: () => void; done: (since: number) => boolean }[] = [
+const CUES: Cue[] = [
   ...HAND_CUES,
   ...(WORLD.rules.rises ? [{ ready: () => true, say: 'The volcano moves to whatever is at the top: turn the world to move it', done: (s: number) => s > 20 }] : []),
   ...(WORLD.goal === 'ridge' ? [{ ready: () => planet.tally.flows + planet.tally.bursts > 0, say: 'The spin carries the lava to the dotted line', done: (s: number) => s > 25 }] : []),
   // (Only where a burst is the way: on the worlds that want pouring, or a release short of a burst, or none
   // at all, it pointed the wrong way, and on the hollow world it emptied the ground.)
-  { ready: () => !LAMP && BURST_WORLDS.has(WORLD.goal) && (planet.k.great > 0 ? planet.throwOf(planet.pressure) >= planet.k.great : planet.pressure >= planet.k.explosive) && !planet.pouring, say: WORLD.goal === 'feed' ? `The circle round the volcano has closed: turn the volcano towards the big planet, and ${TAP.toLowerCase()} the world` : `The circle round the volcano has closed: ${TAP.toLowerCase()} the world to erupt`, done: (s) => planet.tally.bursts > 0 || s > 40 },
+  { hand: 'tap', ready: () => !LAMP && BURST_WORLDS.has(WORLD.goal) && (planet.k.great > 0 ? planet.throwOf(planet.pressure) >= planet.k.great : planet.pressure >= planet.k.explosive) && !planet.pouring, say: WORLD.goal === 'feed' ? `The circle round the volcano has closed: turn the volcano towards the big planet, and ${TAP.toLowerCase()} the world` : `The circle round the volcano has closed: ${TAP.toLowerCase()} the world to erupt`, done: (s) => planet.tally.bursts > 0 || s > 40 },
     ...(WORLD.goal === 'orbit' ? [
     { ready: () => planet.tally.bursts > 0, say: 'The taller the volcano, the more rock an eruption throws up', done: (s: number) => s > 25 },
   ] : []),
@@ -2197,7 +2218,7 @@ const CUES: { ready: () => boolean; say?: string; begin?: () => void; done: (sin
   ] : []),
   ...(WORLD.rules.impactEvery?.[1] === 0 ? [] : [
     { ready: () => true, begin: () => { planet.stonesFall = true; }, done: () => planet.impact !== null || planet.tally.stones > 0 },
-    { ready: () => planet.impact !== null, say: 'A stone is coming: turn its dotted circle to the top, under the volcano, and its heat is yours', done: (s: number) => s > 20 },
+    { ready: () => planet.impact !== null, hand: 'drag' as const, at: stoneSpot, say: 'A stone is coming: turn its dotted circle to the top, under the volcano, and its heat is yours', done: (s: number) => s > 20 },
   ]),
 ];
 let vapourIn = 0;
@@ -2207,7 +2228,7 @@ let stuckSaid = false;
 // the glow: the lessons about pressure and pouring sent players looking for the wrong thing.)
 if (WORLD.goal === 'gather') CUES.splice(0, CUES.length,
   { ready: () => true, say: 'A stone that lands inside the gold ring round your volcano is caught', done: (s: number) => s > 10 },
-  { ready: () => planet.impact !== null, say: 'A stone is coming: turn its dotted circle to the top, and the gold ring follows', done: (s: number) => planet.impact === null || s > 14 },
+  { ready: () => planet.impact !== null, hand: 'drag' as const, at: stoneSpot, say: 'A stone is coming: turn its dotted circle to the top, and the gold ring follows', done: (s: number) => planet.impact === null || s > 14 },
   { ready: () => planet.tally.stones > 0, say: 'The gold ring moves to whatever is at the top', done: (s: number) => s > 12 },
 );
 else if (!NEWCOMER) CUES.splice(0, HAND_CUES.length, { ready: () => true, done: (s: number) => {
@@ -2225,15 +2246,54 @@ function lessons(): void {
       lessonShown = true; lessonSince = seconds;
       L.begin?.();
       if (L.say) announce(L.say, true);
+      showGhost(L.hand ?? null, L.at);
       return;
     }
-    if (L.done(seconds - lessonSince) && seconds - lessonSince > 6) { lesson++; lessonShown = false; $('legend').classList.remove('new'); }
+    if (L.done(seconds - lessonSince) && seconds - lessonSince > 6) { lesson++; lessonShown = false; $('legend').classList.remove('new'); showGhost(null); }
+    // (Once the touch it shows has been made, the finger goes, though its line may stay a little longer.)
+    else if (ghostKind && L.done(seconds - lessonSince)) showGhost(null);
     return;
   }
   planet.stonesFall = true;
   if (!embersSaid && planet.era === 'embers') { embersSaid = true; announce('The heat is nearly gone'); }
 }
 
+
+// ---------------------------------------------------------------- the ghost finger
+/**
+ * How a touch is made, shown rather than told: a fingertip in ink, looping the touch where it belongs (on the volcano for a
+ * hold or a tap, across the world for a drag), while its first line is said; gone once the touch has been made. It steps
+ * aside while a real finger is down (see `touching`), and isn't shown over the card.
+ */
+const ghost = $('ghost');
+let ghostKind: 'hold' | 'drag' | 'tap' | null = null, ghostAt: (() => { x: number; y: number; z: number } | null) | undefined;
+function showGhost(kind: 'hold' | 'drag' | 'tap' | null, at?: () => { x: number; y: number; z: number } | null): void {
+  ghostKind = kind; ghostAt = at;
+  ghost.classList.remove('hold', 'drag', 'tap');
+  if (kind) ghost.classList.add(kind);
+  ghost.classList.toggle('on', !!kind);
+}
+const GHOST_P = new THREE.Vector3(), GHOST_N = new THREE.Vector3();
+function placeGhost(): void {
+  if (!ghostKind) return;
+  if (ending) { showGhost(null); return; }
+  const rect = renderer.domElement.getBoundingClientRect();
+  // Where: the place given; else the volcano (or, for a drag, the middle of the world as seen).
+  const p = ghostAt ? ghostAt() : ghostKind === 'drag' ? null : planet.plume;
+  let seen = true;
+  if (p) {
+    GHOST_N.set(p.x, p.y, p.z).normalize().applyQuaternion(group.quaternion);
+    GHOST_P.set(p.x, p.y, p.z).normalize().multiplyScalar(1.03).applyMatrix4(group.matrixWorld);
+    seen = GHOST_N.dot(EYE.copy(camera.position).sub(GHOST_P).normalize()) > 0.25; // (on the side turned this way)
+    GHOST_P.project(camera);
+  } else GHOST_P.set(0, 0, 0).applyMatrix4(group.matrixWorld).project(camera);
+  const x = rect.left + ((GHOST_P.x + 1) / 2) * rect.width, y = rect.top + ((1 - GHOST_P.y) / 2) * rect.height;
+  ghost.style.transform = `translate(${(x - 30).toFixed(1)}px, ${(y - 6).toFixed(1)}px)`; // (its fingertip on the place)
+  ghost.style.visibility = seen ? '' : 'hidden';
+}
+// (A real finger down: the ghost steps aside.)
+addEventListener('pointerdown', () => document.body.classList.add('touching'));
+for (const t of ['pointerup', 'pointercancel'] as const) addEventListener(t, () => document.body.classList.remove('touching'));
 
 /** A soft pulse in the hand, where the phone can give one (not iPhones). */
 
@@ -3562,6 +3622,7 @@ const loop = (): void => {
   marbleHands(dt);
   marbling();
   tellPace();
+  placeGhost();
   readyInk.update(dt); readyPencil.update(dt);
   aimInk.update(dt);
   aimPencil.update(dt);
