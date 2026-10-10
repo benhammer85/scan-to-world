@@ -36,7 +36,7 @@ export interface ChartInfo {
   marks?: { name: string; got: boolean }[];
 }
 
-const PAPER = '#f4efe4', INK = '#2e2118', FAINT = 'rgba(46,33,24,0.45)';
+const PAPER = '#f4efe4', INK = '#2e2118', FAINT = 'rgba(46,33,24,0.68)';
 const SERIF = '"Newsreader", "Iowan Old Style", Georgia, serif';
 
 export function drawChart(globe: HTMLCanvasElement, info: ChartInfo): HTMLCanvasElement {
