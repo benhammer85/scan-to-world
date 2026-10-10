@@ -3134,7 +3134,7 @@ interface Kept {
   run?: string;
   /** Whether it was being played free, with no clock. */
   free?: boolean;
-  way: { a: { x: number; y: number; z: number }; b: { x: number; y: number; z: number } } | null;
+  way: { a: { x: number; y: number; z: number }; b: { x: number; y: number; z: number }; held?: boolean[] } | null;
   seed: number;
   planet: Record<string, unknown>;
   ecology: Record<string, unknown>;
@@ -3145,7 +3145,7 @@ function world(): Kept {
   return {
     world: WORLD.id,
     free: FREE,
-    way: chain ? { a: chain.a, b: chain.b } : null,
+    way: chain ? { a: chain.a, b: chain.b, held: chain.held.slice() } : null, // (and which stretches are held: once held, kept, though their islands have sunk since)
     seed,
     // (Not its rules, nor what's worked out from the ground: those come fresh from this version of the game.)
     planet: snapshotOf(planet, ['topo', 'next', 'firmness', 'scale', 'news', 'k', 'grainOf', 'slowDelta', 'moltenWas', 'moltenKnown']),
@@ -3172,7 +3172,7 @@ async function resume(): Promise<boolean> {
 }
 /** Put a kept world back: the planet, its life and islands, and where the page had got to. */
 function takeUp(w: Kept): boolean {
-  if (w.way && chain) chain = new Chain(w.way.a, w.way.b);
+  if (w.way && chain) { chain = new Chain(w.way.a, w.way.b); w.way.held?.forEach((h, i) => { if (h && i < chain!.held.length) chain!.held[i] = true; }); }
   seed = w.seed;
   // (A save from an older game kept its rules too: they are the game's own now.)
   const { k: _oldRules, grainOf: _grain, slowDelta: _scratch, moltenWas: _m, moltenKnown: _mk, ...kept } = w.planet as Record<string, unknown>;
