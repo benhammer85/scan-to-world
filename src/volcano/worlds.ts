@@ -678,7 +678,7 @@ export const WORLDS: World[] = [
       landInk: '#5a4632', landInkHigh: '#3b2c1e', pencil: '#b3a68f', seaInk: '#3f6787',
     },
     goal: 'bank',
-    island: 90,
+    island: 190, // (one hand, aimed by turning the world straight at the bank: 90 was met in half a minute)
   },
   {
     id: 'lamp',

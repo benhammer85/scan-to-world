@@ -2248,6 +2248,18 @@ export class Planet {
     }
   }
 
+  /** When the next stone lands, in seconds, counting its warning (null: none to come). */
+  get stoneDue(): number | null {
+    if (this.impact) return this.impact.in;
+    if (this.over || !this.stonesFall || this.k.impactEvery[1] <= 0) return null;
+    return this.impactIn / Math.max(0.05, this.heatLeft) + this.k.impactWarning;
+  }
+  /** When the next dust storm comes, in seconds (0 while one blows; null: none on this world). */
+  get stormDue(): number | null {
+    if (this.k.stormEvery[1] <= 0) return null;
+    return this.storm ? 0 : Math.max(0, this.stormIn);
+  }
+
   private between([lo, hi]: [number, number]): number {
     return lo + (hi - lo) * this.rand();
   }

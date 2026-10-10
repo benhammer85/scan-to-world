@@ -26,6 +26,7 @@
       /* A quiet word now and then, at the foot above the key, never across the world. */
       #event { position: fixed; bottom: calc(66px + env(safe-area-inset-bottom)); left: 16px; right: 16px; text-align: center; font-size: 14px; font-style: italic; opacity: 0; pointer-events: none; transition: opacity 2s; }
       /* The words float over the world on a soft halo of the paper, as a map's lettering is cleared from the lines beneath it. */
+      #pace { position: fixed; top: calc(74px + env(safe-area-inset-top)); left: 40px; right: 40px; text-align: center; font-size: 12.5px; line-height: 1.5; letter-spacing: 0.03em; opacity: 0.6; pointer-events: none; font-variant-numeric: tabular-nums; white-space: pre-line; text-shadow: 0 0 2px #f4efe4, 0 0 6px #f4efe4, 0 0 12px #f4efe4; }
       #event, #stage-name, #goal { text-shadow: 0 0 2px #f4efe4, 0 0 6px #f4efe4, 0 0 12px #f4efe4, 0 0 18px #f4efe4; }
       /* The world comes in from the paper, and goes back to it, never cut. */
       #stage { opacity: 0; transition: opacity 1.2s ease; }
@@ -34,7 +35,7 @@
       #event.shown { opacity: 0.75; }
       /* A burst's moment: the words fall quiet. */
       #stage-name, #legend { transition: opacity 1.2s ease; }
-      body.hush #event, body.hush #stage-name, body.hush #goal, body.hush #legend { opacity: 0.12 !important; transition: opacity 0.6s ease; }
+      body.hush #event, body.hush #stage-name, body.hush #goal, body.hush #pace, body.hush #legend { opacity: 0.12 !important; transition: opacity 0.6s ease; }
       /* The title page, every time the game is opened: its name above, the world turning in the middle, and where to go beneath. */
       #title { position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column; align-items: center; justify-content: space-between; box-sizing: border-box; padding: calc(9vh + env(safe-area-inset-top)) 16px calc(26px + env(safe-area-inset-bottom)); transition: opacity 1s; background: linear-gradient(to bottom, #f4efe4 0, rgba(244, 239, 228, 0) 26%, rgba(244, 239, 228, 0) 52%, #f4efe4 70%); }
       #title.gone { opacity: 0; pointer-events: none; }
@@ -87,7 +88,7 @@
       #begin { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 14px; padding-bottom: calc(18px + env(safe-area-inset-bottom)); box-sizing: border-box; background: transparent; transition: opacity 1.5s; cursor: pointer; }
       #begin > * { transition: opacity 0.9s ease; }
       #begin.loading > * { opacity: 0 !important; }
-      body.carding #stage-name, body.carding #goal, body.carding #event, body.carding #worlds, body.carding #finish { opacity: 0 !important; pointer-events: none; }
+      body.carding #stage-name, body.carding #goal, body.carding #pace, body.carding #event, body.carding #worlds, body.carding #finish { opacity: 0 !important; pointer-events: none; }
       #begin.gone { opacity: 0; pointer-events: none; }
       #begin p { margin: 0; text-align: center; }
       #begin .world { font-size: 13px; letter-spacing: 0.2em; opacity: 0.65; }
@@ -182,6 +183,7 @@
     <canvas id="frame"></canvas>
     <div id="stage-name" class="engraved"></div>
     <div id="goal" class="engraved" aria-live="polite"></div>
+    <div id="pace" class="engraved"></div>
     <div id="event" class="engraved" aria-live="polite"></div>
     <div id="legend" class="engraved"></div>
     <p id="again" class="engraved">tap to play again</p>

@@ -221,8 +221,8 @@ export function drawFrame(g: CanvasRenderingContext2D, w: number, h: number, k: 
 }
 
 /**
- * The marks in a row, centred on x: each a small engraved roundel, a ring with a dot struck in it
- * when it was earned, an empty ring when not, and its name beside it, faint when not earned.
+ * The stars in a row, centred on x: each a small five-pointed star, filled when it was earned, drawn
+ * open when not, and its name beside it, faint when not earned.
  */
 function drawMarks(g: CanvasRenderingContext2D, marks: { name: string; got: boolean }[], x: number, y: number, k: number, most = Infinity): void {
   g.save();
@@ -238,8 +238,10 @@ function drawMarks(g: CanvasRenderingContext2D, marks: { name: string; got: bool
   marks.forEach((m, i) => {
     const cx = at + r, ink = m.got ? INK : FAINT;
     g.strokeStyle = ink; g.fillStyle = ink; g.lineWidth = 0.9 * k;
-    g.beginPath(); g.arc(cx, y, r, 0, Math.PI * 2); g.stroke();
-    if (m.got) { g.beginPath(); g.arc(cx, y, r * 0.45, 0, Math.PI * 2); g.fill(); }
+    g.beginPath();
+    for (let j = 0; j < 10; j++) { const a = -Math.PI / 2 + (j * Math.PI) / 5, rr = j % 2 ? r * 0.5 : r * 1.25; g.lineTo(cx + rr * Math.cos(a), y + rr * Math.sin(a)); }
+    g.closePath();
+    if (m.got) g.fill(); else g.stroke();
     g.fillText(m.name, at + r * 2 + 6 * k, y + 0.5 * k);
     at += widths[i] + gap;
   });
