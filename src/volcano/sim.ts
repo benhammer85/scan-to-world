@@ -111,6 +111,8 @@ export const VOLCANO = {
    * `plumesApart` (radians) to an earlier one: fresh ground. 0: none are counted.
    */
   great: 0,
+  /** Io: a great plume is counted only with the tide at least this high (1 the highest); -1: at any tide. */
+  greatTide: -1,
   plumesApart: 0.5,
   /**
    * A cone holds its pressure down: the pressure that bursts out on its own rises by this much for
@@ -349,11 +351,14 @@ export const VOLCANO = {
   icy: 0,
   iceCool: 20,
   iceWarmFor: 30,
+  /** The orange Earth: an eruption's gas uses up this much of the oxygen in the sky for each unit of heat let out (a pour's, none). 0: none. */
+  gasEats: 0,
   /** The orange Earth: life in the shallows breathes out this much oxygen a second, at full strength over a planet of the drawn detail's worth of shallows. 0: none. */
   breathe: 0,
   /**
-   * Europa: let out held, from `chaos` up, the heat melts up through the ice and breaks it into
-   * rafts: a chaos field, counted if it's `plumesApart` from the last. 0: none.
+   * Europa: let out from `chaos` up, the heat melts up through the ice and breaks it into rafts: a chaos
+   * field, counted if it's `plumesApart` from the last. Held on past `explosive`, it bursts, and blasts a hole
+   * through the ice instead, which breaks nothing. 0: none.
    */
   chaos: 0,
   /**
@@ -637,7 +642,7 @@ export class Planet {
     for (let v = 0; v < this.rock.length; v++) if (Math.hypot(p[v * 3] - f.x, p[v * 3 + 1] - f.y, p[v * 3 + 2] - f.z) < f.r) most = Math.max(most, this.rock[v] - this.start[v]);
     return most;
   }
-  /** The orange Earth: the oxygen life has breathed into the sky so far. */
+  /** The orange Earth: the oxygen life has breathed into the sky so far, less what eruptions' gas has used up (below 0, a debt). */
   oxygen = 0;
   /** Rock boiled away by the star, and rock snow fallen on the night side, so far (in the volume heat is reckoned in). */
   lost = 0;
@@ -1066,6 +1071,9 @@ export class Planet {
     this.pressure = 0;
     this.drained += volume; // (a hollow world's chamber gives it, flow or burst alike)
     this.breathe(volume, volume >= this.k.explosive);
+    // (The orange Earth: the gas of an eruption takes oxygen out of the sky, as volcanic gases did then.)
+    if (this.k.gasEats > 0 && !blast) { this.oxygen -= volume * this.k.gasEats; // (below none, a debt the life must breathe off first)
+      this.tell('The eruption\'s gas uses up oxygen'); }
     // The lava lamp: the bud lets go as one blob; held too long, it bursts into small ones, which cool before they get far.
     if (this.k.lamp) {
       const q = this.plume;
@@ -1098,9 +1106,8 @@ export class Planet {
     // A burst: most of it thrown up as ash that falls round the vent, the rest welling out.
     // Torn open, it throws its ash far and wide rather than piling it on the summit.
     // Where it can, the biggest throw some clear of the world altogether, into orbit.
-    // (Europa: a burst breaks the ice too, as a release short of one does. Held past a window that only a colour
-    // showed, it broke nothing, and there was no way to tell why without being told.)
-    if (this.k.chaos > 0 && !blast) this.counted(Math.sqrt(Math.min(volume, this.k.explosive) / this.k.explosive) * 0.16, 'The ice cracks', 'The ice cracks, but too close to an earlier crack: move further away');
+    // (Europa: held too long, a burst blasts a hole through the ice, and breaks no rafts: let go while the circle is whole.)
+    if (this.k.chaos > 0 && !blast) this.tell('Too late: the eruption blasted a hole instead of cracking the ice');
     let left = volume;
     if (!blast && this.k.ringShare > 0 && this.towardGiant) {
       const fed = volume * this.k.ringShare;
@@ -1135,7 +1142,10 @@ export class Planet {
     if (!blast) this.tally.bursts++;
     // (Its shock on its way through the world: the bigger the burst, the more of it reaches the far side.)
     if (!blast && this.k.antipode > 0) this.echoes.push({ at: this.seconds + this.k.antipodeDelay, volume: volume * this.k.antipode * Math.min(2.5, (volume / this.k.explosive) ** 2) });
-    if (!blast && this.k.great > 0 && strength >= this.k.great) this.greatPlume(this.k.ashReach * this.k.ashRing * far);
+    if (!blast && this.k.great > 0 && strength >= this.k.great) {
+      if (this.tideNow < this.k.greatTide) this.tell('A big eruption, but not at high tide: it falls short');
+      else this.greatPlume(this.k.ashReach * this.k.ashRing * far);
+    }
     const lava = left * (1 - this.k.ashShare) * s;
     this.eruptions.push({ vertex: v, flank: v, left: lava, rate: lava / this.k.pour, total: lava, t: 0, dur: this.k.pour * 1.5 });
     if (!blast) this.kick(volume, 1);

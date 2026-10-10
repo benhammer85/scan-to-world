@@ -26,7 +26,8 @@
       /* A quiet word now and then, at the foot above the key, never across the world. */
       #event { position: fixed; bottom: calc(66px + env(safe-area-inset-bottom)); left: 16px; right: 16px; text-align: center; font-size: 14px; font-style: italic; opacity: 0; pointer-events: none; transition: opacity 2s; }
       /* The words float over the world on a soft halo of the paper, as a map's lettering is cleared from the lines beneath it. */
-      #pace { position: fixed; top: calc(74px + env(safe-area-inset-top)); left: 40px; right: 40px; text-align: center; font-size: 12.5px; line-height: 1.5; letter-spacing: 0.03em; opacity: 0.6; pointer-events: none; font-variant-numeric: tabular-nums; white-space: pre-line; text-shadow: 0 0 2px #f4efe4, 0 0 6px #f4efe4, 0 0 12px #f4efe4; }
+      #pace { position: fixed; top: calc(74px + env(safe-area-inset-top)); left: 40px; right: 40px; text-align: center; font-size: 14px; line-height: 1.5; letter-spacing: 0.03em; opacity: 0; transition: opacity 0.8s ease; pointer-events: none; font-variant-numeric: tabular-nums; text-shadow: 0 0 2px #f4efe4, 0 0 6px #f4efe4, 0 0 12px #f4efe4; }
+      #pace.shown { opacity: 0.6; }
       #event, #stage-name, #goal { text-shadow: 0 0 2px #f4efe4, 0 0 6px #f4efe4, 0 0 12px #f4efe4, 0 0 18px #f4efe4; }
       /* The world comes in from the paper, and goes back to it, never cut. */
       #stage { opacity: 0; transition: opacity 1.2s ease; }
@@ -106,6 +107,8 @@
       #list .row .m { font-size: 12px; letter-spacing: 0.2em; opacity: 0.6; font-variant-numeric: tabular-nums; }
       #list .row.here .t { text-decoration: underline; text-underline-offset: 5px; }
       #list .chart { display: block; margin: 26px auto 0; font-size: 15px; font-style: italic; opacity: 0.7; padding: 10px; }
+      #list .about { display: block; margin: 0 auto; font-size: 14px; opacity: 0.5; padding: 10px; min-height: 44px; }
+      #list .rules { max-width: 22em; margin: 0 auto; text-align: center; font-size: 14px; line-height: 1.55; opacity: 0.65; text-wrap: balance; }
       /* The card the world begins from: one touch, which lets the phone share how it's held. */
       /* The card: the world itself above (seen whole, turning slowly), the words beneath on the paper. */
       #begin { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 14px; padding-bottom: calc(18px + env(safe-area-inset-bottom)); box-sizing: border-box; background: transparent; transition: opacity 1.5s; cursor: pointer; }
@@ -176,7 +179,7 @@
       #atlas .pick .globe { width: 150px; height: 150px; margin: -6px auto 6px; filter: drop-shadow(0 7px 9px rgba(46, 33, 24, 0.22)); }
       #atlas .pick .t { margin: 0; font-size: 21px; }
       #atlas .pick .k { margin: 4px 0 16px; font-style: italic; font-size: 15px; opacity: 0.7; }
-      #atlas .pick .m { margin: -8px 0 14px; font-size: 13px; opacity: 0.6; text-wrap: balance; }
+      #atlas .pick .m { margin: -8px 0 14px; font-size: 13px; letter-spacing: 0.25em; opacity: 0.45; }
       #atlas .pick .m:empty, #begin .marks:empty { display: none; }
       #atlas .pick .acts { display: flex; justify-content: center; align-items: baseline; gap: 22px; }
       #atlas .pick .go { font: 17px "Newsreader", "Iowan Old Style", Georgia, serif; color: #f4efe4; background: #2e2118; border: none; padding: 9px 30px; cursor: pointer; }
@@ -219,7 +222,7 @@
     <div id="atlas" class="engraved"><div class="head"><button class="close">‹ back</button><h2>Star Map</h2><button class="tolist">the worlds</button></div><div class="sky"></div><p class="credit">The figures after Johann Bayer's Uranometria, engraved by Alexander Mair, 1603</p><p class="plates-head"></p><div class="pages"></div><div class="view"><img alt=""></div><div class="pick"><div class="card"><div class="globe"></div><p class="t"></p><p class="k"></p><p class="m"></p><div class="acts"><button class="go">Play</button><button class="plates">saved pictures</button></div></div></div></div>
     <div id="system" class="engraved"><div class="head"><h2>A solar system</h2><button class="close">back</button></div><p class="about"></p><div class="plate"></div><div class="foot"></div></div>
     <div id="menu" class="engraved" hidden><div class="card"><p class="where"></p><button data-go="again">Begin this world again</button><button data-go="list">Choose another world</button><button data-go="title">The title page</button><button class="close">back to the world</button></div></div>
-    <div id="list" class="engraved" hidden><div class="head"><h2>The worlds</h2><button class="close">back</button></div><div class="chapters"></div><button class="chart">see them on the star map</button></div>
+    <div id="list" class="engraved" hidden><div class="head"><h2>The worlds</h2><button class="close">back</button></div><div class="chapters"></div><button class="chart">see them on the star map</button><button class="about">about stars</button><p class="rules" hidden>Each world has three stars. One for reaching its goal, one for keeping some of the heat, one for finishing in time. Each world says how much as it begins.</p></div>
     <div id="title" class="engraved" hidden>
       <div class="head"><h1>Warm to the Touch</h1><p class="sub">volcanoes on other worlds</p><div class="rule"></div></div>
       <nav>
