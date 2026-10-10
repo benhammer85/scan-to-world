@@ -53,8 +53,6 @@ import { openGlobe, type Globe } from './atlasGlobe';
 import { keepsakeOf, turningGlobe } from './keepsakeGlobe';
 import { Chain, CHAIN } from './chain';
 import { measureSecond, type Second } from './second';
-import { loadSystem, saveSystem, worldFor, recordPlayed, finished, keepSystem, keptSystems } from './system';
-import { openSystem, closeSystem } from './systemChart';
 import { feel, keepImage, NATIVE, rumble, rumbles, tap } from './native';
 import { SmokeSign } from './smokeSign';
 import { skyBody, starBloom } from './skyBody';
@@ -132,22 +130,14 @@ const ASKED = new URLSearchParams(location.search);
 /** On trial (?bare): only the lava, the ground, the pressure's bloom and the map's ink; no dial, no words while it's played, no steam, dust or debris, no lean. */
 const BARE = ASKED.has('bare');
 /**
- * Or one of the worlds of a solar system being played as a run (?run=, its place in the system):
- * its kind's world, with its twist and whatever the last world made gives it (see system.ts).
- */
-const SYSTEM = loadSystem(), RUN = (() => {
-  const i = Number(ASKED.get('run') ?? NaN);
-  return SYSTEM && Number.isInteger(i) && SYSTEM.bodies[i] && !SYSTEM.bodies[i].made ? i : null;
-})();
-/**
  * Free play (?free): the same world with no clock. The heat never runs out and the aim, met, doesn't
  * end the fire: it goes on until it's ended (the quiet "end the fire" at the top), and then the long
- * age and the chart come as ever. (Not for a world of a solar system, which is played against the clock.)
+ * age and the chart come as ever.
  */
-const FREE = ASKED.has('free') && !ASKED.has('run');
-const CHOSEN = SYSTEM && RUN !== null ? worldFor(SYSTEM, RUN) : worldOf(ASKED.get('world') ?? remembered('volcano.world'));
+const FREE = ASKED.has('free');
+const CHOSEN = worldOf(ASKED.get('world') ?? remembered('volcano.world'));
 const WORLD = FREE ? { ...CHOSEN, rules: { ...CHOSEN.rules, endless: true } } : CHOSEN;
-if (RUN === null) remember('volcano.world', WORLD.id);
+remember('volcano.world', WORLD.id);
 /** Grindavík: the town, and walls tapped up to turn the lava from it. */
 const TOWN = WORLD.goal === 'town';
 /** Io's two fires: a finger held in the pool pours lava there, drawn through it swirls the colours. */
@@ -189,14 +179,13 @@ function remember(key: string, value: string): void {
  * ocean's old islands sunk to seamounts and ringed by atolls in the long age after their fire; and
  * the new fire starts somewhere new.
  */
-// (A world of a solar system is new ground: it's a world of its own, not this kind's own world.)
 // (On a world drawn from its real heights, its ground is kept apart from what it was when made up.)
 const GROUND_KEY = WORLD.rules.real ? `${WORLD.id}-real` : WORLD.id;
 // (An age of Earth begins instead on the ground the age before it left: see ages.ts. And again on it
 // each time it's played, so an age is always this world, not the last try at it.)
-const AGE_BEFORE = RUN === null && !wanted ? ageBefore(WORLD.id) : null;
+const AGE_BEFORE = !wanted ? ageBefore(WORLD.id) : null;
 const AGE_GROUND = AGE_BEFORE ? recallGround(ageKey(AGE_BEFORE), N) : null;
-const GROUND = wanted || RUN !== null || ageBefore(WORLD.id) || WORLD.id === AGES[0] ? null : recallGround(GROUND_KEY, N);
+const GROUND = wanted || ageBefore(WORLD.id) || WORLD.id === AGES[0] ? null : recallGround(GROUND_KEY, N);
 const FIRES = GROUND?.fires ?? 0;
 const START = (() => {
   if (!GROUND) return nearest(0.1, 0.15, 0.98);
@@ -1712,7 +1701,7 @@ const AIM: Record<string, string> = {
   cover: `Grow one sheet of new white ice over ${COVER}% of the moon.`,
   plumes: `Make ${PLUMES} big eruptions, each in a new place.`,
   feed: "Fill the big planet's ring with ice.",
-  round: `Fill the hollows until the asteroid is ${ROUND}% rounder.`,
+  round: 'Fill the craters to even the surface.',
   ridge: 'Build a ridge all the way round the dotted line.',
   lamp: 'Fill the dotted shore with glowing blobs.',
   calm: 'Stop the moon tumbling.',
@@ -1746,7 +1735,7 @@ const TIP: Record<string, string> = {
   cover: `${POUR} The water freezes into new white ice. Only your biggest single sheet counts, so grow it outward from its edge: turn the world so the edge is just below the volcano.`,
   plumes: `The circle round the volcano closes only at high tide. Then ${COMPUTER ? 'click' : 'tap'} the world to erupt, and turn the world to start the next one outside the old rings.`,
   feed: `Turn the volcano towards the big planet, at the top left. ${ERUPT} The ring fades, so keep going.`,
-  round: `Fill the dotted hollows. Turn one to just below the volcano, and ${HOLD.toLowerCase()} to pour into it. Keep off the hatched high ground: lava there makes it lumpier.`,
+  round: `Fill the dotted craters. Turn one to just below the volcano, and ${HOLD.toLowerCase()} to pour into it. Keep off the hatched high ground: lava there makes the surface more uneven.`,
   ridge: 'Lava runs to the dotted line by itself. Turn a bare part of the line to the top.',
   lamp: `Blobs float to the top of the world. Turn the dotted shore to the top. A blob grows at the volcano: ${COMPUTER ? 'click' : 'tap'} to let it go before it grows too big.`,
   calm: `The dotted line is where the ground sweeps past fastest. Turn it to the top, under the volcano. ${ERUPT}`,
@@ -1795,7 +1784,7 @@ function goalLine(): string {
     case 'cover': return `Ice sheet · ${d}% of the moon · goal ${of}%`;
     case 'plumes': return `Big eruptions · ${d} of ${of}`;
     case 'feed': return `The ring · ${pct}% full`;
-    case 'round': return `Rounder · ${d}% · goal ${of}%`;
+    case 'round': return `Surface evened · ${Math.min(100, Math.round((100 * aimDone) / Math.max(1, of)))}%`; // (how far to the goal, not how much rounder: the goal said as a share of itself)
     case 'ridge': return `Ridge built · ${d} of ${of} sections`;
     case 'lamp': return `Dotted shore · ${pct}% full`;
     case 'calm': return d >= of ? `Calm · held ${Math.min(CALM_HOLD, Math.floor(calmHeld))} of ${CALM_HOLD} seconds` : `Calmer · ${d}% · goal ${of}%`;
@@ -1878,7 +1867,7 @@ function paceLine(): string {
 }
 function tellPace(): void {
   const el = $('pace');
-  if (FREE || RUN !== null || !begun || ending || planet.over) { el.classList.remove('shown'); return; }
+  if (FREE || !begun || ending || planet.over) { el.classList.remove('shown'); return; }
   if (seconds - paceAt < 0.5) return;
   paceAt = seconds;
   const say = paceLine();
@@ -2708,16 +2697,9 @@ function ringing(dt: number, smoking: number, share: number, stage: number): voi
 let second: Second | null = null;
 const BEST_KEY = `volcano.best.${WORLD.id}`;
 const bestSoFar = (): number | null => { const b = remembered(BEST_KEY); return b === null ? null : Number(b); };
-const RUN_TAG = SYSTEM && RUN !== null ? `${SYSTEM.seed}:${RUN}` : undefined;
 function measureTheSecond(): void {
   second = measureSecond(WORLD, planet, topo, islands.list);
-  // A world of a solar system: what it made is kept in the system, and passed on to the next.
   if (FREE) return; // (free play keeps no best: it has no clock to be best against)
-  if (RUN !== null) {
-    const sys = loadSystem();
-    if (sys && sys.seed === SYSTEM?.seed && sys.bodies[RUN] && !sys.bodies[RUN].made) saveSystem(recordPlayed(sys, RUN, { met: !!ending?.won, second: second.value, words: second.words }));
-    return; // (a world of a system is its own, with its own twist: no best kept for its kind)
-  }
   const best = bestSoFar();
   if (best === null || second.value > best) {
     remember(BEST_KEY, String(second.value));
@@ -2792,7 +2774,7 @@ const GOAL_WORDS: Record<typeof WORLD.goal, { age: (met: boolean) => string; don
   bank: { age: () => 'Later: waves wear at the island', done: 'Goal reached: an island on the undersea mountain', title: ['Island built', 'No island yet'], got: () => `the island ${Math.min(100, Math.round(aimDone))}% raised` },
   ridge: { age: () => 'Later: the ridge cools and stays', done: 'Goal reached: a ridge all the way round', title: ['Ridge complete', 'Ridge not complete'], got: () => `${aimDone} of ${aimOf} sections built` },
   lamp: { age: () => 'Later: the blobs sink to the bottom', done: 'Goal reached: the far shore is full', title: ['Far shore filled', 'Far shore not filled'], got: () => `the far shore ${Math.min(100, Math.round(aimDone))}% full` },
-  round: { age: () => 'Later: small meteorites keep hitting it', done: `Goal reached: the asteroid is ${ROUND}% rounder`, title: ['Rounder', 'Not round enough'], got: () => `${Math.round(aimDone)}% rounder (goal ${aimOf}%)` },
+  round: { age: () => 'Later: small meteorites keep hitting it', done: 'Goal reached: the surface is even', title: ['Surface evened', 'Still uneven'], got: () => `the surface ${Math.min(100, Math.round((100 * aimDone) / Math.max(1, aimOf)))}% evened` },
   feed: { age: () => 'Later: the ring slowly thins', done: 'Goal reached: the ring is full', title: ['Ring filled', 'Ring not full'], got: () => `the ring ${Math.min(100, Math.round(aimDone))}% full` },
   orbit: { age: (met) => (met ? 'Later: the rock in orbit forms a moon' : 'Later: the rock in orbit falls back'), done: 'Goal reached: enough rock in orbit for a moon', title: ['Moon made', 'No moon yet'], got: () => `${Math.min(100, Math.round(aimDone))}% of a moon in orbit` },
   hearth: { age: () => 'Later: the rock cools', done: 'Goal reached: life kept alive on warm ground', title: ['Life kept warm', 'Not enough kept warm'], got: () => `${Math.min(100, Math.round(aimDone))}% of the living ground` },
@@ -2826,7 +2808,7 @@ function tale(met: boolean): string {
     case 'bank': return met ? 'A new island on the bank, in deep water.' : 'An island on the bank, still under water.';
     case 'ridge': return met ? 'A ridge all the way round the middle.' : `A ridge round ${aimDone} of the ${aimOf} parts of the middle.`;
     case 'lamp': return `The far shore ${pct}% filled with glowing blobs.`;
-    case 'round': return `Hollows filled with new rock: ${Math.round(aimDone)}% rounder.`;
+    case 'round': return `Craters filled with new rock: the surface ${Math.min(100, Math.round((100 * aimDone) / Math.max(1, aimOf)))}% evened.`;
     case 'feed': return `The ring ${pct}% full of this moon's ice.`;
     case 'orbit': return met ? 'Enough rock thrown into orbit to form a moon.' : `${pct}% of a moon's worth of rock thrown into orbit.`;
     case 'hearth': return `Life kept alive on warm rock: ${pct}% of the goal.`;
@@ -2858,7 +2840,7 @@ function keptStars(id: WorldId): Marks | null {
   return old === null ? null : fromOldMarks(old);
 }
 function markTheWin(): void {
-  if (FREE || RUN !== null) return; // (free play has no clock; a system's world has its own twist)
+  if (FREE) return; // (free play has no clock)
   marksNow = earned(WORLD.id, TOWN ? planet.housesKept / Math.max(1, planet.houses.length) : planet.heatLeft, planet.seconds);
   if (toppedUp) marksNow[1] = false; // (heat was given back: none to spare of its own)
   const before = keptStars(WORLD.id) ?? readMarks(null);
@@ -2904,8 +2886,8 @@ function theEnd(): void {
     // What this fire left is the ground the next one on this world rises through.
     let marked: Uint8Array | null = null;
     if (FL) { marked = new Uint8Array(N); for (let v = 0; v < N; v++) marked[v] = planet.age[v] < 1e5 || (MARKED?.[v] ?? 0) ? 1 : 0; }
-    if (RUN === null && AGES.includes(WORLD.id)) keepGround(ageKey(WORLD.id), { rock: planet.rock.slice(), fires: 1, marked: null }); // (the ground the next age begins on)
-    else if (RUN === null) keepGround(GROUND_KEY, { rock: planet.rock.slice(), fires: FIRES + 1, marked });
+    if (AGES.includes(WORLD.id)) keepGround(ageKey(WORLD.id), { rock: planet.rock.slice(), fires: 1, marked: null }); // (the ground the next age begins on)
+    else keepGround(GROUND_KEY, { rock: planet.rock.slice(), fires: FIRES + 1, marked });
     $('stage-name').textContent = ending.info.title;
     $('worlds').classList.add('ended'); // (moved to the other corner: the chart has its own title there)
     $('goal').style.opacity = '0'; // (and its own line under it: the goal's ran into it)
@@ -2980,7 +2962,7 @@ function drawEnding(): void {
     const next = ending.won ? nextWorld(WORLD) : null;
     // (Into a new chapter, its name: the last world of one is a threshold.)
     const newChapter = next && chapterOf(next.id) !== chapterOf(WORLD.id) ? chapterOf(next.id) : null;
-    $('again').textContent = RUN !== null ? 'Tap to go back to the solar system' : newChapter ? `${chapterOf(WORLD.id).title}: done. Tap to begin chapter ${newChapter.numeral}: ${newChapter.title}` : next ? `Tap to go on: ${next.numeral} · ${next.title}` : ending.won ? 'Every world made. Tap to start again' : 'Tap to try again';
+    $('again').textContent = newChapter ? `${chapterOf(WORLD.id).title}: done. Tap to begin chapter ${newChapter.numeral}: ${newChapter.title}` : next ? `Tap to go on: ${next.numeral} · ${next.title}` : ending.won ? 'Every world made. Tap to start again' : 'Tap to try again';
     $('again').classList.add('shown');
     intoTheAtlas();
     // The chart can be kept as a picture where the page may hand over a file: not inside a frame (as a hosted preview), which can't.
@@ -3005,11 +2987,10 @@ addEventListener('pointerup', (e) => {
 // (Only this world's numeral, so six of them don't run into the title: touched, the card shows them all.)
 // (Said in words under the numeral, and straight to the chart of every world: a numeral alone, going back to
 // the card, wasn't found, and from a world's own chart at its end there was no way back at all.)
-$('worlds').innerHTML = `<span class="n">${WORLD.numeral}</span><span class="w">${RUN === null ? 'menu' : 'the system'}</span>`;
+$('worlds').innerHTML = `<span class="n">${WORLD.numeral}</span><span class="w">menu</span>`;
 $('worlds').addEventListener('click', () => {
   save();
-  if (RUN === null) openMenu();
-  else setTimeout(() => location.reload(), 300);
+  openMenu();
 });
 // ---------------------------------------------------------------- getting about
 /**
@@ -3075,7 +3056,7 @@ function turnedSince(): void {
 const LOOK_EVERY = 10, LOOKS_KEPT = 14, BACK = 60, HEAT_BACK = 0.25;
 const looks: { t: number; w: Kept }[] = [];
 let lookedAt = -1e9, toppedUp = false;
-const MAY_RETRY = !FREE && RUN === null;
+const MAY_RETRY = !FREE;
 function keepLook(): void {
   if (!MAY_RETRY || !begun || planet.seconds - lookedAt < LOOK_EVERY) return;
   lookedAt = planet.seconds;
@@ -3111,8 +3092,6 @@ function anew(): void {
   void forget();
   $('begin').classList.remove('gone');
   document.body.classList.add('leaving'); // (the world fades back to the paper as the next is fetched)
-  // A world of a solar system: back to the system's chart, to choose the next.
-  if (RUN !== null) { setTimeout(() => { location.search = '?system'; }, 900); return; }
   const q = new URLSearchParams(location.search);
   q.delete('seed');
   // Met, on to the next world, if there is one; otherwise this world again.
@@ -3211,7 +3190,7 @@ function drawLevel(): void { /* nothing to follow */ }
 /** Everything the world is, as it's kept: the planet, its life, its islands, and where the page had got to. */
 interface Kept {
   world: string;
-  /** For a world of a solar system: which system (its seed) and which of its worlds. */
+  /** (A world kept from a solar system, when there was one: not taken up.) */
   run?: string;
   /** Whether it was being played free, with no clock. */
   free?: boolean;
@@ -3225,7 +3204,6 @@ interface Kept {
 function world(): Kept {
   return {
     world: WORLD.id,
-    run: RUN_TAG,
     free: FREE,
     way: chain ? { a: chain.a, b: chain.b } : null,
     seed,
@@ -3249,7 +3227,7 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 async function resume(): Promise<boolean> {
   if (wanted) return false;
   const w = await recall<Kept>();
-  if (!w || !w.planet || (w.world ?? 'ocean') !== WORLD.id || w.run !== RUN_TAG || !!w.free !== FREE) return false;
+  if (!w || !w.planet || (w.world ?? 'ocean') !== WORLD.id || !!w.run || !!w.free !== FREE) return false;
   return takeUp(w);
 }
 /** Put a kept world back: the planet, its life and islands, and where the page had got to. */
@@ -3285,7 +3263,6 @@ let begun = false;
 // Everything else (a voyage, wandering, the ink, the atlas, new ground) is under "more".
 // (It carried about ten lines, twelve numerals, four links and seven inks.)
 ($('begin').querySelector('.world') as HTMLElement).textContent = WORLD.numeral;
-// (And its chapter, above it: not for a world of a solar system, which has its own place.)
 // (As little as can be: its number and name, what to do, and begin. Its chapter, its mood and the
 // list of worlds went to the atlas, which is where worlds are picked now.)
 ($('begin').querySelector('.chapter') as HTMLElement).textContent = '';
@@ -3302,7 +3279,7 @@ const cardWords = () => {
   const aim = document.createElement('b'); aim.className = 'aim'; aim.textContent = words$(FREE ? 'No aim and no clock.' : AIM[WORLD.goal] ?? WORLD.second);
   el.append(aim);
   // (The stars, as stars: what each asks is said at the end, beside what was earned.)
-  ($('begin').querySelector('.marks') as HTMLElement).textContent = FREE || RUN !== null ? '' : starsOf(keptStars(WORLD.id) ?? [false, false, false]).split('').join(' ');
+  ($('begin').querySelector('.marks') as HTMLElement).textContent = FREE ? '' : starsOf(keptStars(WORLD.id) ?? [false, false, false]).split('').join(' ');
   ($('begin').querySelector('.marks') as HTMLElement).setAttribute('aria-label', starWords(keptStars(WORLD.id) ?? [false, false, false]));
 };
 cardWords();
@@ -3310,16 +3287,15 @@ cardWords();
 // (Only where the hands are new: the first world, and the lamp, where they work the other way round.)
 ($('begin').querySelector('.hands') as HTMLElement).textContent = ''; // (the hands are shown in the game, as each is first needed)
 // The worlds, along the card's foot, as an atlas lists its plates: touch another to go to it.
-// (Not for a world of a solar system: it's reached from the system's chart.)
 // The worlds: one touch to the atlas's sky, where every world stands in its chapter's constellation.
-if (RUN === null) {
+{
   const b = document.createElement('button');
   b.textContent = 'the worlds';
   b.addEventListener('pointerdown', (e) => { e.stopPropagation(); openList(); });
   $('begin').querySelector('.worlds')!.appendChild(b);
 }
 // The card's foot, one quiet row: the chart, free play, and (on a phone) breathing. (Once there was a
-// "more" with a voyage through the solar system, three inks, a fresh start on new ground and the kept
+// "more" with three inks, a fresh start on new ground and the kept
 // plates again: each a second way to something the card or the chart already does, or the older inks,
 // which the lava's later work never reached. Still there by address for whoever used them.)
 const footLink = (text: string, act: () => void): HTMLElement => {
@@ -3329,7 +3305,7 @@ const footLink = (text: string, act: () => void): HTMLElement => {
   $('begin').querySelector('.worlds')!.appendChild(b);
   return b;
 };
-if (RUN === null) footLink(FREE ? 'play with a goal' : 'free play', () => {
+footLink(FREE ? 'play with a goal' : 'free play', () => {
   const q = new URLSearchParams(location.search);
   q.delete('seed');
   q.set('world', WORLD.id);
@@ -3341,10 +3317,6 @@ if (RUN === null) footLink(FREE ? 'play with a goal' : 'free play', () => {
 // The end of a fire in free play: when you choose.
 $('finish').addEventListener('pointerdown', (e) => e.stopPropagation());
 $('finish').addEventListener('click', () => { planet.end(); $('finish').classList.remove('shown'); });
-$('system').addEventListener('pointerdown', (e) => e.stopPropagation());
-$('system').querySelector('.close')!.addEventListener('click', () => closeSystem());
-// Back from a world of the system (?system): straight to its chart.
-if (ASKED.has('system')) openSystem();
 let atlasPick: ((id: WorldId) => void) | null = null;
 let globeView: Globe | null = null, cardGlobe: { dispose(): void } | null = null;
 function openAtlas(all: Page[], only: string | null = null): void {
@@ -3353,9 +3325,6 @@ function openAtlas(all: Page[], only: string | null = null): void {
   // you left it (or still to make), its name, and Play.
   const sky = box.querySelector('.sky') as HTMLElement;
   const pick = box.querySelector('.pick') as HTMLElement;
-  // (A system finished before they were kept for the chart: kept now.)
-  { const s = loadSystem(); if (s && finished(s)) keepSystem(s, all.find((p) => p.world === 'system')?.when ?? Date.now()); }
-  const kept = keptSystems();
   globeView?.dispose();
   globeView = openGlobe(sky, all, WORLD.id, atlasPick = (id) => {
     const w = worldOf(id), made = all.filter((p) => p.world === id), last = made[made.length - 1];
@@ -3370,10 +3339,6 @@ function openAtlas(all: Page[], only: string | null = null): void {
     (pick.querySelector('.plates') as HTMLElement).hidden = !made.length;
     pick.dataset.world = id;
     pick.classList.add('shown');
-  }, kept, (i) => {
-    // A solar system's star: the chart of it as it was finished, kept as a page.
-    const page = all.find((p) => p.world === 'system' && p.when === kept[i].when);
-    if (page) { view.src = page.image; view.alt = page.title; box.classList.add('viewing'); }
   });
   const head = box.querySelector('.plates-head') as HTMLElement;
   // (The plates only for one world, asked for from its card: the sky itself shows every world made, so
@@ -3441,7 +3406,7 @@ void resume().then((back) => {
  */
 const titlePage = $('title');
 let keptBack = false, settingsOpen = false;
-const INNER = ['world', 'run', 'system', 'free', 'seed', 'look', 'lava'].some((k) => ASKED.has(k));
+const INNER = ['world', 'free', 'seed', 'look', 'lava'].some((k) => ASKED.has(k));
 const TITLE = !INNER && (() => { try { return !sessionStorage.getItem('volcano.titled'); } catch { return true; } })();
 if (TITLE) {
   try { sessionStorage.setItem('volcano.titled', '1'); } catch { /* shown again next time, and that's all */ }
@@ -3469,7 +3434,6 @@ titlePage.querySelector('.go')!.addEventListener('click', () => {
 titlePage.querySelectorAll('nav [data-to]').forEach((b) => b.addEventListener('click', () => {
   const to = (b as HTMLElement).dataset.to;
   if (to === 'worlds') openList();
-  else if (to === 'voyage') { document.body.classList.add('leaving'); setTimeout(() => { location.search = '?system'; }, 500); }
   else if (to === 'free') { document.body.classList.add('leaving'); setTimeout(() => { location.search = `?world=${WORLD.id}&free`; }, 500); }
   else if (to === 'settings') openSettings(true);
 }));
