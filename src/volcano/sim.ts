@@ -306,6 +306,8 @@ export const VOLCANO = {
   stormWarning: 12,
   stormLasts: 22,
   stormWear: 0.012,
+  /** Lava laid within this many seconds is still fresh and hard, and a storm doesn't wear it: pour just before one, and the peak is kept (0: every height wears alike). */
+  stormFresh: 0,
   /** How much of a mountain's top counts as its summit (see `summit`), as vertices on a planet of the drawn detail. */
   summitOf: 30,
   /** Whether there is life at all; and, if there is, how often (seconds) it begins afresh at a vent that has none near it. */
@@ -1396,6 +1398,27 @@ export class Planet {
     for (let v = 0; v < this.age.length; v++) if (this.age[v] < 1e5 || this.ash[v] > 0.15) c++;
     return c / this.age.length;
   }
+  /**
+   * The ice moon: the largest single sheet of new ground, as a share of the world: new ground joined to new ground,
+   * point by neighbouring point. Scattered patches don't add up; one sheet, grown outward, does.
+   */
+  get coveredSheet(): number {
+    const n = this.age.length, t = this.topo, seen = new Uint8Array(n), stack: number[] = [];
+    const fresh = (v: number) => this.age[v] < 1e5 || this.ash[v] > 0.15;
+    let most = 0;
+    for (let v0 = 0; v0 < n; v0++) {
+      if (seen[v0] || !fresh(v0)) continue;
+      let size = 0;
+      seen[v0] = 1; stack.push(v0);
+      while (stack.length) {
+        const v = stack.pop()!;
+        size++;
+        for (let k = t.nbrOffsets[v]; k < t.nbrOffsets[v + 1]; k++) { const w = t.nbrList[k]; if (!seen[w] && fresh(w)) { seen[w] = 1; stack.push(w); } }
+      }
+      most = Math.max(most, size);
+    }
+    return most / n;
+  }
 
   /** Say something, and remember it for the chart. */
   tell(text: string): void {
@@ -2004,7 +2027,7 @@ export class Planet {
       } else this.wear[v] = 0;
       if (r[v] > 0) next[v] -= this.k.rain * dt * r[v] * wear;
       // A dust storm scours whatever stands high, and soft ash most of all.
-      if (this.storm && r[v] > this.k.floor) next[v] -= this.k.stormWear * dt * (r[v] - this.k.floor) * (1 + (this.k.softer - 1) * this.ash[v]);
+      if (this.storm && r[v] > this.k.floor && !(this.age[v] < this.k.stormFresh)) next[v] -= this.k.stormWear * dt * (r[v] - this.k.floor) * (1 + (this.k.softer - 1) * this.ash[v]);
       // Too steep, and the ground slides towards its lower neighbours; ash stands less steeply than lava rock.
       const talus = this.k.talus * this.firmness[v] * (1 - 0.4 * this.ash[v]);
       // (Reef rock is cemented: in the long age an atoll's rim stands over its deepening lagoon.)
