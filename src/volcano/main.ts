@@ -57,6 +57,7 @@ import { loadSystem, saveSystem, worldFor, recordPlayed, finished, keepSystem, k
 import { openSystem, closeSystem } from './systemChart';
 import { feel, keepImage, NATIVE, rumble, rumbles, tap } from './native';
 import { SmokeSign } from './smokeSign';
+import { skyBody, starBloom } from './skyBody';
 import { MARK_AT, earned, fromOldMarks, markNames, mergeMarks, readMarks, starsOf, writeMarks, type Marks } from './marks';
 import './fonts.css';
 import { LOOKS, PRINT_FUNCTIONS, LAMP_PRINT_FUNCTIONS, LAMP_PRINT, LAMP_QUIET, printFragment, type Look } from './print';
@@ -1324,23 +1325,11 @@ const orbitRing = new THREE.Group(), orbitSpin = new THREE.Group();
 // (Larger than the dots on the ground: off the world, they're further from the eye.)
 const orbitInk = new Stipple(P.landInkHigh, 'dot', 3.6, null, false), orbitPencil = new Stipple('#' + new THREE.Color(P.pencil).lerp(new THREE.Color(P.landInk), 0.6).getHexString(), 'dot', 2.3, null, false);
 const ORBIT_R = 1.24, ORBIT_DOTS = 100;
-/** The moon itself, once the rock has gathered: a small engraved disc, as an old chart draws one. */
+/** The moon itself, once the rock has gathered: a small ball painted as the world is (skyBody.ts). */
+/** The time the sky's bodies turn by. */
+const SKY_TIME = { value: 0 };
 const moonMark = (() => {
-  const cv = document.createElement('canvas');
-  cv.width = cv.height = 128;
-  const g = cv.getContext('2d')!;
-  g.fillStyle = '#e6e1d6'; g.strokeStyle = P.landInkHigh; g.lineWidth = 3;
-  g.beginPath(); g.arc(64, 64, 58, 0, Math.PI * 2); g.fill(); g.stroke();
-  // Its shadowed side in fine hatching, and a few craters.
-  g.save(); g.beginPath(); g.arc(64, 64, 57, 0, Math.PI * 2); g.clip();
-  g.lineWidth = 1.2; g.globalAlpha = 0.55;
-  for (let x = 70; x < 130; x += 6) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x - 30, 128); g.stroke(); }
-  g.restore();
-  g.lineWidth = 1.6; g.globalAlpha = 0.8;
-  for (const [x, y, r] of [[44, 46, 9], [74, 84, 7], [52, 86, 5], [80, 40, 5]]) { g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.stroke(); }
-  const tex = new THREE.CanvasTexture(cv);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  const m = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, opacity: 0 }));
+  const m = skyBody({ kind: 'moon', paper: '#ece8de', wash: '#d3cdc1', wash2: '#b5afa4', ink: P.landInkHigh }, SKY_TIME);
   m.position.set(ORBIT_R, 0, 0);
   m.scale.setScalar(0.001);
   return m;
@@ -1353,33 +1342,17 @@ if (WORLD.goal === 'orbit') {
   scene.add(orbitRing);
 }
 /**
- * In Enceladus's sky, the ringed giant: an engraved disc behind the world, upper left, and
+ * In Enceladus's sky, the ringed giant: a ball painted as the world is (skyBody.ts), upper left, and
  * its ring round it in dots, inked as far as the ring is full and fading back as it thins. Fixed in
  * the sky, as the moon's ring is on a young Earth, so "towards the giant" is always the same way.
  */
 // (In the clear band above the world and below the title, far off, so it stays clear of the world as the view breathes.)
-const giant = new THREE.Group(), GIANT_AT = new THREE.Vector3(-0.95, 2.6, -4.8), GIANT_R = 0.36, GIANT_RING = 0.78, GIANT_DOTS = 72;
+const giant = new THREE.Group(), GIANT_AT = new THREE.Vector3(-1.5, 1.95, -4.8), GIANT_R = 0.36, GIANT_RING = 0.78, GIANT_DOTS = 72;
 const ringInk = new Stipple(P.landInkHigh, 'dot', 4.2, null, false), ringPencil = new Stipple('#' + new THREE.Color(P.pencil).lerp(new THREE.Color(P.landInk), 0.6).getHexString(), 'dot', 2.8, null, false);
 const ringTilt = new THREE.Group();
 if (WORLD.goal === 'feed') {
-  const cv = document.createElement('canvas');
-  cv.width = cv.height = 256;
-  const g = cv.getContext('2d')!;
-  g.fillStyle = '#e9dcc0'; g.strokeStyle = P.landInkHigh; g.lineWidth = 3;
-  g.beginPath(); g.arc(128, 128, 122, 0, Math.PI * 2); g.fill();
-  // Its belts, as fine engraved bands, and its night side hatched.
-  g.save(); g.beginPath(); g.arc(128, 128, 121, 0, Math.PI * 2); g.clip();
-  g.lineWidth = 1.6; g.globalAlpha = 0.45;
-  for (const y of [72, 82, 108, 116, 146, 172, 186]) { g.beginPath(); g.moveTo(0, y); g.bezierCurveTo(80, y + 7, 176, y + 7, 256, y); g.stroke(); }
-  g.globalAlpha = 0.3; g.lineWidth = 1.4;
-  for (let x = 170; x < 330; x += 9) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x - 70, 256); g.stroke(); }
-  g.restore();
-  g.globalAlpha = 1; g.lineWidth = 4;
-  g.beginPath(); g.arc(128, 128, 122, 0, Math.PI * 2); g.stroke();
-  const tex = new THREE.CanvasTexture(cv);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  // (Its clear corners discarded rather than drawn, so they don't hide the ring behind them.)
-  const disc = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, alphaTest: 0.5 }));
+  // (Painted as the world is, a lit ball under watercolour, its belts faint.)
+  const disc = skyBody({ kind: 'giant', paper: '#f0e4c8', wash: '#dcc497', wash2: '#c8a878', belts: 0.45, ink: P.landInkHigh }, SKY_TIME);
   disc.scale.setScalar(GIANT_R * 2);
   disc.renderOrder = 1;
   giant.add(disc);
@@ -1390,34 +1363,12 @@ if (WORLD.goal === 'feed') {
   scene.add(giant);
 }
 /**
- * In Io's sky, Jupiter: an engraved disc, upper left, its belts and its great red spot, and no ring. Io's orbit
+ * In Io's sky, Jupiter: a ball painted as the world is (skyBody.ts), low at the left, its belts and great red spot. Io's orbit
  * isn't quite round: nearest Jupiter, the squeeze is hardest and the heat comes fastest, which is high tide. So
  * Jupiter looms a little larger towards high tide and draws back after, and Io's ground flushes warm (`tideWarm`).
  */
 const JUPITER = WORLD.id === 'io' ? (() => {
-  const cv = document.createElement('canvas');
-  cv.width = cv.height = 256;
-  const g = cv.getContext('2d')!;
-  g.fillStyle = '#eadcc0'; g.strokeStyle = P.landInkHigh; g.lineWidth = 3;
-  g.beginPath(); g.arc(128, 128, 122, 0, Math.PI * 2); g.fill();
-  g.save(); g.beginPath(); g.arc(128, 128, 121, 0, Math.PI * 2); g.clip();
-  // Its belts, broad washes between fine engraved lines.
-  g.globalAlpha = 0.16; g.fillStyle = '#b07a52';
-  for (const [y, h] of [[70, 16], [102, 20], [150, 22], [184, 12]]) g.fillRect(0, y, 256, h);
-  g.globalAlpha = 0.45; g.lineWidth = 1.5;
-  for (const y of [62, 70, 86, 102, 122, 150, 172, 184, 196]) { g.beginPath(); g.moveTo(0, y); g.bezierCurveTo(80, y + 6, 176, y + 6, 256, y); g.stroke(); }
-  // The great red spot.
-  g.globalAlpha = 0.55; g.fillStyle = '#c0704c'; g.beginPath(); g.ellipse(160, 161, 20, 11, 0, 0, Math.PI * 2); g.fill();
-  g.globalAlpha = 0.7; g.lineWidth = 1.4; g.stroke();
-  // Its night side hatched.
-  g.globalAlpha = 0.3; g.lineWidth = 1.4;
-  for (let x = 170; x < 330; x += 9) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x - 70, 256); g.stroke(); }
-  g.restore();
-  g.globalAlpha = 1; g.lineWidth = 4;
-  g.beginPath(); g.arc(128, 128, 122, 0, Math.PI * 2); g.stroke();
-  const tex = new THREE.CanvasTexture(cv);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  const disc = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, alphaTest: 0.5 }));
+  const disc = skyBody({ kind: 'giant', paper: '#f1e4c9', wash: '#d9b78e', wash2: '#b98a63', belts: 1, spot: true, ink: P.landInkHigh }, SKY_TIME);
   disc.position.set(-2.05, 1.55, -4.8); // (low at the left, partly off the page: clear of the words at the top)
   scene.add(disc);
   return disc;
@@ -1425,14 +1376,14 @@ const JUPITER = WORLD.id === 'io' ? (() => {
 /** How warm Io's ground is flushed by the tide: 0 at low and mid tide, up to 1 at its highest. */
 const tideWarm = { value: 0 };
 /**
- * A star in the sky, for the worlds it boils or bakes: an engraved disc with short rays, upper right,
+ * A star in the sky, for the worlds it boils or bakes: a ball painted as the world is, in a bloom of its light, upper right,
  * fixed there as the giant is, so "towards the star" is always the same way; the world's night side
  * in shadow. (A rogue planet has none: all of it is in the dark, and only the lava gives light.) And
  * on the world boiling away, its dust streaming off the day side, away from the star, as a comet's tail.
  */
 const SUN = WORLD.sun ? new THREE.Vector3(...WORLD.sun).normalize() : null, SUN_AT = new THREE.Vector3(0.85, 2.05, -4.6);
 const sky = { value: new THREE.Vector4(0, 0, 1, WORLD.id === 'rogue' || WORLD.id === 'ijen' ? 2 : SUN ? 1 : 0) }, iceLine = { value: planet.k.gas > 0 ? 0 : -1 }, haze = { value: planet.k.breathe > 0 ? 1 : 0 }, dustVeil = { value: 0 };
-let sunDisc: THREE.Mesh | null = null;
+let sunDisc: THREE.Group | null = null;
 /**
  * The star itself, worked out at every pixel as the world is, so it's as crisp as the world at any
  * size (a picture of one, drawn once small and stretched, looked like a sticker beside it): a disc
@@ -1444,69 +1395,16 @@ let sunDisc: THREE.Mesh | null = null;
 const STAR_TIME = { value: 0 };
 if (SUN) {
   const far = WORLD.id === 'triton', hot = WORLD.id === 'magma';
-  const mat = new THREE.ShaderMaterial({
-    transparent: true, depthWrite: false,
-    uniforms: {
-      uTime: STAR_TIME,
-      uInk: { value: new THREE.Color(P.landInkHigh) },
-      uMid: { value: new THREE.Color(far ? '#fbf7ea' : hot ? '#fde9bf' : '#fcefc8') },
-      uRim: { value: new THREE.Color(far ? '#efe2c4' : hot ? '#e8913f' : '#eeb455') },
-      uGlow: { value: new THREE.Color(hot ? '#f2a865' : '#f5cf8a') },
-    },
-    vertexShader: 'varying vec2 vP; void main() { vP = position.xy * 2.0; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-    fragmentShader: `
-      varying vec2 vP;
-      uniform float uTime; uniform vec3 uInk, uMid, uRim, uGlow;
-      float h3(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
-      float n3(vec3 x) {
-        vec3 i = floor(x), f = fract(x); f = f * f * (3.0 - 2.0 * f);
-        return mix(mix(mix(h3(i), h3(i + vec3(1, 0, 0)), f.x), mix(h3(i + vec3(0, 1, 0)), h3(i + vec3(1, 1, 0)), f.x), f.y),
-                   mix(mix(h3(i + vec3(0, 0, 1)), h3(i + vec3(1, 0, 1)), f.x), mix(h3(i + vec3(0, 1, 1)), h3(i + vec3(1, 1, 1)), f.x), f.y), f.z);
-      }
-      void main() {
-        const float R = 0.44; // (the disc's radius, in the square's half-widths; the rest is glow and rays)
-        float d = length(vP), r = d / R, px = max(fwidth(d), 1e-5);
-        vec3 col = vec3(0.0); float a = 0.0;
-        // The face: limb-darkened (seen through more of the star's air at its edge), grained, slowly turning.
-        if (r < 1.0) {
-          float mu = sqrt(max(0.0, 1.0 - r * r));
-          vec3 sp = vec3(vP / R, mu); // (a point on the star's face, as on a ball)
-          float turn = uTime * 0.01;
-          vec3 q = vec3(sp.x * cos(turn) + sp.z * sin(turn), sp.y, -sp.x * sin(turn) + sp.z * cos(turn));
-          float grain = n3(q * 34.0 + vec3(0.0, 0.0, uTime * 0.05)) * 0.6 + n3(q * 80.0 - uTime * 0.03) * 0.4;
-          float sn = n3(q * 2.6 + 7.0) * 0.7 + n3(q * 9.0 + 3.0) * 0.3, spots = smoothstep(0.8, 0.84, sn), pen = smoothstep(0.73, 0.8, sn); // (a group or two, not a scatter)
-          col = mix(uRim, uMid, pow(mu, 0.55));
-          col *= 0.95 + 0.1 * grain;
-          col = mix(col, col * 0.78, pen * 0.6);
-          col = mix(col, uInk * 1.6, spots * 0.7 * mu);
-          a = 1.0;
-        }
-        // The rim, finely inked; a hair of soft edge either side.
-        float rimPx = abs(d - R) / px;
-        float rim = 1.0 - smoothstep(0.6, 1.6, rimPx);
-        col = mix(col, uInk, rim * 0.75); a = max(a * (1.0 - smoothstep(-0.5, 0.5, (d - R) / px)), rim * 0.75);
-        // Outside: the glow, and the rays.
-        if (r > 1.0) {
-          float glow = exp(-(r - 1.0) * 2.4) * 0.45;
-          // (Many, fine and faint, each its own length, as an engraver cuts a star's light: a few bold spokes
-          // read as a child's sun.)
-          float ang = atan(vP.y, vP.x), N = 90.0, k = ang / 6.2831853 * N;
-          float idx = floor(k + 0.5), ray = abs(k - idx) * 6.2831853 / N * d / px; // (pixels from the nearest ray)
-          float len = h3(vec3(idx, 3.1, 7.7));
-          float reach = 1.18 + 0.55 * len * len + 0.04 * sin(uTime * 0.35 + idx * 1.7); // (breathing a little, each its own time)
-          float along = smoothstep(1.06, 1.12, r) * (1.0 - smoothstep(1.06, reach, r));
-          float rays = (1.0 - smoothstep(0.25, 0.9, ray)) * along * 0.42;
-          col = mix(uGlow, uInk, rays / max(rays + glow, 1e-4));
-          a = max(a, clamp(glow + rays, 0.0, 1.0));
-        }
-        gl_FragColor = vec4(col, a);
-        #include <colorspace_fragment>
-      }`,
-  });
-  const disc = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), mat);
-  disc.scale.setScalar(far ? 0.75 : hot ? 1.9 : 1.45);
+  // (Painted as the world is, a ball under watercolour giving its own light, in a soft bloom of its colour: the
+  // flat disc with an engraver's rays read as a drawing pinned to the sky.)
+  const size = far ? 0.75 : hot ? 1.9 : 1.45, disc = new THREE.Group();
+  const bloom = starBloom(hot ? '#f2a865' : far ? '#f3e6c6' : '#f5cf8a', STAR_TIME);
+  bloom.scale.setScalar(size * 1.05);
+  const ball = skyBody({ kind: 'star', paper: far ? '#fffaf0' : '#fff6dc', wash: far ? '#fbf6ea' : hot ? '#fde3b0' : '#fcecc2', wash2: far ? '#eadcbc' : hot ? '#e8913f' : '#eeb455', ink: P.landInkHigh }, STAR_TIME);
+  ball.scale.setScalar(size * 0.44);
+  disc.add(bloom, ball);
   disc.position.copy(SUN_AT);
-  disc.position.add(new THREE.Vector3(far ? 0.15 : 0.8, far ? -0.1 : -0.12, 0)); // (out in the corner of the sky, clear of the world's name)
+  disc.position.add(new THREE.Vector3(far ? 0.15 : 0.8, far ? -0.1 : -0.12, 0));
   disc.renderOrder = -1;
   scene.add(disc);
   sunDisc = disc;
@@ -1566,6 +1464,7 @@ function skyNow(dt: number): void {
     if (sunDisc) sunDisc.position.set(SUN.x * 1.15, SUN_AT.y, SUN_AT.z);
   }
   if (sunDisc) { sunDisc.quaternion.copy(camera.quaternion); STAR_TIME.value += dt; }
+  SKY_TIME.value += dt;
   if (SUN) {
     camera.updateMatrixWorld();
     const v = GIANT_DIR.copy(SUN).transformDirection(camera.matrixWorldInverse);
@@ -1708,7 +1607,7 @@ function orbiting(dt: number): void {
   if (made) {
     const size = 0.34 * Math.cbrt(Math.max(1, planet.orbit / ORBIT)) * age;
     moonMark.scale.setScalar(Math.max(0.001, size));
-    (moonMark.material as THREE.SpriteMaterial).opacity = age;
+    (moonMark.material as THREE.ShaderMaterial).uniforms.uOpacity.value = age;
   }
 }
 const HEIGHT = WORLD.height ?? { target: 0, kmPerUnit: 40 };
