@@ -216,8 +216,17 @@ planet.stonesFall = WORLD.goal === 'gather'; // not until the first ideas have c
  * said to the player speaks of the mouse and the space bar, never a phone.
  */
 const COMPUTER = (navigator.maxTouchPoints || 0) === 0 && matchMedia('(pointer: fine)').matches;
-const BREATHE = (remembered('volcano.controls') === 'breathe' || COMPUTER) && !WORLD.rules.lamp;
+/**
+ * One hand, the same on every world it's tried on: drag to turn the world (lava runs down the screen), hold to pour
+ * (the longer, the faster), tap to erupt (biggest once the circle round the volcano has closed). Nothing pours by
+ * itself and nothing bursts by accident, so every eruption is chosen. For now on five worlds, to try against the rest;
+ * there, the old way can be chosen again at the foot.
+ */
+const HAND_WORLDS = new Set<WorldId>(['mars', 'moon', 'ocean', 'io', 'hollow']);
+const HAND = HAND_WORLDS.has(WORLD.id) && remembered('volcano.hands') !== 'old';
+const BREATHE = !HAND && (remembered('volcano.controls') === 'breathe' || COMPUTER) && !WORLD.rules.lamp;
 if (BREATHE) planet.k.pulse = planet.k.explosive * 0.55;
+if (HAND) planet.burstOnPour = false;
 // (Breathing, a third more heat: its breaths spread wider and waste more than a steady pour, and it's the forgiving way
 // to play, which every computer plays.)
 if (BREATHE) { planet.k.heat *= 1.35; planet.reserve *= 1.35; }
@@ -1165,7 +1174,7 @@ for (const s of [readyInk, readyPencil]) { s.byDirection = true; s.linger = 0.35
 const READY_GOALS = new Set(['plumes', 'feed', 'calm', 'orbit', 'thaw', 'waves', 'antipode', 'streaks', 'chaos']);
 /** How far the circle has inked in: 1 when it's time to let go; null where the aim asks for no eruption. */
 function readyShare(): number | null {
-  if (!READY_GOALS.has(WORLD.goal) || LAMP) return null;
+  if (!(READY_GOALS.has(WORLD.goal) || (HAND && WORLD.id !== 'hollow')) || LAMP) return null; // (one hand: a tap always erupts, so the circle shows when it would be a big one)
   const k = planet.k, p = planet.pressure;
   let share = WORLD.goal === 'chaos' ? p / k.chaos : k.great > 0 ? planet.throwOf(p) / k.great : p / k.explosive;
   if (WORLD.goal === 'streaks' && planet.dayAt(planet.plumeVertex) <= 0.3) share = Math.min(share, 0.96); // (in the dark it can't close: turn to the sun)
@@ -1664,12 +1673,13 @@ const AIM: Record<string, string> = {
   snow: 'Fill the dotted line with rock snow.',
 };
 /** How to erupt, wherever the aim asks for an eruption rather than a pour: the circle round the volcano shows when. */
-const ERUPT = `Hold ${COMPUTER ? 'the mouse button down' : 'a finger'} on the world until the circle round the volcano closes, then let go.`;
-const POUR = BREATHE ? 'Lava pours out by itself.' : 'Tilt the phone to pour lava.';
+const ERUPT = HAND ? `Wait for the circle round the volcano to close, then ${COMPUTER ? 'click' : 'tap'} the world to erupt.` : `Hold ${COMPUTER ? 'the mouse button down' : 'a finger'} on the world until the circle round the volcano closes, then let go.`;
+const HOLD = COMPUTER ? 'Hold the mouse button down on the world' : 'Hold a finger on the world';
+const POUR = HAND ? `${HOLD} to pour lava.` : BREATHE ? 'Lava pours out by itself.' : 'Tilt the phone to pour lava.';
 const TIP: Record<string, string> = {
   ring: `${POUR} The volcano moves along the dotted line; pour as it goes. Old islands sink, so keep going.`,
-  basins: `Turn a circle to the top, then pour into it. ${BREATHE ? 'Lava pours out by itself.' : 'Tilt the phone to pour.'}`,
-  height: BREATHE ? 'Lava pours out by itself. Turn the world a little now and then, so the mountain grows on every side.' : 'Tilt the phone to pour, a different way each time, so the mountain grows on every side.',
+  basins: HAND ? `Turn a circle to just below the volcano. ${HOLD} to pour into it.` : `Turn a circle to the top, then pour into it. ${BREATHE ? 'Lava pours out by itself.' : 'Tilt the phone to pour.'}`,
+  height: HAND ? `${HOLD} to pour. Lava runs down the screen: turn the world between pours, so the mountain grows on every side.` : BREATHE ? 'Lava pours out by itself. Turn the world a little now and then, so the mountain grows on every side.' : 'Tilt the phone to pour, a different way each time, so the mountain grows on every side.',
   cover: `${POUR} Pour over the grey ice, and turn the world to reach more of it.`,
   plumes: `${ERUPT} Then turn the world to start the next one outside the old rings.`,
   feed: `Turn the volcano towards the big planet, at the top left. ${ERUPT} The ring fades, so keep going.`,
@@ -1697,17 +1707,19 @@ const TIP: Record<string, string> = {
 };
 /** A world's own tip, where its aim is shared with others but the way to it isn't. */
 const OWN_TIP: Partial<Record<WorldId, string>> = {
-  hollow: BREATHE ? "Lava pours out by itself. Don't hold your finger on the world: a big eruption makes the top fall in." : 'Pour a little at a time, with rests between. Never hold the heat in: a big eruption makes the top fall in.',
+  hollow: HAND ? `${HOLD} to pour, a little at a time. Don't ${COMPUTER ? 'click' : 'tap'} to erupt: a big eruption makes the top fall in.` : BREATHE ? "Lava pours out by itself. Don't hold your finger on the world: a big eruption makes the top fall in." : 'Pour a little at a time, with rests between. Never hold the heat in: a big eruption makes the top fall in.',
 };
 /** How the hands do it, for the way it's being played: tipping a phone, breathing, or a computer's mouse. */
-const HANDS: string[] = MARBLE
+const HANDS: string[] = HAND
+  ? ['Drag · turn the world', COMPUTER ? 'Hold the mouse · pour lava' : 'Hold · pour lava', `${COMPUTER ? 'Click' : 'Tap'} · erupt`]
+  : MARBLE
   ? [COMPUTER ? 'Hold the mouse in the circle · pour lava' : 'Hold a finger in the circle · pour lava', 'Drag through the circle · swirl', 'Drag outside it · turn the world']
   : LAMP
   ? COMPUTER ? ['Drag · turn the planet', 'Click · let a blob go'] : ['Drag · turn the planet', 'Keep level · a blob grows', 'Tilt · let it go']
   : BREATHE ? ['Drag · turn the world', COMPUTER ? 'Hold the mouse (or space) · save up the heat' : 'Hold a finger · save up the heat', 'Let go · erupt']
     : ['Drag · turn the world', 'Tilt the phone · pour lava', 'Hold a finger · save up the heat', 'Let go · erupt'];
 /** Whether the hands are still new: the first two worlds played here, and the glass world, where they work the other way round. */
-const NEWCOMER = LAMP || MARBLE || Number(remembered('volcano.played') ?? '0') < 2;
+const NEWCOMER = LAMP || MARBLE || HAND || Number(remembered('volcano.played') ?? '0') < 2;
 
 /** The aim and how far it's come, in a few words for the top of the screen, always there while it's played. */
 function goalLine(): string {
@@ -1969,15 +1981,24 @@ function onWorld(x: number, y: number): THREE.Vector3 | null {
 const callMark = mark((g) => { g.lineWidth = 3; g.setLineDash([4, 4]); g.beginPath(); g.arc(32, 32, 20, 0, Math.PI * 2); g.stroke(); });
 /** The glass world: where the warm blobs are rising to (whatever is uppermost as it's held), a small open ring and a dot, so it isn't guessed. */
 const upMark = WORLD.rules.lamp ? mark((g) => { g.lineWidth = 2.5; g.beginPath(); g.arc(32, 32, 16, 0, Math.PI * 2); g.stroke(); g.beginPath(); g.arc(32, 32, 3.5, 0, Math.PI * 2); g.fill(); }) : null;
+/** One hand: whether a finger is pouring, and since when. */
+let pourHeld = false, pourSince = 0;
+/** One hand: a tap lets all the heat out at once, an eruption, as big as it's been let grow. */
+function tapErupt(): void {
+  if (!begun || ending || planet.over || planet.pressure < planet.k.least) return;
+  if (planet.erupt()) feel(planet.pressure >= planet.k.explosive ? 30 : 12);
+}
 /** Whether a finger is holding the vent shut. */
 let holding = false;
 function holdShut(): void {
+  if (HAND) { if (begun && !ending && !planet.over) { pourHeld = true; pourSince = seconds; feel(8); } return; }
   if (!begun || ending || planet.over) return;
   if (TOWN) return; // (Grindavík: the fissure isn't yours to hold; a finger only raises walls)
   holding = planet.clamped = true;
   feel(15);
 }
 function letGo(): void {
+  if (HAND) { pourHeld = false; return; }
   if (!holding) return;
   holding = false;
   planet.unclamp();
@@ -1990,6 +2011,7 @@ const gestures = new GestureRecognizer(
     // (Except on the glass world played on a computer, which can't be tipped: there a click lets the blob go.)
     tap(x, y) {
       if (LAMP && COMPUTER) { holdShut(); letGo(); }
+      if (HAND && onWorld(x, y)) tapErupt();
       // (Grindavík: a tap raises a wall of earth where it touched.)
       if (TOWN && begun && !ending) { const at = onWorld(x, y); if (at && planet.raiseWall(at)) { feel(10); lastAim = -10; } }
     },
@@ -2054,7 +2076,13 @@ function arrows(dt: number): void {
  * and never over what the world is saying itself. Then nothing more, but the aim now and then.
  */
 const BURST_WORLDS = new Set(['plumes', 'feed', 'calm', 'orbit', 'thaw', 'waves', 'antipode', 'streaks']);
-const CUES: { ready: () => boolean; say?: string; begin?: () => void; done: (since: number) => boolean }[] = [
+const CUES: { ready: () => boolean; say?: string; begin?: () => void; done: (since: number) => boolean }[] = HAND ? [
+  // One hand: the three touches, each said once, as it's what matters next.
+  { ready: () => true, say: `${HOLD} to pour lava`, done: () => planet.tally.flows > 0 },
+  { ready: () => !planet.pouring, say: 'Drag to turn the world: lava runs down the screen', done: (s) => s > 10 },
+  ...(WORLD.rules.rises ? [{ ready: () => true, say: 'The volcano moves to whatever is at the top: turn the world to move it', done: (s: number) => s > 20 }] : []),
+  ...(WORLD.id !== 'hollow' ? [{ ready: () => !planet.pouring && (planet.k.great > 0 ? planet.throwOf(planet.pressure) >= planet.k.great : planet.pressure >= planet.k.explosive), say: `The circle round the volcano has closed: ${COMPUTER ? 'click' : 'tap'} the world to erupt`, done: (s: number) => planet.tally.bursts > 0 || s > 30 }] : []),
+] : [
   { ready: () => true, say: LAMP ? (COMPUTER ? 'A glowing blob grows at the volcano' : 'Keep the phone flat, and a glowing blob grows') : BREATHE ? 'Lava pours out of the volcano by itself' : 'Keep the phone flat while the heat builds', done: () => planet.pressure > planet.k.least * 2 },
   { ready: () => !planet.pouring, say: LAMP ? (COMPUTER ? 'Click the world, and the blob lets go' : 'Tilt the phone, and the blob lets go') : BREATHE ? 'Drag the world to choose which way the lava runs' : 'Tilt the phone to pour lava', done: (s) => planet.tally.flows + planet.tally.bursts > 0 || s > 40 },
   // The touch, once the tilt is known: a finger held on the world holds the heat in; lifted, it lets it out.
@@ -3089,13 +3117,15 @@ if (RUN === null) footLink(FREE ? 'with the aim' : 'explore', () => {
 });
 // (On a phone's first worlds, the calm way offered under Begin itself: tipping asks the phone held level, a strain,
 // and the quiet link at the foot went unseen.)
-if (!COMPUTER && !LAMP && !BREATHE && NEWCOMER) {
+if (!COMPUTER && !LAMP && !BREATHE && !HAND && NEWCOMER) {
   const c = $('begin').querySelector('.calmer') as HTMLElement;
   c.hidden = false;
   c.addEventListener('pointerdown', (e) => { e.stopPropagation(); remember('volcano.controls', 'breathe'); location.reload(); });
 }
 // The calm way to play, or tipping: on a phone (a computer always breathes), not on the glass world.
-if (!COMPUTER && !LAMP) footLink(BREATHE ? 'tilt to pour' : 'breathe', () => { remember('volcano.controls', BREATHE ? 'tip' : 'breathe'); location.reload(); });
+// One hand, where it's being tried: the old way to be had again, to compare.
+if (HAND_WORLDS.has(WORLD.id)) footLink(HAND ? 'old controls' : 'one hand', () => { remember('volcano.hands', HAND ? 'old' : 'one'); location.reload(); });
+if (!COMPUTER && !LAMP && !HAND) footLink(BREATHE ? 'tilt to pour' : 'breathe', () => { remember('volcano.controls', BREATHE ? 'tip' : 'breathe'); location.reload(); });
 ($('begin').querySelector('.more-toggle') as HTMLElement).hidden = true;
 // The end of a fire in free play: when you choose.
 $('finish').addEventListener('pointerdown', (e) => e.stopPropagation());
@@ -3404,11 +3434,11 @@ const loop = (): void => {
   INVERSE.copy(group.quaternion).invert();
   // (Breathing, the world as if held a little tipped towards you, so each breath runs down the screen;
   // tipping, how far the phone is from level is what pours, however the world has been turned.)
-  if (BREATHE) GRAV.copy(BREATH_DOWN).applyQuaternion(INVERSE);
+  if (BREATHE || HAND) GRAV.copy(BREATH_DOWN).applyQuaternion(INVERSE);
   else GRAV.copy(held).normalize().applyQuaternion(INVERSE);
   planet.gravity = { x: GRAV.x, y: GRAV.y, z: GRAV.z };
   { const u = GIANT_DIR.copy(LEVEL).applyQuaternion(INVERSE); planet.upright = { x: u.x, y: u.y, z: u.z }; }
-  { const h = TIP_V.copy(held).normalize(), c = h.dot(LEVEL); planet.tilt = BREATHE ? 0 : Math.sqrt(Math.max(0, 1 - c * c)); }
+  { const h = TIP_V.copy(held).normalize(), c = h.dot(LEVEL); planet.tilt = HAND ? (pourHeld ? Math.min(1, planet.k.tipPour + 0.3 + 0.35 * (seconds - pourSince)) : 0) : BREATHE ? 0 : Math.sqrt(Math.max(0, 1 - c * c)); } // (one hand: held, it pours, faster the longer it's held)
   showWay();
   // And which way the giant is, on a world that has one in its sky.
   if (WORLD.goal === 'feed') { const s = GIANT_DIR.copy(GIANT_AT).normalize().applyQuaternion(INVERSE); planet.giant = { x: s.x, y: s.y, z: s.z }; }
