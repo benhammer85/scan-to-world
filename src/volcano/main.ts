@@ -3167,30 +3167,8 @@ function intoTheAtlas(): void {
  */
 const LEVEL = new THREE.Vector3(0, -0.3, -1).normalize();
 const BREATH_DOWN = new THREE.Vector3(0, -0.62, -1).normalize(), TIP_V = new THREE.Vector3();
-/**
- * The way a pour will go: a faint line of dots from the vent down the world as it's held, showing
- * the steepest way while the phone is tipped (or, breathing, always), so a tip is a choice and not a guess.
- */
-const WAY_MOST = 40, wayAt = new Float32Array(WAY_MOST * 3), wayGeo = new THREE.BufferGeometry();
-wayGeo.setAttribute('position', new THREE.BufferAttribute(wayAt, 3));
-const wayDots = new THREE.Points(wayGeo, new THREE.PointsMaterial({ color: new THREE.Color(P.landInkHigh), size: 0.012, transparent: true, opacity: 0, depthWrite: false }));
-let wayShown = 0, wayAtSec = -1;
-function showWay(): void {
-  if (!wayDots.parent) group.add(wayDots);
-  const want = !begun || ending || LAMP || planet.marbleAt ? 0 : BREATHE ? 0.45 : Math.min(1, Math.max(0, (planet.tip - planet.k.tipPour * 0.45) / (planet.k.tipPour * 0.5))) * 0.6;
-  wayShown += (want - wayShown) * 0.12;
-  (wayDots.material as THREE.PointsMaterial).opacity = wayShown;
-  if (wayShown < 0.02 || seconds - wayAtSec < 0.15) return;
-  wayAtSec = seconds;
-  const path = planet.pathFrom(planet.plumeVertex, WAY_MOST * 2);
-  let k = 0;
-  for (let i = 2; i < path.length && k < WAY_MOST; i += 2, k++) {
-    const v = path[i], r = Math.hypot(topo.positions[v * 3], topo.positions[v * 3 + 1], topo.positions[v * 3 + 2]) + 0.006;
-    wayAt[k * 3] = base[v * 3] * r; wayAt[k * 3 + 1] = base[v * 3 + 1] * r; wayAt[k * 3 + 2] = base[v * 3 + 2] * r;
-  }
-  wayGeo.setDrawRange(0, k);
-  wayGeo.attributes.position.needsUpdate = true;
-}
+// (The way a pour would go, a faint line of dots down the steepest slope from the vent, is gone: it helped aim a
+// tilt, and with one hand the lava runs down the screen; it read as a second dotted path, wandering as you poured.)
 const held = LEVEL.clone();
 
 /** (The phone's tilt is no longer read: one hand turns the world instead. `held` stays level.) */
@@ -3646,7 +3624,6 @@ const loop = (): void => {
   planet.gravity = { x: GRAV.x, y: GRAV.y, z: GRAV.z };
   { const u = GIANT_DIR.copy(LEVEL).applyQuaternion(INVERSE); planet.upright = { x: u.x, y: u.y, z: u.z }; }
   { const h = TIP_V.copy(held).normalize(), c = h.dot(LEVEL); planet.tilt = HAND ? (pourHeld && !LAMP ? Math.min(1, planet.k.tipPour + 0.3 + 0.35 * (seconds - pourSince)) : 0) : BREATHE ? 0 : Math.sqrt(Math.max(0, 1 - c * c)); } // (one hand: held, it pours, faster the longer it's held)
-  showWay();
   // And which way the giant is, on a world that has one in its sky.
   if (WORLD.goal === 'feed') { const s = GIANT_DIR.copy(GIANT_AT).normalize().applyQuaternion(INVERSE); planet.giant = { x: s.x, y: s.y, z: s.z }; }
   if (SUN) { const s = GIANT_DIR.copy(SUN).applyQuaternion(INVERSE); planet.star = { x: s.x, y: s.y, z: s.z }; }
