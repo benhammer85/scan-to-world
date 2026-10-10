@@ -1131,6 +1131,12 @@ export class Planet {
   }
 
   /** How far from level the world is at the vent, as held: 0 with the vent uppermost, 1 on its side. */
+  /**
+   * Whether a pour begun with the pressure past a burst bursts (tipping: the jug full, it gushes). Played with one
+   * hand, a pour only ever pours, and an eruption is its own touch (a tap), so a big one is always chosen.
+   */
+  burstOnPour = true;
+
   get tip(): number {
     if (this.tilt !== null) return this.tilt;
     const g = this.gravity;
@@ -1156,7 +1162,7 @@ export class Planet {
     }
     if (!this.pouring && tip >= this.k.tipPour) {
       this.pouring = true;
-      if (this.pressure >= this.k.explosive) { this.erupt(); return; }
+      if (this.pressure >= this.k.explosive && this.burstOnPour) { this.erupt(); return; }
       this.pourCounted = false;
     // (It stops a little short of where it starts, so a shaking hand doesn't flicker it; but not so far
     // short that the phone held level again, the vent a little off the top, keeps it trickling away.)
