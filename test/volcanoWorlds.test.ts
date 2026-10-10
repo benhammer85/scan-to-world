@@ -66,20 +66,21 @@ describe('the ocean world', () => {
     expect(chain.where(pl.plume).off).toBeLessThan(0.02); // it keeps to the way
   });
 
-  it('a stretch is held by life on or by the way, and the world is ringed when all are', () => {
+  it('a stretch is held by an island of its own: one island along the whole way holds only one', () => {
     const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('ocean').rules);
     const chain = new Chain(pl.plume, pl.driftDirection);
     expect(chain.update(pl, topo)).toBe(0);
-    // Life all along the way.
-    for (let v = 0; v < topo.vertexCount; v++) {
-      if (chain.where({ x: p[v * 3], y: p[v * 3 + 1], z: p[v * 3 + 2] }).off < 0.05) { pl.life[v] = 1; pl.rock[v] = 0.05; }
-    }
+    const at = (v: number) => chain.where({ x: p[v * 3], y: p[v * 3 + 1], z: p[v * 3 + 2] });
+    // Land all along the way, in one piece: one island, one stretch.
+    for (let v = 0; v < topo.vertexCount; v++) { const w = at(v); if (w.off < 0.05 && w.round < CHAIN.arc) pl.rock[v] = 0.05; }
+    expect(chain.update(pl, topo)).toBe(1);
+    // Cut into separate islands, one in the middle of each stretch: each holds its own.
+    for (let v = 0; v < topo.vertexCount; v++) { const w = at(v); if (w.off < 0.05 && w.round < CHAIN.arc) { const f = ((w.round / CHAIN.arc) * CHAIN.stretches) % 1; if (f < 0.25 || f > 0.75) pl.rock[v] = -0.1; } }
     expect(chain.update(pl, topo)).toBe(CHAIN.stretches);
     expect(chain.ringed).toBe(true);
-    // One stretch lost, and it isn't.
-    for (let v = 0; v < topo.vertexCount; v++) if (chain.where({ x: p[v * 3], y: p[v * 3 + 1], z: p[v * 3 + 2] }).round < 1 / CHAIN.stretches) pl.life[v] = 0;
-    chain.update(pl, topo);
-    expect(chain.ringed).toBe(false);
+    // An island sinking later doesn't take its stretch back.
+    for (let v = 0; v < topo.vertexCount; v++) if (at(v).round < CHAIN.arc / CHAIN.stretches) pl.rock[v] = -0.1;
+    expect(chain.update(pl, topo)).toBe(CHAIN.stretches);
   });
 });
 

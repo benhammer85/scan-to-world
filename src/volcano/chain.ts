@@ -2,8 +2,8 @@
  * The ocean world's aim: a chain of living islands all the way round the world.
  *
  * The crust carries the heat along a great circle from where it began. The first part of the way
- * round is cut into stretches; a stretch is held while something lives on or by it
- * (land with life on it, or reef in the shallows). The world is ringed when every stretch is held
+ * round is cut into stretches; a stretch is held while an island of its own, with life on it, stands by it
+ * (one island along several stretches holds only one). The world is ringed when every stretch is held
  * at once, before the fire goes out. (It was the whole way round, then half: too long a wait on the drift.) Old islands sink and wear, and unless reef holds them they
  * drop out of the chain, so the ring is a race against the sea as much as against the cooling.
  */
@@ -19,6 +19,8 @@ export const CHAIN = {
   near: 0.14,
   /** Life at least this strong holds. */
   living: 0.3,
+  /** Land on fewer vertices than this (on a planet of the drawn detail) is a rock, not an island of the chain. */
+  least: 4,
 };
 
 type V3 = { x: number; y: number; z: number };
@@ -45,15 +47,45 @@ export class Chain {
     return { round: t, off: Math.abs(dot(p, this.pole)) };
   }
 
-  /** Reckon which stretches are held now. Returns how many. */
+  /**
+   * Reckon which stretches are held. Returns how many. Each stretch is held by an island of its own standing by
+   * the way there (land on enough of the world to be an island, not a rock); one island stretched along
+   * the way holds only one of them, so the chain is of separate islands, as Hawaii's is. Once held, a stretch stays
+   * held, though its island sinks later (as the oldest of Hawaii's have): the count never goes back.
+   */
   update(pl: Planet, topo: Topology): number {
-    this.held.fill(false);
-    const p = topo.basePositions, n = CHAIN.stretches;
-    for (let v = 0; v < pl.life.length; v++) {
-      if (pl.life[v] < CHAIN.living) continue;
+    const p = topo.basePositions, n = CHAIN.stretches, N = pl.rock.length;
+    const island = new Int32Array(N).fill(-1), least = CHAIN.least * (topo.vertexCount / 16002);
+    let islands = 0;
+    for (let v = 0; v < N; v++) {
+      if (island[v] !== -1 || pl.rock[v] <= 0) continue;
+      const piece: number[] = [], stack = [v];
+      island[v] = -2;
+      while (stack.length) {
+        const u = stack.pop()!;
+        piece.push(u);
+        for (let k = topo.nbrOffsets[u]; k < topo.nbrOffsets[u + 1]; k++) { const w = topo.nbrList[k]; if (island[w] === -1 && pl.rock[w] > 0) { island[w] = -2; stack.push(w); } }
+      }
+      const id = piece.length >= least ? islands++ : -3; // (-3: a rock, too small to count)
+      for (const u of piece) island[u] = id;
+    }
+    // Which stretches each island stands by the way in.
+    const on: Set<number>[] = Array.from({ length: islands }, () => new Set<number>());
+    for (let v = 0; v < N; v++) {
+      if (island[v] < 0) continue;
       const w = this.where({ x: p[v * 3], y: p[v * 3 + 1], z: p[v * 3 + 2] });
       if (w.off > CHAIN.near || w.round >= CHAIN.arc) continue;
-      this.held[Math.min(n - 1, Math.floor((w.round / CHAIN.arc) * n))] = true;
+      on[island[v]].add(Math.min(n - 1, Math.floor((w.round / CHAIN.arc) * n)));
+    }
+    // An island by a stretch already held is the island that holds it (or one joined to it since): it holds no other.
+    const used = new Uint8Array(islands);
+    for (let j = 0; j < islands; j++) for (const i of on[j]) if (this.held[i]) used[j] = 1;
+    // Each other island to one stretch: along the way, each stretch still unheld takes the free island that could hold fewest others.
+    for (let i = 0; i < n; i++) {
+      if (this.held[i]) continue;
+      let best = -1;
+      for (let j = 0; j < islands; j++) if (!used[j] && on[j].has(i) && (best < 0 || on[j].size < on[best].size)) best = j;
+      if (best >= 0) { used[best] = 1; this.held[i] = true; }
     }
     return this.count;
   }

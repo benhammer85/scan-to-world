@@ -82,7 +82,12 @@ export function habitat(pl: Planet, topo: Topology, v: number): Kind | null {
   if (pl.lava[v] > 0.0015) return null;
   if (h < 0) return h > ECOLOGY.reefDeep ? 'reef' : null;
   if (h < ECOLOGY.lowShore) {
-    for (let k = topo.nbrOffsets[v]; k < topo.nbrOffsets[v + 1]; k++) if (pl.rock[topo.nbrList[k]] < 0) return 'mangrove';
+    // (A speck of rock awash, with hardly any land round it, is drawn as sea: nothing grows there to draw, or its
+    // mangroves stood in the open water.)
+    let land = 0, sea = 0;
+    for (let k = topo.nbrOffsets[v]; k < topo.nbrOffsets[v + 1]; k++) { if (pl.rock[topo.nbrList[k]] < 0) sea++; else land++; }
+    if (land < 2) return null;
+    if (sea > 0) return 'mangrove';
   }
   if (h >= ECOLOGY.heathFrom && pl.ash[v] >= ECOLOGY.heathAsh) return 'heath';
   if (pl.rich[v] >= ECOLOGY.meadowRich) return 'meadow';

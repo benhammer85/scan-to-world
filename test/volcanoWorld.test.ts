@@ -35,9 +35,12 @@ describe('the kinds of life, and the ground each needs', () => {
     pl.rock[v] = -0.2;
     expect(habitat(pl, topo, v)).toBe(null);
     // A low shore: just above the water, beside it.
-    const shore = nearest(0, 1, 0), nb = topo.nbrList[topo.nbrOffsets[shore]];
-    pl.rock[shore] = 0.01; pl.rock[nb] = -0.02;
+    const shore = nearest(0, 1, 0), o = topo.nbrOffsets[shore], nbs = topo.nbrList.slice(o, topo.nbrOffsets[shore + 1]);
+    pl.rock[shore] = 0.01; nbs.forEach((w, i) => { pl.rock[w] = i < 3 ? 0.02 : -0.02; });
     expect(habitat(pl, topo, shore)).toBe('mangrove');
+    // A lone speck of rock awash, sea all round it: nothing grows there to draw (its mangroves stood in open water).
+    nbs.forEach((w) => { pl.rock[w] = -0.02; });
+    expect(habitat(pl, topo, shore)).toBe(null);
   });
 
   it('a kind takes hold when it lives on enough of the world, and is counted as living', () => {
