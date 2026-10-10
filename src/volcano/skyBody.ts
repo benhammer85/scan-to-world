@@ -6,7 +6,8 @@
  * washes; a star gives its own light, so it isn't shaded, only a little warmer towards its edge, with a soft
  * bloom of colour round it in place of rays.
  *
- * Each is a unit-diameter ball (scale it to size, as a sprite was), turning slowly about its own axis.
+ * Each is a unit-diameter ball (scale it to size, as a sprite was): a giant or a star turning slowly about its own
+ * axis, a moon keeping one face to its world.
  */
 import * as THREE from 'three';
 
@@ -76,8 +77,9 @@ export function skyBody(look: SkyBodyLook, time: { value: number }): THREE.Mesh 
       void main() {
         vec3 n = normalize(vN), v = normalize(vV), p = normalize(vP);
         float px = 0.02;
-        // (Turning slowly about its own axis.)
-        float turn = uTime * (uKind > 1.5 ? 0.01 : 0.03);
+        // (Turning about its own axis: a giant in hours, so a little faster; a star slowly, its spots carried round
+        // in weeks. A moon not at all: it keeps one face to its world, as ours does.)
+        float turn = uTime * (uKind > 1.5 ? 0.01 : uKind > 0.5 ? 0.0 : 0.03);
         vec3 q = vec3(p.x * cos(turn) + p.z * sin(turn), p.y, -p.x * sin(turn) + p.z * cos(turn));
         float grain = n3(q * 60.0) * 0.6 + n3(q * 140.0) * 0.4; // (the paper's tooth)
         vec3 col = uPaper;
