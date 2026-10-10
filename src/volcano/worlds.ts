@@ -133,7 +133,7 @@ export const WORLDS: World[] = [
       talus: 1.65, flow: 8, channel: 4, coolLand: 1, // (its gravity makes slopes stand steeper still; and it sets fast, so poured lava stacks into a mountain rather than running off)
       drift: 0, rises: 0, heat: 210, rising: 0.8, steady: true, // (the heat comes back quickly: the first world, so waiting is short)
       impactEvery: [60, 100], impactWarning: 14, impactHeat: 6,
-      stormEvery: [110, 160], stormWarning: 12, stormLasts: 22, stormWear: 0.003, softer: 7, // (rarer, and wearing mostly loose ash: poured rock lasts, so a storm doesn't feel like losing)
+      stormEvery: [55, 80], stormWarning: 15, stormLasts: 18, stormWear: 0.012, softer: 7, stormFresh: 30, // (often enough to plan for, and hard on old rock and ash: lava poured just before one is still fresh, and keeps the peak)
     },
     palette: {
       paper: '#ead3b4', basalt: '#a67a5c', ash: '#c9ad92', lava: '#b8563c', deepLava: '#8f3b28',
@@ -195,7 +195,7 @@ export const WORLDS: World[] = [
       landInk: '#5a7080', landInkHigh: '#3c5463', pencil: '#b3bfc6', seaInk: '#5b82a3',
     },
     goal: 'cover',
-    cover: 0.55,
+    cover: 0.68,
     contour: 0.07,
   },
   {

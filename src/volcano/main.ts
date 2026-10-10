@@ -1190,7 +1190,7 @@ if (WORLD.goal === 'snow') {
 }
 // (Where the aim is a natural place stippled in pencil, a crater's floor or a seamount's top, the stipple in a stronger
 // ink than the pencil: on the Moon's pale ground the pencil was the ground's own colour, and couldn't be seen.)
-if (WORLD.goal === 'basins' || WORLD.goal === 'bank') {
+if (WORLD.goal === 'basins' || WORLD.goal === 'bank' || WORLD.goal === 'round') {
   const m = (aimPencil.object.material as THREE.ShaderMaterial).uniforms, ink = '#' + new THREE.Color(AIM_INK).multiplyScalar(0.6).getHexString();
   m.uInk.value.set(ink); m.uInk2.value.set(ink); m.uSize.value = 2.6 * AIM_BIG * Math.min(2, window.devicePixelRatio || 1);
 }
@@ -1202,6 +1202,10 @@ const gauge = new THREE.Group(), gaugeInk = new Stipple(AIM_INK, 'dot', 2.5 * AI
 const gaugeAt = new THREE.Vector3(planet.plume.x, planet.plume.y, planet.plume.z).normalize();
 for (const s of [aimInk, aimPencil, aimNext, gaugeInk, gaugePencil]) { s.byDirection = true; s.linger = 1.5; (s.object.material as THREE.Material).depthTest = false; }
 for (const s of [aimInk, aimPencil, aimNext]) group.add(s.object);
+/** The asteroid: its high ground in short strokes, as old charts hatched a height: where lava makes it lumpier, so keep off it. */
+const highHatch = new Stipple('#' + new THREE.Color(AIM_INK).multiplyScalar(0.6).getHexString(), 'dash', 6);
+highHatch.byDirection = true;
+if (WORLD.goal === 'round') group.add(highHatch.object);
 /**
  * The circle round the volcano, where the aim asks for an eruption: dotted, inking itself in, dot by dot, as the heat
  * builds towards what the aim needs, and closed when it's time to let go. It says what a grey or gold edge on the
@@ -1607,7 +1611,7 @@ let peakReached = false;
 function reckonAim(): void {
   if (chain) { aimDone = chain.update(planet, topo); aimOf = CHAIN.stretches; }
   else if (WORLD.goal === 'height') { aimDone = Math.max(0, planet.summit * HEIGHT.kmPerUnit); aimOf = HEIGHT.target; }
-  else if (WORLD.goal === 'cover') { aimDone = planet.covered * 100; aimOf = COVER; }
+  else if (WORLD.goal === 'cover') { aimDone = planet.coveredSheet * 100; aimOf = COVER; } // (one sheet: scattered patches don't add up)
   else if (WORLD.goal === 'plumes') { aimDone = planet.plumes.length; aimOf = PLUMES; }
   else if (WORLD.goal === 'round') { aimDone = planet.roundness * 100; aimOf = ROUND; }
   else if (WORLD.goal === 'ridge') { aimDone = planet.ridgeRaise().filter((r) => r >= planet.k.ridge).length; aimOf = Planet.RIDGE_STRETCHES; }
@@ -1686,7 +1690,7 @@ const AIM: Record<string, string> = {
   ring: 'Build islands all along the volcano\'s path (the dotted line).',
   basins: 'Fill the big craters with lava.',
   height: `Build a mountain ${HEIGHT.target} km tall.`,
-  cover: `Cover ${COVER}% of the moon in new white ice.`,
+  cover: `Grow one sheet of new white ice over ${COVER}% of the moon.`,
   plumes: `Make ${PLUMES} big eruptions, each in a new place.`,
   feed: "Fill the big planet's ring with ice.",
   round: `Fill the hollows until the asteroid is ${ROUND}% rounder.`,
@@ -1719,10 +1723,10 @@ const TIP: Record<string, string> = {
   ring: `${POUR} The sea floor slides over the hot spot, so the volcano moves along the dotted line, as Hawaii's did. Pour as it goes. Old islands sink, so keep going.`,
   basins: `The craters still to fill are dotted in pencil. Turn one to just below the volcano. ${HOLD} to pour into it.`,
   height: `${HOLD} to pour. Lava runs down the screen: turn the world between pours, so the mountain grows on every side.`,
-  cover: `${POUR} The water freezes into new white ice. Pour over the old grey ice, and turn the world to reach more of it.`,
+  cover: `${POUR} The water freezes into new white ice. Only your biggest single sheet counts, so grow it outward from its edge: turn the world so the edge is just below the volcano.`,
   plumes: `${ERUPT} Then turn the world to start the next one outside the old rings.`,
   feed: `Turn the volcano towards the big planet, at the top left. ${ERUPT} The ring fades, so keep going.`,
-  round: `Turn a hollow to just below the volcano. ${HOLD} to pour into it. Lava on high ground makes it lumpier.`,
+  round: `Fill the dotted hollows. Turn one to just below the volcano, and ${HOLD.toLowerCase()} to pour into it. Keep off the hatched high ground: lava there makes it lumpier.`,
   ridge: 'Lava runs to the dotted line by itself. Turn a bare part of the line to the top.',
   lamp: `Blobs float to the top of the world. Turn the dotted shore to the top. A blob grows at the volcano: ${COMPUTER ? 'click' : 'tap'} to let it go before it grows too big.`,
   calm: `Turn the dotted line to the top, under the volcano. ${ERUPT}`,
@@ -1766,7 +1770,7 @@ function goalLine(): string {
     case 'ring': return `Islands along the path · ${d} of ${of}`;
     case 'basins': return `Craters filled · ${d} of ${of}`;
     case 'height': return `Mountain · ${Math.min(d, of)} of ${of} km`;
-    case 'cover': return `New ice · ${d}% · goal ${of}%`;
+    case 'cover': return `Ice sheet · ${d}% of the moon · goal ${of}%`;
     case 'plumes': return `Big eruptions · ${d} of ${of}`;
     case 'feed': return `The ring · ${pct}% full`;
     case 'round': return `Rounder · ${d}% · goal ${of}%`;
@@ -1957,6 +1961,10 @@ function drawAim(now: number): void {
       const deep = m - planet.spreadOf(h) * 0.9, dots: number[] = [];
       for (let v = 0; v < N; v += 7) if (h(v) < deep) { const r = 1 + RELIEF * Math.max(0, h(v)) + 0.003; dots.push(base[v * 3] * r, base[v * 3 + 1] * r, base[v * 3 + 2] * r); }
       aimPencil.set(dots);
+      // (And the high ground, hatched: lava there makes it lumpier. It goes as the hollows round it fill and it's no longer high.)
+      const high = m + planet.spreadOf(h) * 0.9, hatch: number[] = [];
+      for (let v = 3; v < N; v += 6) if (h(v) > high) { const r = groundOver(v); hatch.push(base[v * 3] * r, base[v * 3 + 1] * r, base[v * 3 + 2] * r); }
+      highHatch.set(hatch);
     }
     // And the ring round the heat, inked round as far as the aim is met.
     const R = WORLD.goal === 'height' ? 0.32 : 0.3, around = Math.max(24, Math.round((Math.PI * 2 * Math.sin(R)) / 0.045));
@@ -2025,6 +2033,7 @@ function drawAim(now: number): void {
     // Each great crater's own floor, stippled in pencil as old charts stippled a hollow: where lava is wanted. The
     // stipple goes where lava has lain, so what's left to fill is what's still stippled; a crater flooded enough is
     // done, and its last stipple goes too. (It was a dotted circle round each, a mark with nothing under it.)
+    spillCheck();
     for (const b of planet.basins) {
       if (planet.flooded(b) >= FLOODED_ENOUGH) continue;
       for (const d of capDots(b, b.r * 0.8)) {
@@ -2168,6 +2177,22 @@ function marbleSpot(f: number): { x: number; y: number; z: number } | null {
   const c = m.centre, t = m.t2, r = m.R * f, l = Math.hypot(c.x - t.x * r, c.y - t.y * r, c.z - t.z * r);
   return { x: (c.x - t.x * r) / l, y: (c.y - t.y * r) / l, z: (c.z - t.z * r) / l };
 }
+/**
+ * The Moon: lava that runs off outside the craters is heat spent for nothing. Looked at every two seconds, over what's
+ * been laid since: if most of it lies outside every crater still to fill, it's said (at most every half minute), with
+ * what to do about it.
+ */
+let spillSaid = -100;
+function spillCheck(): void {
+  if (seconds - spillSaid < 30 || ending) return;
+  let inside = 0, outside = 0;
+  const open = planet.basins.filter((b) => planet.flooded(b) < FLOODED_ENOUGH);
+  for (let v = 0; v < N; v++) {
+    if (planet.age[v] > 2.5 || planet.lava[v] < planet.k.thin) continue; // (laid just now)
+    if (open.some((b) => Math.hypot(base[v * 3] - b.x, base[v * 3 + 1] - b.y, base[v * 3 + 2] - b.z) < b.r * 0.8)) inside++; else outside++;
+  }
+  if (outside > 40 && outside > inside * 2) { spillSaid = seconds; announce('That lava ran outside the craters: turn a dotted crater to just below the volcano'); }
+}
 /** Where the coming stone will land (null when none is coming). */
 function stoneSpot(): { x: number; y: number; z: number } | null {
   const v = planet.impact?.vertex;
@@ -2201,6 +2226,8 @@ const HAND_CUES: Cue[] = LAMP ? [
 const CUES: Cue[] = [
   ...HAND_CUES,
   ...(WORLD.rules.rises ? [{ ready: () => true, say: 'The volcano moves to whatever is at the top: turn the world to move it', done: (s: number) => s > 20 }] : []),
+  // (Mars: a storm wears old rock but not fresh lava, so the first one coming is the moment to say so.)
+  ...(planet.k.stormFresh > 0 ? [{ ready: () => planet.stormComing !== null, hand: 'hold' as const, say: 'A dust storm is coming: pour now. Fresh lava doesn\'t wear away', done: (s: number) => s > 12 }] : []),
   ...(WORLD.goal === 'ridge' ? [{ ready: () => planet.tally.flows + planet.tally.bursts > 0, say: 'The spin carries the lava to the dotted line', done: (s: number) => s > 25 }] : []),
   // (Only where a burst is the way: on the worlds that want pouring, or a release short of a burst, or none
   // at all, it pointed the wrong way, and on the hollow world it emptied the ground.)
@@ -2699,7 +2726,7 @@ const GOAL_WORDS: Record<typeof WORLD.goal, { age: (met: boolean) => string; don
   ring: { age: () => 'Later: the islands sink and coral grows round them', done: 'Goal reached: islands all along the path', title: ['Chain of islands built', 'Chain broken'], got: () => `${aimDone} of ${aimOf} stretches living` },
   basins: { age: () => 'Later: small meteorites keep hitting it', done: 'Goal reached: every big crater filled', title: ['All craters filled', 'Not all craters filled'], got: () => `${aimDone} of ${aimOf} craters filled` },
   height: { age: () => 'Later: dust storms keep wearing it down', done: `Goal reached: a mountain ${HEIGHT.target} km high`, title: ['Mountain built', 'Mountain too low'], got: () => `${Math.round(aimDone)} of ${aimOf} km high` },
-  cover: { age: () => 'Later: the new ice turns grey', done: `Goal reached: new ice over ${COVER}% of the moon`, title: ['New ice made', 'Not enough new ice'], got: () => `new ice over ${Math.round(aimDone)}% of the moon (goal ${aimOf}%)` },
+  cover: { age: () => 'Later: the new ice turns grey', done: `Goal reached: one sheet of new ice over ${COVER}% of the moon`, title: ['Ice sheet made', 'Ice sheet too small'], got: () => `one sheet over ${Math.round(aimDone)}% of the moon (goal ${aimOf}%)` },
   plumes: { age: () => 'Later: the sulphur settles', done: `Goal reached: ${PLUMES} big eruptions`, title: ['Big eruptions made', 'Not enough big eruptions'], got: () => `${aimDone} of ${aimOf} big eruptions` },
   calm: { age: () => 'Later: the moon keeps turning', done: 'Goal reached: the moon has stopped tumbling', title: ['Tumbling stopped', 'Still tumbling'], got: () => `${aimDone}% calmer (goal ${aimOf}%)` },
   bank: { age: () => 'Later: waves wear at the island', done: 'Goal reached: an island on the undersea mountain', title: ['Island built', 'No island yet'], got: () => `the island ${Math.min(100, Math.round(aimDone))}% raised` },
@@ -2732,7 +2759,7 @@ function tale(met: boolean): string {
     case 'ring': return met ? 'A chain of islands half the world long. The oldest are already sinking.' : `Islands along ${aimDone} of the ${aimOf} parts of the line. The sea took the rest.`;
     case 'basins': return `${aimDone} of ${aimOf} big craters filled with lava.`;
     case 'height': { const km = Math.round(aimDone); return met ? `A mountain ${km} km high, ${km >= 26 ? 'three times' : 'twice'} the height of Everest.` : `A mountain ${km} km high.`; }
-    case 'cover': return `${Math.round(aimDone)}% of the old grey ice replaced with new white ice.`;
+    case 'cover': return `One sheet of new white ice over ${Math.round(aimDone)}% of the moon.`;
     case 'plumes': return `${aimDone} big eruptions, each leaving a ring of sulphur.`;
     case 'calm': return met ? 'The moon stopped tumbling and now turns steadily.' : `The moon is ${aimDone}% calmer, but still tumbling.`;
     case 'bank': return met ? 'A new island on the bank, in deep water.' : 'An island on the bank, still under water.';
@@ -3644,6 +3671,7 @@ const loop = (): void => {
     gaugePencil.update(dt);
   }
   for (const s of [...kindDots, foam]) s.update(dt);
+  if (WORLD.goal === 'round') highHatch.update(dt);
   puffs.update(dt * speed);
   if (begun) breathe(dt);
   inTheHand();
