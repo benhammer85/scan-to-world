@@ -219,11 +219,11 @@ const COMPUTER = (navigator.maxTouchPoints || 0) === 0 && matchMedia('(pointer: 
 /**
  * One hand, the same on every world it's tried on: drag to turn the world (lava runs down the screen), hold to pour
  * (the longer, the faster), tap to erupt (biggest once the circle round the volcano has closed). Nothing pours by
- * itself and nothing bursts by accident, so every eruption is chosen. For now on five worlds, to try against the rest;
- * there, the old way can be chosen again at the foot.
+ * itself and nothing bursts by accident, so every eruption is chosen. Every world but two with hands of their own:
+ * Io's two lavas (hold in the pool to pour, drag through it to swirl) and Grindavík (lava runs by itself; a tap
+ * raises a wall). On the glass world, a tap lets the blob go.
  */
-const HAND_WORLDS = new Set<WorldId>(['mars', 'moon', 'ocean', 'io', 'hollow']);
-const HAND = HAND_WORLDS.has(WORLD.id) && remembered('volcano.hands') !== 'old';
+const HAND = !MARBLE && !TOWN;
 const BREATHE = !HAND && (remembered('volcano.controls') === 'breathe' || COMPUTER) && !WORLD.rules.lamp;
 if (BREATHE) planet.k.pulse = planet.k.explosive * 0.55;
 if (HAND) planet.burstOnPour = false;
@@ -1683,11 +1683,11 @@ const TIP: Record<string, string> = {
   cover: `${POUR} Pour over the grey ice, and turn the world to reach more of it.`,
   plumes: `${ERUPT} Then turn the world to start the next one outside the old rings.`,
   feed: `Turn the volcano towards the big planet, at the top left. ${ERUPT} The ring fades, so keep going.`,
-  round: `Turn a hollow to the top and pour into it. Lava on high ground makes it lumpier.`,
+  round: HAND ? `Turn a hollow to just below the volcano. ${HOLD} to pour into it. Lava on high ground makes it lumpier.` : `Turn a hollow to the top and pour into it. Lava on high ground makes it lumpier.`,
   ridge: 'Lava runs to the dotted line by itself. Turn a bare part of the line to the top.',
-  lamp: 'Blobs float to the top of the world. Turn the dotted shore to the top. Let each blob grow, but not too big.',
+  lamp: HAND ? `Blobs float to the top of the world. Turn the dotted shore to the top. A blob grows at the volcano: ${COMPUTER ? 'click' : 'tap'} to let it go before it grows too big.` : 'Blobs float to the top of the world. Turn the dotted shore to the top. Let each blob grow, but not too big.',
   calm: `Turn the dotted line to the top, under the volcano. ${ERUPT}`,
-  bank: BREATHE ? 'Turn the world so the dotted circle is below the volcano, and keep it there.' : 'Tilt towards the dotted circle, the same way every time.',
+  bank: BREATHE || HAND ? 'Turn the world so the dotted circle is below the volcano, and keep it there.' : 'Tilt towards the dotted circle, the same way every time.',
   orbit: `Pour first, to build a tall volcano. Then: ${ERUPT[0].toLowerCase()}${ERUPT.slice(1)}`,
   hearth: `${POUR} Life grows on warm new rock. Pour next to the green, never on it.`,
   thaw: `Build the volcano up through the ice. Then: ${ERUPT[0].toLowerCase()}${ERUPT.slice(1)} Each eruption warms the sky.`,
@@ -1710,7 +1710,9 @@ const OWN_TIP: Partial<Record<WorldId, string>> = {
   hollow: HAND ? `${HOLD} to pour, a little at a time. Don't ${COMPUTER ? 'click' : 'tap'} to erupt: a big eruption makes the top fall in.` : BREATHE ? "Lava pours out by itself. Don't hold your finger on the world: a big eruption makes the top fall in." : 'Pour a little at a time, with rests between. Never hold the heat in: a big eruption makes the top fall in.',
 };
 /** How the hands do it, for the way it's being played: tipping a phone, breathing, or a computer's mouse. */
-const HANDS: string[] = HAND
+const HANDS: string[] = HAND && LAMP
+  ? ['Drag · turn the planet', `${COMPUTER ? 'Click' : 'Tap'} · let a blob go`]
+  : HAND
   ? ['Drag · turn the world', COMPUTER ? 'Hold the mouse · pour lava' : 'Hold · pour lava', `${COMPUTER ? 'Click' : 'Tap'} · erupt`]
   : MARBLE
   ? [COMPUTER ? 'Hold the mouse in the circle · pour lava' : 'Hold a finger in the circle · pour lava', 'Drag through the circle · swirl', 'Drag outside it · turn the world']
@@ -2076,7 +2078,10 @@ function arrows(dt: number): void {
  * and never over what the world is saying itself. Then nothing more, but the aim now and then.
  */
 const BURST_WORLDS = new Set(['plumes', 'feed', 'calm', 'orbit', 'thaw', 'waves', 'antipode', 'streaks']);
-const CUES: { ready: () => boolean; say?: string; begin?: () => void; done: (since: number) => boolean }[] = HAND ? [
+const CUES: { ready: () => boolean; say?: string; begin?: () => void; done: (since: number) => boolean }[] = HAND && LAMP ? [
+  { ready: () => true, say: 'A glowing blob grows at the volcano', done: () => planet.pressure > planet.k.least * 2 },
+  { ready: () => true, say: `${COMPUTER ? 'Click' : 'Tap'} the world to let the blob go`, done: (s) => planet.tally.flows + planet.tally.bursts > 0 || s > 40 },
+] : HAND ? [
   // One hand: the three touches, each said once, as it's what matters next.
   { ready: () => true, say: `${HOLD} to pour lava`, done: () => planet.tally.flows > 0 },
   { ready: () => !planet.pouring, say: 'Drag to turn the world: lava runs down the screen', done: (s) => s > 10 },
@@ -3082,7 +3087,7 @@ const cardWords = () => {
   const el = $('begin').querySelector('.second') as HTMLElement;
   el.replaceChildren();
   const aim = document.createElement('b'); aim.className = 'aim'; aim.textContent = words$(FREE ? 'No aim and no clock.' : AIM[WORLD.goal] ?? WORLD.second);
-  el.append(aim, document.createTextNode(words$(FREE ? 'The fire never cools.' : OWN_TIP[WORLD.id] ?? TIP[WORLD.goal] ?? '')));
+  el.append(aim, document.createTextNode(words$(FREE ? 'Free play: no goal and no time limit.' : OWN_TIP[WORLD.id] ?? TIP[WORLD.goal] ?? '')));
   // (Once the world has been won: the marks there are still to earn on it.)
   ($('begin').querySelector('.marks') as HTMLElement).textContent = FREE || RUN !== null ? '' : marksLine(WORLD.id);
 };
@@ -3125,8 +3130,6 @@ if (!COMPUTER && !LAMP && !BREATHE && !HAND && NEWCOMER) {
   c.addEventListener('pointerdown', (e) => { e.stopPropagation(); remember('volcano.controls', 'breathe'); location.reload(); });
 }
 // The calm way to play, or tipping: on a phone (a computer always breathes), not on the glass world.
-// One hand, where it's being tried: the old way to be had again, to compare.
-if (HAND_WORLDS.has(WORLD.id)) footLink(HAND ? 'old controls' : 'one hand', () => { remember('volcano.hands', HAND ? 'old' : 'one'); location.reload(); });
 if (!COMPUTER && !LAMP && !HAND) footLink(BREATHE ? 'tilt to pour' : 'breathe', () => { remember('volcano.controls', BREATHE ? 'tip' : 'breathe'); location.reload(); });
 ($('begin').querySelector('.more-toggle') as HTMLElement).hidden = true;
 // The end of a fire in free play: when you choose.
@@ -3207,7 +3210,7 @@ $('begin').addEventListener('pointerdown', () => {
   begunAt = seconds;
   remember('volcano.played', String(Number(remembered('volcano.played') ?? '0') + 1));
   document.body.classList.remove('carding');
-  askForTilt();
+  if (!HAND && !MARBLE && !TOWN) askForTilt(); // (one hand needs no tilt: no asking the phone for it)
   $('begin').classList.add('gone');
   if (FREE) $('finish').classList.add('shown');
 });
@@ -3272,8 +3275,8 @@ const SETTINGS: Record<string, { now: () => string; set: (v: string) => void; an
   ink: { now: () => (remembered('volcano.ink') === 'quiet' ? 'quiet' : 'water'), set: (v) => remember('volcano.ink', v), anew: true },
 };
 let settingsChanged = false;
-// (A computer has no tipping: it always plays by holding, so the choice isn't offered there.)
-if (COMPUTER) (titlePage.querySelector('[data-row="hands"]') as HTMLElement).hidden = true;
+// (One set of hands everywhere now: no choice of how to play.)
+(titlePage.querySelector('[data-row="hands"]') as HTMLElement).hidden = true;
 function showSettings(): void {
   for (const [row, s] of Object.entries(SETTINGS)) {
     titlePage.querySelectorAll(`[data-row="${row}"] .opts button`).forEach((b) => b.classList.toggle('on', (b as HTMLElement).dataset.v === s.now()));
@@ -3440,7 +3443,7 @@ const loop = (): void => {
   else GRAV.copy(held).normalize().applyQuaternion(INVERSE);
   planet.gravity = { x: GRAV.x, y: GRAV.y, z: GRAV.z };
   { const u = GIANT_DIR.copy(LEVEL).applyQuaternion(INVERSE); planet.upright = { x: u.x, y: u.y, z: u.z }; }
-  { const h = TIP_V.copy(held).normalize(), c = h.dot(LEVEL); planet.tilt = HAND ? (pourHeld ? Math.min(1, planet.k.tipPour + 0.3 + 0.35 * (seconds - pourSince)) : 0) : BREATHE ? 0 : Math.sqrt(Math.max(0, 1 - c * c)); } // (one hand: held, it pours, faster the longer it's held)
+  { const h = TIP_V.copy(held).normalize(), c = h.dot(LEVEL); planet.tilt = HAND ? (pourHeld && !LAMP ? Math.min(1, planet.k.tipPour + 0.3 + 0.35 * (seconds - pourSince)) : 0) : BREATHE ? 0 : Math.sqrt(Math.max(0, 1 - c * c)); } // (one hand: held, it pours, faster the longer it's held)
   showWay();
   // And which way the giant is, on a world that has one in its sky.
   if (WORLD.goal === 'feed') { const s = GIANT_DIR.copy(GIANT_AT).normalize().applyQuaternion(INVERSE); planet.giant = { x: s.x, y: s.y, z: s.z }; }
