@@ -1,12 +1,16 @@
 /**
- * Marks: up to three small marks on a world's plate for how it was done, once its aim is met.
- * Not a score: each is a plain thing you did or didn't do, and once earned it stays.
+ * Stars: one to three for how a world was done, once its aim is met. Each is a plain thing you did or
+ * didn't do, and once earned it stays:
  *
- *   heat left: the aim met with a share of the heat still below;
- *   no setbacks: the mountain never blew apart, nor the ground fell in;
- *   in time: the aim met within a few unhurried minutes.
+ *   the goal reached;
+ *   with heat to spare: a share of the heat still below (so pours were well aimed, not wasted);
+ *   in time: within a few unhurried minutes.
  *
- * The shares and minutes were set by letting the skilled bot play every world (bots/), then asking
+ * Heat and time pull against each other (waiting for a big eruption saves heat but costs time), which is
+ * the choice the second and third stars ask you to make.
+ *
+ * The shares and minutes were set by letting the skilled bot play every world with one hand (bots/; and,
+ * where it aims by tilting, as one hand can't, a bot that aims by turning the world), then asking
  * a little less of the heat (about six tenths of what it kept) and a little more of the time (about
  * a third more than it took, in whole minutes), so a calm, careful game earns them.
  */
@@ -16,33 +20,33 @@ export type Marks = [boolean, boolean, boolean];
 
 /** For each world: the share of heat to have left (in hundredths: a half, third, quarter, fifth or tenth), and the minutes to be done within. */
 export const MARK_AT: Record<WorldId, { heat: number; minutes: number }> = {
-  first: { heat: 33, minutes: 5 },
-  ocean: { heat: 20, minutes: 7 },
-  moon: { heat: 25, minutes: 4 },
-  mars: { heat: 25, minutes: 4 },
-  ice: { heat: 25, minutes: 4 },
-  asteroid: { heat: 20, minutes: 5 },
+  first: { heat: 50, minutes: 4 },
+  ocean: { heat: 25, minutes: 6 },
+  moon: { heat: 20, minutes: 4 },
+  mars: { heat: 25, minutes: 3 },
+  ice: { heat: 10, minutes: 6 },
+  asteroid: { heat: 10, minutes: 7 },
   young: { heat: 25, minutes: 4 },
-  rogue: { heat: 10, minutes: 8 },
+  rogue: { heat: 33, minutes: 4 },
   snowball: { heat: 25, minutes: 3 },
   archean: { heat: 10, minutes: 6 },
-  lengai: { heat: 25, minutes: 4 },
+  lengai: { heat: 20, minutes: 5 },
   ijen: { heat: 25, minutes: 4 },
-  tonga: { heat: 33, minutes: 4 },
+  tonga: { heat: 33, minutes: 3 },
   io: { heat: 25, minutes: 4 },
   europa: { heat: 20, minutes: 4 },
   enceladus: { heat: 25, minutes: 4 },
-  triton: { heat: 33, minutes: 3 },
+  triton: { heat: 10, minutes: 5 },
   tumble: { heat: 33, minutes: 2 },
   mercury: { heat: 25, minutes: 4 },
-  magma: { heat: 25, minutes: 4 },
+  magma: { heat: 20, minutes: 4 },
   dust: { heat: 25, minutes: 4 },
-  spin: { heat: 10, minutes: 6 },
-  deep: { heat: 33, minutes: 3 },
+  spin: { heat: 10, minutes: 7 },
+  deep: { heat: 33, minutes: 2 },
   lamp: { heat: 33, minutes: 4 },
-  hollow: { heat: 33, minutes: 4 },
+  hollow: { heat: 33, minutes: 3 },
   venus: { heat: 33, minutes: 3 },
-  pluto: { heat: 33, minutes: 3 },
+  pluto: { heat: 50, minutes: 2 },
   grindavik: { heat: 50, minutes: 4 },
   twofires: { heat: 25, minutes: 4 },
 };
@@ -51,18 +55,28 @@ export const MARK_AT: Record<WorldId, { heat: number; minutes: number }> = {
 const HOUSES: WorldId[] = ['grindavik'];
 
 const SHARE: [number, string][] = [[50, 'half'], [33, 'a third'], [25, 'a quarter'], [20, 'a fifth'], [10, 'a tenth']];
-const shareWords = (heat: number) => { const w = SHARE.find(([h]) => h <= heat)?.[1] ?? 'some'; return w === 'half' ? 'half the heat left' : `${w} of the heat left`; };
+const shareWords = (heat: number) => { const w = SHARE.find(([h]) => h <= heat)?.[1] ?? 'some'; return w === 'half' ? 'keep half the heat' : `keep ${w} of the heat`; };
 
-/** The three marks' names on a world, in order. */
+/** The three stars' names on a world, in order. */
 export function markNames(world: WorldId): [string, string, string] {
   const at = MARK_AT[world] ?? { heat: 10, minutes: 8 };
-  return [HOUSES.includes(world) ? 'every house standing' : shareWords(at.heat), 'no setbacks', `within ${at.minutes} minutes`];
+  return ['reach the goal', HOUSES.includes(world) ? 'keep every house standing' : shareWords(at.heat), `finish within ${at.minutes} minutes`];
 }
 
-/** What a won game earned: heat left (0 to 1; at Grindavík, the share of the town standing), setbacks (the mountain blown apart or fallen in), and its length in seconds. */
-export function earned(world: WorldId, heatLeft: number, setbacks: number, seconds: number): Marks {
+/** What a won game earned: the goal (always, as it was won), heat left (0 to 1; at Grindavík, the share of the town standing), and its length in seconds. */
+export function earned(world: WorldId, heatLeft: number, seconds: number): Marks {
   const at = MARK_AT[world] ?? { heat: 10, minutes: 8 };
-  return [HOUSES.includes(world) ? heatLeft >= 1 - 1e-6 : heatLeft * 100 >= at.heat - 1e-6, setbacks === 0, seconds <= at.minutes * 60];
+  return [true, HOUSES.includes(world) ? heatLeft >= 1 - 1e-6 : heatLeft * 100 >= at.heat - 1e-6, seconds <= at.minutes * 60];
+}
+
+/** Stars as drawn: filled for each earned, open for each still to earn. */
+export function starsOf(m: Marks): string {
+  return m.map((x) => (x ? '★' : '☆')).join('');
+}
+
+/** Stars kept under the old marks (heat left, no setbacks, in time), as stars: the goal was reached to keep any. */
+export function fromOldMarks(s: string): Marks {
+  return [true, s[0] === '1', s[2] === '1'];
 }
 
 /** Kept as three 0s and 1s ("101"); what's earned once stays earned. */
@@ -81,5 +95,5 @@ export function stillToEarn(world: WorldId, have: Marks): string {
   const names = markNames(world), left = names.filter((_, i) => !have[i]);
   if (!left.length) return '';
   const list = left.length === 1 ? left[0] : `${left.slice(0, -1).join(', ')} and ${left[left.length - 1]}`;
-  return have.some(Boolean) ? `Still to earn: ${list}.` : `Marks to earn: ${list}.`;
+  return have.some(Boolean) ? `Still to earn: ${list}.` : `Stars to earn: ${list}.`;
 }

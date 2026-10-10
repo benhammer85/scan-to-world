@@ -57,7 +57,7 @@ import { loadSystem, saveSystem, worldFor, recordPlayed, finished, keepSystem, k
 import { openSystem, closeSystem } from './systemChart';
 import { feel, keepImage, NATIVE, rumble, rumbles, tap } from './native';
 import { SmokeSign } from './smokeSign';
-import { earned, markNames, mergeMarks, readMarks, stillToEarn, writeMarks, type Marks } from './marks';
+import { MARK_AT, earned, fromOldMarks, markNames, mergeMarks, readMarks, starsOf, stillToEarn, writeMarks, type Marks } from './marks';
 import './fonts.css';
 import { LOOKS, PRINT_FUNCTIONS, LAMP_PRINT_FUNCTIONS, LAMP_PRINT, LAMP_QUIET, printFragment, type Look } from './print';
 
@@ -1757,6 +1757,40 @@ function goalLine(): string {
     default: return '';
   }
 }
+/** Seconds as the clock shows them: 1:24. */
+const mmss = (sec: number): string => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
+/**
+ * What's coming next, where something is: the next stone, the next dust storm, the next high tide. Said plainly,
+ * with how long, so a pour or an eruption can be planned for it rather than met by surprise.
+ */
+function nextLine(): string {
+  const out: string[] = [];
+  const stone = planet.stoneDue;
+  if (stone !== null) out.push(planet.impact ? `a stone lands in ${mmss(stone)}` : `a stone in about ${mmss(stone)}`);
+  const storm = planet.stormDue;
+  if (storm !== null) out.push(storm <= 0 ? 'a dust storm now' : `a dust storm in ${mmss(storm)}`);
+  if (planet.k.tide > 0) {
+    const p = planet.k.tidePeriod, phase = ((planet.seconds / p) % 1 + 1) % 1, until = ((0.25 - phase + 1) % 1) * p;
+    out.push(planet.tideNow > 0.8 ? 'high tide now' : `high tide in ${mmss(until)}`);
+  }
+  return out.join(' · ');
+}
+/**
+ * Under the aim, while it's played: the heat left and the clock, beside what the stars ask (see marks.ts), and
+ * what's coming next. The two pull against each other: waiting saves heat and costs time.
+ */
+let paceAt = -1;
+function tellPace(): void {
+  const el = $('pace');
+  if (FREE || RUN !== null || !begun || ending || planet.over) { el.textContent = ''; return; }
+  if (seconds - paceAt < 0.5) return;
+  paceAt = seconds;
+  const at = MARK_AT[WORLD.id];
+  const heat = TOWN ? '' : `Heat left ${Math.round(100 * planet.heatLeft)}%${at ? ` (★ ${at.heat}%)` : ''} · `;
+  const time = `${mmss(planet.seconds)}${at ? ` (★ ${at.minutes}:00)` : ''}`;
+  const next = nextLine();
+  el.textContent = heat + time + (next ? `\nNext: ${next}` : '');
+}
 /** Say the aim now and then, and what's been gained each time something is. */
 function tellAim(): void {
   if (planet.over || ending) return;
@@ -2613,20 +2647,27 @@ function tale(met: boolean): string {
 }
 /** This game's marks, if the aim was met (see marks.ts); the best on this world are kept, as earned. */
 let marksNow: Marks | null = null;
-const MARKS_KEY = (id: WorldId) => `volcano.marks.${id}`;
+const MARKS_KEY = (id: WorldId) => `volcano.stars.${id}`;
+/** A world's stars as kept (null: never won); stars kept as the old marks are read across. */
+function keptStars(id: WorldId): Marks | null {
+  const now = remembered(MARKS_KEY(id));
+  if (now !== null) return readMarks(now);
+  const old = remembered(`volcano.marks.${id}`);
+  return old === null ? null : fromOldMarks(old);
+}
 function markTheWin(): void {
   if (FREE || RUN !== null) return; // (free play has no clock; a system's world has its own twist)
-  marksNow = earned(WORLD.id, TOWN ? planet.housesKept / Math.max(1, planet.houses.length) : planet.heatLeft, planet.tally.calderas, planet.seconds);
-  if (toppedUp) marksNow[0] = false; // (heat was given back: none to spare of its own)
-  const before = readMarks(remembered(MARKS_KEY(WORLD.id)));
+  marksNow = earned(WORLD.id, TOWN ? planet.housesKept / Math.max(1, planet.houses.length) : planet.heatLeft, planet.seconds);
+  if (toppedUp) marksNow[1] = false; // (heat was given back: none to spare of its own)
+  const before = keptStars(WORLD.id) ?? readMarks(null);
   remember(MARKS_KEY(WORLD.id), writeMarks(mergeMarks(before, marksNow)));
   // (Not said: the aim met and the long age are said then, and two lines are all that's shown. They're on the plate.)
 }
 /** A world's marks for its cards, once it's been won ('' before). */
 function marksLine(id: WorldId): string {
-  const kept = remembered(MARKS_KEY(id));
-  if (kept === null) return '';
-  return stillToEarn(id, readMarks(kept)) || 'All three marks earned.';
+  const kept = keptStars(id);
+  if (kept === null) return `☆☆☆  ${stillToEarn(id, [false, false, false])}`; // (what the stars ask, from the first time it's seen)
+  return `${starsOf(kept)}  ${stillToEarn(id, kept) || 'All three stars.'}`;
 }
 let ending: { from: number; shown: boolean; at: number; info: ChartInfo | null; turned: number; won: boolean } | null = null;
 let wonSeen = -1;
@@ -2803,7 +2844,7 @@ function openList(): void {
     const h = document.createElement('h3'); h.textContent = `${c.numeral} · ${c.title}`;
     sec.append(h);
     for (const id of c.worlds) {
-      const w = worldOf(id), kept = remembered(MARKS_KEY(id)), m = kept === null ? '' : readMarks(kept).map((x) => (x ? '●' : '○')).join('');
+      const w = worldOf(id), kept = keptStars(id), m = kept === null ? '' : starsOf(kept);
       const row = document.createElement('button'); row.className = 'row' + (id === WORLD.id ? ' here' : '');
       row.innerHTML = `<span class="n">${w.numeral}</span><span class="t"></span><span class="m">${m}</span>`;
       (row.querySelector('.t') as HTMLElement).textContent = w.title;
@@ -3506,6 +3547,7 @@ const loop = (): void => {
   drawReady(seconds);
   marbleHands(dt);
   marbling();
+  tellPace();
   readyInk.update(dt); readyPencil.update(dt);
   aimInk.update(dt);
   aimPencil.update(dt);
