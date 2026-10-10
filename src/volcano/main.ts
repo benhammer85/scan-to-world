@@ -1695,7 +1695,7 @@ const won = () => aimOf > 0 && aimDone >= aimOf && (WORLD.goal !== 'calm' || cal
 // chaos field, a stretch), and no colours to learn: where timing matters, the circle round the volcano shows it,
 // drawing itself in as the heat builds and closing when it's time to let go (see readyRing).
 const AIM: Record<string, string> = {
-  ring: 'Build islands all along the volcano\'s path (the dotted line).',
+  ring: `Build ${CHAIN.stretches} separate islands along the volcano's path (the dotted line).`,
   basins: 'Fill the big craters with lava.',
   height: `Build a mountain ${HEIGHT.target} km tall.`,
   cover: `Cover ${COVER >= 64 && COVER <= 70 ? 'two thirds' : COVER >= 48 && COVER <= 52 ? 'half' : `${COVER}%`} of the moon in one sheet of new white ice.`,
@@ -1731,7 +1731,7 @@ const HOLD = COMPUTER ? 'Hold the mouse button down on the world' : 'Hold a fing
 const LEARNED = { hold: remembered('volcano.learned.hold') === '1', drag: remembered('volcano.learned.drag') === '1' };
 const POUR = LEARNED.hold ? '' : `${HOLD} to pour lava.`;
 const TIP: Record<string, string> = {
-  ring: `${POUR} The sea floor slides over the hot spot, so the volcano moves along the dotted line, as Hawaii's did. Pour as it goes. Old islands sink, so keep going.`,
+  ring: `${POUR} The sea floor slides over the hot spot, so the volcano moves along the dotted line, as Hawaii's did. Pour, then stop and let some sea pass, then pour again: each island must stand apart from the last.`,
   basins: `The craters still to fill are dotted in pencil. Turn one to just below the volcano. ${HOLD} to pour into it.`,
   height: `${HOLD} to pour. Lava runs down the screen: turn the world between pours, so the mountain grows on every side.`,
   cover: `${POUR} The water freezes into new white ice. Only your biggest single sheet counts, so grow it outward from its edge: turn the world so the edge is just below the volcano.`,
@@ -1780,7 +1780,7 @@ const NEWCOMER = LAMP || MARBLE || HAND || Number(remembered('volcano.played') ?
 function goalLine(): string {
   const d = Math.round(aimDone), of = aimOf, pct = Math.min(100, d);
   switch (WORLD.goal) {
-    case 'ring': return `Islands along the path · ${d} of ${of}`;
+    case 'ring': return `Separate islands · ${d} of ${of}`;
     case 'basins': return `Craters filled · ${d} of ${of}`;
     case 'height': return `Mountain · ${Math.min(d, of)} of ${of} km`;
     case 'cover': return `Ice sheet · ${Math.min(100, Math.round((100 * aimDone) / Math.max(1, of)))}%`; // (one number: how far to the goal)
@@ -2767,7 +2767,7 @@ function replayStep(): void {
 }
 
 const GOAL_WORDS: Record<typeof WORLD.goal, { age: (met: boolean) => string; done: string; title: [string, string]; got: () => string }> = {
-  ring: { age: () => 'Later: the islands sink and coral grows round them', done: 'Goal reached: islands all along the path', title: ['Chain of islands built', 'Chain broken'], got: () => `islands along ${aimDone} of ${aimOf} parts of the path` },
+  ring: { age: () => 'Later: the islands sink and coral grows round them', done: 'Goal reached: islands all along the path', title: ['Chain of islands built', 'Chain broken'], got: () => `${aimDone} of ${aimOf} separate islands` },
   basins: { age: () => 'Later: small meteorites keep hitting it', done: 'Goal reached: every big crater filled', title: ['All craters filled', 'Not all craters filled'], got: () => `${aimDone} of ${aimOf} craters filled` },
   height: { age: () => 'Later: dust storms keep wearing it down', done: `Goal reached: a mountain ${HEIGHT.target} km high`, title: ['Mountain built', 'Mountain too low'], got: () => `${Math.round(aimDone)} of ${aimOf} km high` },
   cover: { age: () => 'Later: the new ice turns grey', done: `Goal reached: one sheet of new ice over ${COVER}% of the moon`, title: ['Ice sheet made', 'Ice sheet too small'], got: () => `one sheet over ${Math.round(aimDone)}% of the moon` },
@@ -2801,7 +2801,7 @@ const AGE_WORDS = (met: boolean) => GOAL_WORDS[WORLD.goal].age(met);
 function tale(met: boolean): string {
   const pct = Math.min(100, Math.round(aimDone));
   switch (WORLD.goal) {
-    case 'ring': return met ? 'A chain of islands a third of the way round the world. The oldest are already sinking.' : `Islands along ${aimDone} of the ${aimOf} parts of the line. The sea took the rest.`;
+    case 'ring': return met ? 'A chain of islands a third of the way round the world. The oldest are already sinking.' : `${aimDone} of ${aimOf} separate islands along the line.`;
     case 'basins': return `${aimDone} of ${aimOf} big craters filled with lava.`;
     case 'height': { const km = Math.round(aimDone); return met ? `A mountain ${km} km high, ${km >= 26 ? 'three times' : 'twice'} the height of Everest.` : `A mountain ${km} km high.`; }
     case 'cover': return `One sheet of new white ice over ${Math.round(aimDone)}% of the moon.`;
