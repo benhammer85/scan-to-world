@@ -2707,7 +2707,7 @@ function chartInfo(): ChartInfo {
     kinds: LIFE && KIND_NAMES ? KINDS.map((k) => ({ name: k.name, ink: PIGMENT[k.kind] ?? k.ink, sign: k.sign, living: living.has(k.kind) })) : [],
     // The first aim, how far it got; and the second, as the fire left it.
     // (And the world's own true story, last, as a reward: it was on the card, where it read as homework before play.)
-    summary: tale(met) + (second ? ` · ${second.words}` : '') + ` · ${WORLD.then}`,
+    summary: tale(met) + (second ? ` · ${second.words}` : '') + (WORLD.real && WORLD.goal === 'height' ? ` · The real ${WORLD.real.name} is ${WORLD.real.km} km high.` : ''),
     marks: marksNow ? markNames(WORLD.id).map((name, i) => ({ name, got: marksNow![i] })) : undefined,
     length,
     eras,
@@ -3075,6 +3075,8 @@ let begun = false;
 ($('begin').querySelector('.name') as HTMLElement).textContent = WORLD.title;
 // (An age of Earth begun on the ground the age before left says so: it's the world you made, an age on.)
 ($('begin').querySelector('.first') as HTMLElement).textContent = AGE_GROUND ? 'Your world, a long time later.' : '';
+// Why it plays the way it does: the real science, one plain sentence, under the aim.
+($('begin').querySelector('.why') as HTMLElement).textContent = words$(WORLD.why);
 // (Breathing, there's no tipping: what the card says of tipping is said of turning instead.)
 const cardWords = () => {
   const el = $('begin').querySelector('.second') as HTMLElement;

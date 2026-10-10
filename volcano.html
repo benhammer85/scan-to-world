@@ -101,7 +101,8 @@
       #begin .touch { font-size: 16px; letter-spacing: 0.08em; margin-top: 10px; padding: 12px 34px; border: 1px solid rgba(46, 33, 24, 0.35); border-radius: 999px; }
       #begin .chapter { font-size: 13px; opacity: 0.55; margin-bottom: -4px; }
       #begin .chapter:empty { display: none; }
-      #begin .first:empty, #begin .hands:empty { display: none; }
+      #begin .why { font-size: 14px; max-width: 24em; line-height: 1.45; padding: 0 24px; margin: 0; opacity: 0.72; }
+      #begin .first:empty, #begin .hands:empty, #begin .why:empty { display: none; }
       #begin .calmer { font-size: 12px; font-style: italic; letter-spacing: 0.03em; opacity: 0.6; margin-top: 2px; padding: 8px 14px; }
       #atlas .plates-head .play { font: italic 14px "Newsreader", "Iowan Old Style", Georgia, serif; color: #2e2118; background: none; border: none; text-decoration: underline; text-underline-offset: 4px; padding: 4px; cursor: pointer; }
       #begin .worlds { display: flex; flex-direction: row; flex-wrap: wrap; justify-content: center; align-items: center; max-width: min(100%, 30em); padding: 0 12px; box-sizing: border-box; margin-top: 4px; }
@@ -210,7 +211,7 @@
         <button class="back">done</button>
       </div>
     </div>
-    <div id="begin" class="engraved loading"><p class="chapter"></p><p class="world"></p><h1 class="name"></h1><p class="first"></p><p class="second"></p><p class="marks"></p><p class="hands"></p><button class="touch">Begin</button><button class="calmer" hidden>or play without tilting the phone</button><div class="worlds"></div><button class="more-toggle">more</button><div class="more" hidden></div></div>
+    <div id="begin" class="engraved loading"><p class="chapter"></p><p class="world"></p><h1 class="name"></h1><p class="first"></p><p class="second"></p><p class="why"></p><p class="marks"></p><p class="hands"></p><button class="touch">Begin</button><button class="calmer" hidden>or play without tilting the phone</button><div class="worlds"></div><button class="more-toggle">more</button><div class="more" hidden></div></div>
     <script type="module" src="/src/volcano/main.ts"></script>
   </body>
 </html>
