@@ -2544,66 +2544,66 @@ function replayStep(): void {
 }
 
 const GOAL_WORDS: Record<typeof WORLD.goal, { age: (met: boolean) => string; done: string; title: [string, string]; got: () => string }> = {
-  ring: { age: () => 'The islands sink, and coral rings them', done: 'An unbroken chain of living islands', title: ['A chain of islands', 'The chain is broken'], got: () => `${aimDone} of ${aimOf} stretches living` },
-  basins: { age: () => 'Time passes, and small stones still fall', done: 'Every basin flooded', title: ['Every basin flooded', 'Not every basin flooded'], got: () => `${aimDone} of ${aimOf} basins flooded` },
-  height: { age: () => 'Time passes, and the storms go on', done: `The mountain reaches ${HEIGHT.target} km`, title: ['The great mountain', 'Not high enough yet'], got: () => `${Math.round(aimDone)} of ${aimOf} km high` },
-  cover: { age: () => 'Time passes, and the new ice greys', done: `Done: ${COVER}% of the ice made new`, title: ['New ice', 'Not enough new ice'], got: () => `${Math.round(aimDone)}% of the ice new, of ${aimOf}%` },
-  plumes: { age: () => 'Time passes, and the sulphur settles', done: `Done: ${PLUMES} great plumes`, title: ['Great plumes', 'Not enough great plumes'], got: () => `${aimDone} of ${aimOf} great plumes` },
-  calm: { age: () => 'Time passes, and the moon turns on', done: 'The tumbling is calmed', title: ['The tumbling calmed', 'Still tumbling'], got: () => `${aimDone}% calmed, of ${aimOf}%` },
-  bank: { age: () => 'Time passes, and the sea goes on', done: 'An island on the bank', title: ['An island on the bank', 'No island on the bank yet'], got: () => `the island ${Math.min(100, Math.round(aimDone))}% raised` },
-  ridge: { age: () => 'Time passes, and small stones still fall', done: 'A ridge all the way round', title: ['Ringed with a ridge', 'Not yet ringed'], got: () => `${aimDone} of ${aimOf} stretches raised` },
-  lamp: { age: () => 'Time passes, and the blobs sink into the deep', done: 'The far shore is full', title: ['The far shore filled', 'The far shore not filled'], got: () => `the far shore ${Math.min(100, Math.round(aimDone))}% full` },
-  round: { age: () => 'Time passes, and small stones still fall', done: `The asteroid is ${ROUND}% rounder`, title: ['A rounder world', 'Not round enough yet'], got: () => `${Math.round(aimDone)}% rounder, of ${aimOf}%` },
-  feed: { age: () => 'Time passes, and the ring slowly thins', done: 'The ring is full', title: ['The ring is full', 'The ring is not full'], got: () => `the ring ${Math.min(100, Math.round(aimDone))}% full` },
-  orbit: { age: (met) => (met ? 'Time passes, and the ring of rock gathers into a moon' : 'Time passes, and the rock in orbit falls back'), done: 'Enough rock in orbit for a moon', title: ['A moon is made', 'No moon yet'], got: () => `${Math.min(100, Math.round(aimDone))}% of a moon in orbit` },
-  hearth: { age: () => 'Time passes, and the rock grows cold', done: 'Warm ground, and life all over it', title: ['Life kept warm', 'Not enough kept warm'], got: () => `${Math.min(100, Math.round(aimDone))}% of the living ground` },
-  thaw: { age: (met) => (met ? 'Time passes, and the ice goes on giving way' : 'Time passes, and the gas is drawn down'), done: 'The ice gives way', title: ['The ice gives way', 'Still frozen'], got: () => `the sky ${Math.min(100, Math.round(aimDone))}% warm enough` },
-  outbuild: { age: () => 'Time passes, and the star goes on boiling it', done: 'It has grown faster than it boils away', title: ['Built faster than it boils', 'Boiling away'], got: () => `${Math.min(100, Math.round(aimDone))}% of the growth` },
-  white: { age: () => 'Time passes, and the last of the black lava whitens', done: 'A white mountain on the equator', title: ['A white mountain', 'Not yet white'], got: () => (aimDone < 50 ? `the peak ${Math.round(aimDone * 2)}% built` : `the summit ${Math.round((aimDone - 50) * 2)}% white`) },
-  glow: { age: () => 'Time passes, and the blue fire goes out', done: 'The crater lit with blue fire', title: ['Blue fire', 'The night still dark'], got: () => `${Math.min(100, Math.round(aimDone))}% of the night lit` },
-  waves: { age: () => 'Time passes, and the sea fills the broken cone', done: 'The air rung round the world', title: ['Waves round the world', 'Not enough waves'], got: () => `${aimDone} of ${aimOf} waves` },
-  antipode: { age: () => 'Time passes, and the world goes on cooling and wrinkling', done: 'A mountain on the far side, raised from this one', title: ['Through the world', 'The far side still low'], got: () => `the far side ${Math.round(aimDone)} of ${aimOf} km high` },
-  gather: { age: () => 'Time passes, and the molten world crusts over', done: 'Enough of the rubble gathered: a world', title: ['A world gathered', 'Not yet a world'], got: () => `${aimDone} of ${aimOf} stones gathered` },
-  oxygen: { age: (met) => (met ? 'Time passes, and the sky goes on clearing to blue' : 'Time passes, and the haze stays'), done: 'The sky turns blue', title: ['A blue sky', 'Still an orange sky'], got: () => `${Math.min(100, Math.round(aimDone))}% of the oxygen` },
-  chaos: { age: () => 'Time passes, and the rafts freeze where they drifted', done: 'The ice broken into chaos', title: ['Chaos terrain', 'Not enough chaos'], got: () => `${aimDone} of ${aimOf} chaos fields` },
-  streaks: { age: () => 'Time passes, and the streaks fade a little', done: 'Streaked with geysers', title: ['Geyser streaks', 'Not enough streaks'], got: () => `${aimDone} of ${aimOf} streaks` },
-  marble: { age: () => 'Time passes, and the colours set where they lay', done: 'Lava and blue, swirled together', title: ['Marbled', 'Not swirled enough'], got: () => `${aimDone}% swirled` },
-  town: { age: (met) => (met ? 'Time passes, and the new lava cools round the town' : 'Time passes, and the lava cools over the streets'), done: 'The eruption is over, and the town still stands', title: ['The town kept', 'The town lost'], got: () => `${planet.housesKept} of ${planet.houses.length} houses standing` },
-  domes: { age: () => (MOUNDS ? 'Time passes, and nitrogen frost settles in the hollow' : 'Time passes, and the domes crack as they cool'), done: MOUNDS ? 'A ring of mounds round the hollow' : 'A field of pancake domes', title: MOUNDS ? ['Wright Mons', 'Not enough mounds'] : ['Pancake domes', 'Not enough domes'], got: () => `${aimDone} of ${aimOf} ${MOUNDS ? 'mounds' : 'domes'}` },
-  snow: { age: () => 'Time passes, and the last vapour falls', done: 'Rock snow all along the edge of night', title: ['Rock snow', 'Not enough rock snow'], got: () => `${Math.min(100, Math.round(aimDone))}% of the rock snow` },
+  ring: { age: () => 'Later: the islands sink and coral grows round them', done: 'An unbroken chain of living islands', title: ['Chain of islands built', 'Chain broken'], got: () => `${aimDone} of ${aimOf} stretches living` },
+  basins: { age: () => 'Later: small meteorites keep hitting it', done: 'Every basin flooded', title: ['All basins filled', 'Not all basins filled'], got: () => `${aimDone} of ${aimOf} basins flooded` },
+  height: { age: () => 'Later: dust storms keep wearing it down', done: `The mountain reaches ${HEIGHT.target} km`, title: ['Mountain built', 'Mountain too low'], got: () => `${Math.round(aimDone)} of ${aimOf} km high` },
+  cover: { age: () => 'Later: the new ice turns grey', done: `Done: ${COVER}% of the ice made new`, title: ['Ice renewed', 'Not enough new ice'], got: () => `${Math.round(aimDone)}% of the ice new, of ${aimOf}%` },
+  plumes: { age: () => 'Later: the sulphur settles', done: `Done: ${PLUMES} big eruptions`, title: ['Big eruptions done', 'Not enough big eruptions'], got: () => `${aimDone} of ${aimOf} big eruptions` },
+  calm: { age: () => 'Later: the moon keeps turning', done: 'The tumbling is calmed', title: ['Tumbling stopped', 'Still tumbling'], got: () => `${aimDone}% calmed, of ${aimOf}%` },
+  bank: { age: () => 'Later: waves wear at the island', done: 'An island on the bank', title: ['An island on the bank', 'No island on the bank yet'], got: () => `the island ${Math.min(100, Math.round(aimDone))}% raised` },
+  ridge: { age: () => 'Later: small meteorites keep hitting it', done: 'A ridge all the way round', title: ['Ridge complete', 'Ridge not complete'], got: () => `${aimDone} of ${aimOf} stretches raised` },
+  lamp: { age: () => 'Later: the blobs sink to the bottom', done: 'The far shore is full', title: ['Far shore filled', 'Far shore not filled'], got: () => `the far shore ${Math.min(100, Math.round(aimDone))}% full` },
+  round: { age: () => 'Later: small meteorites keep hitting it', done: `The asteroid is ${ROUND}% rounder`, title: ['Rounder', 'Not round enough'], got: () => `${Math.round(aimDone)}% rounder, of ${aimOf}%` },
+  feed: { age: () => 'Later: the ring slowly thins', done: 'The ring is full', title: ['The ring is full', 'The ring is not full'], got: () => `the ring ${Math.min(100, Math.round(aimDone))}% full` },
+  orbit: { age: (met) => (met ? 'Later: the rock in orbit forms a moon' : 'Later: the rock in orbit falls back'), done: 'Enough rock in orbit for a moon', title: ['Moon made', 'No moon yet'], got: () => `${Math.min(100, Math.round(aimDone))}% of a moon in orbit` },
+  hearth: { age: () => 'Later: the rock cools', done: 'Life kept alive on warm ground', title: ['Life kept warm', 'Not enough kept warm'], got: () => `${Math.min(100, Math.round(aimDone))}% of the living ground` },
+  thaw: { age: (met) => (met ? 'Later: the ice keeps melting' : 'Later: the warming gas fades'), done: 'The ice gives way', title: ['Ice melted', 'Still frozen'], got: () => `the sky ${Math.min(100, Math.round(aimDone))}% warm enough` },
+  outbuild: { age: () => 'Later: the star keeps boiling it away', done: 'It has grown faster than it boils away', title: ['Built faster than it boils', 'Boiling away'], got: () => `${Math.min(100, Math.round(aimDone))}% of the growth` },
+  white: { age: () => 'Later: the last black lava turns white', done: 'A white mountain on the equator', title: ['A white mountain', 'Not yet white'], got: () => (aimDone < 50 ? `the peak ${Math.round(aimDone * 2)}% built` : `the summit ${Math.round((aimDone - 50) * 2)}% white`) },
+  glow: { age: () => 'Later: the blue fire goes out', done: 'The crater lit with blue fire', title: ['Blue fire lit', 'Not enough blue fire'], got: () => `${Math.min(100, Math.round(aimDone))}% of the night lit` },
+  waves: { age: () => 'Later: the sea fills the broken cone', done: 'Waves sent round the world', title: ['Waves made', 'Not enough waves'], got: () => `${aimDone} of ${aimOf} waves` },
+  antipode: { age: () => 'Later: the planet keeps cooling and wrinkling', done: 'A mountain raised on the far side', title: ['Far side raised', 'Far side too low'], got: () => `the far side ${Math.round(aimDone)} of ${aimOf} km high` },
+  gather: { age: () => 'Later: the molten surface hardens', done: 'Enough stones caught to form a planet', title: ['Planet formed', 'Not enough stones'], got: () => `${aimDone} of ${aimOf} stones caught` },
+  oxygen: { age: (met) => (met ? 'Later: the sky keeps turning blue' : 'Later: the orange haze stays'), done: 'The sky turns blue', title: ['A blue sky', 'Still an orange sky'], got: () => `${Math.min(100, Math.round(aimDone))}% of the oxygen` },
+  chaos: { age: () => 'Later: the ice rafts freeze in place', done: 'The ice cracked in enough places', title: ['Ice cracked', 'Not enough cracks'], got: () => `${aimDone} of ${aimOf} cracks` },
+  streaks: { age: () => 'Later: the streaks fade a little', done: 'Enough geyser streaks', title: ['Streaks made', 'Not enough streaks'], got: () => `${aimDone} of ${aimOf} streaks` },
+  marble: { age: () => 'Later: the colours harden where they are', done: 'Lava and blue, swirled together', title: ['Swirled', 'Not swirled enough'], got: () => `${aimDone}% swirled` },
+  town: { age: (met) => (met ? 'Later: the new lava cools round the town' : 'Later: the lava cools over the streets'), done: 'The eruption is over, and the town still stands', title: ['Town saved', 'Town lost'], got: () => `${planet.housesKept} of ${planet.houses.length} houses standing` },
+  domes: { age: () => (MOUNDS ? 'Later: frost settles in the hollow' : 'Later: the domes crack as they cool'), done: MOUNDS ? 'A ring of mounds round the hollow' : 'A field of pancake domes', title: MOUNDS ? ['Mounds built', 'Not enough mounds'] : ['Domes built', 'Not enough domes'], got: () => `${aimDone} of ${aimOf} ${MOUNDS ? 'mounds' : 'domes'}` },
+  snow: { age: () => 'Later: the last vapour falls as snow', done: 'Rock snow all along the edge of night', title: ['Rock snow done', 'Not enough rock snow'], got: () => `${Math.min(100, Math.round(aimDone))}% of the rock snow` },
 };
 const AGE_WORDS = (met: boolean) => GOAL_WORDS[WORLD.goal].age(met);
 /** What was made, in a sentence for the chart: what it is, not a score. */
 function tale(met: boolean): string {
   const pct = Math.min(100, Math.round(aimDone));
   switch (WORLD.goal) {
-    case 'ring': return met ? 'A chain of living islands half the world long, the oldest already sinking' : `Living islands along ${aimDone} of the ${aimOf} stretches; the sea took the rest`;
-    case 'basins': return met ? `All ${aimOf} old basins filled with new, dark seas` : `${aimDone} of ${aimOf} old basins filled with new seas`;
-    case 'height': { const km = Math.round(aimDone); return met ? `A mountain ${km} km high, ${km >= 26 ? 'three times' : 'twice'} the height of Everest` : `A mountain ${km} km high, still rising when the fire went out`; }
-    case 'cover': return `${Math.round(aimDone)}% of the old grey ice made new and white`;
-    case 'plumes': return `${aimDone} great plumes, their sulphur rings laid side by side`;
-    case 'calm': return met ? 'A moon that tumbled, now turning steadily' : `A moon still tumbling, ${aimDone}% calmer than it was`;
-    case 'bank': return met ? 'A new island standing on the bank, alone in deep water' : 'An island at the bank, not yet above the water';
-    case 'ridge': return met ? 'A ridge all the way round its middle, like a seam' : `A ridge round ${aimDone} of the ${aimOf} stretches of its middle`;
-    case 'lamp': return met ? 'Warm glass gathered on the far shore' : `The far shore ${pct}% filled with warm glass`;
-    case 'round': return `Its hollows filled with new rock: ${Math.round(aimDone)}% rounder than it was`;
-    case 'feed': return met ? "The giant's ring, full of this moon's ice" : `The giant's ring ${pct}% full of this moon's ice`;
-    case 'orbit': return met ? 'Enough rock thrown up to gather into a moon' : `${pct}% of a moon thrown up, and falling back`;
-    case 'hearth': return met ? 'Warm new rock, and life gathered on it, in the dark between the stars' : `Life on warm rock, ${pct}% of what was hoped, fading as it cooled`;
-    case 'thaw': return met ? 'The ice given way from the equator outwards, and open sea' : `A sky ${pct}% warm enough, and the ice still holding`;
-    case 'outbuild': return met ? 'A world built back faster than its star could boil it away' : `A world still boiling away, ${pct}% of the way to outgrowing it`;
-    case 'white': return met ? 'A peak of black lava turned white, snow-capped on the equator' : aimDone < 50 ? 'A black peak, not yet built to its height' : 'A black peak, its summit only partly white';
-    case 'glow': return met ? 'A crater lit at night by rivers of blue fire' : `The night ${pct}% lit with blue fire`;
-    case 'waves': return met ? `${aimDone} pressure waves rung round the world, the cone blown apart and built again each time` : `${aimDone} of ${aimOf} waves rung round the world`;
-    case 'antipode': return met ? `A mountain ${Math.round(aimDone)} km high on the far side, raised by shocks sent through the world` : `The far side raised ${Math.round(aimDone)} km, by shocks sent through the world`;
-    case 'gather': return met ? 'A world gathered from rubble, its molten skin crusting over' : `${aimDone} stones gathered, not yet enough for a world`;
-    case 'oxygen': return met ? 'Oxygen breathed out by life in the shallows, and a sky turned blue' : `A sky still orange, ${pct}% of the way to blue`;
-    case 'chaos': return met ? `The ice broken into rafts in ${aimDone} places, and frozen again` : `Rafts in ${aimDone} of ${aimOf} places`;
-    case 'streaks': return met ? `${aimDone} dark streaks, all blown one way` : `${aimDone} of ${aimOf} geyser streaks`;
-    case 'marble': return met ? 'Glowing lava and deep blue, swirled together and never mixing, as ink on water' : `${aimDone}% swirled`;
-    case 'town': return met ? `The town kept, ${planet.housesKept} of ${planet.houses.length} houses standing behind ${planet.walls.length} taps of earth walls` : `${planet.houses.length - planet.housesKept} of ${planet.houses.length} houses lost under the lava`;
-    case 'domes': return MOUNDS ? (met ? `${aimDone} icy mounds raised in a ring round a great hollow, as Wright Mons is` : `${aimDone} of ${aimOf} mounds round the hollow`) : met ? `${aimDone} flat-topped domes of thick lava, side by side` : `${aimDone} of ${aimOf} pancake domes`;
-    case 'snow': return met ? 'Pale rock snow fallen all along the edge of night' : `Rock snow ${pct}% fallen along the edge of night`;
+    case 'ring': return met ? 'A chain of islands half the world long. The oldest are already sinking.' : `Islands along ${aimDone} of the ${aimOf} parts of the line. The sea took the rest.`;
+    case 'basins': return `${aimDone} of ${aimOf} basins filled with lava.`;
+    case 'height': { const km = Math.round(aimDone); return met ? `A mountain ${km} km high, ${km >= 26 ? 'three times' : 'twice'} the height of Everest.` : `A mountain ${km} km high.`; }
+    case 'cover': return `${Math.round(aimDone)}% of the old grey ice replaced with new white ice.`;
+    case 'plumes': return `${aimDone} big eruptions, each leaving a ring of sulphur.`;
+    case 'calm': return met ? 'The moon stopped tumbling and now turns steadily.' : `The moon is ${aimDone}% calmer, but still tumbling.`;
+    case 'bank': return met ? 'A new island on the bank, in deep water.' : 'An island on the bank, still under water.';
+    case 'ridge': return met ? 'A ridge all the way round the middle.' : `A ridge round ${aimDone} of the ${aimOf} parts of the middle.`;
+    case 'lamp': return `The far shore ${pct}% filled with glass.`;
+    case 'round': return `Hollows filled with new rock: ${Math.round(aimDone)}% rounder.`;
+    case 'feed': return `The ring ${pct}% full of this moon's ice.`;
+    case 'orbit': return met ? 'Enough rock thrown into orbit to form a moon.' : `${pct}% of a moon's worth of rock thrown into orbit.`;
+    case 'hearth': return `Life kept alive on warm rock: ${pct}% of the goal.`;
+    case 'thaw': return met ? 'The ice melted from the equator outwards, leaving open sea.' : `The air ${pct}% warm enough. The ice is still frozen.`;
+    case 'outbuild': return met ? 'The planet was built faster than its star could boil it away.' : `The planet is still boiling away: ${pct}% of the growth needed.`;
+    case 'white': return met ? 'A peak of black lava that turned white.' : aimDone < 50 ? 'A black peak, not yet tall enough.' : 'A black peak, only partly white.';
+    case 'glow': return `${pct}% of the night lit with blue fire.`;
+    case 'waves': return `${aimDone} of ${aimOf} waves sent round the world.`;
+    case 'antipode': return `The far side raised ${Math.round(aimDone)} km by shock waves through the planet.`;
+    case 'gather': return met ? 'Enough stones caught to form a planet.' : `${aimDone} stones caught. Not enough for a planet.`;
+    case 'oxygen': return met ? 'Life in the shallow seas made enough oxygen to turn the sky blue.' : `The sky ${pct}% of the way from orange to blue.`;
+    case 'chaos': return `The ice cracked in ${aimDone} of ${aimOf} places.`;
+    case 'streaks': return `${aimDone} of ${aimOf} dark geyser streaks.`;
+    case 'marble': return met ? 'Lava and blue swirled together without mixing.' : `${aimDone}% swirled.`;
+    case 'town': return met ? `The town saved: ${planet.housesKept} of ${planet.houses.length} houses standing, with ${planet.walls.length} walls.` : `${planet.houses.length - planet.housesKept} of ${planet.houses.length} houses lost to the lava.`;
+    case 'domes': return MOUNDS ? `${aimDone} of ${aimOf} ice mounds round the hollow.` : `${aimDone} of ${aimOf} lava domes.`;
+    case 'snow': return `Rock snow ${pct}% of the way along the line.`;
   }
 }
 /** This game's marks, if the aim was met (see marks.ts); the best on this world are kept, as earned. */
@@ -3074,7 +3074,7 @@ let begun = false;
 ($('begin').querySelector('.chapter') as HTMLElement).textContent = '';
 ($('begin').querySelector('.name') as HTMLElement).textContent = WORLD.title;
 // (An age of Earth begun on the ground the age before left says so: it's the world you made, an age on.)
-($('begin').querySelector('.first') as HTMLElement).textContent = AGE_GROUND ? 'The world you made, an age later.' : '';
+($('begin').querySelector('.first') as HTMLElement).textContent = AGE_GROUND ? 'Your world, a long time later.' : '';
 // (Breathing, there's no tipping: what the card says of tipping is said of turning instead.)
 const cardWords = () => {
   const el = $('begin').querySelector('.second') as HTMLElement;
@@ -3108,7 +3108,7 @@ const footLink = (text: string, act: () => void): HTMLElement => {
   $('begin').querySelector('.worlds')!.appendChild(b);
   return b;
 };
-if (RUN === null) footLink(FREE ? 'with the aim' : 'explore', () => {
+if (RUN === null) footLink(FREE ? 'play with a goal' : 'free play', () => {
   const q = new URLSearchParams(location.search);
   q.delete('seed');
   q.set('world', WORLD.id);
@@ -3216,7 +3216,7 @@ void resume().then((back) => {
   keptBack = back;
   titleWords();
   if (!back) return;
-  ($('begin').querySelector('.first') as HTMLElement).textContent = 'Your world, as you left it.';
+  ($('begin').querySelector('.first') as HTMLElement).textContent = 'Your saved world.';
   cardWords();
   ($('begin').querySelector('.touch') as HTMLElement).textContent = 'Continue';
 });
