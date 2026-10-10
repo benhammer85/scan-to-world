@@ -184,8 +184,9 @@
       /* In free play, a quiet way to end the fire when you choose, where the chart's keep will be. */
       #finish { position: fixed; top: calc(22px + env(safe-area-inset-top)); right: 24px; font: italic 12px "Newsreader", "Iowan Old Style", Georgia, serif; color: #2e2118; background: none; border: none; opacity: 0; pointer-events: none; transition: opacity 2s; cursor: pointer; padding: 4px; }
       #finish.shown { opacity: 0.74; pointer-events: auto; }
-      #keep { position: fixed; bottom: calc(26px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); font: 12px "Newsreader", "Iowan Old Style", Georgia, serif; color: #2e2118; background: none; border: none; opacity: 0; pointer-events: none; transition: opacity 2s; cursor: pointer; padding: 4px; }
-      #keep.shown { opacity: 0.76; pointer-events: auto; }
+      #endlinks { position: fixed; bottom: calc(18px + env(safe-area-inset-bottom)); left: 0; right: 0; display: flex; justify-content: center; gap: 22px; pointer-events: none; }
+      #keep, #replay { font: 12px "Newsreader", "Iowan Old Style", Georgia, serif; color: #2e2118; background: none; border: none; opacity: 0; pointer-events: none; transition: opacity 2s; cursor: pointer; padding: 8px 6px; min-height: 44px; }
+      #keep.shown, #replay.shown { opacity: 0.76; pointer-events: auto; }
       #retry { position: fixed; top: calc(140px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); font: 12px "Newsreader", "Iowan Old Style", Georgia, serif; color: #2e2118; background: none; border: none; border-bottom: 1px solid rgba(46,33,24,0.35); opacity: 0; pointer-events: none; transition: opacity 2s; cursor: pointer; padding: 4px 2px; white-space: nowrap; }
       #retry.shown { opacity: 0.75; pointer-events: auto; }
       /* The worlds, in a corner off the world: back to the card that lists them. */
@@ -205,12 +206,12 @@
     <div id="legend" class="engraved"></div>
     <div id="ghost" aria-hidden="true"><div class="mv"><i class="ring"></i><i class="dot"></i></div></div>
     <p id="again" class="engraved">tap to play again</p>
-    <button id="keep">save picture</button>
+    <div id="endlinks"><button id="replay">play again</button><button id="keep">save picture</button></div>
     <button id="retry">rewind 1 minute</button>
     <button id="finish">end game</button>
     <button id="worlds" aria-label="Menu"></button>
     <div id="atlas" class="engraved"><div class="head"><button class="close">‹ back</button><h2>Star Map</h2><button class="tolist">the worlds</button></div><div class="sky"></div><p class="credit">The figures after Johann Bayer's Uranometria, engraved by Alexander Mair, 1603</p><p class="plates-head"></p><div class="pages"></div><div class="view"><img alt=""></div><div class="pick"><div class="card"><div class="globe"></div><p class="t"></p><p class="k"></p><p class="m"></p><div class="acts"><button class="go">Play</button><button class="plates">saved pictures</button></div></div></div></div>
-    <div id="menu" class="engraved" hidden><div class="card"><p class="where"></p><button data-go="again">Begin this world again</button><button data-go="list">Choose another world</button><button data-go="title">The title page</button><button class="close">back to the world</button></div></div>
+    <div id="menu" class="engraved" hidden><div class="card"><p class="where"></p><button data-go="again">Restart this world</button><button data-go="list">Choose another world</button><button data-go="title">The title page</button><button class="close">back to the world</button></div></div>
     <div id="list" class="engraved" hidden><div class="head"><h2>The worlds</h2><button class="close">back</button></div><div class="chapters"></div><button class="chart">see them on the star map</button><button class="about">about stars</button><p class="rules" hidden>Each world has three stars. One for reaching its goal, one for keeping some of the heat, one for finishing in time. Each world says how much as it begins.</p></div>
     <div id="title" class="engraved" hidden>
       <div class="head"><h1>Warm to the Touch</h1><p class="sub">volcanoes on other worlds</p><div class="rule"></div></div>

@@ -2969,6 +2969,8 @@ function drawEnding(): void {
     intoTheAtlas();
     // The chart can be kept as a picture where the page may hand over a file: not inside a frame (as a hosted preview), which can't.
     if (NATIVE || window.self === window.top) $('keep').classList.add('shown');
+    // (Play again, beside it: the tap goes on to the next world, and the menu is hidden on the plate, so this was the only way back.)
+    $('replay').classList.add('shown');
   }
 }
 /**
@@ -2982,7 +2984,7 @@ addEventListener('pointerup', (e) => {
   const from = tapFrom;
   tapFrom = null;
   if (!from || !ending?.shown || seconds - ending.at < DRAWING || ending.turned < 0) return;
-  if ((e.target as HTMLElement).closest?.('#keep, #worlds, #retry')) return;
+  if ((e.target as HTMLElement).closest?.('#keep, #replay, #worlds, #retry')) return;
   if (performance.now() - from.t < 350 && Math.hypot(e.clientX - from.x, e.clientY - from.y) < 12) { ending.turned = -1e9; anew(); }
 });
 // The worlds, off the world in a corner: touch to go back to the card that lists them (the world is kept, to come back to).
@@ -3076,7 +3078,7 @@ function tryAgain(): void {
   lookedAt = look.t;
   ending = null; wonSeen = -1; paged = false; second = null; marksNow = null;
   frameInk.clearRect(0, 0, frameCanvas.width, frameCanvas.height); frameDrawn = -1;
-  for (const id of ['again', 'keep', 'retry']) $(id).classList.remove('shown');
+  for (const id of ['again', 'keep', 'retry', 'replay']) $(id).classList.remove('shown');
   $('worlds').classList.remove('ended');
   $('goal').style.opacity = '';
   queue.length = 0;
@@ -3121,6 +3123,12 @@ function plate(): HTMLCanvasElement {
   lift = lifted; look();
   return cv;
 }
+$('replay').addEventListener('pointerdown', (e) => e.stopPropagation());
+$('replay').addEventListener('click', (e) => {
+  e.stopPropagation();
+  document.body.classList.add('leaving');
+  void forget().then(() => setTimeout(() => { location.search = `?world=${WORLD.id}${FREE ? '&free' : ''}`; }, 400));
+});
 $('keep').addEventListener('click', () => {
   void keepImage(plate(), `warm-to-the-touch-${WORLD.id}-${seed}`);
 });
