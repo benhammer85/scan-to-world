@@ -2290,6 +2290,8 @@ const HAND_CUES: Cue[] = LAMP ? [
 /** Then what's this world's own, each when it matters. */
 const CUES: Cue[] = [
   ...HAND_CUES,
+  // (What to do on this world, said once the hands are known: it was on the card, and the card is only the aim now.)
+  ...(FREE ? [] : [{ ready: () => true, get say() { return words$(OWN_TIP[WORLD.id] ?? TIP[WORLD.goal] ?? ''); }, done: (s: number) => s > 16 }]), // (said when it's reached, by then every word table is made)
   ...(WORLD.rules.rises ? [{ ready: () => true, say: 'The volcano moves to whatever is at the top: turn the world to move it', done: (s: number) => s > 20 }] : []),
   // (Mars: a storm wears old rock but not fresh lava, so the first one coming is the moment to say so.)
   ...(planet.k.stormFresh > 0 ? [{ ready: () => planet.stormComing !== null, hand: 'hold' as const, say: 'A dust storm is coming: pour now. Fresh lava doesn\'t wear away', done: (s: number) => s > 12 }] : []),
@@ -2964,7 +2966,7 @@ function chartInfo(): ChartInfo {
     kinds: LIFE && KIND_NAMES ? KINDS.map((k) => ({ name: k.name, ink: PIGMENT[k.kind] ?? k.ink, sign: k.sign, living: living.has(k.kind) })) : [],
     // The first aim, how far it got; and the second, as the fire left it.
     // (And the world's own true story, last, as a reward: it was on the card, where it read as homework before play.)
-    summary: tale(met) + (WORLD.real && WORLD.goal === 'height' ? ` · The real ${WORLD.real.name} is ${WORLD.real.km} km high.` : ''),
+    summary: tale(met) + ` · ${WORLD.why}` + (WORLD.real && WORLD.goal === 'height' ? ` · The real ${WORLD.real.name} is ${WORLD.real.km} km high.` : ''),
     marks: marksNow ? markNames(WORLD.id).map((name, i) => ({ name, got: marksNow![i] })) : undefined,
     length,
     eras,
@@ -3305,21 +3307,22 @@ let begun = false;
 ($('begin').querySelector('.name') as HTMLElement).textContent = WORLD.title;
 // (An age of Earth begun on the ground the age before left says so: it's the world you made, an age on.)
 ($('begin').querySelector('.first') as HTMLElement).textContent = AGE_GROUND ? 'Your world, a long time later.' : '';
-// Why it plays the way it does: the real science, one plain sentence, under the aim.
-($('begin').querySelector('.why') as HTMLElement).textContent = words$(WORLD.why);
+// (The card is only what's needed to begin: the name, the aim, the stars. How to play is shown in the game as it's
+// needed; why it plays so, the real science, is said at the end, beside what was made.)
+($('begin').querySelector('.why') as HTMLElement).textContent = '';
 // (Breathing, there's no tipping: what the card says of tipping is said of turning instead.)
 const cardWords = () => {
   const el = $('begin').querySelector('.second') as HTMLElement;
   el.replaceChildren();
   const aim = document.createElement('b'); aim.className = 'aim'; aim.textContent = words$(FREE ? 'No aim and no clock.' : AIM[WORLD.goal] ?? WORLD.second);
-  el.append(aim, document.createTextNode(words$(FREE ? 'Free play: no goal and no time limit.' : OWN_TIP[WORLD.id] ?? TIP[WORLD.goal] ?? '')));
-  // (Once the world has been won: the marks there are still to earn on it.)
-  ($('begin').querySelector('.marks') as HTMLElement).textContent = FREE || RUN !== null ? '' : marksLine(WORLD.id);
+  el.append(aim);
+  // (The stars, as stars: what each asks is said at the end, beside what was earned.)
+  ($('begin').querySelector('.marks') as HTMLElement).textContent = FREE || RUN !== null ? '' : starsOf(keptStars(WORLD.id) ?? [false, false, false]).split('').join(' ');
 };
 cardWords();
 // The hands, the same on every card.
 // (Only where the hands are new: the first world, and the lamp, where they work the other way round.)
-($('begin').querySelector('.hands') as HTMLElement).textContent = NEWCOMER ? words$(HANDS.join('\n')) : '';
+($('begin').querySelector('.hands') as HTMLElement).textContent = ''; // (the hands are shown in the game, as each is first needed)
 // The worlds, along the card's foot, as an atlas lists its plates: touch another to go to it.
 // (Not for a world of a solar system: it's reached from the system's chart.)
 // The worlds: one touch to the atlas's sky, where every world stands in its chapter's constellation.
