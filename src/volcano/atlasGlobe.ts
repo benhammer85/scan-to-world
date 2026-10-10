@@ -46,7 +46,7 @@ const FIGURES: Record<string, Figure> = {
   // I · Our neighbours: the Great Bear, its worlds on the Dipper (η, ζ, ε, δ, α).
   I: { name: 'Ursa Major', src: ursa, w: 820, h: 672, stars: [[58, 93], [178, 50], [233, 93], [305, 140], [476, 173]], ra: 11.2, dec: 52, span: 60 },
   // II · One world, through time: the Hydra, the long water-serpent, tail to head (γ, β, θ, α, ζ).
-  II: { name: 'Hydra', src: hydra, w: 820, h: 269, stars: [[117, 50], [270, 213], [412, 133], [580, 138], [712, 38]], ra: 10.6, dec: -14, span: 100 },
+  II: { name: 'Hydra', src: hydra, w: 820, h: 269, stars: [[117, 50], [190, 150], [270, 213], [412, 133], [580, 138], [712, 38]], ra: 10.6, dec: -14, span: 100 },
   // III · Strange fires: the Dragon, curled round the pole: tail, coil, head.
   III: { name: 'Draco', src: draco, w: 677, h: 818, stars: [[80, 710], [182, 262], [293, 80]], ra: 16.2, dec: 66, span: 36 },
   // IV · Pressure: Hercules, kneeling: club, face, shoulder, hip, knee, foot.

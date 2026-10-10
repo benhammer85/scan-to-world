@@ -204,7 +204,7 @@ const START = (() => {
 /** Where lava has ever lain on this world (for those that keep the mark of it): the old seas, the old new ice. */
 const MARKED = GROUND?.marked ?? null;
 const planet = new Planet(topo, START, seed, WORLD.rules, AGE_GROUND && AGE_BEFORE ? carried(AGE_BEFORE, WORLD.id, AGE_GROUND.rock, WORLD.rules.floor ?? VOLCANO.floor) : GROUND?.rock);
-planet.stonesFall = WORLD.goal === 'gather'; // not until the first ideas have come in (see `lessons`), but on the first world, from the first, since they're its aim
+planet.stonesFall = WORLD.goal === 'gather' || WORLD.goal === 'water'; // not until the first ideas have come in (see `lessons`), but on the first world, from the first, since they're its aim
 /**
  * Breathing, the calm way to play (chosen under "more"): no tipping the phone. The volcano breathes
  * out by itself, a flow at a time, down the screen as it's seen, and the world is turned to say where
@@ -555,10 +555,11 @@ group.add(puffs.shadow);
  * set on the world as a sprite, so it stands upright however the world is turned, as the signs on
  * a map do.
  */
-function mark(draw: (g: CanvasRenderingContext2D) => void, foot = 0.5): THREE.Sprite {
+function mark(draw: (g: CanvasRenderingContext2D) => void, foot = 0.5, res = 64): THREE.Sprite {
   const cv = document.createElement('canvas');
-  cv.width = cv.height = 64;
+  cv.width = cv.height = res;
   const g = cv.getContext('2d')!;
+  g.scale(res / 64, res / 64); // (drawn in 64 units, finer where it's shown large)
   g.strokeStyle = g.fillStyle = '#ffffff'; g.lineCap = 'round'; g.lineJoin = 'round';
   draw(g);
   const tex = new THREE.CanvasTexture(cv);
@@ -655,12 +656,40 @@ const dropStone = mark((g) => {
 });
 dropStone.material.depthTest = true; dropStone.material.color.set('#6d655f');
 /** And the wet wash it leaves behind as it falls: soft drops, paling. */
-const dropTrail = [0, 1, 2, 3, 4, 5].map(() => mark((g) => { const rg = g.createRadialGradient(32, 32, 0, 32, 32, 28); rg.addColorStop(0, 'rgba(255,255,255,0.7)'); rg.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = rg; g.fillRect(0, 0, 64, 64); }));
+const dropTrail = Array.from({ length: 14 }, () => mark((g) => { const rg = g.createRadialGradient(32, 32, 0, 32, 32, 28); rg.addColorStop(0, 'rgba(255,255,255,0.7)'); rg.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = rg; g.fillRect(0, 0, 64, 64); }));
 for (const d of dropTrail) { d.material.depthTest = true; d.material.color.set('#8a827a'); }
+/**
+ * A falling stone, stronger: a warm glow round it as it nears (the heat it brings), and where it strikes, a flash, its
+ * rays thrown out in ink round the new crater, as real fresh craters have; and its heat carried to the volcano as a
+ * gold spark along the ground, with a pulse when it gets there (bigger when the stone was caught on the glow).
+ */
+const softSpot = (g: CanvasRenderingContext2D) => { const rg = g.createRadialGradient(32, 32, 0, 32, 32, 30); rg.addColorStop(0, 'rgba(255,255,255,1)'); rg.addColorStop(0.35, 'rgba(255,255,255,0.55)'); rg.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = rg; g.fillRect(0, 0, 64, 64); };
+const dropGlow = mark(softSpot); dropGlow.material.depthTest = true; dropGlow.material.color.set('#e8913a');
+const hitFlash = mark(softSpot); hitFlash.material.color.set('#fff3d6');
+const hitRays = mark((g) => {
+  // Thrown rock as specks along uneven rays, thinning outward, as a fresh crater's rays are (drawn as solid strokes round a
+  // ring, they read as a sun); a few loose specks between.
+  let seed = 3; const r = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  for (let i = 0; i < 22; i++) {
+    const a = r() * Math.PI * 2, len = 11 + r() * 19;
+    for (let d = 7; d < 7 + len; d += 1.6 + r() * 1.4) {
+      const t = (d - 7) / len, w = (r() - 0.5) * 0.12;
+      g.globalAlpha = 0.85 * (1 - t) * (0.5 + 0.5 * r());
+      g.beginPath(); g.arc(32 + d * Math.cos(a + w), 32 + d * Math.sin(a + w), 0.25 + 0.55 * (1 - t) * r(), 0, Math.PI * 2); g.fill();
+    }
+  }
+  for (let i = 0; i < 40; i++) { const a = r() * Math.PI * 2, d = 6 + r() * 16; g.globalAlpha = 0.4 * r(); g.beginPath(); g.arc(32 + d * Math.cos(a), 32 + d * Math.sin(a), 0.2 + 0.35 * r(), 0, Math.PI * 2); g.fill(); }
+  g.globalAlpha = 1;
+}, 0.5, 256);
+hitRays.material.color.set('#4a3b2e');
+const heatSpark = mark(softSpot); heatSpark.material.color.set('#e9a93a');
+const heatPulse = mark((g) => { g.lineWidth = 3; g.beginPath(); g.arc(32, 32, 24, 0, Math.PI * 2); g.stroke(); }); heatPulse.material.color.set('#c99a3e');
+let hit: { v: number; at: number; caught: boolean; icy: boolean; melted: boolean } | null = null;
+const SPARK_A = new THREE.Vector3(), SPARK_B = new THREE.Vector3();
 /** Its trail: a few dots of dust left behind it in the sky, thinning. */
 const stoneTrail = [0, 1, 2, 3, 4].map(() => mark((g) => { g.beginPath(); g.arc(32, 32, 9, 0, Math.PI * 2); g.fill(); }));
 for (const d of stoneTrail) { d.material.depthTest = true; d.material.color.set(WORLD.id === 'first' ? '#d9c7a6' : '#6b5a48'); }
-let stoneWas: { vertex: number } | null = null;
+let stoneWas: { vertex: number; icy: boolean; water: number } | null = null;
 const STONE_AT = new THREE.Vector3(), STONE_UP = new THREE.Vector3(), STONE_SIDE = new THREE.Vector3(), STONE_Q = new THREE.Quaternion();
 /** Where the falling stone is, `f` of its warning left (1 as it's seen, 0 as it lands), in the world's frame. */
 function stoneAt(v: number, f: number, into: THREE.Vector3): THREE.Vector3 {
@@ -1120,19 +1149,23 @@ function drawMarks(): void {
     setMark(stoneRing, s.vertex, Math.max(0.05, planet.k.crater * 1.2));
     // In the lava's red, if the plume is under it and will catch its heat.
     const inGlow = planet.warmthAt(s.vertex) > 0.5, ink = inGlow ? (WORLD.goal === 'gather' ? '#f4b545' : WASHED ? '#c99a3e' : '#9a4230') : WORLD.id === 'first' ? '#efe2c6' : WASHED ? '#6d655f' : INK; // (pale on the first world's dark crust, where ink was lost; gold once the glow is under it, and it will be caught)
-    stoneMark.material.color.set(ink); stoneRing.material.color.set(ink);
+    stoneMark.material.color.set(ink); stoneRing.material.color.set(s.icy ? (inGlow ? '#3f78a8' : '#5b8fb8') : ink); // (an icy comet's ring in blue: deeper if it's over the volcano, to be kept away from)
     const f = Math.max(0, Math.min(1, s.in / Math.max(1e-6, planet.k.impactWarning)));
     stoneAt(s.vertex, f, STONE_AT); skyStone.position.copy(STONE_AT);
     skyStone.scale.setScalar((0.06 + 0.03 * (1 - f)) * (dist / 3.2)); skyStone.material.opacity = Math.min(1, (1 - f) * 8);
     stoneTrail.forEach((d, i) => { stoneAt(s.vertex, Math.min(1, f + 0.05 * (i + 1)), d.position); d.scale.setScalar(0.012 * (1 - i / 6) * (dist / 3.2)); d.material.opacity = 0.7 * (1 - i / 5) * Math.min(1, (1 - f) * 8); });
     if (WASHED) {
       // The drop falls slantwise and grows as it nears; the wet wash behind it pales.
-      dropStone.position.copy(STONE_AT); dropStone.scale.setScalar((0.035 + 0.035 * (1 - f)) * (dist / 3.2)); dropStone.material.opacity = Math.min(0.85, (1 - f) * 6);
-      dropTrail.forEach((d, i) => { stoneAt(s.vertex, Math.min(1, f + 0.03 * (i + 1)), d.position); d.scale.setScalar((0.03 - 0.003 * i) * (dist / 3.2)); d.material.opacity = 0.35 * (1 - i / 6) * Math.min(1, (1 - f) * 6); });
+      dropStone.position.copy(STONE_AT); dropStone.scale.setScalar((0.045 + 0.045 * (1 - f)) * (dist / 3.2)); dropStone.material.opacity = Math.min(0.92, (1 - f) * 6);
+      dropStone.material.color.set(s.icy ? '#9cc3dd' : '#4f4842'); dropGlow.material.color.set(s.icy ? '#cfe6f3' : '#e8913a');
+      dropGlow.visible = true; dropGlow.position.copy(STONE_AT); dropGlow.scale.setScalar((0.08 + 0.12 * (1 - f)) * (dist / 3.2)); dropGlow.material.opacity = Math.min(0.8, (1 - f) * (1 - f) * 1.4);
+      dropTrail.forEach((d, i) => { d.material.color.set(s.icy ? '#a9c6d8' : '#8a827a'); stoneAt(s.vertex, Math.min(1, f + 0.018 * (i + 1)), d.position); d.scale.setScalar((0.034 - 0.0021 * i) * (dist / 3.2)); d.material.opacity = 0.42 * (1 - i / 14) * Math.min(1, (1 - f) * 6); });
     }
-    stoneWas = { vertex: s.vertex };
+    stoneWas = { vertex: s.vertex, icy: !!s.icy, water: planet.water };
   } else if (stoneWas) {
     if (WASHED) { const v = stoneWas.vertex; stoneHitU.value.set(base[v * 3], base[v * 3 + 1], base[v * 3 + 2], 0); stoneHitAt = seconds; }
+    hit = { v: stoneWas.vertex, at: seconds, caught: planet.warmthAt(stoneWas.vertex) > 0.5, icy: stoneWas.icy, melted: stoneWas.icy && planet.water > stoneWas.water };
+    feel(hit.caught ? 40 : 22);
     // Landed: a burst of dust and broken rock where it struck.
     const v = stoneWas.vertex, p = topo.positions;
     STONE_UP.set(base[v * 3], base[v * 3 + 1], base[v * 3 + 2]).normalize();
@@ -1140,12 +1173,40 @@ function drawMarks(): void {
     if (!BARE && !WASHED) for (let i = 0; i < 14; i++) puffs.add('ember', p[v * 3], p[v * 3 + 1], p[v * 3 + 2], 0.6, Math.random);
     stoneWas = null;
   }
+  if (!s) dropGlow.visible = false;
+  impactMarks();
   const w = ecology.wish;
   wishMarks.forEach((m, i) => {
     const on = !!w && !ending && KINDS[i].kind === w.kind;
     m.visible = on;
     if (on) { setMark(m, w!.vertex, 0.07); m.material.color.set(KINDS[i].ink); m.material.opacity *= 0.7; }
   });
+}
+/** Where a stone struck: its flash, its rays fading, and its heat carried to the volcano (see `hit`). */
+function impactMarks(): void {
+  const h = hit, t = h ? seconds - h.at : 99;
+  hitFlash.visible = !!h && t < 0.7 && !ending;
+  hitRays.visible = !!h && t < 9 && !ending;
+  // (An icy comet brings no heat: no spark; a blue ring where it melted, or at the volcano it chilled.)
+  heatSpark.visible = !!h && !h.icy && t < 1.4 && !ending;
+  heatPulse.visible = !!h && (h.icy ? (h.melted || h.caught) && t < 1.2 : t >= 1.4 && t < 2.3) && !ending;
+  if (h) { hitFlash.material.color.set(h.icy ? '#e6f3fa' : '#fff3d6'); hitRays.material.color.set(h.icy ? '#6d8597' : '#4a3b2e'); heatPulse.material.color.set(h.icy ? '#4f7fa3' : '#c99a3e'); }
+  if (!h || t >= 9) { if (h && t >= 9) hit = null; return; }
+  const k = dist / 3.2, size = Math.max(0.05, planet.k.crater * 1.2);
+  if (hitFlash.visible) { setMark(hitFlash, h.v, size * (1.2 + 3 * t)); hitFlash.material.opacity *= Math.max(0, 1 - t / 0.7); hitFlash.center.set(0.5, 0.5); }
+  if (hitRays.visible) { setMark(hitRays, h.v, size * (2.2 + 0.6 * Math.min(1, t * 4))); hitRays.material.opacity *= 0.85 * Math.min(1, t * 5) * Math.max(0, 1 - Math.max(0, t - 4) / 5); hitRays.center.set(0.5, 0.5); }
+  // The heat, a gold spark along the ground from the crater to the volcano; then a ring at the volcano.
+  const v0 = planet.plumeVertex;
+  if (heatSpark.visible) {
+    const f = Math.min(1, t / 1.4), e = f * f * (3 - 2 * f);
+    SPARK_A.set(topo.positions[h.v * 3], topo.positions[h.v * 3 + 1], topo.positions[h.v * 3 + 2]);
+    SPARK_B.set(topo.positions[v0 * 3], topo.positions[v0 * 3 + 1], topo.positions[v0 * 3 + 2]);
+    const r = SPARK_A.length() * (1 - e) + SPARK_B.length() * e;
+    heatSpark.position.copy(SPARK_A.normalize()).lerp(SPARK_B.normalize(), e).normalize().multiplyScalar(r + 0.015 + 0.06 * Math.sin(Math.PI * e)); // (arcing a little, as thrown)
+    heatSpark.scale.setScalar((h.caught ? 0.07 : 0.045) * k); heatSpark.material.opacity = 0.95; heatSpark.center.set(0.5, 0.5);
+  }
+  if (heatPulse.visible && h.icy) { const f = t / 1.2; setMark(heatPulse, h.melted ? h.v : v0, 0.06 * (0.6 + 1.6 * f)); heatPulse.material.opacity *= 1 - f; heatPulse.center.set(0.5, 0.5); }
+  else if (heatPulse.visible) { const f = (t - 1.4) / 0.9; setMark(heatPulse, v0, (h.caught ? 0.09 : 0.06) * (0.6 + 1.2 * f)); heatPulse.material.opacity *= 1 - f; heatPulse.center.set(0.5, 0.5); }
 }
 /** Set a mark on the ground at a vertex, a size in view, faded towards the rim and hidden round the back. */
 function setMark(m: THREE.Sprite, v: number, size: number): void {
@@ -1600,11 +1661,11 @@ function orbiting(dt: number): void {
 }
 const HEIGHT = WORLD.height ?? { target: 0, kmPerUnit: 40 };
 const CALM = WORLD.calm ?? 0, ISLAND = WORLD.island ?? 0, POOL = WORLD.pool ?? 0, ROUND = Math.round((WORLD.round ?? 0) * 100), COVER = Math.round((WORLD.cover ?? 0) * 100), PLUMES = WORLD.plumes ?? 0, ORBIT = WORLD.orbit ?? 0;
-const HEARTH = WORLD.hearth ?? 0, OUTBUILD = WORLD.outbuild ?? 0, SNOWFALL = WORLD.snowfall ?? 0, GATHER = WORLD.gather ?? 0, OXYGEN = WORLD.oxygen ?? 0, FIELDS = WORLD.fields ?? 0, FAR_KM = WORLD.farKm ?? 0, WHITENESS = Math.round((WORLD.whiteness ?? 0) * 100), GLOW = WORLD.glow ?? 0, RINGS = WORLD.rings ?? 0, DOMES = WORLD.domes ?? 0, KEEP = WORLD.keep ?? 0;
+const WATER = WORLD.water ?? 0, HEARTH = WORLD.hearth ?? 0, OUTBUILD = WORLD.outbuild ?? 0, SNOWFALL = WORLD.snowfall ?? 0, GATHER = WORLD.gather ?? 0, OXYGEN = WORLD.oxygen ?? 0, FIELDS = WORLD.fields ?? 0, FAR_KM = WORLD.farKm ?? 0, WHITENESS = Math.round((WORLD.whiteness ?? 0) * 100), GLOW = WORLD.glow ?? 0, RINGS = WORLD.rings ?? 0, DOMES = WORLD.domes ?? 0, KEEP = WORLD.keep ?? 0;
 /** Pluto: mounds round a hollow, rather than Venus's domes anywhere. */
 const MOUNDS = (WORLD.rules.domeRing ?? 0) > 0;
 let marbledAt = -1;
-let aimDone = 0, aimOf = WORLD.goal === 'white' ? 100 : WORLD.goal === 'waves' ? RINGS : WORLD.goal === 'glow' ? 100 : WORLD.goal === 'antipode' ? FAR_KM : WORLD.goal === 'gather' ? GATHER : WORLD.goal === 'chaos' || WORLD.goal === 'streaks' ? FIELDS : WORLD.goal === 'domes' ? DOMES : TOWN || MARBLE ? 100 : WORLD.goal === 'oxygen' || WORLD.goal === 'thaw' || WORLD.goal === 'outbuild' || WORLD.goal === 'snow' ? 100 : WORLD.goal === 'ring' ? CHAIN.stretches : WORLD.goal === 'height' ? HEIGHT.target : WORLD.goal === 'cover' ? COVER : WORLD.goal === 'round' ? ROUND : WORLD.goal === 'ridge' ? Planet.RIDGE_STRETCHES : WORLD.goal === 'lamp' || WORLD.goal === 'bank' ? 100 : WORLD.goal === 'calm' ? CALM : WORLD.goal === 'plumes' ? PLUMES : WORLD.goal === 'orbit' || WORLD.goal === 'feed' ? 100 : planet.basins.length, lastAim = -10;
+let aimDone = 0, aimOf = WORLD.goal === 'white' ? 100 : WORLD.goal === 'waves' ? RINGS : WORLD.goal === 'glow' ? 100 : WORLD.goal === 'antipode' ? FAR_KM : WORLD.goal === 'gather' ? GATHER : WORLD.goal === 'water' ? WATER : WORLD.goal === 'chaos' || WORLD.goal === 'streaks' ? FIELDS : WORLD.goal === 'domes' ? DOMES : TOWN || MARBLE ? 100 : WORLD.goal === 'oxygen' || WORLD.goal === 'thaw' || WORLD.goal === 'outbuild' || WORLD.goal === 'snow' ? 100 : WORLD.goal === 'ring' ? CHAIN.stretches : WORLD.goal === 'height' ? HEIGHT.target : WORLD.goal === 'cover' ? COVER : WORLD.goal === 'round' ? ROUND : WORLD.goal === 'ridge' ? Planet.RIDGE_STRETCHES : WORLD.goal === 'lamp' || WORLD.goal === 'bank' ? 100 : WORLD.goal === 'calm' ? CALM : WORLD.goal === 'plumes' ? PLUMES : WORLD.goal === 'orbit' || WORLD.goal === 'feed' ? 100 : planet.basins.length, lastAim = -10;
 /** Lengai: whether its peak has reached its height (kept, once it has). */
 let peakReached = false;
 /** How much of the aim is done now, reckoned afresh. */
@@ -1629,6 +1690,7 @@ function reckonAim(): void {
   else if (WORLD.goal === 'outbuild') { aimDone = Math.max(0, (100 * planet.grownBy) / OUTBUILD); aimOf = 100; }
   else if (WORLD.goal === 'snow') { aimDone = (100 * planet.snow) / SNOWFALL; aimOf = 100; }
   else if (WORLD.goal === 'gather') { aimDone = planet.tally.caught; aimOf = GATHER; }
+  else if (WORLD.goal === 'water') { aimDone = planet.water; aimOf = WATER; }
   // (Lengai: the peak first, to its height, as the first half; then its summit whitening, the second.)
   // (Once the peak has reached its height it counts as reached: a cone settles a little as it cools, and sagging back under, the whitening stopped counting.)
   else if (WORLD.goal === 'white') { const km = Math.max(0, planet.summit * HEIGHT.kmPerUnit); if (km >= HEIGHT.target) peakReached = true; aimDone = !peakReached ? (50 * km) / HEIGHT.target : 50 + 50 * Math.min(1, (planet.whiteSummit * 100) / WHITENESS); aimOf = 100; }
@@ -1659,8 +1721,8 @@ const BAND: { kind: 'sky' | 'gradient' | 'count' | 'rise'; ink: string; from?: s
   if (g === 'oxygen') return { kind: 'sky', ink: P.lava };
   const grad: Partial<Record<typeof g, [string, string]>> = { thaw: ['#e4ebef', '#7fa8c8'], cover: ['#b9b1a5', '#cfe1ec'], glow: ['#3b4565', '#5d9fe2'], hearth: ['#4b5064', '#8aa858'] };
   if (grad[g]) return { kind: 'gradient', ink: P.lava, from: grad[g]![0], to: grad[g]![1] };
-  const count: Partial<Record<typeof g, 'dome' | 'ring' | 'rafts' | 'streak' | 'wave' | 'dot'>> = { domes: 'dome', plumes: 'ring', chaos: 'rafts', streaks: 'streak', waves: 'wave', gather: 'dot' };
-  if (count[g]) return { kind: 'count', ink: g === 'plumes' ? '#c4603a' : g === 'streaks' ? P.ash : g === 'chaos' || g === 'waves' ? '#5b82a3' : g === 'gather' ? P.landInkHigh : P.lava, shape: count[g] };
+  const count: Partial<Record<typeof g, 'dome' | 'ring' | 'rafts' | 'streak' | 'wave' | 'dot'>> = { domes: 'dome', plumes: 'ring', chaos: 'rafts', streaks: 'streak', waves: 'wave', gather: 'dot', water: 'dot' };
+  if (count[g]) return { kind: 'count', ink: g === 'plumes' ? '#c4603a' : g === 'streaks' ? P.ash : g === 'chaos' || g === 'waves' ? '#5b82a3' : g === 'gather' ? P.landInkHigh : g === 'water' ? '#4f7fa3' : P.lava, shape: count[g] };
   // (A mountain's height, a ridge, a bank, the far side's rise: in the land's own ink, as a profile; a town by its houses kept; the rest in the lava's.)
   const land = ['height', 'white', 'antipode', 'ridge', 'bank', 'round', 'town', 'calm'].includes(g);
   return { kind: 'rise', ink: land ? P.landInk : g === 'feed' || g === 'orbit' ? '#8f9bb0' : g === 'snow' ? P.ash : P.lava };
@@ -1707,6 +1769,7 @@ const AIM: Record<string, string> = {
   waves: `Make ${RINGS} giant waves.`,
   antipode: `Raise the dotted circle on the far side ${FAR_KM} km.`,
   gather: `Catch ${GATHER} falling stones.`,
+  water: `Melt ${WATER} icy comets into water.`,
   oxygen: 'Turn the orange sky blue.',
   chaos: `Crack the ice in ${FIELDS} places.`,
   streaks: `Make ${FIELDS} dark streaks on the ice.`,
@@ -1739,6 +1802,7 @@ const TIP: Record<string, string> = {
   glow: `${POUR} Keep pouring over new ground. Old lava stops glowing.`,
   waves: `Build the volcano until its top is just under the sea. Then: ${ERUPT[0].toLowerCase()}${ERUPT.slice(1)}`,
   antipode: `${ERUPT} Turn the world over to watch the far side rise.`,
+  water: 'Dark stones bring heat: turn the world so the volcano is under them. Pale blue comets bring water: pour lava where one will land, so it melts there, and keep the volcano away from them, as they cool it.',
   gather: 'A dotted circle shows where each stone will land. Turn it to the top, so the gold ring round your volcano is under it.',
   oxygen: `${POUR} Pour into the sea until the lava nearly reaches the surface. Green life grows there and turns the sky blue. Then move on and do it again.`,
   chaos: `${ERUPT} Then turn the world to fresh ice for the next.`,
@@ -1784,6 +1848,7 @@ function goalLine(): string {
     case 'outbuild': return `New land · ${pct}% of the goal`;
     case 'snow': return `Rock snow · ${pct}% of the line`;
     case 'gather': return `Stones caught · ${d} of ${of}`;
+    case 'water': return `Water · ${d} of ${of} comets melted`;
     case 'antipode': return `Far side · ${Math.min(d, of)} of ${of} km`;
     case 'white': return !peakReached ? `Mountain · ${Math.round(Math.max(0, planet.summit * HEIGHT.kmPerUnit))} of ${HEIGHT.target} km` : `Turning white · ${Math.round((aimDone - 50) * 2)}%`;
     case 'glow': return `Blue fire · ${Math.round(litFor)} of ${LIT_FOR} seconds${planet.burning >= GLOW ? '' : ' (pour more to keep it lit)'}`;
@@ -2243,7 +2308,11 @@ const CUES: Cue[] = [
     { ready: () => (planet.pouring && planet.dayAt(planet.plumeVertex) < 0.12) || planet.snow > 0.02, get say() { return planet.snow > 0.02 ? 'The lava boils away and falls as snow on the dotted line' : 'The volcano is on the dark side: turn it towards the star'; }, done: (s: number) => s > 14 },
     { ready: () => planet.pouring && planet.dayAt(planet.plumeVertex) < 0.12, say: 'Nothing boils on the dark side: turn the volcano towards the star', done: (s: number) => s > 14 },
   ] : []),
-  ...(WORLD.rules.impactEvery?.[1] === 0 ? [] : [
+  ...(WORLD.goal === 'water' ? [
+    // (Earth's first water: the two kinds said apart, each the first time one comes.)
+    { ready: () => planet.impact !== null && !planet.impact.icy, hand: 'drag' as const, at: stoneSpot, say: 'A dark stone is coming: turn the world so the volcano is under it, and its heat is yours', done: (s: number) => s > 14 },
+    { ready: () => planet.impact !== null && !!planet.impact.icy, hand: 'hold' as const, at: stoneSpot, say: 'A pale comet is coming: pour lava where it will land, away from the volcano', done: (s: number) => s > 14 },
+  ] : WORLD.rules.impactEvery?.[1] === 0 ? [] : [
     { ready: () => true, begin: () => { planet.stonesFall = true; }, done: () => planet.impact !== null || planet.tally.stones > 0 },
     { ready: () => planet.impact !== null, hand: 'drag' as const, at: stoneSpot, say: 'A stone is coming: turn its dotted circle to the top, under the volcano, and its heat is yours', done: (s: number) => s > 20 },
   ]),
@@ -2326,7 +2395,7 @@ for (const t of ['pointerup', 'pointercancel'] as const) addEventListener(t, () 
 
 // ---------------------------------------------------------------- words, and the key
 /** What's worth saying: the turns in the world's story, not every happening in it. */
-const QUIET_WORDS = /^(Ice reaches the ring|A big eruption, but too close|Wanted where|A stone is coming|Land breaks|Life begins in|The first|Moss grows|[A-Z][a-z]+( [a-z]+)? took hold|Held too long|Stone caught|The ice cracks, but too close|A streak, but it crosses|Missed: catch stones|The fire is out|The heat is nearly|A dust storm|The storm passes|The ground is sinking|The ground gives way)/;
+const QUIET_WORDS = /^(An icy comet|Ice melted|The ice froze|Ice reaches the ring|A big eruption, but too close|Wanted where|A stone is coming|Land breaks|Life begins in|The first|Moss grows|[A-Z][a-z]+( [a-z]+)? took hold|Held too long|Stone caught|The ice cracks, but too close|A streak, but it crosses|Missed: catch stones|The fire is out|The heat is nearly|A dust storm|The storm passes|The ground is sinking|The ground gives way)/;
 const ERAS: Record<Era, string> = { young: 'A young fire', burning: 'Burning strong', cooling: 'Cooling', embers: 'Last embers', out: 'The fire is out' };
 // (In free play the heat never runs low, so the title says what kind of play it is.)
 if (FREE) ERAS.young = 'Free play';
@@ -2742,6 +2811,7 @@ const GOAL_WORDS: Record<typeof WORLD.goal, { age: (met: boolean) => string; don
   glow: { age: () => 'Later: the blue fire goes out', done: 'Goal reached: the crater lit with blue fire', title: ['Blue fire lit', 'Not enough blue fire'], got: () => `${Math.min(100, Math.round(aimDone))}% of the night lit` },
   waves: { age: () => 'Later: the sea fills the broken cone', done: 'Goal reached: waves sent round the world', title: ['Waves made', 'Not enough waves'], got: () => `${aimDone} of ${aimOf} waves` },
   antipode: { age: () => 'Later: the planet keeps cooling and wrinkling', done: 'Goal reached: a mountain raised on the far side', title: ['Far side raised', 'Far side too low'], got: () => `the far side ${Math.round(aimDone)} of ${aimOf} km high` },
+  water: { age: () => 'Later: the ponds join into the first sea', done: 'Goal reached: the first water, melted from comets', title: ['First water made', 'Not enough water'], got: () => `${aimDone} of ${aimOf} comets melted` },
   gather: { age: () => 'Later: the molten surface hardens', done: 'Goal reached: enough stones caught to form a planet', title: ['Planet formed', 'Not enough stones'], got: () => `${aimDone} of ${aimOf} stones caught` },
   oxygen: { age: (met) => (met ? 'Later: the sky keeps turning blue' : 'Later: the orange haze stays'), done: 'Goal reached: the sky turns blue', title: ['Blue sky made', 'Still an orange sky'], got: () => `${Math.min(100, Math.round(aimDone))}% of the oxygen` },
   chaos: { age: () => 'Later: the ice rafts freeze in place', done: 'Goal reached: the ice cracked in enough places', title: ['Ice cracked', 'Not enough cracks'], got: () => `${aimDone} of ${aimOf} cracks` },
@@ -2775,6 +2845,7 @@ function tale(met: boolean): string {
     case 'glow': return `${pct}% of the night lit with blue fire.`;
     case 'waves': return `${aimDone} of ${aimOf} waves sent round the world.`;
     case 'antipode': return `The far side raised ${Math.round(aimDone)} km by shock waves through the planet.`;
+    case 'water': return met ? `${aimDone} icy comets melted on warm lava: the first ponds of a sea.` : `${aimDone} of ${aimOf} comets melted.`;
     case 'gather': return met ? 'Enough stones caught to form a planet.' : `${aimDone} stones caught. Not enough for a planet.`;
     case 'oxygen': return met ? 'Life in the shallow seas made enough oxygen to turn the sky blue.' : `The sky ${pct}% of the way from orange to blue.`;
     case 'chaos': return `The ice cracked in ${aimDone} of ${aimOf} places.`;
