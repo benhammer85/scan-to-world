@@ -1276,7 +1276,7 @@ for (const s of [readyInk, readyPencil]) { s.byDirection = true; s.linger = 0.35
 const READY_GOALS = new Set(['plumes', 'feed', 'calm', 'orbit', 'thaw', 'waves', 'antipode', 'streaks', 'chaos']);
 /** How far the circle has inked in: 1 when it's time to let go; null where the aim asks for no eruption. */
 function readyShare(): number | null {
-  if (!(READY_GOALS.has(WORLD.goal) || (HAND && WORLD.id !== 'hollow')) || LAMP) return null; // (one hand: a tap always erupts, so the circle shows when it would be a big one)
+  if (!READY_GOALS.has(WORLD.goal) || LAMP) return null; // (only where the aim asks for an eruption: on the worlds that want pouring it was one more dotted ring, round the volcano, asking for a tap that wasn't wanted)
   const k = planet.k, p = planet.pressure;
   let share = WORLD.goal === 'chaos' ? p / k.chaos : k.great > 0 ? planet.throwOf(p) / k.great : p / k.explosive;
   if (WORLD.goal === 'streaks' && planet.dayAt(planet.plumeVertex) <= 0.3) share = Math.min(share, 0.96); // (in the dark it can't close: turn to the sun)
@@ -1309,7 +1309,7 @@ function drawReady(now: number): void {
 }
 gauge.add(gaugeInk.object, gaugePencil.object);
 group.add(gauge);
-if (BARE || WASHED) gauge.visible = false; // (in watercolour the bloom reads the pressure: the dial said it twice)
+if (BARE || WASHED || HAND) gauge.visible = false; // (in watercolour the bloom reads the pressure: the dial said it twice; and with one hand the circle round the volcano says when, and the dial was a second ring round it)
 /**
  * On a young Earth, the moon to be: a ring of dots in the sky round the world, not on it, so it
  * stays where it is however the world is turned. Pale until rock reaches it, inked as it does, and
@@ -2750,7 +2750,7 @@ function showReplayFrame(i: number): void {
 function replayHides(hide: boolean): void {
   for (const pen of [...landPens, ...seaPens]) pen.object.visible = !hide;
   for (const st of [aimInk, aimPencil, aimNext, ...kindDots]) st.object.visible = !hide;
-  gauge.visible = !hide && !BARE && !WASHED;
+  gauge.visible = !hide && !BARE && !WASHED && !HAND;
 }
 function startReplay(): void {
   if (replayFrames.length < 4 || STILL) return;
