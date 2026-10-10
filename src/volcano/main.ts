@@ -2661,6 +2661,14 @@ function measureTheSecond(): void {
   }
 }
 const LONG_AGE = 360, AGE_SPEED = 14, DRAWING = 7, TURN_AGAIN = 2.6;
+/**
+ * The long age after the fire, only where it finishes what was made: the peak turning white, the moon gathering,
+ * the sky turning blue, the ice melting, the ponds joining, the rock snow settling. Elsewhere it only wore it away
+ * (the islands sunk, the mountain worn down, the ice greyed), and the chart showed what was left of it, not what
+ * was made: there the world stands as it was left, and the chart comes at once.
+ */
+const AGE_FINISHES = new Set(['white', 'orbit', 'oxygen', 'thaw', 'water', 'snow']);
+const AGE_LEN = AGE_FINISHES.has(WORLD.goal) ? LONG_AGE : 0;
 /** What the long age after the fire does on this world, in a line for the foot: every world has one, met or not. */
 /**
  * Each aim's words: what the long age after the fire does (met or not), what's said when the aim
@@ -2827,12 +2835,12 @@ function theEnd(): void {
     $('finish').classList.remove('shown');
     $('stage-name').textContent = ERAS.out;
     queue.length = 0;
-    announce(`The fire is out. ${AGE_WORDS(ending.won)}`);
+    announce(AGE_LEN ? `The fire is out. ${AGE_WORDS(ending.won)}` : 'The fire is out');
     measureTheSecond();
     if (MAY_RETRY && !ending.won && looks.length) $('retry').classList.add('shown');
   }
-  // Met, the chart comes a few moments later; not, after a long age has worn at what was made.
-  if (ending && !ending.shown && planet.seconds - ending.from >= LONG_AGE && (!ending.won || seconds - wonAt() > 4)) {
+  // Met, the chart comes a few moments later; and after the long age, where there is one (see `AGE_LEN`).
+  if (ending && !ending.shown && planet.seconds - ending.from >= AGE_LEN && (!ending.won || seconds - wonAt() > 4)) {
     ending.shown = true;
     ending.at = seconds;
     ecology.update(0);
