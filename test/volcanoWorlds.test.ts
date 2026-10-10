@@ -19,20 +19,21 @@ const run = (pl: Planet, seconds: number) => { for (let t = 0; t < seconds; t +=
 
 describe('the worlds', () => {
   it('come one after another, and each has its own aim', () => {
-    expect(WORLDS.map((w) => w.id)).toEqual(['mars', 'moon', 'ice', 'asteroid', 'rogue', 'first', 'comets', 'young', 'archean', 'snowball', 'ocean', 'lengai', 'ijen', 'tonga', 'io', 'europa', 'enceladus', 'triton', 'tumble', 'mercury', 'magma', 'dust', 'spin', 'deep', 'lamp', 'hollow', 'venus', 'pluto', 'twofires']);
+    expect(WORLDS.map((w) => w.id)).toEqual(['mars', 'moon', 'ice', 'asteroid', 'rogue', 'hollow', 'ocean', 'first', 'comets', 'young', 'archean', 'snowball', 'lengai', 'ijen', 'tonga', 'io', 'europa', 'enceladus', 'triton', 'tumble', 'mercury', 'magma', 'dust', 'deep', 'spin', 'venus', 'pluto', 'lamp', 'twofires']);
     expect(worldOf('moon').goal).toBe('basins');
     expect(worldOf('nowhere').id).toBe('mars');
     expect(nextWorld(worldOf('mars'))!.id).toBe('moon');
     expect(nextWorld(worldOf('moon'))!.id).toBe('ice');
     expect(nextWorld(worldOf('ice'))!.id).toBe('asteroid');
     expect(nextWorld(worldOf('asteroid'))!.id).toBe('rogue');
-    expect(nextWorld(worldOf('rogue'))!.id).toBe('first');
+    expect(nextWorld(worldOf('rogue'))!.id).toBe('hollow');
+    expect(nextWorld(worldOf('hollow'))!.id).toBe('ocean');
+    expect(nextWorld(worldOf('ocean'))!.id).toBe('first');
     expect(nextWorld(worldOf('first'))!.id).toBe('comets');
     expect(nextWorld(worldOf('comets'))!.id).toBe('young');
     expect(nextWorld(worldOf('young'))!.id).toBe('archean');
     expect(nextWorld(worldOf('archean'))!.id).toBe('snowball');
-    expect(nextWorld(worldOf('snowball'))!.id).toBe('ocean');
-    expect(nextWorld(worldOf('ocean'))!.id).toBe('lengai');
+    expect(nextWorld(worldOf('snowball'))!.id).toBe('lengai');
     expect(nextWorld(worldOf('lengai'))!.id).toBe('ijen');
     expect(nextWorld(worldOf('ijen'))!.id).toBe('tonga');
     expect(nextWorld(worldOf('tonga'))!.id).toBe('io');
@@ -43,13 +44,12 @@ describe('the worlds', () => {
     expect(nextWorld(worldOf('tumble'))!.id).toBe('mercury');
     expect(nextWorld(worldOf('mercury'))!.id).toBe('magma');
     expect(nextWorld(worldOf('magma'))!.id).toBe('dust');
-    expect(nextWorld(worldOf('dust'))!.id).toBe('spin');
-    expect(nextWorld(worldOf('spin'))!.id).toBe('deep');
-    expect(nextWorld(worldOf('deep'))!.id).toBe('lamp');
-    expect(nextWorld(worldOf('lamp'))!.id).toBe('hollow');
-    expect(nextWorld(worldOf('hollow'))!.id).toBe('venus');
+    expect(nextWorld(worldOf('dust'))!.id).toBe('deep');
+    expect(nextWorld(worldOf('deep'))!.id).toBe('spin');
+    expect(nextWorld(worldOf('spin'))!.id).toBe('venus');
     expect(nextWorld(worldOf('venus'))!.id).toBe('pluto');
-    expect(nextWorld(worldOf('pluto'))!.id).toBe('twofires');
+    expect(nextWorld(worldOf('pluto'))!.id).toBe('lamp');
+    expect(nextWorld(worldOf('lamp'))!.id).toBe('twofires');
     expect(nextWorld(worldOf('twofires'))).toBe(null);
   });
 });
@@ -203,6 +203,7 @@ describe('Io', () => {
 
   it('throws a great plume\'s sulphur in a ring, not heaped round the vent', () => {
     const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('io').rules);
+    pl.seconds = pl.k.tidePeriod / 4; // high tide
     pl.pressure = 20;
     expect(pl.erupt()).toBe('burst');
     const v0 = pl.plumeVertex, at = (d: number) => {
@@ -219,6 +220,7 @@ describe('Io', () => {
 
   it('counts a great plume only on fresh ground', () => {
     const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('io').rules);
+    pl.seconds = pl.k.tidePeriod / 4; // high tide
     pl.pressure = 20; pl.erupt();
     expect(pl.plumes.length).toBe(1);
     pl.pressure = 20; pl.erupt(); // the same place
@@ -236,6 +238,13 @@ describe('Io', () => {
     low.seconds = (pl.k.tidePeriod * 3) / 4; // low tide
     low.pressure = 23; low.erupt();
     expect(low.plumes.length).toBe(0);
+  });
+
+  it('counts a great plume only at high tide, however big', () => {
+    const mid = new Planet(topo, nearest(0, 0, 1), 3, worldOf('io').rules);
+    mid.seconds = 0; // the tide halfway
+    mid.pressure = 23; mid.erupt();
+    expect(mid.plumes.length).toBe(0);
   });
 });
 
@@ -567,13 +576,13 @@ describe('the orange Earth', () => {
 });
 
 describe('Europa', () => {
-  it('cracks the ice when let out once the heat is enough, a burst too; not before', () => {
+  it('cracks the ice when let out once the heat is enough; not before, and not as a burst (a hole)', () => {
     const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('europa').rules);
     pl.pressure = pl.k.chaos + 1; pl.erupt();
     expect(pl.plumes.length).toBe(1);
     const pl2 = new Planet(topo, nearest(0, 0, 1), 3, worldOf('europa').rules);
     pl2.pressure = pl2.k.explosive + 1; pl2.erupt();
-    expect(pl2.plumes.length).toBe(1);
+    expect(pl2.plumes.length).toBe(0);
     const pl3 = new Planet(topo, nearest(0, 0, 1), 3, worldOf('europa').rules);
     pl3.pressure = pl3.k.chaos * 0.5; pl3.erupt();
     expect(pl3.plumes.length).toBe(0);

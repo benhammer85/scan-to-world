@@ -1,11 +1,10 @@
 /**
  * The ocean world's aim: a chain of living islands all the way round the world.
  *
- * The crust carries the heat along a great circle from where it began. The first half of the way
- * round (as far as the Hawaiian chain runs, near enough) is cut into stretches; a stretch is held while something lives on or by it
+ * The crust carries the heat along a great circle from where it began. The first part of the way
+ * round is cut into stretches; a stretch is held while something lives on or by it
  * (land with life on it, or reef in the shallows). The world is ringed when every stretch is held
- * at once, before the fire goes out. (It was the whole way round: about eight and a half minutes of
- * drift before the last stretch could even be reached, too long for the first world.) Old islands sink and wear, and unless reef holds them they
+ * at once, before the fire goes out. (It was the whole way round, then half: too long a wait on the drift.) Old islands sink and wear, and unless reef holds them they
  * drop out of the chain, so the ring is a race against the sea as much as against the cooling.
  */
 import type { Topology } from '../mesh/topology';
@@ -13,9 +12,9 @@ import type { Planet } from './sim';
 
 export const CHAIN = {
   /** Stretches along the way. */
-  stretches: 8,
+  stretches: 5,
   /** How much of the way round the world the chain runs. */
-  arc: 0.5,
+  arc: 0.3,
   /** How near the way (as the sine of an angle from its circle) living ground must be to hold a stretch. */
   near: 0.14,
   /** Life at least this strong holds. */

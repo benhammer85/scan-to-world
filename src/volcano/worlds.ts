@@ -251,9 +251,50 @@ export const WORLDS: World[] = [
     hearth: 1850,
   },
   {
+    id: 'hollow',
+    kind: 'A hollow world',
+    numeral: 'VI',
+    title: 'A Hollow World',
+    first: 'A thin crust over a shallow layer of magma.',
+    why: "If magma drains from under a volcano too fast, the top falls in. Kilauea's summit dropped about 500 m this way in 2018.",
+    second: 'Build in short pours, and let the ground rest between them.',
+    rules: {
+      g: 0.5,
+      terrain: 'mars', basins: 0, craters: 12, floor: 0.05, rough: 0.02,
+      waves: 0, rain: 0, sink: 0, life: false,
+      talus: 1.6, flow: 8, channel: 2, coolLand: 1,
+      drift: 0, rises: 0, heat: 300, rising: 0.9, steady: true,
+      hollow: 14, hollowRefill: 0.025, hollowDepth: 3, // (two or three pours one after another empty it; it fills again in about half a minute)
+      impactEvery: [0, 0],
+    },
+    palette: {
+      paper: '#e4dccb', basalt: '#8f857a', ash: '#bdb3a4', lava: '#b8563c', deepLava: '#8f3b28',
+      shallow: '#d4e3ec', deep: '#b1c8d8',
+      landInk: '#5c5046', landInkHigh: '#3d342c', pencil: '#b9ad9c', seaInk: '#5b82a3',
+    },
+    goal: 'height',
+    height: { target: 20, kmPerUnit: 40 },
+  },
+  {
+    id: 'ocean',
+    kind: 'An ocean world',
+    numeral: 'VII',
+    title: 'An Ocean World',
+    first: 'All ocean, with a volcano on the sea floor.',
+    why: 'The sea floor slowly slides over a hot spot, so the volcano leaves a line of islands behind it, like Hawaii.',
+    second: 'Tip the world as the fire moves, and islands rise along the line.',
+    rules: { drift: 0.0125, rises: 0, heat: 600, rising: 1.4, steady: true, reseed: 15, floor: -0.22, sink: 0.0001, impactEvery: [60, 100], atolls: true }, // (islands sinking slowly, so the chain is built steadily, not raced)
+    palette: {
+      paper: '#ecdfc2', basalt: '#9a8a76', ash: '#b3ada2', lava: '#b8563c', deepLava: '#8f3b28',
+      shallow: '#d4e3ec', deep: '#b1c8d8',
+      landInk: '#6b4a2e', landInkHigh: '#4a2f1c', pencil: '#b9a68c', seaInk: '#5b82a3',
+    },
+    goal: 'ring',
+  },
+  {
     id: 'first',
     kind: 'A world still forming',
-    numeral: 'VI',
+    numeral: 'VIII',
     title: 'The First World',
     first: 'A newborn planet, molten, with rubble still falling on it.',
     why: 'Planets grow by collecting the rocks that hit them while they are still molten.',
@@ -278,7 +319,7 @@ export const WORLDS: World[] = [
   {
     id: 'comets',
     kind: 'A young world, rained on by comets',
-    numeral: 'VII',
+    numeral: 'IX',
     title: "Earth's First Water",
     first: 'A young Earth, with rocky stones and icy comets falling.',
     why: 'Comets and icy asteroids probably brought much of Earth\'s water, melting as they struck the young, hot planet.',
@@ -302,7 +343,7 @@ export const WORLDS: World[] = [
   {
     id: 'young',
     kind: 'A young world',
-    numeral: 'VIII',
+    numeral: 'X',
     title: 'A Young Earth',
     first: 'A young, hot Earth with no moon yet.',
     why: 'Rock thrown up fast enough goes into orbit instead of falling back. Our Moon probably formed from rock knocked off the young Earth.',
@@ -326,14 +367,15 @@ export const WORLDS: World[] = [
   {
     id: 'archean',
     kind: 'A young blue world, its sky still orange',
-    numeral: 'IX',
+    numeral: 'XI',
     title: 'The Orange Earth',
     first: 'Early Earth: shallow green seas under an orange sky.',
     why: "For about two billion years Earth's air had almost no oxygen, until tiny life in shallow seas made it.",
     second: 'Pour a shallow shelf, then turn and pour the next, and leave each to life.',
     rules: {
-      drift: 0, rises: 0.03, heat: 420, rising: 1.3, steady: true, sink: 0,
+      drift: 0, rises: 0.03, heat: 350, rising: 1.3, steady: true, sink: 0,
       breathe: 0.06, arrives: 1, hearth: 1.2, // (mats drift in and settle on any shallows near the fire)
+      gasEats: 8, // (an eruption's gas uses oxygen up: pour, don't erupt)
     },
     palette: {
       paper: '#e2d6bd', basalt: '#8a8072', ash: '#a59a88', lava: '#b8563c', deepLava: '#8f3b28',
@@ -341,12 +383,12 @@ export const WORLDS: World[] = [
       landInk: '#4f463a', landInkHigh: '#332d25', pencil: '#b4a891', seaInk: '#4f7a78',
     },
     goal: 'oxygen',
-    oxygen: 600,
+    oxygen: 480,
   },
   {
     id: 'snowball',
     kind: 'A frozen world',
-    numeral: 'X',
+    numeral: 'XII',
     title: 'Snowball Earth',
     first: 'Earth frozen over from pole to pole.',
     why: 'Earth froze over at least twice. Volcanoes slowly added carbon dioxide to the air until it was warm enough to melt the ice.',
@@ -363,25 +405,9 @@ export const WORLDS: World[] = [
     goal: 'thaw',
   },
   {
-    id: 'ocean',
-    kind: 'An ocean world',
-    numeral: 'XI',
-    title: 'An Ocean World',
-    first: 'All ocean, with a volcano on the sea floor.',
-    why: 'The sea floor slowly slides over a hot spot, so the volcano leaves a line of islands behind it, like Hawaii.',
-    second: 'Tip the world as the fire moves, and islands rise along the line.',
-    rules: { drift: 0.0125, rises: 0, heat: 600, rising: 1.4, steady: true, reseed: 15, floor: -0.22, sink: 0.0001, impactEvery: [60, 100], atolls: true }, // (islands sinking slowly, so the chain is built steadily, not raced)
-    palette: {
-      paper: '#ecdfc2', basalt: '#9a8a76', ash: '#b3ada2', lava: '#b8563c', deepLava: '#8f3b28',
-      shallow: '#d4e3ec', deep: '#b1c8d8',
-      landInk: '#6b4a2e', landInkHigh: '#4a2f1c', pencil: '#b9a68c', seaInk: '#5b82a3',
-    },
-    goal: 'ring',
-  },
-  {
     id: 'lengai',
     kind: 'A volcano of black lava that turns white',
-    numeral: 'XII',
+    numeral: 'XIII',
     title: 'Ol Doinyo Lengai',
     first: 'A volcano whose black lava turns white.',
     why: 'Ol Doinyo Lengai in Tanzania is the only active volcano with black lava that turns white within days.',
@@ -406,7 +432,7 @@ export const WORLDS: World[] = [
   {
     id: 'ijen',
     kind: 'A crater of blue fire',
-    numeral: 'XIII',
+    numeral: 'XIV',
     title: 'Kawah Ijen',
     first: 'A crater with an acid lake and blue flames at night.',
     why: 'At Kawah Ijen in Indonesia, sulphur gas burns as it meets the air, making blue flames at night.',
@@ -430,7 +456,7 @@ export const WORLDS: World[] = [
   {
     id: 'tonga',
     kind: 'A volcano under the sea',
-    numeral: 'XIV',
+    numeral: 'XV',
     title: 'Hunga Tonga',
     first: 'An undersea volcano in the South Pacific.',
     why: 'In 2022 Hunga Tonga erupted just under the sea, and its pressure wave went round the whole Earth several times.',
@@ -450,18 +476,18 @@ export const WORLDS: World[] = [
   {
     id: 'io',
     kind: 'A tidal moon',
-    numeral: 'XV',
+    numeral: 'XVI',
     title: 'Io',
     first: 'A yellow moon with hundreds of volcanoes.',
     why: "Jupiter's pull squeezes Io harder at some points of its orbit than others, so its heat rises and falls. It is the most volcanic place in the solar system.",
-    second: 'Tip at high tide, and a great plume rises.',
+    second: 'Erupt at high tide, and a great plume rises.',
     rules: {
       g: 0.18, // (Io's gravity, Earth's being 1)
       terrain: 'io', basins: 0, craters: 0, floor: 0.05, rough: 0.02,
       waves: 0, rain: 0, sink: 0, swell: 0, life: false,
       flow: 12, channel: 2, coolLand: 0.15,
-      drift: 0, rises: 0.03, heat: 400, rising: 1.2, steady: true, tide: 0.9, tidePeriod: 50, tideThrow: 0.7,
-      ashShare: 0.8, ashRing: 2.0, great: 18, plumesApart: 0.5,
+      drift: 0, rises: 0.03, heat: 340, rising: 1.2, steady: true, tide: 0.9, tidePeriod: 50, tideThrow: 0.7,
+      ashShare: 0.8, ashRing: 2.0, great: 18, greatTide: 0.8, plumesApart: 0.5,
       impactEvery: [0, 0],
     },
     palette: {
@@ -476,18 +502,18 @@ export const WORLDS: World[] = [
   {
     id: 'europa',
     kind: 'An ice moon with a sea beneath',
-    numeral: 'XVI',
+    numeral: 'XVII',
     title: 'Europa',
     first: 'Smooth ice over a salty ocean.',
     why: "Where warm water rises under Europa's ice, the ice breaks into rafts that drift and freeze again. Scientists call this chaos terrain.",
-    second: 'Hold, and lift before the smoke turns grey: the ice breaks into rafts.',
+    second: 'Erupt before the circle starts to empty: the ice breaks into rafts.',
     rules: {
       g: 0.13, // (Europa's gravity, Earth's being 1)
       terrain: 'ice', basins: 0, craters: 6, floor: 0.05, rough: 0.012,
       waves: 0, rain: 0, sink: 0, life: false,
       flow: 20, channel: 1, coolLand: 0.08,
       drift: 0, rises: 0.03, heat: 280, rising: 1.4, ashShare: 0.75, explosive: 9,
-      chaos: 5, plumesApart: 0.55, // (let out between 5 and the burst point, the heat breaks the ice; a burst doesn't)
+      chaos: 5, plumesApart: 0.55, // (let out between 5 and the burst point, the heat breaks the ice; a burst blasts a hole instead)
       impactEvery: [80, 120], impactWarning: 12, impactHeat: 4,
     },
     palette: {
@@ -502,7 +528,7 @@ export const WORLDS: World[] = [
   {
     id: 'enceladus',
     kind: 'A small ice moon',
-    numeral: 'XVII',
+    numeral: 'XVIII',
     title: 'Enceladus',
     first: 'A small icy moon of Saturn that feeds one of its rings.',
     why: "Geysers on Enceladus spray ice into space, and that ice feeds one of Saturn's rings.",
@@ -529,7 +555,7 @@ export const WORLDS: World[] = [
   {
     id: 'triton',
     kind: 'A frozen moon going round backwards',
-    numeral: 'XVIII',
+    numeral: 'XIX',
     title: 'Triton',
     first: "Neptune's largest moon: pink nitrogen ice in faint sunlight.",
     why: "Triton's geysers rise about 8 km high, and thin winds blow their dark dust into long streaks.",
@@ -556,7 +582,7 @@ export const WORLDS: World[] = [
   {
     id: 'tumble',
     kind: 'A tumbling moon',
-    numeral: 'XIX',
+    numeral: 'XX',
     title: 'A Tumbling Moon',
     first: 'A moon tumbling end over end.',
     why: "Some moons tumble instead of spinning steadily, like Saturn's moon Hyperion.",
@@ -583,7 +609,7 @@ export const WORLDS: World[] = [
   {
     id: 'mercury',
     kind: 'A small scorched world',
-    numeral: 'XX',
+    numeral: 'XXI',
     title: 'Mercury',
     first: 'Small and hot, wrinkled as it cooled.',
     why: 'When a huge rock hit Mercury, the shock went right through the planet and broke up the ground on the opposite side.',
@@ -608,7 +634,7 @@ export const WORLDS: World[] = [
   {
     id: 'magma',
     kind: 'A lava world',
-    numeral: 'XXI',
+    numeral: 'XXII',
     title: 'A Lava World',
     first: 'One side always faces its star, and that side is molten.',
     why: 'Some planets orbit so close to their star that one side is molten. Rock boils there and may fall as rock snow on the night side.',
@@ -634,7 +660,7 @@ export const WORLDS: World[] = [
   {
     id: 'dust',
     kind: 'A world boiling away',
-    numeral: 'XXII',
+    numeral: 'XXIII',
     title: 'A Disintegrating Planet',
     first: 'So close to its star that it is boiling away.',
     why: 'Some planets are so close to their star that they are boiling away, leaving a tail of dust like a comet.',
@@ -656,31 +682,6 @@ export const WORLDS: World[] = [
     sun: [0.9, 0.2, 0.25],
     goal: 'outbuild',
     outbuild: 190,
-  },
-  {
-    id: 'spin',
-    kind: 'A spinning world',
-    numeral: 'XXIII',
-    title: 'A Spinning World',
-    first: 'Spinning so fast it bulges at the middle.',
-    why: 'Fast-spinning planets bulge at the middle, and the spin pushes flowing lava towards the equator.',
-    second: 'Pour, and a ridge rises all the way round its middle.',
-    rules: {
-      g: 0.04, // (Haumea's gravity, Earth's being 1)
-      terrain: 'spin', basins: 0, craters: 25, floor: 0.05, rough: 0.015, bulge: 0.08, spin: 2.5, ridge: 0.045,
-      waves: 0, rain: 0, sink: 0, swell: 0, life: false,
-      flow: 10, channel: 2, coolLand: 0.12,
-      drift: 0, rises: 0.04, heat: 400, rising: 1.2, steady: true,
-      impactEvery: [55, 95], impactWarning: 14, impactHeat: 5,
-    },
-    palette: {
-      // Pale slate, as of a world of ice and rock; fresh lava grey.
-      paper: '#d9dce0', basalt: '#9ea4ad', ash: '#c4c8ce', lava: '#b8563c', deepLava: '#8f3b28',
-      shallow: '#d4e3ec', deep: '#b1c8d8',
-      landInk: '#4a5260', landInkHigh: '#2f3642', pencil: '#aab1bc', seaInk: '#5b82a3',
-    },
-    goal: 'ridge',
-    height: { target: 0, kmPerUnit: 40 },
   },
   {
     id: 'deep',
@@ -707,58 +708,34 @@ export const WORLDS: World[] = [
     island: 190, // (one hand, aimed by turning the world straight at the bank: 90 was met in half a minute)
   },
   {
-    id: 'lamp',
-    kind: 'A world of glass',
+    id: 'spin',
+    kind: 'A spinning world',
     numeral: 'XXV',
-    title: 'A World of Glass',
-    first: 'A planet of glass. Hot rock floats up through it.',
-    why: 'An imagined world: here hot rock is lighter than the rock around it, so it floats up, as in a lava lamp.',
-    second: 'Turn the far shore uppermost, and warm blobs drift to it.',
+    title: 'A Spinning World',
+    first: 'Spinning so fast it bulges at the middle.',
+    why: 'Fast-spinning planets bulge at the middle, and the spin pushes flowing lava towards the equator.',
+    second: 'Pour, and a ridge rises all the way round its middle.',
     rules: {
-      terrain: 'glass', basins: 0, craters: 0, floor: 0.05, rough: 0.004,
+      g: 0.04, // (Haumea's gravity, Earth's being 1)
+      terrain: 'spin', basins: 0, craters: 25, floor: 0.05, rough: 0.015, bulge: 0.08, spin: 2.5, ridge: 0.034,
       waves: 0, rain: 0, sink: 0, swell: 0, life: false,
-      lamp: true, blobSpeed: 0.07, blobHot: 45,
-      drift: 0, rises: 0, heat: 340, rising: 1.0, steady: true,
-      impactEvery: [0, 0],
+      flow: 10, channel: 2, coolLand: 0.12,
+      drift: 0, rises: 0.04, heat: 400, rising: 1.2, steady: true,
+      impactEvery: [55, 95], impactWarning: 14, impactHeat: 5,
     },
     palette: {
-      // Lilac glass; the blobs glowing orange, deepening to red as they cool.
-      paper: '#ddd6e3', basalt: '#ddd6e3', ash: '#ddd6e3', lava: '#ea7a3a', deepLava: '#9c3a2a',
+      // Pale slate, as of a world of ice and rock; fresh lava grey.
+      paper: '#d9dce0', basalt: '#9ea4ad', ash: '#c4c8ce', lava: '#b8563c', deepLava: '#8f3b28',
       shallow: '#d4e3ec', deep: '#b1c8d8',
-      landInk: '#5a4f6b', landInkHigh: '#3e3450', pencil: '#b9afc7', seaInk: '#5b82a3',
+      landInk: '#4a5260', landInkHigh: '#2f3642', pencil: '#aab1bc', seaInk: '#5b82a3',
     },
-    goal: 'lamp',
-    pool: 115,
-  },
-  {
-    id: 'hollow',
-    kind: 'A hollow world',
-    numeral: 'XXVI',
-    title: 'A Hollow World',
-    first: 'A thin crust over a shallow layer of magma.',
-    why: "If magma drains from under a volcano too fast, the top falls in. Kilauea's summit dropped about 500 m this way in 2018.",
-    second: 'Build in short pours, and let the ground rest between them.',
-    rules: {
-      g: 0.5,
-      terrain: 'mars', basins: 0, craters: 12, floor: 0.05, rough: 0.02,
-      waves: 0, rain: 0, sink: 0, life: false,
-      talus: 1.6, flow: 8, channel: 2, coolLand: 1,
-      drift: 0, rises: 0, heat: 300, rising: 0.9, steady: true,
-      hollow: 14, hollowRefill: 0.025, hollowDepth: 3, // (two or three pours one after another empty it; it fills again in about half a minute)
-      impactEvery: [0, 0],
-    },
-    palette: {
-      paper: '#e4dccb', basalt: '#8f857a', ash: '#bdb3a4', lava: '#b8563c', deepLava: '#8f3b28',
-      shallow: '#d4e3ec', deep: '#b1c8d8',
-      landInk: '#5c5046', landInkHigh: '#3d342c', pencil: '#b9ad9c', seaInk: '#5b82a3',
-    },
-    goal: 'height',
-    height: { target: 20, kmPerUnit: 40 },
+    goal: 'ridge',
+    height: { target: 0, kmPerUnit: 40 },
   },
   {
     id: 'venus',
     kind: 'A hot world under thick cloud',
-    numeral: 'XXVII',
+    numeral: 'XXVI',
     title: 'Venus',
     first: 'Scorching ground under thick yellow clouds.',
     why: 'Venus has flat, round lava domes about 25 km wide, made by thick lava that barely flows.',
@@ -783,7 +760,7 @@ export const WORLDS: World[] = [
   {
     id: 'pluto',
     kind: 'A small, far, frozen world',
-    numeral: 'XXVIII',
+    numeral: 'XXVII',
     title: 'Pluto',
     first: 'Reddish ice at the edge of the solar system.',
     why: 'Wright Mons on Pluto is a ring of icy mounds about 150 km wide, round a deep hollow, probably built by slush welling up from below.',
@@ -793,7 +770,7 @@ export const WORLDS: World[] = [
       terrain: 'ice', basins: 0, craters: 10, floor: 0.08, rough: 0.015,
       waves: 0, rain: 0, sink: 0, swell: 0, life: false,
       talus: 1.6, flow: 4, channel: 1, thin: 0.01, coolLand: 1.5, grainPull: 0,
-      drift: 0, rises: 0.035, heat: 240, rising: 1.0, steady: true,
+      drift: 0, rises: 0.035, heat: 80, rising: 1.0, steady: true,
       dome: 0.1, domeRing: 0.45, domeBand: 0.12, plumesApart: 0.3, ashShare: 0.1,
       impactEvery: [90, 140], impactWarning: 14, impactHeat: 6,
     },
@@ -805,6 +782,30 @@ export const WORLDS: World[] = [
     goal: 'domes',
     domes: 5,
     contour: 0.05,
+  },
+  {
+    id: 'lamp',
+    kind: 'A world of glass',
+    numeral: 'XXVIII',
+    title: 'A World of Glass',
+    first: 'A planet of glass. Hot rock floats up through it.',
+    why: 'An imagined world: here hot rock is lighter than the rock around it, so it floats up, as in a lava lamp.',
+    second: 'Turn the far shore uppermost, and warm blobs drift to it.',
+    rules: {
+      terrain: 'glass', basins: 0, craters: 0, floor: 0.05, rough: 0.004,
+      waves: 0, rain: 0, sink: 0, swell: 0, life: false,
+      lamp: true, blobSpeed: 0.07, blobHot: 45,
+      drift: 0, rises: 0, heat: 340, rising: 1.0, steady: true,
+      impactEvery: [0, 0],
+    },
+    palette: {
+      // Lilac glass; the blobs glowing orange, deepening to red as they cool.
+      paper: '#ddd6e3', basalt: '#ddd6e3', ash: '#ddd6e3', lava: '#ea7a3a', deepLava: '#9c3a2a',
+      shallow: '#d4e3ec', deep: '#b1c8d8',
+      landInk: '#5a4f6b', landInkHigh: '#3e3450', pencil: '#b9afc7', seaInk: '#5b82a3',
+    },
+    goal: 'lamp',
+    pool: 115,
   },
   {
     id: 'twofires',
@@ -831,22 +832,22 @@ export const WORLDS: World[] = [
     },
     goal: 'marble',
   },
-
 ];
 
 /**
- * The worlds in six chapters, each teaching one thing (see the README): pouring and turning; one
- * world through its ages (ages.ts); Earth's strangest real volcanoes; bursts; and placing and
- * steering, the lava lamp, and the hollow world, where pouring too fast sets you back; and last,
- * slow fires, stiff lava and ice heaped into domes and mounds where they come out.
+ * The worlds in seven chapters, each teaching one thing (see the README): pouring and turning, ending on the
+ * hollow world, where pouring too fast sets you back; one world through its ages (ages.ts); Earth's strangest
+ * real volcanoes; bursts, each world's its own way; placing and steering; slow fires, stiff lava and ice heaped
+ * into domes and mounds; and last, two extras that play differently: the lava lamp and Io's Two Lavas.
  */
 export const CHAPTERS: { numeral: string; title: string; worlds: WorldId[] }[] = [
-  { numeral: 'I', title: 'Our Neighbours', worlds: ['mars', 'moon', 'ice', 'asteroid', 'rogue'] },
-  { numeral: 'II', title: 'Earth Through Time', worlds: ['first', 'comets', 'young', 'archean', 'snowball', 'ocean'] },
+  { numeral: 'I', title: 'Our Neighbours', worlds: ['mars', 'moon', 'ice', 'asteroid', 'rogue', 'hollow'] },
+  { numeral: 'II', title: 'Earth Through Time', worlds: ['ocean', 'first', 'comets', 'young', 'archean', 'snowball'] },
   { numeral: 'III', title: 'Unusual Volcanoes', worlds: ['lengai', 'ijen', 'tonga'] },
   { numeral: 'IV', title: 'Pressure', worlds: ['io', 'europa', 'enceladus', 'triton', 'tumble', 'mercury'] },
-  { numeral: 'V', title: 'Other Worlds', worlds: ['magma', 'dust', 'spin', 'deep', 'lamp', 'hollow'] },
-  { numeral: 'VI', title: 'Slow Lava', worlds: ['venus', 'pluto', 'twofires'] },
+  { numeral: 'V', title: 'Other Worlds', worlds: ['magma', 'dust', 'deep', 'spin'] },
+  { numeral: 'VI', title: 'Slow Lava', worlds: ['venus', 'pluto'] },
+  { numeral: 'VII', title: 'Extras', worlds: ['lamp', 'twofires'] },
 ];
 
 /** The chapter a world is in. */

@@ -57,7 +57,7 @@ import { loadSystem, saveSystem, worldFor, recordPlayed, finished, keepSystem, k
 import { openSystem, closeSystem } from './systemChart';
 import { feel, keepImage, NATIVE, rumble, rumbles, tap } from './native';
 import { SmokeSign } from './smokeSign';
-import { MARK_AT, earned, fromOldMarks, markNames, mergeMarks, readMarks, starsOf, stillToEarn, writeMarks, type Marks } from './marks';
+import { MARK_AT, earned, fromOldMarks, markNames, mergeMarks, readMarks, starsOf, writeMarks, type Marks } from './marks';
 import './fonts.css';
 import { LOOKS, PRINT_FUNCTIONS, LAMP_PRINT_FUNCTIONS, LAMP_PRINT, LAMP_QUIET, printFragment, type Look } from './print';
 
@@ -1271,7 +1271,8 @@ if (WORLD.goal === 'round') group.add(highHatch.object);
  * The circle round the volcano, where the aim asks for an eruption: dotted, inking itself in, dot by dot, as the heat
  * builds towards what the aim needs, and closed when it's time to let go. It says what a grey or gold edge on the
  * smoke said, without a colour to learn: wait till it closes. (On Io the tide fills it faster or slower by itself;
- * on Triton it closes only with the volcano in sunlight; on Europa, from the first crack's worth.)
+ * on Io it closes only at high tide; on Triton only with the volcano in sunlight; on Europa, from the first crack's
+ * worth, and then empties again as the heat builds past it, towards a burst that would blast a hole.)
  */
 const readyInk = new Stipple(AIM_INK, 'dot', 2.5 * AIM_BIG), readyPencil = new Stipple('#' + new THREE.Color(P.pencil).lerp(new THREE.Color(P.landInk), 0.45).getHexString(), 'dot', 1.6 * AIM_BIG);
 for (const s of [readyInk, readyPencil]) { s.byDirection = true; s.linger = 0.35; (s.object.material as THREE.ShaderMaterial).uniforms.uAppear.value = 0.3; (s.object.material as THREE.Material).depthTest = false; group.add(s.object); } // (each dot in at once: it's a gauge, where the map's own dots come in over seconds)
@@ -1282,6 +1283,9 @@ function readyShare(): number | null {
   const k = planet.k, p = planet.pressure;
   let share = WORLD.goal === 'chaos' ? p / k.chaos : k.great > 0 ? planet.throwOf(p) / k.great : p / k.explosive;
   if (WORLD.goal === 'streaks' && planet.dayAt(planet.plumeVertex) <= 0.3) share = Math.min(share, 0.96); // (in the dark it can't close: turn to the sun)
+  if (planet.tideNow < k.greatTide) share = Math.min(share, 0.96); // (Io: it closes only at high tide)
+  // (Europa: once closed, it empties again as the heat goes on building towards a burst, which would blast a hole: 2 is empty.)
+  if (WORLD.goal === 'chaos' && p > k.chaos) return 1 + Math.min(1, (p - k.chaos) / (k.explosive - k.chaos));
   return Math.max(0, Math.min(1, share));
 }
 let readyAt = -1, readyWas = 0;
@@ -1293,13 +1297,17 @@ function drawReady(now: number): void {
   if (share !== null && planet.pressure > planet.k.least * 0.5) {
     // (Round the ground point under the volcano, not its exact place: that creeps a hair every frame, and dots set a hair
     // apart each time are new dots, which never finish fading in.)
-    const v = planet.plumeVertex, pts = circleAt({ x: base[v * 3], y: base[v * 3 + 1], z: base[v * 3 + 2] }, 0.075), filled = Math.round(pts.length * share);
-    onGround(pts.slice(0, filled), ink);
-    onGround(pts.slice(filled), pencil);
+    const v = planet.plumeVertex, pts = circleAt({ x: base[v * 3], y: base[v * 3 + 1], z: base[v * 3 + 2] }, 0.075);
+    if (share > 1) onGround(pts.slice(0, Math.round(pts.length * (2 - share))), ink); // (emptying: the window closing, no pencil left behind)
+    else {
+      const filled = Math.round(pts.length * share);
+      onGround(pts.slice(0, filled), ink);
+      onGround(pts.slice(filled), pencil);
+    }
     // (A light tap in the hand as it closes: the moment, felt as well as seen.)
-    if (share >= 1 && readyWas < 1) feel(12);
+    if (share >= 1 && share <= 1.2 && readyWas < 1) feel(12);
   }
-  readyWas = share ?? 0;
+  readyWas = Math.min(1, share ?? 0);
   readyInk.set(ink); readyPencil.set(pencil);
 }
 gauge.add(gaugeInk.object, gaugePencil.object);
@@ -1507,7 +1515,7 @@ function skyNow(dt: number): void {
   if (planet.echoed > echoesFelt) { echoesFelt = planet.echoed; feel([12, 60, 12]); }
   if (planet.k.gas > 0) iceLine.value = planet.iceLine;
   // (The haze clears with the oxygen, and goes on clearing once the sky has turned.)
-  if (planet.k.breathe > 0) haze.value += (Math.max(0, 1 - planet.oxygen / OXYGEN) - haze.value) * Math.min(1, dt * 0.5);
+  if (planet.k.breathe > 0) haze.value += (Math.min(1, Math.max(0, 1 - planet.oxygen / OXYGEN)) - haze.value) * Math.min(1, dt * 0.5);
   // On Triton the sun moves across the sky, slowly, and its picture with it.
   if (SUN && WORLD.sunTurns && !planet.over) {
     SUN.applyAxisAngle(SKY_UP, WORLD.sunTurns * dt);
@@ -1698,7 +1706,7 @@ function reckonAim(): void {
   else if (WORLD.goal === 'glow') { if (planet.burning >= GLOW) litFor += planet.seconds - litAt; litAt = planet.seconds; aimDone = (100 * litFor) / LIT_FOR; aimOf = 100; }
   else if (WORLD.goal === 'waves') { aimDone = planet.waves.length; aimOf = RINGS; }
   else if (WORLD.goal === 'antipode') { aimDone = planet.farRaised * HEIGHT.kmPerUnit; aimOf = FAR_KM; }
-  else if (WORLD.goal === 'oxygen') { aimDone = (100 * planet.oxygen) / OXYGEN; aimOf = 100; }
+  else if (WORLD.goal === 'oxygen') { aimDone = Math.max(0, (100 * planet.oxygen) / OXYGEN); aimOf = 100; }
   else if (WORLD.goal === 'chaos' || WORLD.goal === 'streaks') { aimDone = planet.plumes.length; aimOf = FIELDS; }
   else if (WORLD.goal === 'domes') { aimDone = planet.plumes.length; aimOf = DOMES; }
   // (Io's two fires: measured twice a second, being slow to find.)
@@ -1787,7 +1795,7 @@ const TIP: Record<string, string> = {
   basins: `The craters still to fill are dotted in pencil. Turn one to just below the volcano. ${HOLD} to pour into it.`,
   height: `${HOLD} to pour. Lava runs down the screen: turn the world between pours, so the mountain grows on every side.`,
   cover: `${POUR} The water freezes into new white ice. Only your biggest single sheet counts, so grow it outward from its edge: turn the world so the edge is just below the volcano.`,
-  plumes: `${ERUPT} Then turn the world to start the next one outside the old rings.`,
+  plumes: `The circle round the volcano closes only at high tide. Then ${COMPUTER ? 'click' : 'tap'} the world to erupt, and turn the world to start the next one outside the old rings.`,
   feed: `Turn the volcano towards the big planet, at the top left. ${ERUPT} The ring fades, so keep going.`,
   round: `Fill the dotted hollows. Turn one to just below the volcano, and ${HOLD.toLowerCase()} to pour into it. Keep off the hatched high ground: lava there makes it lumpier.`,
   ridge: 'Lava runs to the dotted line by itself. Turn a bare part of the line to the top.',
@@ -1804,8 +1812,8 @@ const TIP: Record<string, string> = {
   antipode: `${ERUPT} Turn the world over to watch the far side rise.`,
   water: 'Dark stones bring heat: turn the world so the volcano is under them. Pale blue comets bring water: pour lava where one will land, so it melts there, and keep the volcano away from them, as they cool it.',
   gather: 'A dotted circle shows where each stone will land. Turn it to the top, so the gold ring round your volcano is under it.',
-  oxygen: `${POUR} Pour into the sea until the lava nearly reaches the surface. Green life grows there and turns the sky blue. Then move on and do it again.`,
-  chaos: `${ERUPT} Then turn the world to fresh ice for the next.`,
+  oxygen: `${POUR} Pour into the sea until the lava nearly reaches the surface. Green life grows there and turns the sky blue. Then move on and do it again. Don't erupt: its gas uses up the oxygen.`,
+  chaos: `When the circle round the volcano closes, ${COMPUTER ? 'click' : 'tap'} the world to erupt. Then it starts to empty: erupt before it's gone, or the eruption is too big and blasts a hole instead. Then turn to fresh ice.`,
   streaks: `Turn the volcano into the sunlight. ${ERUPT} Then move to a new spot.`,
   snow: 'Turn the volcano under the star and pour. The lava boils away and falls as snow on the dotted line.',
   marble: `${COMPUTER ? 'Hold the mouse' : 'Hold a finger'} in the circle to pour glowing lava. Blue wells up by itself. Drag through the colours to swirl them into patterns. The circle's edge fills in as the pattern grows.`,
@@ -1865,18 +1873,18 @@ function goalLine(): string {
 /** Seconds as the clock shows them: 1:24. */
 const mmss = (sec: number): string => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
 /**
- * What's coming next, where something is: the next stone, the next dust storm, the next high tide. Said plainly,
- * with how long, so a pour or an eruption can be planned for it rather than met by surprise.
+ * What's coming next, in its last few seconds: the next stone, dust storm, high tide. Said plainly, with how
+ * long, so a pour or an eruption can be readied for it rather than met by surprise.
  */
 function nextLine(): string {
   const out: string[] = [];
   const stone = planet.stoneDue;
-  if (stone !== null) out.push(planet.impact ? `a stone lands in ${mmss(stone)}` : `a stone in about ${mmss(stone)}`);
+  if (stone !== null && stone <= SAY_BEFORE) out.push(planet.impact ? `A stone lands in ${Math.ceil(stone)} s` : 'A stone is coming');
   const storm = planet.stormDue;
-  if (storm !== null) out.push(storm <= 0 ? 'a dust storm now' : `a dust storm in ${mmss(storm)}`);
+  if (storm !== null && storm <= SAY_BEFORE) out.push(storm <= 0 ? 'A dust storm' : `A dust storm in ${Math.ceil(storm)} s`);
   if (planet.k.tide > 0) {
     const p = planet.k.tidePeriod, phase = ((planet.seconds / p) % 1 + 1) % 1, until = ((0.25 - phase + 1) % 1) * p;
-    out.push(planet.tideNow > 0.8 ? 'high tide now' : `high tide in ${mmss(until)}`);
+    if (planet.tideNow > 0.8) out.push('High tide'); else if (until <= SAY_BEFORE) out.push(`High tide in ${Math.ceil(until)} s`);
   }
   // Triton: when the turning sun reaches the volcano (as the world is held now), or how long it stays in sunlight.
   if (SUN && WORLD.sunTurns && planet.k.streak > 0) {
@@ -1884,28 +1892,46 @@ function nextLine(): string {
     const lit = (t: number) => s.copy(SUN).applyAxisAngle(SKY_UP, WORLD.sunTurns! * t).applyQuaternion(INVERSE).dot(n) > 0.18;
     const now = lit(0);
     let t = 1;
-    while (t < 400 && lit(t) === now) t++;
-    if (t < 400) out.push(now ? `the sun leaves the volcano in ${mmss(t)}` : `the sun reaches the volcano in ${mmss(t)}`);
+    while (t <= SAY_BEFORE && lit(t) === now) t++;
+    if (t <= SAY_BEFORE) out.push(now ? `The sun leaves the volcano in ${t} s` : `The sun reaches the volcano in ${t} s`);
   }
   const blue = planet.blueDue;
-  if (blue !== null) out.push(`more blue in ${mmss(blue)}`);
+  if (blue !== null && blue <= SAY_BEFORE) out.push(`More blue in ${Math.ceil(blue)} s`);
   return out.join(' · ');
 }
 /**
- * Under the aim, while it's played: the heat left and the clock, beside what the stars ask (see marks.ts), and
- * what's coming next. The two pull against each other: waiting saves heat and costs time.
+ * Under the aim, a second line only when there's something to say, and only for as long: the stars on offer as
+ * the fire begins; a star about to be lost, or just lost; and what's coming next, in its last few seconds. Else
+ * nothing, and the line fades away.
  */
-let paceAt = -1;
+let paceAt = -1, paceSaid = '', lostHeatAt = -1, lostTimeAt = -1;
+/** How soon a coming thing is said (seconds before it). */
+const SAY_BEFORE = 12;
+function paceLine(): string {
+  const at = MARK_AT[WORLD.id], t = planet.seconds;
+  if (at && t < 7) return TOWN ? `Stars: finish by ${at.minutes}:00` : `Stars: keep ${at.heat}% of the heat · finish by ${at.minutes}:00`;
+  if (at && !TOWN) {
+    const heat = Math.round(100 * planet.heatLeft);
+    if (lostHeatAt < 0 && heat < at.heat) lostHeatAt = t;
+    if (lostHeatAt >= 0 && t - lostHeatAt < 5) return `Heat below ${at.heat}%: one star gone`;
+    if (lostHeatAt < 0 && heat < at.heat + 8) return `Heat ${heat}% · the star needs ${at.heat}%`;
+  }
+  if (at) {
+    const left = at.minutes * 60 - t;
+    if (lostTimeAt < 0 && left < 0) lostTimeAt = t;
+    if (lostTimeAt >= 0 && t - lostTimeAt < 5) return `Past ${at.minutes}:00: one star gone`;
+    if (lostTimeAt < 0 && left <= 30) return `${mmss(left)} left for the time star`;
+  }
+  return nextLine();
+}
 function tellPace(): void {
   const el = $('pace');
-  if (FREE || RUN !== null || !begun || ending || planet.over) { el.textContent = ''; return; }
+  if (FREE || RUN !== null || !begun || ending || planet.over) { el.classList.remove('shown'); return; }
   if (seconds - paceAt < 0.5) return;
   paceAt = seconds;
-  const at = MARK_AT[WORLD.id];
-  const heat = TOWN ? '' : `Heat left ${Math.round(100 * planet.heatLeft)}%${at ? ` (★ ${at.heat}%)` : ''} · `;
-  const time = `${mmss(planet.seconds)}${at ? ` (★ ${at.minutes}:00)` : ''}`;
-  const next = nextLine();
-  el.textContent = heat + time + (next ? `\nNext: ${next}` : '');
+  const say = paceLine();
+  if (say) { if (say !== paceSaid) el.textContent = paceSaid = say; el.classList.add('shown'); }
+  else el.classList.remove('shown'); // (the words stay while they fade)
 }
 /** Say the aim now and then, and what's been gained each time something is. */
 function tellAim(): void {
@@ -2828,7 +2854,7 @@ const AGE_WORDS = (met: boolean) => GOAL_WORDS[WORLD.goal].age(met);
 function tale(met: boolean): string {
   const pct = Math.min(100, Math.round(aimDone));
   switch (WORLD.goal) {
-    case 'ring': return met ? 'A chain of islands half the world long. The oldest are already sinking.' : `Islands along ${aimDone} of the ${aimOf} parts of the line. The sea took the rest.`;
+    case 'ring': return met ? 'A chain of islands a third of the way round the world. The oldest are already sinking.' : `Islands along ${aimDone} of the ${aimOf} parts of the line. The sea took the rest.`;
     case 'basins': return `${aimDone} of ${aimOf} big craters filled with lava.`;
     case 'height': { const km = Math.round(aimDone); return met ? `A mountain ${km} km high, ${km >= 26 ? 'three times' : 'twice'} the height of Everest.` : `A mountain ${km} km high.`; }
     case 'cover': return `One sheet of new white ice over ${Math.round(aimDone)}% of the moon.`;
@@ -2875,12 +2901,6 @@ function markTheWin(): void {
   const before = keptStars(WORLD.id) ?? readMarks(null);
   remember(MARKS_KEY(WORLD.id), writeMarks(mergeMarks(before, marksNow)));
   // (Not said: the aim met and the long age are said then, and two lines are all that's shown. They're on the plate.)
-}
-/** A world's marks for its cards, once it's been won ('' before). */
-function marksLine(id: WorldId): string {
-  const kept = keptStars(id);
-  if (kept === null) return `☆☆☆  ${stillToEarn(id, [false, false, false])}`; // (what the stars ask, from the first time it's seen)
-  return `${starsOf(kept)}  ${stillToEarn(id, kept) || 'All three stars.'}`;
 }
 let ending: { from: number; shown: boolean; at: number; info: ChartInfo | null; turned: number; won: boolean } | null = null;
 let wonSeen = -1;
@@ -3070,6 +3090,7 @@ function openList(): void {
 }
 $('list').addEventListener('pointerdown', (e) => e.stopPropagation());
 $('list').querySelector('.close')!.addEventListener('click', () => { $('list').hidden = true; });
+$('list').querySelector('.about')!.addEventListener('click', () => { const r = $('list').querySelector('.rules') as HTMLElement; r.hidden = !r.hidden; });
 $('list').querySelector('.chart')!.addEventListener('click', () => { $('list').hidden = true; void pages().then((all) => openAtlas(all)); });
 /** How far the world has been turned since the chart was drawn, by any means: gravity's swing in the planet's frame. */
 const LAST_DOWN = new THREE.Vector3(), NOW_DOWN = new THREE.Vector3();
@@ -3379,7 +3400,7 @@ function openAtlas(all: Page[], only: string | null = null): void {
     cardGlobe = turningGlobe(globe, topo, id, last?.globe, () => new Planet(topo, START, 11, worldOf(id).rules));
     (pick.querySelector('.t') as HTMLElement).textContent = w.title;
     (pick.querySelector('.k') as HTMLElement).textContent = w.first;
-    (pick.querySelector('.m') as HTMLElement).textContent = marksLine(id);
+    (pick.querySelector('.m') as HTMLElement).textContent = starsOf(keptStars(id) ?? [false, false, false]).split('').join(' ');
     (pick.querySelector('.plates') as HTMLElement).hidden = !made.length;
     pick.dataset.world = id;
     pick.classList.add('shown');

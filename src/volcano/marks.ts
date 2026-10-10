@@ -22,7 +22,7 @@ export type Marks = [boolean, boolean, boolean];
 export const MARK_AT: Record<WorldId, { heat: number; minutes: number }> = {
   first: { heat: 50, minutes: 4 },
   comets: { heat: 20, minutes: 5 },
-  ocean: { heat: 10, minutes: 7 },
+  ocean: { heat: 33, minutes: 4 },
   moon: { heat: 33, minutes: 3 },
   mars: { heat: 25, minutes: 4 },
   ice: { heat: 10, minutes: 6 },
@@ -30,11 +30,11 @@ export const MARK_AT: Record<WorldId, { heat: number; minutes: number }> = {
   young: { heat: 25, minutes: 4 },
   rogue: { heat: 33, minutes: 4 },
   snowball: { heat: 25, minutes: 3 },
-  archean: { heat: 10, minutes: 7 },
+  archean: { heat: 10, minutes: 5 },
   lengai: { heat: 10, minutes: 5 },
   ijen: { heat: 10, minutes: 5 },
   tonga: { heat: 33, minutes: 4 },
-  io: { heat: 25, minutes: 4 },
+  io: { heat: 20, minutes: 4 },
   europa: { heat: 20, minutes: 4 },
   enceladus: { heat: 25, minutes: 4 },
   triton: { heat: 10, minutes: 5 },
@@ -47,7 +47,7 @@ export const MARK_AT: Record<WorldId, { heat: number; minutes: number }> = {
   lamp: { heat: 33, minutes: 4 },
   hollow: { heat: 33, minutes: 4 },
   venus: { heat: 33, minutes: 3 },
-  pluto: { heat: 50, minutes: 2 },
+  pluto: { heat: 33, minutes: 2 },
   twofires: { heat: 25, minutes: 4 },
 };
 
