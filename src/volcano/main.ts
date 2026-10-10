@@ -1698,7 +1698,7 @@ const AIM: Record<string, string> = {
   ring: 'Build islands all along the volcano\'s path (the dotted line).',
   basins: 'Fill the big craters with lava.',
   height: `Build a mountain ${HEIGHT.target} km tall.`,
-  cover: `Grow one sheet of new white ice over ${COVER}% of the moon.`,
+  cover: `Cover ${COVER >= 64 && COVER <= 70 ? 'two thirds' : COVER >= 48 && COVER <= 52 ? 'half' : `${COVER}%`} of the moon in one sheet of new white ice.`,
   plumes: `Make ${PLUMES} big eruptions, each in a new place.`,
   feed: "Fill the big planet's ring with ice.",
   round: 'Fill the craters to even the surface.',
@@ -1781,18 +1781,18 @@ function goalLine(): string {
     case 'ring': return `Islands along the path · ${d} of ${of}`;
     case 'basins': return `Craters filled · ${d} of ${of}`;
     case 'height': return `Mountain · ${Math.min(d, of)} of ${of} km`;
-    case 'cover': return `Ice sheet · ${d}% of the moon · goal ${of}%`;
+    case 'cover': return `Ice sheet · ${Math.min(100, Math.round((100 * aimDone) / Math.max(1, of)))}%`; // (one number: how far to the goal)
     case 'plumes': return `Big eruptions · ${d} of ${of}`;
     case 'feed': return `The ring · ${pct}% full`;
     case 'round': return `Surface evened · ${Math.min(100, Math.round((100 * aimDone) / Math.max(1, of)))}%`; // (how far to the goal, not how much rounder: the goal said as a share of itself)
     case 'ridge': return `Ridge built · ${d} of ${of} sections`;
     case 'lamp': return `Dotted shore · ${pct}% full`;
-    case 'calm': return d >= of ? `Calm · held ${Math.min(CALM_HOLD, Math.floor(calmHeld))} of ${CALM_HOLD} seconds` : `Calmer · ${d}% · goal ${of}%`;
+    case 'calm': return d >= of ? `Calm · held ${Math.min(CALM_HOLD, Math.floor(calmHeld))} of ${CALM_HOLD} seconds` : `Tumbling calmed · ${Math.min(100, Math.round((100 * aimDone) / Math.max(1, of)))}%`;
     case 'bank': return `Island · ${pct}% built`;
     case 'orbit': return `Rock for a moon · ${pct}%`;
-    case 'hearth': return `Life kept warm · ${pct}% of the goal`;
-    case 'thaw': return planet.thawed ? 'The ice gives way' : `Air warmed · ${pct}% of the goal`;
-    case 'outbuild': return `New land · ${pct}% of the goal`;
+    case 'hearth': return `Life kept warm · ${pct}%`;
+    case 'thaw': return planet.thawed ? 'The ice gives way' : `Air warmed · ${pct}%`;
+    case 'outbuild': return `New land · ${pct}%`;
     case 'snow': return `Rock snow · ${pct}% of the line`;
     case 'gather': return `Stones caught · ${d} of ${of}`;
     case 'water': return `Water · ${d} of ${of} comets melted`;
@@ -2768,9 +2768,9 @@ const GOAL_WORDS: Record<typeof WORLD.goal, { age: (met: boolean) => string; don
   ring: { age: () => 'Later: the islands sink and coral grows round them', done: 'Goal reached: islands all along the path', title: ['Chain of islands built', 'Chain broken'], got: () => `islands along ${aimDone} of ${aimOf} parts of the path` },
   basins: { age: () => 'Later: small meteorites keep hitting it', done: 'Goal reached: every big crater filled', title: ['All craters filled', 'Not all craters filled'], got: () => `${aimDone} of ${aimOf} craters filled` },
   height: { age: () => 'Later: dust storms keep wearing it down', done: `Goal reached: a mountain ${HEIGHT.target} km high`, title: ['Mountain built', 'Mountain too low'], got: () => `${Math.round(aimDone)} of ${aimOf} km high` },
-  cover: { age: () => 'Later: the new ice turns grey', done: `Goal reached: one sheet of new ice over ${COVER}% of the moon`, title: ['Ice sheet made', 'Ice sheet too small'], got: () => `one sheet over ${Math.round(aimDone)}% of the moon (goal ${aimOf}%)` },
+  cover: { age: () => 'Later: the new ice turns grey', done: `Goal reached: one sheet of new ice over ${COVER}% of the moon`, title: ['Ice sheet made', 'Ice sheet too small'], got: () => `one sheet over ${Math.round(aimDone)}% of the moon` },
   plumes: { age: () => 'Later: the sulphur settles', done: `Goal reached: ${PLUMES} big eruptions`, title: ['Big eruptions made', 'Not enough big eruptions'], got: () => `${aimDone} of ${aimOf} big eruptions` },
-  calm: { age: () => 'Later: the moon keeps turning', done: 'Goal reached: the moon has stopped tumbling', title: ['Tumbling stopped', 'Still tumbling'], got: () => `${aimDone}% calmer (goal ${aimOf}%)` },
+  calm: { age: () => 'Later: the moon keeps turning', done: 'Goal reached: the moon has stopped tumbling', title: ['Tumbling stopped', 'Still tumbling'], got: () => `the tumbling ${Math.min(100, Math.round((100 * aimDone) / Math.max(1, aimOf)))}% calmed` },
   bank: { age: () => 'Later: waves wear at the island', done: 'Goal reached: an island on the undersea mountain', title: ['Island built', 'No island yet'], got: () => `the island ${Math.min(100, Math.round(aimDone))}% raised` },
   ridge: { age: () => 'Later: the ridge cools and stays', done: 'Goal reached: a ridge all the way round', title: ['Ridge complete', 'Ridge not complete'], got: () => `${aimDone} of ${aimOf} sections built` },
   lamp: { age: () => 'Later: the blobs sink to the bottom', done: 'Goal reached: the far shore is full', title: ['Far shore filled', 'Far shore not filled'], got: () => `the far shore ${Math.min(100, Math.round(aimDone))}% full` },
@@ -2811,7 +2811,7 @@ function tale(met: boolean): string {
     case 'round': return `Craters filled with new rock: the surface ${Math.min(100, Math.round((100 * aimDone) / Math.max(1, aimOf)))}% evened.`;
     case 'feed': return `The ring ${pct}% full of this moon's ice.`;
     case 'orbit': return met ? 'Enough rock thrown into orbit to form a moon.' : `${pct}% of a moon's worth of rock thrown into orbit.`;
-    case 'hearth': return `Life kept alive on warm rock: ${pct}% of the goal.`;
+    case 'hearth': return met ? 'A big patch of life kept alive on warm rock.' : `Life kept alive on warm rock, ${pct}% of the way there.`;
     case 'thaw': return met ? 'The ice melted from the equator outwards, leaving open sea.' : `The air ${pct}% warm enough. The ice is still frozen.`;
     case 'outbuild': return met ? 'The planet was built faster than its star could boil it away.' : `The planet is still boiling away: ${pct}% of the growth needed.`;
     case 'white': return met ? 'A peak of black lava that turned white.' : aimDone < 50 ? 'A black peak, not yet tall enough.' : 'A black peak, only partly white.';
