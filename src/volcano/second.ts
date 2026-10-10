@@ -87,7 +87,7 @@ export function secondWords(goal: World['goal'], value: number): string {
     case 'chaos': return `${value}% of the ice broken`;
     case 'streaks': return `${value}% of the ice streaked`;
     case 'domes': return `the tallest ${value} km high`;
-    case 'marble': return `${value} drops of colour`;
+    case 'marble': return `${value}% of the heat to spare`;
     case 'town': return `${value} ${value === 1 ? 'tap' : 'taps'} of earth to spare`;
   }
 }
@@ -183,8 +183,8 @@ export function measureSecond(world: World, pl: Planet, topo: Topology, islands:
     for (let v = 0; v < n; v++) most = Math.max(most, pl.rock[v] - pl.start[v]);
     value = Math.round(most * 10 * 10) / 10;
   } else if (world.goal === 'marble') {
-    // As many drops as went into it, both colours: a pool marbled finely.
-    value = pl.drops.lava + pl.drops.sulphur;
+    // Heat to spare: swirled with little lava poured.
+    value = Math.round((100 * (pl.reserve + pl.pressure)) / pl.k.heat);
   } else if (world.goal === 'town') {
     // Earth to spare: the town kept with fewer walls.
     value = pl.wallsLeft;
