@@ -1266,6 +1266,9 @@ const gauge = new THREE.Group(), gaugeInk = new Stipple(AIM_INK, 'dot', 2.5 * AI
 const gaugeAt = new THREE.Vector3(planet.plume.x, planet.plume.y, planet.plume.z).normalize();
 for (const s of [aimInk, aimPencil, aimNext, gaugeInk, gaugePencil]) { s.byDirection = true; s.linger = 1.5; (s.object.material as THREE.Material).depthTest = false; }
 for (const s of [aimInk, aimPencil, aimNext]) group.add(s.object);
+// (The tumbling moon's line moves as the spin's axis wanders, and is redrawn often: its dots in at once, as the
+// circle round the volcano's are, or each redraw began their fading in again and the line never showed.)
+if (WORLD.goal === 'calm') for (const st of [aimInk, aimPencil]) { st.linger = 0.35; (st.object.material as THREE.ShaderMaterial).uniforms.uAppear.value = 0.3; }
 /** The asteroid: its high ground in short strokes, as old charts hatched a height: where lava makes it lumpier, so keep off it. */
 const highHatch = new Stipple('#' + new THREE.Color(AIM_INK).multiplyScalar(0.6).getHexString(), 'dash', 6);
 highHatch.byDirection = true;
@@ -1743,10 +1746,10 @@ const TIP: Record<string, string> = {
   round: `Fill the dotted hollows. Turn one to just below the volcano, and ${HOLD.toLowerCase()} to pour into it. Keep off the hatched high ground: lava there makes it lumpier.`,
   ridge: 'Lava runs to the dotted line by itself. Turn a bare part of the line to the top.',
   lamp: `Blobs float to the top of the world. Turn the dotted shore to the top. A blob grows at the volcano: ${COMPUTER ? 'click' : 'tap'} to let it go before it grows too big.`,
-  calm: `Turn the dotted line to the top, under the volcano. ${ERUPT}`,
+  calm: `The dotted line is where the ground sweeps past fastest. Turn it to the top, under the volcano. ${ERUPT}`,
   bank: `The undersea mountain's top is dotted in pencil. Turn the world so it's just below the volcano, and ${HOLD.toLowerCase()} to pour there.`,
   orbit: `Pour first, to build a tall volcano. Then: ${ERUPT[0].toLowerCase()}${ERUPT.slice(1)}`,
-  hearth: `${POUR} Life grows on warm new rock. Pour next to the green, never on it.`,
+  hearth: `${POUR} Life grows on ground warmed by lava running beside it, and dies under the lava. Pour next to the green, never on it, and keep pouring there: as the ground cools, the green fades.`,
   thaw: `Build the volcano up through the ice. Then: ${ERUPT[0].toLowerCase()}${ERUPT.slice(1)} Each eruption warms the sky.`,
   outbuild: 'The star burns away new land on its side. Turn the volcano to the dark side, and pour there.',
   white: 'Then stop pouring: the black lava turns white as it sits.',
@@ -1761,7 +1764,7 @@ const TIP: Record<string, string> = {
   snow: 'Turn the volcano under the star and pour. The lava boils away and falls as snow on the dotted line.',
   marble: `${COMPUTER ? 'Hold the mouse' : 'Hold a finger'} in the circle to pour glowing lava. Blue wells up by itself. Drag through the colours to swirl them into patterns. The circle's edge fills in as the pattern grows.`,
   town: `Lava runs down from the crack towards the town. ${COMPUTER ? 'Click' : 'Tap'} the ground to build a wall; ${COMPUTER ? 'click' : 'tap'} again nearby to make it longer. You have ${WORLD.rules.walls ?? 0} taps.`,
-  domes: `${POUR} Pour in one spot until its dotted circle fills. Then turn the world to start the next one${MOUNDS ? ', further round the dotted circle' : ''}.`,
+  domes: MOUNDS ? `${POUR} The slush freezes fast: pour in short bursts, a few seconds each, or the mound slumps. When its dotted circle fills, turn the world to start the next one, further round the dotted circle.` : `${POUR} Pour in one spot until its dotted circle fills. Then turn the world to start the next one.`,
 };
 /** A world's own tip, where its aim is shared with others but the way to it isn't. */
 const OWN_TIP: Partial<Record<WorldId, string>> = {
@@ -1902,7 +1905,7 @@ function onGround(pts: { x: number; y: number; z: number }[], into: number[]): v
   }
 }
 function drawAim(now: number): void {
-  if (now - lastAim < 2) return;
+  if (now - lastAim < (WORLD.goal === 'calm' ? 0.5 : 2)) return;
   lastAim = now;
   if (!ending) reckonAim(); // (once the fire is done, what it did stands, whatever the long age does after)
   // The aim's story, for the chart's band: how far it had come, and (on the orange Earth) how orange the sky still was.
@@ -2203,7 +2206,7 @@ function arrows(dt: number): void {
  * The first minute: a few quiet lines at the foot, each said once, when it's what matters next,
  * and never over what the world is saying itself. Then nothing more, but the aim now and then.
  */
-const BURST_WORLDS = new Set(['plumes', 'feed', 'calm', 'orbit', 'thaw', 'waves', 'antipode', 'streaks']);
+const BURST_WORLDS = new Set(['plumes', 'feed', 'calm', 'orbit', 'thaw', 'waves', 'antipode', 'streaks', 'chaos']);
 /** Io's Two Lavas: a point in the pool, `f` of the way out from its middle. */
 function marbleSpot(f: number): { x: number; y: number; z: number } | null {
   const m = planet.marble;
@@ -2267,7 +2270,8 @@ const CUES: Cue[] = [
   ...(WORLD.goal === 'ridge' ? [{ ready: () => planet.tally.flows + planet.tally.bursts > 0, say: 'The spin carries the lava to the dotted line', done: (s: number) => s > 25 }] : []),
   // (Only where a burst is the way: on the worlds that want pouring, or a release short of a burst, or none
   // at all, it pointed the wrong way, and on the hollow world it emptied the ground.)
-  { hand: 'tap', ready: () => !LAMP && BURST_WORLDS.has(WORLD.goal) && (planet.k.great > 0 ? planet.throwOf(planet.pressure) >= planet.k.great : planet.pressure >= planet.k.explosive) && !planet.pouring, say: WORLD.goal === 'feed' ? `The circle round the volcano has closed: turn the volcano towards the big planet, and ${TAP.toLowerCase()} the world` : `The circle round the volcano has closed: ${TAP.toLowerCase()} the world to erupt`, done: (s) => planet.tally.bursts > 0 || s > 40 },
+  // (When the circle says so: on Io only at high tide, on Europa before it empties again.)
+  { hand: 'tap', ready: () => { const r = readyShare(); return !LAMP && BURST_WORLDS.has(WORLD.goal) && r !== null && r >= 1 && r < 2 && !planet.pouring; }, say: WORLD.goal === 'feed' ? `The circle round the volcano has closed: turn the volcano towards the big planet, and ${TAP.toLowerCase()} the world` : WORLD.goal === 'chaos' ? `The circle round the volcano has closed: ${TAP.toLowerCase()} the world now, before it empties` : `The circle round the volcano has closed: ${TAP.toLowerCase()} the world to erupt`, done: (s) => planet.tally.bursts > 0 || s > 40 },
     ...(WORLD.goal === 'orbit' ? [
     { ready: () => planet.tally.bursts > 0, say: 'The taller the volcano, the more rock an eruption throws up', done: (s: number) => s > 25 },
   ] : []),
@@ -2773,23 +2777,23 @@ function replayStep(): void {
 }
 
 const GOAL_WORDS: Record<typeof WORLD.goal, { age: (met: boolean) => string; done: string; title: [string, string]; got: () => string }> = {
-  ring: { age: () => 'Later: the islands sink and coral grows round them', done: 'Goal reached: islands all along the path', title: ['Chain of islands built', 'Chain broken'], got: () => `${aimDone} of ${aimOf} stretches living` },
+  ring: { age: () => 'Later: the islands sink and coral grows round them', done: 'Goal reached: islands all along the path', title: ['Chain of islands built', 'Chain broken'], got: () => `islands along ${aimDone} of ${aimOf} parts of the path` },
   basins: { age: () => 'Later: small meteorites keep hitting it', done: 'Goal reached: every big crater filled', title: ['All craters filled', 'Not all craters filled'], got: () => `${aimDone} of ${aimOf} craters filled` },
   height: { age: () => 'Later: dust storms keep wearing it down', done: `Goal reached: a mountain ${HEIGHT.target} km high`, title: ['Mountain built', 'Mountain too low'], got: () => `${Math.round(aimDone)} of ${aimOf} km high` },
   cover: { age: () => 'Later: the new ice turns grey', done: `Goal reached: one sheet of new ice over ${COVER}% of the moon`, title: ['Ice sheet made', 'Ice sheet too small'], got: () => `one sheet over ${Math.round(aimDone)}% of the moon (goal ${aimOf}%)` },
   plumes: { age: () => 'Later: the sulphur settles', done: `Goal reached: ${PLUMES} big eruptions`, title: ['Big eruptions made', 'Not enough big eruptions'], got: () => `${aimDone} of ${aimOf} big eruptions` },
   calm: { age: () => 'Later: the moon keeps turning', done: 'Goal reached: the moon has stopped tumbling', title: ['Tumbling stopped', 'Still tumbling'], got: () => `${aimDone}% calmer (goal ${aimOf}%)` },
   bank: { age: () => 'Later: waves wear at the island', done: 'Goal reached: an island on the undersea mountain', title: ['Island built', 'No island yet'], got: () => `the island ${Math.min(100, Math.round(aimDone))}% raised` },
-  ridge: { age: () => 'Later: the ridge cools and stays', done: 'Goal reached: a ridge all the way round', title: ['Ridge complete', 'Ridge not complete'], got: () => `${aimDone} of ${aimOf} stretches raised` },
+  ridge: { age: () => 'Later: the ridge cools and stays', done: 'Goal reached: a ridge all the way round', title: ['Ridge complete', 'Ridge not complete'], got: () => `${aimDone} of ${aimOf} sections built` },
   lamp: { age: () => 'Later: the blobs sink to the bottom', done: 'Goal reached: the far shore is full', title: ['Far shore filled', 'Far shore not filled'], got: () => `the far shore ${Math.min(100, Math.round(aimDone))}% full` },
   round: { age: () => 'Later: small meteorites keep hitting it', done: `Goal reached: the asteroid is ${ROUND}% rounder`, title: ['Rounder', 'Not round enough'], got: () => `${Math.round(aimDone)}% rounder (goal ${aimOf}%)` },
   feed: { age: () => 'Later: the ring slowly thins', done: 'Goal reached: the ring is full', title: ['Ring filled', 'Ring not full'], got: () => `the ring ${Math.min(100, Math.round(aimDone))}% full` },
   orbit: { age: (met) => (met ? 'Later: the rock in orbit forms a moon' : 'Later: the rock in orbit falls back'), done: 'Goal reached: enough rock in orbit for a moon', title: ['Moon made', 'No moon yet'], got: () => `${Math.min(100, Math.round(aimDone))}% of a moon in orbit` },
   hearth: { age: () => 'Later: the rock cools', done: 'Goal reached: life kept alive on warm ground', title: ['Life kept warm', 'Not enough kept warm'], got: () => `${Math.min(100, Math.round(aimDone))}% of the living ground` },
-  thaw: { age: (met) => (met ? 'Later: the ice keeps melting' : 'Later: the warming gas fades'), done: 'Goal reached: the ice melts', title: ['Ice melted', 'Still frozen'], got: () => `the sky ${Math.min(100, Math.round(aimDone))}% warm enough` },
+  thaw: { age: (met) => (met ? 'Later: the ice keeps melting' : 'Later: the warming gas fades'), done: 'Goal reached: the ice melts', title: ['Ice melted', 'Still frozen'], got: () => `the air ${Math.min(100, Math.round(aimDone))}% warm enough` },
   outbuild: { age: () => 'Later: the star keeps boiling it away', done: 'Goal reached: built faster than the star burns it away', title: ['Planet outgrew its star', 'Still boiling away'], got: () => `${Math.min(100, Math.round(aimDone))}% of the growth` },
   white: { age: () => 'Later: the last black lava turns white', done: 'Goal reached: a white mountain', title: ['White mountain made', 'Not white yet'], got: () => (aimDone < 50 ? `the peak ${Math.round(aimDone * 2)}% built` : `the summit ${Math.round((aimDone - 50) * 2)}% white`) },
-  glow: { age: () => 'Later: the blue fire goes out', done: 'Goal reached: the crater lit with blue fire', title: ['Blue fire lit', 'Not enough blue fire'], got: () => `${Math.min(100, Math.round(aimDone))}% of the night lit` },
+  glow: { age: () => 'Later: the blue fire goes out', done: 'Goal reached: the blue fire burned for two minutes', title: ['Blue fire kept burning', 'The blue fire went out'], got: () => `${Math.min(100, Math.round(aimDone))}% of the two minutes` },
   waves: { age: () => 'Later: the sea fills the broken cone', done: 'Goal reached: waves sent round the world', title: ['Waves made', 'Not enough waves'], got: () => `${aimDone} of ${aimOf} waves` },
   antipode: { age: () => 'Later: the planet keeps cooling and wrinkling', done: 'Goal reached: a mountain raised on the far side', title: ['Far side raised', 'Far side too low'], got: () => `the far side ${Math.round(aimDone)} of ${aimOf} km high` },
   water: { age: () => 'Later: the ponds join into the first sea', done: 'Goal reached: the first water, melted from comets', title: ['First water made', 'Not enough water'], got: () => `${aimDone} of ${aimOf} comets melted` },
@@ -2815,7 +2819,7 @@ function tale(met: boolean): string {
     case 'calm': return met ? 'The moon stopped tumbling and now turns steadily.' : `The moon is ${aimDone}% calmer, but still tumbling.`;
     case 'bank': return met ? 'A new island on the bank, in deep water.' : 'An island on the bank, still under water.';
     case 'ridge': return met ? 'A ridge all the way round the middle.' : `A ridge round ${aimDone} of the ${aimOf} parts of the middle.`;
-    case 'lamp': return `The far shore ${pct}% filled with glass.`;
+    case 'lamp': return `The far shore ${pct}% filled with glowing blobs.`;
     case 'round': return `Hollows filled with new rock: ${Math.round(aimDone)}% rounder.`;
     case 'feed': return `The ring ${pct}% full of this moon's ice.`;
     case 'orbit': return met ? 'Enough rock thrown into orbit to form a moon.' : `${pct}% of a moon's worth of rock thrown into orbit.`;
@@ -2823,7 +2827,7 @@ function tale(met: boolean): string {
     case 'thaw': return met ? 'The ice melted from the equator outwards, leaving open sea.' : `The air ${pct}% warm enough. The ice is still frozen.`;
     case 'outbuild': return met ? 'The planet was built faster than its star could boil it away.' : `The planet is still boiling away: ${pct}% of the growth needed.`;
     case 'white': return met ? 'A peak of black lava that turned white.' : aimDone < 50 ? 'A black peak, not yet tall enough.' : 'A black peak, only partly white.';
-    case 'glow': return `${pct}% of the night lit with blue fire.`;
+    case 'glow': return `Blue fire kept burning for ${pct}% of the two minutes.`;
     case 'waves': return `${aimDone} of ${aimOf} waves sent round the world.`;
     case 'antipode': return `The far side raised ${Math.round(aimDone)} km by shock waves through the planet.`;
     case 'water': return met ? `${aimDone} icy comets melted on warm lava: the first ponds of a sea.` : `${aimDone} of ${aimOf} comets melted.`;

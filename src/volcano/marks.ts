@@ -42,7 +42,7 @@ export const MARK_AT: Record<WorldId, { heat: number; minutes: number }> = {
   mercury: { heat: 25, minutes: 4 },
   magma: { heat: 20, minutes: 5 },
   dust: { heat: 25, minutes: 4 },
-  spin: { heat: 10, minutes: 6 },
+  spin: { heat: 10, minutes: 4 },
   deep: { heat: 33, minutes: 2 },
   lamp: { heat: 33, minutes: 4 },
   hollow: { heat: 33, minutes: 4 },
