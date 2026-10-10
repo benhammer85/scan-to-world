@@ -606,7 +606,7 @@ describe('Venus and Pluto', () => {
   });
 });
 
-describe('The Two Fires of Io', () => {
+describe("Io's Two Lavas", () => {
   it('pours lava where a finger is held, pushing what was there outward, newest in the middle', () => {
     const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('twofires').rules);
     const m = pl.marble!, c = m.centre;

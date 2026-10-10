@@ -119,7 +119,7 @@ export const WORLDS: World[] = [
     kind: 'A red world',
     numeral: 'I',
     title: 'Mars',
-    first: 'Cold red ground under a thin, dusty sky.',
+    first: 'Cold and dry, with thin, dusty air.',
     then: 'With gravity this light, a volcano can stand higher than any on Earth.',
     second: 'Pour in one place again and again, and the mountain rises.',
     rules: {
@@ -144,7 +144,7 @@ export const WORLDS: World[] = [
     kind: 'A grey moon',
     numeral: 'II',
     title: 'The Moon',
-    first: 'Old, airless, and nearly cold.',
+    first: 'Old and airless, with almost no heat left.',
     then: 'These are its real basins. Lava flooded them once, and made the face we know.',
     second: 'Turn a basin uppermost and tip gently, and it fills dark.',
     rules: {
@@ -172,7 +172,7 @@ export const WORLDS: World[] = [
     kind: 'An ice moon',
     numeral: 'III',
     title: 'An Ice Moon',
-    first: 'A frozen shell over a hidden sea.',
+    first: 'A shell of ice over an ocean.',
     then: 'Here water is the lava, and it freezes into fresh white ice.',
     second: 'Tip the world to pour, and the old grey ice turns new.',
     rules: {
@@ -199,7 +199,7 @@ export const WORLDS: World[] = [
     kind: 'A lumpy asteroid',
     numeral: 'IV',
     title: 'A Lumpy Asteroid',
-    first: 'A small rock with a little warmth inside.',
+    first: 'A small rock with a little heat inside.',
     then: 'Too small to pull itself round, it has stayed lumpy.',
     second: 'Turn a hollow uppermost and pour, and the world rounds.',
     rules: {
@@ -225,7 +225,7 @@ export const WORLDS: World[] = [
     kind: 'A world without a sun',
     numeral: 'V',
     title: 'A Rogue Planet',
-    first: 'Dark and alone between the stars.',
+    first: 'A planet with no sun. Only volcanic heat keeps it warm.',
     then: 'With no sun, the only warmth is from inside, and life gathers wherever new rock is still warm.',
     second: 'Pour, turn a little, and pour beside it, to keep warm ground alive.',
     rules: {
@@ -249,7 +249,7 @@ export const WORLDS: World[] = [
     kind: 'A world still forming',
     numeral: 'VI',
     title: 'The First World',
-    first: 'Molten all over, in a rain of rubble.',
+    first: 'A newborn planet, molten, with rubble still falling on it.',
     then: 'Planets grow by gathering the rubble round them: what lands in the molten rock becomes the world.',
     second: 'Turn the world so the glow is under each stone as it falls.',
     rules: {
@@ -274,7 +274,7 @@ export const WORLDS: World[] = [
     kind: 'A young world',
     numeral: 'VII',
     title: 'A Young Earth',
-    first: 'Hot and new, with no moon yet.',
+    first: 'A young, hot Earth with no moon yet.',
     then: 'Here, rock thrown fast enough doesn’t fall back, but circles and gathers.',
     second: 'Let the pressure build, then tip, and a moon begins to gather.',
     rules: {
@@ -298,7 +298,7 @@ export const WORLDS: World[] = [
     kind: 'A young blue world, its sky still orange',
     numeral: 'VIII',
     title: 'The Orange Earth',
-    first: 'Shallow green seas under an orange sky.',
+    first: 'Early Earth: shallow green seas under an orange sky.',
     then: 'For two billion years Earth had no oxygen, until life in the shallows breathed it out, and the sky turned blue.',
     second: 'Pour a shallow shelf, then turn and pour the next, and leave each to life.',
     rules: {
@@ -318,7 +318,7 @@ export const WORLDS: World[] = [
     kind: 'A frozen world',
     numeral: 'IX',
     title: 'Snowball Earth',
-    first: 'Ice from pole to pole, as Earth once was.',
+    first: 'Earth frozen over from pole to pole.',
     then: 'It thawed because volcanoes breathed out gas that warmed the sky, until the ice gave way.',
     second: 'Build up through the ice, then let the gas out into the sky.',
     rules: {
@@ -337,7 +337,7 @@ export const WORLDS: World[] = [
     kind: 'An ocean world',
     numeral: 'X',
     title: 'An Ocean World',
-    first: 'Open water, and a fire far below.',
+    first: 'All ocean, with a volcano on the sea floor.',
     then: 'The sea floor drifts over the fire, leaving a trail of islands.',
     second: 'Tip the world as the fire moves, and islands rise along the line.',
     rules: { drift: 0.0125, rises: 0, heat: 600, rising: 1.4, steady: true, reseed: 15, floor: -0.22, sink: 0.0001, impactEvery: [60, 100], atolls: true }, // (islands sinking slowly, so the chain is built steadily, not raced)
@@ -353,7 +353,7 @@ export const WORLDS: World[] = [
     kind: 'A volcano of black lava that turns white',
     numeral: 'XI',
     title: 'Ol Doinyo Lengai',
-    first: 'The only volcano whose lava runs black and turns white.',
+    first: 'A volcano whose black lava turns white.',
     then: 'Its lava is cool and thin as oil; set, it turns white within days, so the mountain looks snow-capped near the equator.',
     second: 'Build the peak, then hold still and let it turn white.',
     rules: {
@@ -378,7 +378,7 @@ export const WORLDS: World[] = [
     kind: 'A crater of blue fire',
     numeral: 'XII',
     title: 'Kawah Ijen',
-    first: 'An acid lake in a crater, and blue fire at night.',
+    first: 'A crater with an acid lake and blue flames at night.',
     then: 'Its gas comes out so hot it burns as it meets the air, and molten sulphur runs downhill in blue flame.',
     second: 'Pour thin and wide, and keep the night lit.',
     rules: {
@@ -422,7 +422,7 @@ export const WORLDS: World[] = [
     kind: 'A tidal moon',
     numeral: 'XIV',
     title: 'Io',
-    first: 'A yellow moon, never still.',
+    first: 'A yellow moon with hundreds of volcanoes.',
     then: 'The giant’s pull squeezes it as it circles, so its heat comes in tides.',
     second: 'Tip at high tide, and a great plume rises.',
     rules: {
@@ -448,7 +448,7 @@ export const WORLDS: World[] = [
     kind: 'An ice moon with a sea beneath',
     numeral: 'XV',
     title: 'Europa',
-    first: 'Smooth ice over a deep salt sea.',
+    first: 'Smooth ice over a salty ocean.',
     then: 'Where warm water rises beneath it, the ice breaks into rafts that drift and freeze again: chaos terrain.',
     second: 'Hold, and lift before the smoke turns grey: the ice breaks into rafts.',
     rules: {
@@ -474,7 +474,7 @@ export const WORLDS: World[] = [
     kind: 'A small ice moon',
     numeral: 'XVI',
     title: 'Enceladus',
-    first: 'A small moon of ice, circling a ringed giant.',
+    first: 'A small icy moon of Saturn that feeds one of its rings.',
     then: 'Its ice drifts out to become the giant’s ring.',
     second: 'Tip toward the giant, and the ring grows.',
     rules: {
@@ -501,7 +501,7 @@ export const WORLDS: World[] = [
     kind: 'A frozen moon going round backwards',
     numeral: 'XVII',
     title: 'Triton',
-    first: 'Pink nitrogen ice, far from a faint sun.',
+    first: "Neptune's largest moon: pink nitrogen ice in faint sunlight.",
     then: 'Where sunlight warms the ice, geysers rise, and thin winds blow their dark plumes into long streaks.',
     second: 'Hold until the sun is over the vent, and lift: a geyser.',
     rules: {
@@ -528,7 +528,7 @@ export const WORLDS: World[] = [
     kind: 'A tumbling moon',
     numeral: 'XVIII',
     title: 'A Tumbling Moon',
-    first: 'A battered moon, rolling end over end.',
+    first: 'A moon tumbling end over end.',
     then: 'Knocked askew long ago, it has never settled into a steady spin.',
     second: 'Erupt where the ground sweeps past, and the tumbling slows.',
     rules: {
@@ -555,7 +555,7 @@ export const WORLDS: World[] = [
     kind: 'A small scorched world',
     numeral: 'XIX',
     title: 'Mercury',
-    first: 'Small, scorched, and wrinkled as it cooled.',
+    first: 'Small and hot, wrinkled as it cooled.',
     then: 'When a great stone struck it, the shock went through the whole world and broke the ground on the far side.',
     second: 'Burst here, and a moment later the far side breaks open.',
     rules: {
@@ -580,7 +580,7 @@ export const WORLDS: World[] = [
     kind: 'A lava world',
     numeral: 'XX',
     title: 'A Lava World',
-    first: 'One face always to its star, and that face molten.',
+    first: 'One side always faces its star, and that side is molten.',
     then: 'On worlds like this, rock boils into the air on the day side and falls as rock snow in the night.',
     second: 'Turn the vent into the starlight, and pour.',
     rules: {
@@ -632,7 +632,7 @@ export const WORLDS: World[] = [
     kind: 'A spinning world',
     numeral: 'XXII',
     title: 'A Spinning World',
-    first: 'Turning fast, swollen at its middle.',
+    first: 'Spinning so fast it bulges at the middle.',
     then: 'Its spin flings whatever flows out toward its middle.',
     second: 'Pour, and a ridge rises all the way round its middle.',
     rules: {
@@ -657,7 +657,7 @@ export const WORLDS: World[] = [
     kind: 'A deep ocean world',
     numeral: 'XXIII',
     title: 'A Deep Ocean World',
-    first: 'Cold, dark water, with fire on the sea floor.',
+    first: 'A deep, cold ocean with volcanoes on the floor.',
     then: 'Lava cools fast in deep water, but inside its own crust it stays hot and runs on.',
     second: 'Pour toward the bank again and again, and an island rises there.',
     rules: {
@@ -681,7 +681,7 @@ export const WORLDS: World[] = [
     kind: 'A world of glass',
     numeral: 'XXIV',
     title: 'A World of Glass',
-    first: 'Glass, and glowing rock that rises.',
+    first: 'A planet of glass. Hot rock floats up through it.',
     then: 'Hot rock here is lighter than the deep, so it floats.',
     second: 'Turn the far shore uppermost, and warm blobs drift to it.',
     rules: {
@@ -705,7 +705,7 @@ export const WORLDS: World[] = [
     kind: 'A hollow world',
     numeral: 'XXV',
     title: 'A Hollow World',
-    first: 'A thin crust over a shallow sea of magma.',
+    first: 'A thin crust over a shallow layer of magma.',
     then: 'Empty the magma under a volcano too fast and the ground above it falls in, as Kilauea\'s summit did in 2018.',
     second: 'Build in short pours, and let the ground rest between them.',
     rules: {
@@ -730,7 +730,7 @@ export const WORLDS: World[] = [
     kind: 'A hot world under thick cloud',
     numeral: 'XXVI',
     title: 'Venus',
-    first: 'Scorching ground under a sky of thick yellow cloud.',
+    first: 'Scorching ground under thick yellow clouds.',
     then: 'Here thick, sticky lava barely flows. It piles up where it comes out, in round, flat-topped domes, like pancakes.',
     second: 'Let it out in one place till a dome stands; then turn the world, and start the next.',
     rules: {
@@ -755,7 +755,7 @@ export const WORLDS: World[] = [
     kind: 'A small, far, frozen world',
     numeral: 'XXVII',
     title: 'Pluto',
-    first: 'Reddish ice, at the cold edge of the sun’s family.',
+    first: 'Reddish ice at the edge of the solar system.',
     then: 'Beside a great hollow, icy slush once welled up as mounds, all round it in a ring: Wright Mons.',
     second: 'Raise each mound on the dotted ring round the hollow, each apart from the last.',
     rules: {
@@ -780,8 +780,8 @@ export const WORLDS: World[] = [
     id: 'twofires',
     kind: 'A moon with two kinds of lava',
     numeral: 'XXVIII',
-    title: 'The Two Fires of Io',
-    first: 'Two kinds of lava that never mix, swirled like a lava lamp.',
+    title: "Io's Two Lavas",
+    first: 'Two kinds of lava that never mix.',
     then: 'On Io, lava of molten rock and lava of molten sulphur pour out side by side and push each other aside rather than mix, as oil does in water, or ink on water for marbled paper.',
     second: 'Swirl it with heat to spare.',
     rules: {
@@ -806,7 +806,7 @@ export const WORLDS: World[] = [
     kind: 'A fishing town on a fissure',
     numeral: 'XXIX',
     title: 'Grindavík',
-    first: 'A small fishing town in Iceland, below a ridge that has begun to split open.',
+    first: 'A fishing town in Iceland, next to a fissure that has opened.',
     then: 'In 2024 lava poured from fissures above Grindavík, and people raised long walls of earth to turn it away from the town.',
     second: 'Tap the ground to raise a wall of earth; tap again nearby and the wall runs on.',
     rules: {
@@ -837,12 +837,12 @@ export const WORLDS: World[] = [
  */
 export const CHAPTERS: { numeral: string; title: string; worlds: WorldId[] }[] = [
   { numeral: 'I', title: 'Our Neighbours', worlds: ['mars', 'moon', 'ice', 'asteroid', 'rogue'] },
-  { numeral: 'II', title: 'One World, Through Time', worlds: ['first', 'young', 'archean', 'snowball', 'ocean'] },
-  { numeral: 'III', title: 'Strange Fires', worlds: ['lengai', 'ijen', 'tonga'] },
+  { numeral: 'II', title: 'Earth Through Time', worlds: ['first', 'young', 'archean', 'snowball', 'ocean'] },
+  { numeral: 'III', title: 'Unusual Volcanoes', worlds: ['lengai', 'ijen', 'tonga'] },
   { numeral: 'IV', title: 'Pressure', worlds: ['io', 'europa', 'enceladus', 'triton', 'tumble', 'mercury'] },
-  { numeral: 'V', title: 'Far Worlds', worlds: ['magma', 'dust', 'spin', 'deep', 'lamp', 'hollow'] },
-  { numeral: 'VI', title: 'Slow Fires', worlds: ['venus', 'pluto', 'twofires'] },
-  { numeral: 'VII', title: "Earth's Fires", worlds: ['grindavik'] },
+  { numeral: 'V', title: 'Other Worlds', worlds: ['magma', 'dust', 'spin', 'deep', 'lamp', 'hollow'] },
+  { numeral: 'VI', title: 'Slow Lava', worlds: ['venus', 'pluto', 'twofires'] },
+  { numeral: 'VII', title: 'Earth Today', worlds: ['grindavik'] },
 ];
 
 /** The chapter a world is in. */
