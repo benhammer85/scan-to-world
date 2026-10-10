@@ -2348,7 +2348,7 @@ const CUES: Cue[] = [
     { ready: () => planet.impact !== null, hand: 'drag' as const, at: stoneSpot, say: 'A stone is coming: turn its dotted circle to the top, under the volcano, and its heat is yours', done: (s: number) => s > 20 },
   ]),
 ];
-let vapourIn = 0;
+let vapourIn = 0; let dustIn = 0;
 // (Once the hands are known, their lessons give way to one reminder, and only if nothing has come out for a while.)
 let stuckSaid = false;
 // (On the first world, where catching stones is the aim and pouring isn't, its own few lines, about the stones and
@@ -2625,10 +2625,20 @@ function effects(dt: number): void {
   }
   // A dust storm: dust driven across the face of the world, low and fast.
   if (planet.storm) {
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 5; i++) { // (no more: the puffs are a shared pool, and these last five seconds)
       const v = Math.floor(Math.random() * N);
       NORMAL.set(base[v * 3], base[v * 3 + 1], base[v * 3 + 2]).applyQuaternion(group.quaternion);
       if (NORMAL.z > 0.2 && !BARE) puffs.add('dust', p[v * 3], p[v * 3 + 1], p[v * 3 + 2], 0.3, Math.random, { x: INVERSE_RIGHT.x, y: INVERSE_RIGHT.y, z: INVERSE_RIGHT.z });
+    }
+    // And dust lifted high into the air, in soft clouds: best seen where the ground meets the sky, round the world's edge.
+    dustIn -= dt;
+    while (dustIn <= 0 && !BARE) {
+      dustIn += 0.06;
+      for (let tries = 0; tries < 12; tries++) {
+        const v = Math.floor(Math.random() * N);
+        NORMAL.set(base[v * 3], base[v * 3 + 1], base[v * 3 + 2]).applyQuaternion(group.quaternion);
+        if (NORMAL.z > -0.05 && NORMAL.z < (Math.random() < 0.75 ? 0.35 : 1)) { puffs.add('lifted', p[v * 3], p[v * 3 + 1], p[v * 3 + 2], 1, Math.random, { x: INVERSE_RIGHT.x, y: INVERSE_RIGHT.y, z: INVERSE_RIGHT.z }); break; }
+      }
     }
   }
   // The vent smokes as the heat gathers: a wisp now and then while there's little, more and
@@ -3594,7 +3604,7 @@ function breathe(dt: number): void {
   // While lava runs, the view leans in a little, so the flow is big when it matters; and eases back after.
   const running = !BARE && !WASHED && !ending && !held && (planet.pouring || (planet.erupting && planet.molten > 0.01)) && !STILL;
   lean += ((running ? 0.82 : 1) - lean) * Math.min(1, dt * (running ? 0.9 : 0.45));
-  const want = ending?.shown ? farthest * 0.92 : reachDist * (held && !STILL ? moment.back : gathering && !STILL ? 1.3 : 1) * lean, wantLift = ending?.shown ? 0.09 : 0;
+  const want = ending?.shown ? farthest * 0.84 : reachDist * (held && !STILL ? moment.back : gathering && !STILL ? 1.3 : 1) * lean, wantLift = ending?.shown ? 0.12 : 0; // (at the end: larger, and up into the room under the title)
   if (!ending?.shown && seconds - zoomedAt < 10) return;
   const gliding = seconds - begunAt < 5; // (from the card's view: quicker, so the world comes to hand)
   const d = dist + (want - dist) * Math.min(1, (held || gathering ? 0.9 : gliding ? 0.9 : Math.abs(lean - 1) > 0.01 ? 1.4 : 0.15) * dt), l = lift + (wantLift - lift) * Math.min(1, (gliding ? 1.2 : 0.6) * dt);

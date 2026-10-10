@@ -96,12 +96,12 @@ function drawTimeline(g: CanvasRenderingContext2D, info: ChartInfo, x0: number, 
   g.beginPath(); g.moveTo(x0, y); g.lineTo(x1, y); g.stroke();
   for (const x of [x0, x1]) { g.beginPath(); g.moveTo(x, y - 6 * k); g.lineTo(x, y + 6 * k); g.stroke(); }
   // (Only the fire's start and its length beneath it: the eras' names said little, and filled half the rule with nothing.)
-  g.font = `italic ${15 * k}px ${SERIF}`; g.fillStyle = FAINT;
+  g.font = `${19 * k}px ${SERIF}`; g.fillStyle = FAINT; // (19 at the timeline's 0.62: the plate's one small size, 12)
   const mm = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
   g.textAlign = 'left'; g.fillText('0:00', x0, y + 24 * k);
   g.textAlign = 'right'; g.fillText(mm(info.length), x1, y + 24 * k);
   g.textAlign = 'center';
-  g.font = `${17 * k}px ${SERIF}`;
+  g.font = `${19 * k}px ${SERIF}`;
   const rows: number[] = [];
   for (const e of info.events.slice(0, 14)) {
     const x = Math.max(x0 + 40 * k, Math.min(x1 - 40 * k, at(e.t))), w = g.measureText(e.text).width + 18 * k;
