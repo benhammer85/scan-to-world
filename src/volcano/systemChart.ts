@@ -50,7 +50,7 @@ function svgOf(sys: System): string {
     // Not made: struck through, as a surveyor strikes out what wasn't found.
     if (made && !made.met) parts.push(`<line x1="${p.x - r * 0.7}" y1="${p.y + r * 0.7}" x2="${p.x + r * 0.7}" y2="${p.y - r * 0.7}" stroke="${INK}" stroke-width="1"/>`);
     const name = nameOf(sys, i), twist = twistOf(b.twist), tx = p.x + r + 12;
-    const status = made ? (made.met ? `made · ${made.words}` : 'not made') : 'touch to go';
+    const status = made ? (made.met ? `done · ${made.words}` : 'not done') : 'tap to play';
     parts.push(`<text paint-order="stroke" stroke="#f4efe4" stroke-width="4" stroke-linejoin="round" x="${tx}" y="${p.y - 4}" font-size="13" font-style="italic" fill="${made ? INK : '#5a4a3a'}">${esc(`${name.numeral} · ${name.title}`)}</text>`);
     parts.push(`<text paint-order="stroke" stroke="#f4efe4" stroke-width="4" stroke-linejoin="round" x="${tx}" y="${p.y + 11}" font-size="11" fill="${INK}" opacity="0.6">${esc(twist.name)}</text>`);
     parts.push(`<text paint-order="stroke" stroke="#f4efe4" stroke-width="4" stroke-linejoin="round" x="${tx}" y="${p.y + 25}" font-size="11" font-style="italic" fill="${INK}" opacity="${made ? 0.75 : 0.5}">${esc(status)}</text>`);
@@ -72,7 +72,7 @@ export function openSystem(): void {
 function render(box: HTMLElement, sys: System): void {
   const body = box.querySelector('.plate') as HTMLElement, head = box.querySelector('.about') as HTMLElement, foot = box.querySelector('.foot') as HTMLElement;
   const n = sys.bodies.length, made = madeCount(sys), done = finished(sys);
-  head.textContent = `round ${sys.star} · ${made} of ${n} ${n === 1 ? 'world' : 'worlds'} made` + (sys.gift ? `. Carried to the next world you play: ${sys.gift.words.replace(/^Given by the last world: /, '')}` : '');
+  head.textContent = `${sys.star[0].toUpperCase()}${sys.star.slice(1)} · ${made} of ${n} ${n === 1 ? 'world' : 'worlds'} done` + (sys.gift ? `. Carried to the next world you play: ${sys.gift.words.replace(/^Given by the last world: /, '')}` : '');
   body.innerHTML = svgOf(sys);
   // Touch a world still to play, anywhere along its line, to play it.
   const at = layout(sys), svg = body.querySelector('svg')!;
@@ -88,17 +88,17 @@ function render(box: HTMLElement, sys: System): void {
   again.className = 'again';
   if (done) {
     const p = document.createElement('p');
-    p.textContent = `The system is done: ${made} of ${n} worlds made.`;
+    p.textContent = `Solar system finished: ${made} of ${n} worlds done.`;
     foot.appendChild(p);
-    again.textContent = 'begin a new solar system';
+    again.textContent = 'Start a new solar system';
     again.addEventListener('click', () => begin(box));
     if (!sys.kept) void intoTheAtlas(sys);
   } else {
     // (Begun afresh only on a second touch, so a system half played isn't lost to a slip.)
-    again.textContent = 'begin a new solar system instead';
+    again.textContent = 'Start a new solar system instead';
     again.addEventListener('click', () => {
       if (again.dataset.sure) begin(box);
-      else { again.dataset.sure = '1'; again.textContent = 'touch again to leave this one and begin anew'; }
+      else { again.dataset.sure = '1'; again.textContent = 'Tap again to start a new solar system'; }
     });
   }
   foot.appendChild(again);
@@ -122,7 +122,7 @@ async function intoTheAtlas(sys: System): Promise<void> {
   cv.width = 480; cv.height = Math.round((480 * img.height) / img.width);
   const g = cv.getContext('2d')!;
   g.drawImage(img, 0, 0, cv.width, cv.height);
-  await keepPage({ world: 'system', numeral: '☉', title: 'A solar system', subtitle: `round ${sys.star}`, summary: `${madeCount(sys)} of ${sys.bodies.length} worlds made`, when, image: cv.toDataURL('image/jpeg', 0.85) });
+  await keepPage({ world: 'system', numeral: '☉', title: 'A solar system', subtitle: `${sys.star[0].toUpperCase()}${sys.star.slice(1)}`, summary: `${madeCount(sys)} of ${sys.bodies.length} worlds done`, when, image: cv.toDataURL('image/jpeg', 0.85) });
 }
 
 /** Close the chart. */

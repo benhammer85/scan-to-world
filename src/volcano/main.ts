@@ -224,7 +224,8 @@ const COMPUTER = (navigator.maxTouchPoints || 0) === 0 && matchMedia('(pointer: 
  * raises a wall). On the glass world, a tap lets the blob go.
  */
 const HAND = !MARBLE && !TOWN;
-const BREATHE = !HAND && (remembered('volcano.controls') === 'breathe' || COMPUTER) && !WORLD.rules.lamp;
+/** The old way of playing without tilting (lava pouring by itself in breaths): gone with one hand. Io's Two Lavas and Grindavík play as their bots were balanced, the same on a phone or a computer. */
+const BREATHE = false as boolean;
 if (BREATHE) planet.k.pulse = planet.k.explosive * 0.55;
 if (HAND) planet.burstOnPour = false;
 // (Breathing, a third more heat: its breaths spread wider and waste more than a steady pour, and it's the forgiving way
@@ -1682,7 +1683,7 @@ const won = () => aimOf > 0 && aimDone >= aimOf && (WORLD.goal !== 'calm' || cal
 // chaos field, a stretch), and no colours to learn: where timing matters, the circle round the volcano shows it,
 // drawing itself in as the heat builds and closing when it's time to let go (see readyRing).
 const AIM: Record<string, string> = {
-  ring: 'Keep islands alive all along the dotted line.',
+  ring: 'Build islands all along the volcano\'s path (the dotted line).',
   basins: 'Fill the big craters with lava.',
   height: `Build a mountain ${HEIGHT.target} km tall.`,
   cover: `Cover ${COVER}% of the moon in new white ice.`,
@@ -1711,21 +1712,21 @@ const AIM: Record<string, string> = {
   snow: 'Fill the dotted line with rock snow.',
 };
 /** How to erupt, wherever the aim asks for an eruption rather than a pour: the circle round the volcano shows when. */
-const ERUPT = HAND ? `Wait for the circle round the volcano to close, then ${COMPUTER ? 'click' : 'tap'} the world to erupt.` : `Hold ${COMPUTER ? 'the mouse button down' : 'a finger'} on the world until the circle round the volcano closes, then let go.`;
+const ERUPT = `Wait for the circle round the volcano to close, then ${COMPUTER ? 'click' : 'tap'} the world to erupt.`;
 const HOLD = COMPUTER ? 'Hold the mouse button down on the world' : 'Hold a finger on the world';
-const POUR = HAND ? `${HOLD} to pour lava.` : BREATHE ? 'Lava pours out by itself.' : 'Tilt the phone to pour lava.';
+const POUR = `${HOLD} to pour lava.`;
 const TIP: Record<string, string> = {
-  ring: `${POUR} The volcano moves along the dotted line; pour as it goes. Old islands sink, so keep going.`,
-  basins: HAND ? `The craters still to fill are dotted in pencil. Turn one to just below the volcano. ${HOLD} to pour into it.` : `Turn a circle to the top, then pour into it. ${BREATHE ? 'Lava pours out by itself.' : 'Tilt the phone to pour.'}`,
-  height: HAND ? `${HOLD} to pour. Lava runs down the screen: turn the world between pours, so the mountain grows on every side.` : BREATHE ? 'Lava pours out by itself. Turn the world a little now and then, so the mountain grows on every side.' : 'Tilt the phone to pour, a different way each time, so the mountain grows on every side.',
+  ring: `${POUR} The sea floor slides over the hot spot, so the volcano moves along the dotted line, as Hawaii's did. Pour as it goes. Old islands sink, so keep going.`,
+  basins: `The craters still to fill are dotted in pencil. Turn one to just below the volcano. ${HOLD} to pour into it.`,
+  height: `${HOLD} to pour. Lava runs down the screen: turn the world between pours, so the mountain grows on every side.`,
   cover: `${POUR} The water freezes into new white ice. Pour over the old grey ice, and turn the world to reach more of it.`,
   plumes: `${ERUPT} Then turn the world to start the next one outside the old rings.`,
   feed: `Turn the volcano towards the big planet, at the top left. ${ERUPT} The ring fades, so keep going.`,
-  round: HAND ? `Turn a hollow to just below the volcano. ${HOLD} to pour into it. Lava on high ground makes it lumpier.` : `Turn a hollow to the top and pour into it. Lava on high ground makes it lumpier.`,
+  round: `Turn a hollow to just below the volcano. ${HOLD} to pour into it. Lava on high ground makes it lumpier.`,
   ridge: 'Lava runs to the dotted line by itself. Turn a bare part of the line to the top.',
-  lamp: HAND ? `Blobs float to the top of the world. Turn the dotted shore to the top. A blob grows at the volcano: ${COMPUTER ? 'click' : 'tap'} to let it go before it grows too big.` : 'Blobs float to the top of the world. Turn the dotted shore to the top. Let each blob grow, but not too big.',
+  lamp: `Blobs float to the top of the world. Turn the dotted shore to the top. A blob grows at the volcano: ${COMPUTER ? 'click' : 'tap'} to let it go before it grows too big.`,
   calm: `Turn the dotted line to the top, under the volcano. ${ERUPT}`,
-  bank: BREATHE || HAND ? `The undersea mountain's top is dotted in pencil. Turn the world so it's just below the volcano, and ${HOLD.toLowerCase()} to pour there.` : 'Tilt towards the dotted circle, the same way every time.',
+  bank: `The undersea mountain's top is dotted in pencil. Turn the world so it's just below the volcano, and ${HOLD.toLowerCase()} to pour there.`,
   orbit: `Pour first, to build a tall volcano. Then: ${ERUPT[0].toLowerCase()}${ERUPT.slice(1)}`,
   hearth: `${POUR} Life grows on warm new rock. Pour next to the green, never on it.`,
   thaw: `Build the volcano up through the ice. Then: ${ERUPT[0].toLowerCase()}${ERUPT.slice(1)} Each eruption warms the sky.`,
@@ -1740,24 +1741,21 @@ const TIP: Record<string, string> = {
   streaks: `Turn the volcano into the sunlight. ${ERUPT} Then move to a new spot.`,
   snow: 'Turn the volcano under the star and pour. The lava boils away and falls as snow on the dotted line.',
   marble: `${COMPUTER ? 'Hold the mouse' : 'Hold a finger'} in the circle to pour glowing lava. Blue wells up by itself. Drag through the colours to swirl them into patterns. The circle's edge fills in as the pattern grows.`,
-  town: `Lava runs down from the crack towards the town. Tap the ground to build a wall; tap again nearby to make it longer. You have ${WORLD.rules.walls ?? 0} taps.`,
+  town: `Lava runs down from the crack towards the town. ${COMPUTER ? 'Click' : 'Tap'} the ground to build a wall; ${COMPUTER ? 'click' : 'tap'} again nearby to make it longer. You have ${WORLD.rules.walls ?? 0} taps.`,
   domes: `${POUR} Pour in one spot until its dotted circle fills. Then turn the world to start the next one${MOUNDS ? ', further round the dotted circle' : ''}.`,
 };
 /** A world's own tip, where its aim is shared with others but the way to it isn't. */
 const OWN_TIP: Partial<Record<WorldId, string>> = {
-  hollow: HAND ? `${HOLD} to pour, a little at a time. Don't ${COMPUTER ? 'click' : 'tap'} to erupt: a big eruption makes the top fall in.` : BREATHE ? "Lava pours out by itself. Don't hold your finger on the world: a big eruption makes the top fall in." : 'Pour a little at a time, with rests between. Never hold the heat in: a big eruption makes the top fall in.',
+  hollow: `${HOLD} to pour, a little at a time. Don't ${COMPUTER ? 'click' : 'tap'} to erupt: a big eruption makes the top fall in.`,
 };
 /** How the hands do it, for the way it's being played: tipping a phone, breathing, or a computer's mouse. */
-const HANDS: string[] = HAND && LAMP
+const HANDS: string[] = LAMP
   ? ['Drag · turn the planet', `${COMPUTER ? 'Click' : 'Tap'} · let a blob go`]
-  : HAND
-  ? ['Drag · turn the world', COMPUTER ? 'Hold the mouse · pour lava' : 'Hold · pour lava', `${COMPUTER ? 'Click' : 'Tap'} · erupt`]
   : MARBLE
   ? [COMPUTER ? 'Hold the mouse in the circle · pour lava' : 'Hold a finger in the circle · pour lava', 'Drag through the circle · swirl', 'Drag outside it · turn the world']
-  : LAMP
-  ? COMPUTER ? ['Drag · turn the planet', 'Click · let a blob go'] : ['Drag · turn the planet', 'Keep level · a blob grows', 'Tilt · let it go']
-  : BREATHE ? ['Drag · turn the world', COMPUTER ? 'Hold the mouse (or space) · save up the heat' : 'Hold a finger · save up the heat', 'Let go · erupt']
-    : ['Drag · turn the world', 'Tilt the phone · pour lava', 'Hold a finger · save up the heat', 'Let go · erupt'];
+  : TOWN
+  ? ['Drag · turn the world', `${COMPUTER ? 'Click' : 'Tap'} the ground · build a wall`]
+  : ['Drag · turn the world', COMPUTER ? 'Hold the mouse · pour lava' : 'Hold · pour lava', `${COMPUTER ? 'Click' : 'Tap'} · erupt`];
 /** Whether the hands are still new: the first two worlds played here, and the glass world, where they work the other way round. */
 const NEWCOMER = LAMP || MARBLE || HAND || Number(remembered('volcano.played') ?? '0') < 2;
 
@@ -1765,14 +1763,14 @@ const NEWCOMER = LAMP || MARBLE || HAND || Number(remembered('volcano.played') ?
 function goalLine(): string {
   const d = Math.round(aimDone), of = aimOf, pct = Math.min(100, d);
   switch (WORLD.goal) {
-    case 'ring': return `Dotted line · ${d} of ${of} parts with islands`;
+    case 'ring': return `Islands along the path · ${d} of ${of}`;
     case 'basins': return `Craters filled · ${d} of ${of}`;
     case 'height': return `Mountain · ${Math.min(d, of)} of ${of} km`;
     case 'cover': return `New ice · ${d}% · goal ${of}%`;
     case 'plumes': return `Big eruptions · ${d} of ${of}`;
     case 'feed': return `The ring · ${pct}% full`;
     case 'round': return `Rounder · ${d}% · goal ${of}%`;
-    case 'ridge': return `Ridge · ${d} of ${of} parts`;
+    case 'ridge': return `Ridge built · ${d} of ${of} sections`;
     case 'lamp': return `Dotted shore · ${pct}% full`;
     case 'calm': return d >= of ? `Calm · held ${Math.min(CALM_HOLD, Math.floor(calmHeld))} of ${CALM_HOLD} seconds` : `Calmer · ${d}% · goal ${of}%`;
     case 'bank': return `Island · ${pct}% built`;
@@ -1784,7 +1782,7 @@ function goalLine(): string {
     case 'gather': return `Stones caught · ${d} of ${of}`;
     case 'antipode': return `Far side · ${Math.min(d, of)} of ${of} km`;
     case 'white': return !peakReached ? `Mountain · ${Math.round(Math.max(0, planet.summit * HEIGHT.kmPerUnit))} of ${HEIGHT.target} km` : `Turning white · ${Math.round((aimDone - 50) * 2)}%`;
-    case 'glow': return `Blue fire · ${Math.round(litFor)} of ${LIT_FOR} seconds${planet.burning >= GLOW ? '' : ', fading'}`;
+    case 'glow': return `Blue fire · ${Math.round(litFor)} of ${LIT_FOR} seconds${planet.burning >= GLOW ? '' : ' (pour more to keep it lit)'}`;
     case 'waves': return `Giant waves · ${d} of ${of}`;
     case 'oxygen': return `Blue sky · ${pct}%`;
     case 'chaos': return `Cracks · ${d} of ${of}`;
@@ -2163,25 +2161,29 @@ function arrows(dt: number): void {
  * and never over what the world is saying itself. Then nothing more, but the aim now and then.
  */
 const BURST_WORLDS = new Set(['plumes', 'feed', 'calm', 'orbit', 'thaw', 'waves', 'antipode', 'streaks']);
-const CUES: { ready: () => boolean; say?: string; begin?: () => void; done: (since: number) => boolean }[] = HAND && LAMP ? [
+/** The controls, as they're first met: each said once, as it's what matters next (one set of hands; Io's Two Lavas and Grindavík have their own). */
+const TAP = COMPUTER ? 'Click' : 'Tap';
+const HAND_CUES: { ready: () => boolean; say?: string; begin?: () => void; done: (since: number) => boolean }[] = LAMP ? [
   { ready: () => true, say: 'A glowing blob grows at the volcano', done: () => planet.pressure > planet.k.least * 2 },
-  { ready: () => true, say: `${COMPUTER ? 'Click' : 'Tap'} the world to let the blob go`, done: (s) => planet.tally.flows + planet.tally.bursts > 0 || s > 40 },
-] : HAND ? [
-  // One hand: the three touches, each said once, as it's what matters next.
+  { ready: () => true, say: `${TAP} the world to let the blob go`, done: (s) => planet.tally.flows + planet.tally.bursts > 0 || s > 40 },
+] : MARBLE ? [
+  { ready: () => true, say: `${COMPUTER ? 'Hold the mouse' : 'Hold a finger'} in the circle to pour lava`, done: () => planet.tally.flows > 0 },
+  { ready: () => true, say: 'Drag through the circle to swirl the colours', done: (s) => s > 12 },
+] : TOWN ? [
+  { ready: () => true, say: `${TAP} the ground to build a wall`, done: () => planet.walls.length > 0 },
+  { ready: () => planet.walls.length > 0, say: `${TAP} again nearby to make the wall longer`, done: (s) => s > 12 },
+] : [
   { ready: () => true, say: `${HOLD} to pour lava`, done: () => planet.tally.flows > 0 },
   { ready: () => !planet.pouring, say: 'Drag to turn the world: lava runs down the screen', done: (s) => s > 10 },
-  ...(WORLD.rules.rises ? [{ ready: () => true, say: 'The volcano moves to whatever is at the top: turn the world to move it', done: (s: number) => s > 20 }] : []),
-  ...(WORLD.id !== 'hollow' ? [{ ready: () => !planet.pouring && (planet.k.great > 0 ? planet.throwOf(planet.pressure) >= planet.k.great : planet.pressure >= planet.k.explosive), say: `The circle round the volcano has closed: ${COMPUTER ? 'click' : 'tap'} the world to erupt`, done: (s: number) => planet.tally.bursts > 0 || s > 30 }] : []),
-] : [
-  { ready: () => true, say: LAMP ? (COMPUTER ? 'A glowing blob grows at the volcano' : 'Keep the phone flat, and a glowing blob grows') : BREATHE ? 'Lava pours out of the volcano by itself' : 'Keep the phone flat while the heat builds', done: () => planet.pressure > planet.k.least * 2 },
-  { ready: () => !planet.pouring, say: LAMP ? (COMPUTER ? 'Click the world, and the blob lets go' : 'Tilt the phone, and the blob lets go') : BREATHE ? 'Drag the world to choose which way the lava runs' : 'Tilt the phone to pour lava', done: (s) => planet.tally.flows + planet.tally.bursts > 0 || s > 40 },
-  // The touch, once the tilt is known: a finger held on the world holds the heat in; lifted, it lets it out.
-  { ready: () => !planet.pouring && planet.pressure > planet.k.least, say: LAMP ? (COMPUTER ? 'Hold the mouse button on the world to keep the blob, and let go to release it' : 'Or hold a finger on the world to keep the blob, and lift it to let go') : COMPUTER ? 'Hold the mouse button on the world (or space) to save up the heat, and let go to erupt' : 'Hold a finger on the world to save up the heat, and let go to erupt', done: (s: number) => s > 12 },
+];
+/** Then what's this world's own, each when it matters. */
+const CUES: { ready: () => boolean; say?: string; begin?: () => void; done: (since: number) => boolean }[] = [
+  ...HAND_CUES,
   ...(WORLD.rules.rises ? [{ ready: () => true, say: 'The volcano moves to whatever is at the top: turn the world to move it', done: (s: number) => s > 20 }] : []),
   ...(WORLD.goal === 'ridge' ? [{ ready: () => planet.tally.flows + planet.tally.bursts > 0, say: 'The spin carries the lava to the dotted line', done: (s: number) => s > 25 }] : []),
   // (Only where a burst is the way: on the worlds that want pouring, or a release short of a burst, or none
   // at all, it pointed the wrong way, and on the hollow world it emptied the ground.)
-  { ready: () => !LAMP && BURST_WORLDS.has(WORLD.goal) && (planet.k.great > 0 ? planet.throwOf(planet.pressure) >= planet.k.great : planet.pressure >= planet.k.explosive) && !planet.pouring, say: WORLD.goal === 'feed' ? 'The circle has closed: turn the volcano towards the big planet, and let go' : 'The circle round the volcano has closed: let go now', done: (s) => planet.tally.bursts > 0 || s > 40 },
+  { ready: () => !LAMP && BURST_WORLDS.has(WORLD.goal) && (planet.k.great > 0 ? planet.throwOf(planet.pressure) >= planet.k.great : planet.pressure >= planet.k.explosive) && !planet.pouring, say: WORLD.goal === 'feed' ? `The circle round the volcano has closed: turn the volcano towards the big planet, and ${TAP.toLowerCase()} the world` : `The circle round the volcano has closed: ${TAP.toLowerCase()} the world to erupt`, done: (s) => planet.tally.bursts > 0 || s > 40 },
     ...(WORLD.goal === 'orbit' ? [
     { ready: () => planet.tally.bursts > 0, say: 'The taller the volcano, the more rock an eruption throws up', done: (s: number) => s > 25 },
   ] : []),
@@ -2208,7 +2210,7 @@ if (WORLD.goal === 'gather') CUES.splice(0, CUES.length,
   { ready: () => planet.impact !== null, say: 'A stone is coming: turn its dotted circle to the top, and the gold ring follows', done: (s: number) => planet.impact === null || s > 14 },
   { ready: () => planet.tally.stones > 0, say: 'The gold ring moves to whatever is at the top', done: (s: number) => s > 12 },
 );
-else if (!NEWCOMER) CUES.splice(0, 3, { ready: () => true, done: (s: number) => {
+else if (!NEWCOMER) CUES.splice(0, HAND_CUES.length, { ready: () => true, done: (s: number) => {
   const tried = planet.tally.flows + planet.tally.bursts > 0;
   if (!tried && !stuckSaid && s > 20) { stuckSaid = true; announce(HANDS.join('   '), true); }
   return tried || (stuckSaid && s > 34);
@@ -2237,7 +2239,7 @@ function lessons(): void {
 
 // ---------------------------------------------------------------- words, and the key
 /** What's worth saying: the turns in the world's story, not every happening in it. */
-const QUIET_WORDS = /^(Ice reaches the ring|A big eruption, but too close|Wanted where|A stone is coming|Land breaks|Life begins in|The first|Moss grows|[A-Z][a-z]+( [a-z]+)? took hold|Held too long|Stone caught|The ice cracks, but too close|A streak, but it crosses|Missed: the stone|The fire is out|The heat is nearly|A dust storm|The storm passes|The ground is sinking|The ground gives way)/;
+const QUIET_WORDS = /^(Ice reaches the ring|A big eruption, but too close|Wanted where|A stone is coming|Land breaks|Life begins in|The first|Moss grows|[A-Z][a-z]+( [a-z]+)? took hold|Held too long|Stone caught|The ice cracks, but too close|A streak, but it crosses|Missed: catch stones|The fire is out|The heat is nearly|A dust storm|The storm passes|The ground is sinking|The ground gives way)/;
 const ERAS: Record<Era, string> = { young: 'A young fire', burning: 'Burning strong', cooling: 'Cooling', embers: 'Last embers', out: 'The fire is out' };
 // (In free play the heat never runs low, so the title says what kind of play it is.)
 if (FREE) ERAS.young = 'Free play';
@@ -2572,7 +2574,7 @@ function measureTheSecond(): void {
   const best = bestSoFar();
   if (best === null || second.value > best) {
     remember(BEST_KEY, String(second.value));
-    if (best !== null) announce(`A new best: ${second.words}`);
+    // (Not said: its figure meant nothing on its own. The stars say how a world was done.)
   }
 }
 const LONG_AGE = 360, AGE_SPEED = 14, DRAWING = 7, TURN_AGAIN = 2.6;
@@ -2634,33 +2636,33 @@ function replayStep(): void {
 }
 
 const GOAL_WORDS: Record<typeof WORLD.goal, { age: (met: boolean) => string; done: string; title: [string, string]; got: () => string }> = {
-  ring: { age: () => 'Later: the islands sink and coral grows round them', done: 'An unbroken chain of living islands', title: ['Chain of islands built', 'Chain broken'], got: () => `${aimDone} of ${aimOf} stretches living` },
-  basins: { age: () => 'Later: small meteorites keep hitting it', done: 'Every big crater filled', title: ['All craters filled', 'Not all craters filled'], got: () => `${aimDone} of ${aimOf} craters filled` },
-  height: { age: () => 'Later: dust storms keep wearing it down', done: `The mountain reaches ${HEIGHT.target} km`, title: ['Mountain built', 'Mountain too low'], got: () => `${Math.round(aimDone)} of ${aimOf} km high` },
+  ring: { age: () => 'Later: the islands sink and coral grows round them', done: 'Goal reached: islands all along the path', title: ['Chain of islands built', 'Chain broken'], got: () => `${aimDone} of ${aimOf} stretches living` },
+  basins: { age: () => 'Later: small meteorites keep hitting it', done: 'Goal reached: every big crater filled', title: ['All craters filled', 'Not all craters filled'], got: () => `${aimDone} of ${aimOf} craters filled` },
+  height: { age: () => 'Later: dust storms keep wearing it down', done: `Goal reached: a mountain ${HEIGHT.target} km high`, title: ['Mountain built', 'Mountain too low'], got: () => `${Math.round(aimDone)} of ${aimOf} km high` },
   cover: { age: () => 'Later: the new ice turns grey', done: `Goal reached: new ice over ${COVER}% of the moon`, title: ['New ice made', 'Not enough new ice'], got: () => `new ice over ${Math.round(aimDone)}% of the moon (goal ${aimOf}%)` },
-  plumes: { age: () => 'Later: the sulphur settles', done: `Goal reached: ${PLUMES} big eruptions`, title: ['Big eruptions done', 'Not enough big eruptions'], got: () => `${aimDone} of ${aimOf} big eruptions` },
-  calm: { age: () => 'Later: the moon keeps turning', done: 'The tumbling is calmed', title: ['Tumbling stopped', 'Still tumbling'], got: () => `${aimDone}% calmer (goal ${aimOf}%)` },
-  bank: { age: () => 'Later: waves wear at the island', done: 'An island on the bank', title: ['An island on the bank', 'No island on the bank yet'], got: () => `the island ${Math.min(100, Math.round(aimDone))}% raised` },
-  ridge: { age: () => 'Later: small meteorites keep hitting it', done: 'A ridge all the way round', title: ['Ridge complete', 'Ridge not complete'], got: () => `${aimDone} of ${aimOf} stretches raised` },
-  lamp: { age: () => 'Later: the blobs sink to the bottom', done: 'The far shore is full', title: ['Far shore filled', 'Far shore not filled'], got: () => `the far shore ${Math.min(100, Math.round(aimDone))}% full` },
-  round: { age: () => 'Later: small meteorites keep hitting it', done: `The asteroid is ${ROUND}% rounder`, title: ['Rounder', 'Not round enough'], got: () => `${Math.round(aimDone)}% rounder (goal ${aimOf}%)` },
-  feed: { age: () => 'Later: the ring slowly thins', done: 'The ring is full', title: ['The ring is full', 'The ring is not full'], got: () => `the ring ${Math.min(100, Math.round(aimDone))}% full` },
-  orbit: { age: (met) => (met ? 'Later: the rock in orbit forms a moon' : 'Later: the rock in orbit falls back'), done: 'Enough rock in orbit for a moon', title: ['Moon made', 'No moon yet'], got: () => `${Math.min(100, Math.round(aimDone))}% of a moon in orbit` },
-  hearth: { age: () => 'Later: the rock cools', done: 'Life kept alive on warm ground', title: ['Life kept warm', 'Not enough kept warm'], got: () => `${Math.min(100, Math.round(aimDone))}% of the living ground` },
-  thaw: { age: (met) => (met ? 'Later: the ice keeps melting' : 'Later: the warming gas fades'), done: 'The ice gives way', title: ['Ice melted', 'Still frozen'], got: () => `the sky ${Math.min(100, Math.round(aimDone))}% warm enough` },
-  outbuild: { age: () => 'Later: the star keeps boiling it away', done: 'It has grown faster than it boils away', title: ['Built faster than it boils', 'Boiling away'], got: () => `${Math.min(100, Math.round(aimDone))}% of the growth` },
-  white: { age: () => 'Later: the last black lava turns white', done: 'A white mountain on the equator', title: ['A white mountain', 'Not yet white'], got: () => (aimDone < 50 ? `the peak ${Math.round(aimDone * 2)}% built` : `the summit ${Math.round((aimDone - 50) * 2)}% white`) },
-  glow: { age: () => 'Later: the blue fire goes out', done: 'The crater lit with blue fire', title: ['Blue fire lit', 'Not enough blue fire'], got: () => `${Math.min(100, Math.round(aimDone))}% of the night lit` },
-  waves: { age: () => 'Later: the sea fills the broken cone', done: 'Waves sent round the world', title: ['Waves made', 'Not enough waves'], got: () => `${aimDone} of ${aimOf} waves` },
-  antipode: { age: () => 'Later: the planet keeps cooling and wrinkling', done: 'A mountain raised on the far side', title: ['Far side raised', 'Far side too low'], got: () => `the far side ${Math.round(aimDone)} of ${aimOf} km high` },
-  gather: { age: () => 'Later: the molten surface hardens', done: 'Enough stones caught to form a planet', title: ['Planet formed', 'Not enough stones'], got: () => `${aimDone} of ${aimOf} stones caught` },
-  oxygen: { age: (met) => (met ? 'Later: the sky keeps turning blue' : 'Later: the orange haze stays'), done: 'The sky turns blue', title: ['A blue sky', 'Still an orange sky'], got: () => `${Math.min(100, Math.round(aimDone))}% of the oxygen` },
-  chaos: { age: () => 'Later: the ice rafts freeze in place', done: 'The ice cracked in enough places', title: ['Ice cracked', 'Not enough cracks'], got: () => `${aimDone} of ${aimOf} cracks` },
-  streaks: { age: () => 'Later: the streaks fade a little', done: 'Enough geyser streaks', title: ['Streaks made', 'Not enough streaks'], got: () => `${aimDone} of ${aimOf} streaks` },
-  marble: { age: () => 'Later: the colours harden where they are', done: 'Lava and blue, swirled together', title: ['Swirled', 'Not swirled enough'], got: () => `${aimDone}% swirled` },
-  town: { age: (met) => (met ? 'Later: the new lava cools round the town' : 'Later: the lava cools over the streets'), done: 'The eruption is over, and the town still stands', title: ['Town saved', 'Town lost'], got: () => `${planet.housesKept} of ${planet.houses.length} houses standing` },
-  domes: { age: () => (MOUNDS ? 'Later: frost settles in the hollow' : 'Later: the domes crack as they cool'), done: MOUNDS ? 'A ring of mounds round the hollow' : 'A field of pancake domes', title: MOUNDS ? ['Mounds built', 'Not enough mounds'] : ['Domes built', 'Not enough domes'], got: () => `${aimDone} of ${aimOf} ${MOUNDS ? 'mounds' : 'domes'}` },
-  snow: { age: () => 'Later: the last vapour falls as snow', done: 'Rock snow all along the edge of night', title: ['Rock snow done', 'Not enough rock snow'], got: () => `${Math.min(100, Math.round(aimDone))}% of the rock snow` },
+  plumes: { age: () => 'Later: the sulphur settles', done: `Goal reached: ${PLUMES} big eruptions`, title: ['Big eruptions made', 'Not enough big eruptions'], got: () => `${aimDone} of ${aimOf} big eruptions` },
+  calm: { age: () => 'Later: the moon keeps turning', done: 'Goal reached: the moon has stopped tumbling', title: ['Tumbling stopped', 'Still tumbling'], got: () => `${aimDone}% calmer (goal ${aimOf}%)` },
+  bank: { age: () => 'Later: waves wear at the island', done: 'Goal reached: an island on the undersea mountain', title: ['Island built', 'No island yet'], got: () => `the island ${Math.min(100, Math.round(aimDone))}% raised` },
+  ridge: { age: () => 'Later: the ridge cools and stays', done: 'Goal reached: a ridge all the way round', title: ['Ridge complete', 'Ridge not complete'], got: () => `${aimDone} of ${aimOf} stretches raised` },
+  lamp: { age: () => 'Later: the blobs sink to the bottom', done: 'Goal reached: the far shore is full', title: ['Far shore filled', 'Far shore not filled'], got: () => `the far shore ${Math.min(100, Math.round(aimDone))}% full` },
+  round: { age: () => 'Later: small meteorites keep hitting it', done: `Goal reached: the asteroid is ${ROUND}% rounder`, title: ['Rounder', 'Not round enough'], got: () => `${Math.round(aimDone)}% rounder (goal ${aimOf}%)` },
+  feed: { age: () => 'Later: the ring slowly thins', done: 'Goal reached: the ring is full', title: ['Ring filled', 'Ring not full'], got: () => `the ring ${Math.min(100, Math.round(aimDone))}% full` },
+  orbit: { age: (met) => (met ? 'Later: the rock in orbit forms a moon' : 'Later: the rock in orbit falls back'), done: 'Goal reached: enough rock in orbit for a moon', title: ['Moon made', 'No moon yet'], got: () => `${Math.min(100, Math.round(aimDone))}% of a moon in orbit` },
+  hearth: { age: () => 'Later: the rock cools', done: 'Goal reached: life kept alive on warm ground', title: ['Life kept warm', 'Not enough kept warm'], got: () => `${Math.min(100, Math.round(aimDone))}% of the living ground` },
+  thaw: { age: (met) => (met ? 'Later: the ice keeps melting' : 'Later: the warming gas fades'), done: 'Goal reached: the ice melts', title: ['Ice melted', 'Still frozen'], got: () => `the sky ${Math.min(100, Math.round(aimDone))}% warm enough` },
+  outbuild: { age: () => 'Later: the star keeps boiling it away', done: 'Goal reached: built faster than the star burns it away', title: ['Planet outgrew its star', 'Still boiling away'], got: () => `${Math.min(100, Math.round(aimDone))}% of the growth` },
+  white: { age: () => 'Later: the last black lava turns white', done: 'Goal reached: a white mountain', title: ['White mountain made', 'Not white yet'], got: () => (aimDone < 50 ? `the peak ${Math.round(aimDone * 2)}% built` : `the summit ${Math.round((aimDone - 50) * 2)}% white`) },
+  glow: { age: () => 'Later: the blue fire goes out', done: 'Goal reached: the crater lit with blue fire', title: ['Blue fire lit', 'Not enough blue fire'], got: () => `${Math.min(100, Math.round(aimDone))}% of the night lit` },
+  waves: { age: () => 'Later: the sea fills the broken cone', done: 'Goal reached: waves sent round the world', title: ['Waves made', 'Not enough waves'], got: () => `${aimDone} of ${aimOf} waves` },
+  antipode: { age: () => 'Later: the planet keeps cooling and wrinkling', done: 'Goal reached: a mountain raised on the far side', title: ['Far side raised', 'Far side too low'], got: () => `the far side ${Math.round(aimDone)} of ${aimOf} km high` },
+  gather: { age: () => 'Later: the molten surface hardens', done: 'Goal reached: enough stones caught to form a planet', title: ['Planet formed', 'Not enough stones'], got: () => `${aimDone} of ${aimOf} stones caught` },
+  oxygen: { age: (met) => (met ? 'Later: the sky keeps turning blue' : 'Later: the orange haze stays'), done: 'Goal reached: the sky turns blue', title: ['Blue sky made', 'Still an orange sky'], got: () => `${Math.min(100, Math.round(aimDone))}% of the oxygen` },
+  chaos: { age: () => 'Later: the ice rafts freeze in place', done: 'Goal reached: the ice cracked in enough places', title: ['Ice cracked', 'Not enough cracks'], got: () => `${aimDone} of ${aimOf} cracks` },
+  streaks: { age: () => 'Later: the streaks fade a little', done: 'Goal reached: enough dark streaks', title: ['Streaks made', 'Not enough streaks'], got: () => `${aimDone} of ${aimOf} streaks` },
+  marble: { age: () => 'Later: the colours harden where they are', done: 'Goal reached: lava and blue swirled together', title: ['Swirled', 'Not swirled enough'], got: () => `${aimDone}% swirled` },
+  town: { age: (met) => (met ? 'Later: the new lava cools round the town' : 'Later: the lava cools over the streets'), done: 'Goal reached: the eruption is over and the town is saved', title: ['Town saved', 'Town lost'], got: () => `${planet.housesKept} of ${planet.houses.length} houses standing` },
+  domes: { age: () => (MOUNDS ? 'Later: frost settles in the hollow' : 'Later: the domes crack as they cool'), done: MOUNDS ? 'Goal reached: a ring of mounds round the hollow' : 'Goal reached: a field of lava domes', title: MOUNDS ? ['Mounds built', 'Not enough mounds'] : ['Domes built', 'Not enough domes'], got: () => `${aimDone} of ${aimOf} ${MOUNDS ? 'mounds' : 'domes'}` },
+  snow: { age: () => 'Later: the last vapour falls as snow', done: 'Goal reached: rock snow all along the line', title: ['Rock snow done', 'Not enough rock snow'], got: () => `${Math.min(100, Math.round(aimDone))}% of the rock snow` },
 };
 const AGE_WORDS = (met: boolean) => GOAL_WORDS[WORLD.goal].age(met);
 /** What was made, in a sentence for the chart: what it is, not a score. */
@@ -3056,36 +3058,9 @@ function showWay(): void {
   wayGeo.attributes.position.needsUpdate = true;
 }
 const held = LEVEL.clone();
-const sensed = new THREE.Vector3();
-/** However the phone was held when the game began counts as level: this turns that way of holding it to LEVEL. */
-const calibrate = new THREE.Quaternion();
-let sensing = false;
-function onTilt(e: DeviceOrientationEvent): void {
-  if (e.beta === null || e.gamma === null) return;
-  const b = THREE.MathUtils.degToRad(e.beta), g = THREE.MathUtils.degToRad(e.gamma);
-  // Gravity in the phone's frame, from how it's tipped forward (beta) and sideways (gamma)...
-  let x = Math.sin(g) * Math.cos(b), y = -Math.sin(b);
-  const z = -Math.cos(g) * Math.cos(b);
-  // ...turned with the screen, if it's been turned on its side.
-  const turned = THREE.MathUtils.degToRad(screen.orientation?.angle ?? 0);
-  [x, y] = [x * Math.cos(turned) + y * Math.sin(turned), -x * Math.sin(turned) + y * Math.cos(turned)];
-  sensed.set(x, y, z);
-  if (!sensing) { sensing = true; calibrate.setFromUnitVectors(sensed.clone().normalize(), LEVEL); }
-  sensed.applyQuaternion(calibrate);
-}
-let asked = false;
-function askForTilt(): void {
-  if (asked) return;
-  asked = true;
-  const D = window.DeviceOrientationEvent as unknown as { requestPermission?: () => Promise<string> } | undefined;
-  if (D?.requestPermission) D.requestPermission().then((r) => { if (r === 'granted') addEventListener('deviceorientation', onTilt); }).catch(() => {});
-  else addEventListener('deviceorientation', onTilt);
-}
 
-/** The hand's tilt, smoothed a little each frame so a shaking hand doesn't slop the lava about. */
-function drawLevel(): void {
-  if (sensing) held.lerp(sensed, 0.15);
-}
+/** (The phone's tilt is no longer read: one hand turns the world instead. `held` stays level.) */
+function drawLevel(): void { /* nothing to follow */ }
 
 // ---------------------------------------------------------------- keeping the world
 /** Everything the world is, as it's kept: the planet, its life, its islands, and where the page had got to. */
@@ -3214,15 +3189,7 @@ if (RUN === null) footLink(FREE ? 'play with a goal' : 'free play', () => {
   if (FREE) q.delete('free'); else q.set('free', '');
   location.search = q.toString().replace(/free=(&|$)/, 'free$1');
 });
-// (On a phone's first worlds, the calm way offered under Begin itself: tipping asks the phone held level, a strain,
-// and the quiet link at the foot went unseen.)
-if (!COMPUTER && !LAMP && !BREATHE && !HAND && NEWCOMER) {
-  const c = $('begin').querySelector('.calmer') as HTMLElement;
-  c.hidden = false;
-  c.addEventListener('pointerdown', (e) => { e.stopPropagation(); remember('volcano.controls', 'breathe'); location.reload(); });
-}
-// The calm way to play, or tipping: on a phone (a computer always breathes), not on the glass world.
-if (!COMPUTER && !LAMP && !HAND) footLink(BREATHE ? 'tilt to pour' : 'breathe', () => { remember('volcano.controls', BREATHE ? 'tip' : 'breathe'); location.reload(); });
+// (Tilting and the old hold-and-let-go are gone: one set of hands, no choice of how to play.)
 ($('begin').querySelector('.more-toggle') as HTMLElement).hidden = true;
 // The end of a fire in free play: when you choose.
 $('finish').addEventListener('pointerdown', (e) => e.stopPropagation());
@@ -3302,7 +3269,6 @@ $('begin').addEventListener('pointerdown', () => {
   begunAt = seconds;
   remember('volcano.played', String(Number(remembered('volcano.played') ?? '0') + 1));
   document.body.classList.remove('carding');
-  if (!HAND && !MARBLE && !TOWN) askForTilt(); // (one hand needs no tilt: no asking the phone for it)
   $('begin').classList.add('gone');
   if (FREE) $('finish').classList.add('shown');
 });
@@ -3361,14 +3327,11 @@ titlePage.querySelectorAll('nav [data-to]').forEach((b) => b.addEventListener('c
 }));
 /** The settings: each kept on the phone, as chosen. Those that change how a world is made take hold as the page comes back. */
 const SETTINGS: Record<string, { now: () => string; set: (v: string) => void; anew: boolean }> = {
-  hands: { now: () => (remembered('volcano.controls') === 'breathe' ? 'breathe' : 'tilt'), set: (v) => remember('volcano.controls', v), anew: true },
   haptics: { now: () => (remembered('volcano.haptics') === 'off' ? 'off' : 'on'), set: (v) => remember('volcano.haptics', v), anew: false },
   motion: { now: () => (remembered('volcano.motion') === 'still' ? 'still' : 'phone'), set: (v) => remember('volcano.motion', v), anew: true },
   ink: { now: () => (remembered('volcano.ink') === 'quiet' ? 'quiet' : 'water'), set: (v) => remember('volcano.ink', v), anew: true },
 };
 let settingsChanged = false;
-// (One set of hands everywhere now: no choice of how to play.)
-(titlePage.querySelector('[data-row="hands"]') as HTMLElement).hidden = true;
 function showSettings(): void {
   for (const [row, s] of Object.entries(SETTINGS)) {
     titlePage.querySelectorAll(`[data-row="${row}"] .opts button`).forEach((b) => b.classList.toggle('on', (b as HTMLElement).dataset.v === s.now()));

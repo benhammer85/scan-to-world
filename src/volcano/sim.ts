@@ -1474,7 +1474,7 @@ export class Planet {
     this.reserve += this.k.impactHeat * (1 + (this.k.caught - 1) * caught);
     this.tally.stones++;
     if (caught > 0.5) { this.tally.caught++; this.tell('Stone caught: more heat'); }
-    else if (this.k.impactNear > 0) this.tell('Missed: the stone landed outside the gold ring'); // (where catching them is the aim, a miss is said too)
+    else if (this.k.impactNear > 0) this.tell('Missed: catch stones inside the gold ring'); // (where catching them is the aim, a miss is said too)
   }
 
   /** The share of the world that is land (above the sea). */
