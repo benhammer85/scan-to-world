@@ -16,10 +16,11 @@
 import * as THREE from 'three';
 import { rimGlsl } from '../render/rim';
 
-export type PuffKind = 'steam' | 'ash' | 'smoke' | 'ember' | 'dust' | 'spark' | 'haze' | 'fall';
+export type PuffKind = 'steam' | 'ash' | 'smoke' | 'ember' | 'dust' | 'spark' | 'haze' | 'fall' | 'lifted';
 
 // ('fall': dust thrown up on a world without air, drawn as the dust is but flying as the embers do, in clean arcs.)
-const TINT: Record<PuffKind, number> = { steam: 0, ash: 1, smoke: 2, ember: 3, dust: 4, spark: 5, haze: 6, fall: 4 };
+// ('lifted': a dust storm's dust raised high into thin air, a soft ochre cloud with no edge.)
+const TINT: Record<PuffKind, number> = { steam: 0, ash: 1, smoke: 2, ember: 3, dust: 4, spark: 5, haze: 6, fall: 4, lifted: 7 };
 const MOST = 1200;
 
 interface Puff { alive: boolean; age: number; life: number; x: number; y: number; z: number; ux: number; uy: number; uz: number; rise: number; size: number; grow: number; kind: number; nx: number; ny: number; nz: number; vz: number; warm: number; dark: number; sx: number; sy: number; sz: number; arc: boolean; ceil: number; ox: number; oy: number; oz: number; out: number; spd: number }
@@ -139,10 +140,10 @@ export class Puffs {
             float r = vPx * 0.5 * (0.75 + 0.25 * vSeed);
             float a = vAlpha * clamp(r - length(q) * vPx * 0.5 + 0.5, 0.0, 1.0);
             // (Heat over open lava: a soft warm breath of air, no edge at all.)
-            if (vTint > 5.5) a = vAlpha * pow(max(0.0, 1.0 - length(q)), 1.6);
+            if (vTint > 5.5) a = vAlpha * pow(max(0.0, 1.0 - length(q)), 1.6); // (and a storm's lifted dust, the same)
             if (a <= 0.01) discard;
             vec3 ember = mix(vec3(0.91, 0.47, 0.18), vec3(0.75, 0.9, 1.0), uIce); // (on the ice moons, the embers are frost)
-            gl_FragColor = vec4(vTint > 5.5 ? mix(vec3(1.0, 0.68, 0.42), vec3(0.85, 0.93, 1.0), uIce) : vTint > 4.5 ? mix(vec3(1.0, 0.66, 0.28), vec3(0.85, 0.95, 1.0), uIce) : vTint < 3.5 ? ember : vec3(0.24, 0.18, 0.14), a);
+            gl_FragColor = vec4(vTint > 6.5 ? vec3(0.72, 0.52, 0.37) : vTint > 5.5 ? mix(vec3(1.0, 0.68, 0.42), vec3(0.85, 0.93, 1.0), uIce) : vTint > 4.5 ? mix(vec3(1.0, 0.66, 0.28), vec3(0.85, 0.95, 1.0), uIce) : vTint < 3.5 ? ember : vec3(0.24, 0.18, 0.14), a);
           } else {
             // A billow: its edge lumpy, the lumps turning slowly as it rises.
             float d = length(q), ang = atan(q.y, q.x), t = vLife * 4.0;
@@ -248,6 +249,7 @@ export class Puffs {
     if (kind === 'steam') { p.life = 2.6 + rand(); p.rise = 0.035; p.size = 0.03 + 0.02 * rand(); p.grow = 0.1; }
     else if (kind === 'ash') { p.life = 5 + rand() * 3; p.rise = 0.14 * strength * (0.6 + rand() * 0.8); p.size = 0.05 + 0.04 * rand(); p.grow = 0.2 + 0.12 * rand(); }
     if (kind === 'ash' && cloud) { p.life = 6.5 + rand() * 2.5; p.rise = 0.55 + 0.25 * rand(); p.size = 0.075 + 0.045 * rand(); p.grow = 0.45 + 0.2 * rand(); } // (fewer than they were, so each a little bigger, and gone in six to nine seconds, not ten to fourteen) // (big and overlapping, so they merge into one cloud)
+    else if (kind === 'lifted') { p.life = 5 + rand() * 3; p.rise = 0.05 + 0.04 * rand(); p.size = 0.1 + 0.08 * rand(); p.grow = 0.12; } // (a soft cloud of dust rising off the ground into the thin air)
     else if (kind === 'dust') { p.life = 4 + rand() * 3; p.rise = 0.06 * strength; p.size = 0.0035 + 0.0015 * strength; p.grow = 0.002; }
     else if (kind === 'ember' || kind === 'fall') {
       // Thrown up from the vent, out to one side, and falling back: an arc, not a drift.
@@ -306,7 +308,7 @@ export class Puffs {
       this.size[i] = p.size + p.grow * f;
       // Coming in quickly, then fading slowly as it thins; smoke the strongest, so a wisp is seen.
       // (Billows come in quickly and then hold their tone, breaking up at the end in the shader; dots fade.)
-      this.alpha[i] = p.kind === 5 ? 0.95 * Math.min(1, f * 6) * (1 - f) ** 1.3 : p.kind === 6 ? 0.13 * Math.min(1, f * 3) * (1 - f) ** 1.5 : (this.calm && p.kind !== 3 ? (p.kind === 2 ? 0.9 : 0.6) : 1) * (p.kind === 3 ? 0.95 * (1 - f) ** 0.7 : p.kind === 4 ? 0.7 * Math.min(1, f * 5) * (1 - f) ** 1.2 : (p.kind === 1 ? 0.85 : p.kind === 0 ? 0.6 : 0.72) * (p.kind === 2 ? (this.calm ? Math.min(1, f * 40) : Math.min(1, f * 1.4) ** 1.5) : Math.min(1, f * 8)) * (p.kind === 2 || p.kind === 0 ? 1 - Math.max(0, (f - 0.5) / 0.5) ** 1.6 : 1)); // (smoke leaves the vent a faint wisp, not a ball, except calm, where it stands on the vent at full strength; and thins away over its second half)
+      this.alpha[i] = p.kind === 7 ? 0.6 * Math.min(1, f * 3) * (1 - f) ** 1.2 : p.kind === 5 ? 0.95 * Math.min(1, f * 6) * (1 - f) ** 1.3 : p.kind === 6 ? 0.13 * Math.min(1, f * 3) * (1 - f) ** 1.5 : (this.calm && p.kind !== 3 ? (p.kind === 2 ? 0.9 : 0.6) : 1) * (p.kind === 3 ? 0.95 * (1 - f) ** 0.7 : p.kind === 4 ? 0.7 * Math.min(1, f * 5) * (1 - f) ** 1.2 : (p.kind === 1 ? 0.85 : p.kind === 0 ? 0.6 : 0.72) * (p.kind === 2 ? (this.calm ? Math.min(1, f * 40) : Math.min(1, f * 1.4) ** 1.5) : Math.min(1, f * 8)) * (p.kind === 2 || p.kind === 0 ? 1 - Math.max(0, (f - 0.5) / 0.5) ** 1.6 : 1)); // (smoke leaves the vent a faint wisp, not a ball, except calm, where it stands on the vent at full strength; and thins away over its second half)
       this.tint[i] = p.kind;
       this.life[i] = f;
       this.warmth[i] = p.warm;
