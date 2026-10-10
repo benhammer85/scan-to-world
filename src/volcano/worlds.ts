@@ -90,7 +90,7 @@ export interface World {
   outbuild?: number;
   /** For the lava world: how much rock snow must fall (in the volume heat is reckoned in). */
   snowfall?: number;
-  /** What kind of world it is, without its name: for a world of this kind round another star (see system.ts). */
+  /** What kind of world it is, without its name. */
   kind: string;
   /** For a world whose aim is height: how high, in km, and how many km a unit of the world's height stands for. */
   height?: { target: number; kmPerUnit: number };
@@ -207,7 +207,7 @@ export const WORLDS: World[] = [
     title: 'A Lumpy Asteroid',
     first: 'A small rock with a little heat inside.',
     why: 'Small rocks have too little gravity to pull themselves round, so they stay lumpy.',
-    second: 'Turn a hollow uppermost and pour, and the world rounds.',
+    second: 'Fill the craters with lava, and the surface evens out.',
     rules: {
       g: 0.025, // (Vesta's gravity, Earth's being 1)
       terrain: 'asteroid', basins: 0, craters: 25, floor: 0.3, rough: 0.015, lumps: 0.15, selfGravity: 1,
