@@ -71,6 +71,8 @@ const renderer = new THREE.WebGLRenderer({ antialias: true });
 let pixelRatio = Math.min(3, window.devicePixelRatio || 1);
 renderer.setPixelRatio(pixelRatio);
 stage.appendChild(renderer.domElement);
+// (For a screen reader: what this is. It's played by touch, which a screen reader can't stand in for, but it's named.)
+renderer.domElement.setAttribute('role', 'img');
 const scene = new THREE.Scene();
 scene.background = new THREE.Color('#f4efe4');
 const camera = new THREE.PerspectiveCamera(40, 1, 0.01, 100);
@@ -1466,8 +1468,9 @@ function skyNow(dt: number): void {
     SUN.applyAxisAngle(SKY_UP, WORLD.sunTurns * dt);
     if (sunDisc) sunDisc.position.set(SUN.x * 1.15, SUN_AT.y, SUN_AT.z);
   }
-  if (sunDisc) { sunDisc.quaternion.copy(camera.quaternion); STAR_TIME.value += dt; }
-  SKY_TIME.value += dt;
+  // (Asked for less motion: the sky's bodies hold still.)
+  if (sunDisc) { sunDisc.quaternion.copy(camera.quaternion); if (!STILL) STAR_TIME.value += dt; }
+  if (!STILL) SKY_TIME.value += dt;
   if (SUN) {
     camera.updateMatrixWorld();
     const v = GIANT_DIR.copy(SUN).transformDirection(camera.matrixWorldInverse);
@@ -1778,6 +1781,7 @@ const HANDS: string[] = LAMP
   : TOWN
   ? ['Drag · turn the world', `${COMPUTER ? 'Click' : 'Tap'} the ground · build a wall`]
   : ['Drag · turn the world', COMPUTER ? 'Hold the mouse · pour lava' : 'Hold · pour lava', `${COMPUTER ? 'Click' : 'Tap'} · erupt`];
+renderer.domElement.setAttribute('aria-label', `${WORLD.title}. ${HANDS.map((h) => h.replace(' · ', ' to ')).join('. ')}.`);
 /** Whether the hands are still new: the first two worlds played here, and the glass world, where they work the other way round. */
 const NEWCOMER = LAMP || MARBLE || HAND || Number(remembered('volcano.played') ?? '0') < 2;
 
@@ -1816,6 +1820,8 @@ function goalLine(): string {
     default: return '';
   }
 }
+/** Stars as said aloud, for a screen reader: the glyphs read as "white star, white star". */
+const starWords = (m: Marks): string => { const n = m.filter(Boolean).length; return n ? `${n} of 3 stars` : 'No stars yet'; };
 /** Seconds as the clock shows them: 1:24. */
 const mmss = (sec: number): string => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
 /**
@@ -2568,7 +2574,7 @@ function effects(dt: number): void {
     }
   }
   // A dust storm: dust driven across the face of the world, low and fast.
-  if (planet.storm) {
+  if (planet.storm && !STILL) {
     for (let i = 0; i < 5; i++) { // (no more: the puffs are a shared pool, and these last five seconds)
       const v = Math.floor(Math.random() * N);
       NORMAL.set(base[v * 3], base[v * 3 + 1], base[v * 3 + 2]).applyQuaternion(group.quaternion);
@@ -2576,7 +2582,7 @@ function effects(dt: number): void {
     }
     // And dust lifted high into the air, in soft clouds: best seen where the ground meets the sky, round the world's edge.
     dustIn -= dt;
-    while (dustIn <= 0 && !BARE) {
+    while (dustIn <= 0 && !BARE && !STILL) { // (asked for less motion: the veil says it, without clouds drifting)
       dustIn += 0.06;
       for (let tries = 0; tries < 12; tries++) {
         const v = Math.floor(Math.random() * N);
@@ -2968,6 +2974,7 @@ function drawEnding(): void {
   if (progress !== frameDrawn) {
     frameDrawn = progress;
     drawFrame(frameInk, frameCanvas.width, frameCanvas.height, renderer.getPixelRatio(), ending.info, progress, 64);
+    frameCanvas.setAttribute('aria-label', `${ending.info.title}. ${ending.info.summary.replace(/ · /g, ' ')}`);
   }
   if (progress >= 1) {
     const next = ending.won ? nextWorld(WORLD) : null;
@@ -3036,7 +3043,7 @@ function openList(): void {
     for (const id of c.worlds) {
       const w = worldOf(id), kept = keptStars(id), m = kept === null ? '' : starsOf(kept);
       const row = document.createElement('button'); row.className = 'row' + (id === WORLD.id ? ' here' : '');
-      row.innerHTML = `<span class="n">${w.numeral}</span><span class="t"></span><span class="m">${m}</span>`;
+      row.innerHTML = `<span class="n">${w.numeral}</span><span class="t"></span><span class="m" aria-label="${kept === null ? 'Not played yet' : starWords(kept)}">${m}</span>`;
       (row.querySelector('.t') as HTMLElement).textContent = w.title;
       row.addEventListener('click', () => { remember('volcano.world', id); document.body.classList.add('leaving'); setTimeout(() => { location.search = `?world=${id}`; }, 400); });
       sec.append(row);
@@ -3296,6 +3303,7 @@ const cardWords = () => {
   el.append(aim);
   // (The stars, as stars: what each asks is said at the end, beside what was earned.)
   ($('begin').querySelector('.marks') as HTMLElement).textContent = FREE || RUN !== null ? '' : starsOf(keptStars(WORLD.id) ?? [false, false, false]).split('').join(' ');
+  ($('begin').querySelector('.marks') as HTMLElement).setAttribute('aria-label', starWords(keptStars(WORLD.id) ?? [false, false, false]));
 };
 cardWords();
 // The hands, the same on every card.
@@ -3358,6 +3366,7 @@ function openAtlas(all: Page[], only: string | null = null): void {
     (pick.querySelector('.t') as HTMLElement).textContent = w.title;
     (pick.querySelector('.k') as HTMLElement).textContent = w.first;
     (pick.querySelector('.m') as HTMLElement).textContent = starsOf(keptStars(id) ?? [false, false, false]).split('').join(' ');
+    (pick.querySelector('.m') as HTMLElement).setAttribute('aria-label', starWords(keptStars(id) ?? [false, false, false]));
     (pick.querySelector('.plates') as HTMLElement).hidden = !made.length;
     pick.dataset.world = id;
     pick.classList.add('shown');
@@ -3473,7 +3482,7 @@ const SETTINGS: Record<string, { now: () => string; set: (v: string) => void; an
 let settingsChanged = false;
 function showSettings(): void {
   for (const [row, s] of Object.entries(SETTINGS)) {
-    titlePage.querySelectorAll(`[data-row="${row}"] .opts button`).forEach((b) => b.classList.toggle('on', (b as HTMLElement).dataset.v === s.now()));
+    titlePage.querySelectorAll(`[data-row="${row}"] .opts button`).forEach((b) => { const on = (b as HTMLElement).dataset.v === s.now(); b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); });
   }
   (titlePage.querySelector('.note') as HTMLElement).textContent = settingsChanged ? 'Kept: the page will come back with it.' : '';
 }
@@ -3563,7 +3572,7 @@ let farBursts = 0, farAt = -1, farFrom: THREE.Quaternion | null = null;
 const farTo = new THREE.Quaternion(), FAR_V = new THREE.Vector3(), TOWARD_US = new THREE.Vector3(0, 0, 1);
 const FAR_IN = 1.6, FAR_HOLD = 3.5, FAR_OUT = 1.6;
 function farLook(): void {
-  if (WORLD.goal !== 'antipode' || !planet.far) return;
+  if (WORLD.goal !== 'antipode' || !planet.far || STILL) return; // (asked for less motion: the world isn't turned for you; the words and the dotted circle say it)
   if (planet.tally.bursts > farBursts) { farBursts = planet.tally.bursts; if (farAt < 0) farAt = planet.seconds + planet.k.antipodeDelay - FAR_IN; }
   if (farAt < 0) return;
   const t = planet.seconds - farAt;

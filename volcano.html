@@ -27,7 +27,7 @@
       #event { position: fixed; bottom: calc(66px + env(safe-area-inset-bottom)); left: 16px; right: 16px; text-align: center; font-size: 14px; font-style: italic; opacity: 0; pointer-events: none; transition: opacity 2s; }
       /* The words float over the world on a soft halo of the paper, as a map's lettering is cleared from the lines beneath it. */
       #pace { position: fixed; top: calc(74px + env(safe-area-inset-top)); left: 40px; right: 40px; text-align: center; font-size: 14px; line-height: 1.5; letter-spacing: 0.03em; opacity: 0; transition: opacity 0.8s ease; pointer-events: none; font-variant-numeric: tabular-nums; text-shadow: 0 0 2px #f4efe4, 0 0 6px #f4efe4, 0 0 12px #f4efe4; }
-      #pace.shown { opacity: 0.6; }
+      #pace.shown { opacity: 0.74; }
       #event, #stage-name, #goal { text-shadow: 0 0 2px #f4efe4, 0 0 6px #f4efe4, 0 0 12px #f4efe4, 0 0 18px #f4efe4; }
       /* The world comes in from the paper, and goes back to it, never cut. */
       #stage { opacity: 0; transition: opacity 1.2s ease; }
@@ -66,25 +66,25 @@
       #title[hidden] { display: none; } /* (its display:flex outranked the hidden attribute: the title stayed up over the card on every later visit) */
       #title .head { text-align: center; }
       #title h1 { margin: 0; font-weight: normal; font-size: clamp(30px, 9vw, 44px); letter-spacing: 0.02em; text-wrap: balance; }
-      #title .sub { margin: 8px 0 0; font-style: italic; font-size: 15px; opacity: 0.6; }
+      #title .sub { margin: 8px 0 0; font-style: italic; font-size: 15px; opacity: 0.74; }
       #title .rule { width: 46px; height: 0; border-top: 1px solid rgba(46, 33, 24, 0.4); margin: 14px auto 0; }
       #title nav { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 100%; max-width: 22em; }
       #title button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; padding: 9px 14px; font-size: 17px; letter-spacing: 0.04em; min-height: 44px; }
       #title button:not(.go) { opacity: 0.72; }
       #title.newcomer button:not(.go):not(.set) { opacity: 0.32; }
       #title .go { font-size: 19px; padding: 12px 38px; border: 1px solid rgba(46, 33, 24, 0.38); border-radius: 999px; margin-bottom: 10px; display: flex; flex-direction: column; align-items: center; gap: 2px; }
-      #title .go small { font-size: 13px; font-style: italic; opacity: 0.6; letter-spacing: 0.02em; }
+      #title .go small { font-size: 13px; font-style: italic; opacity: 0.74; letter-spacing: 0.02em; }
       #title .go small:empty { display: none; }
-      #title .set { font-size: 14px !important; opacity: 0.5 !important; margin-top: 6px; }
+      #title .set { font-size: 14px !important; opacity: 0.7 !important; margin-top: 6px; }
       #title .settings { display: flex; flex-direction: column; align-items: center; gap: 14px; width: 100%; max-width: 22em; }
       #title .settings[hidden], #title nav[hidden], #title .row[hidden] { display: none; }
       #title .row { display: flex; flex-direction: column; align-items: center; gap: 0; }
-      #title .row .label { font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.5; }
+      #title .row .label { font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.7; }
       #title .row .opts { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; }
-      #title .row .opts button { font-size: 16px; opacity: 0.55; padding: 6px 10px; min-height: 40px; }
+      #title .row .opts button { font-size: 16px; opacity: 0.72; padding: 6px 10px; min-height: 40px; }
       #title .row .opts button + button::before { content: '·'; margin-right: 12px; opacity: 0.6; }
       #title .row .opts button.on { opacity: 1; text-decoration: underline; text-underline-offset: 6px; }
-      #title .note { font-size: 13px; font-style: italic; opacity: 0.55; margin: 0; min-height: 1.2em; text-align: center; }
+      #title .note { font-size: 13px; font-style: italic; opacity: 0.72; margin: 0; min-height: 1.2em; text-align: center; }
       body.titled #begin, body.titled #worlds { opacity: 0 !important; pointer-events: none; }
       /* The menu from the corner while a world is played, and the plain list of every world, chapter by chapter. */
       #menu, #list { position: fixed; inset: 0; z-index: 30; background: rgba(244, 239, 228, 0.94); box-sizing: border-box; transition: opacity 0.5s; }
@@ -92,23 +92,23 @@
       #menu[hidden], #list[hidden] { display: none; }
       #menu { display: flex; align-items: center; justify-content: center; padding: 16px; }
       #menu .card { display: flex; flex-direction: column; align-items: center; gap: 6px; max-width: 22em; width: 100%; }
-      #menu .where { margin: 0 0 10px; font-size: 13px; letter-spacing: 0.12em; opacity: 0.6; text-align: center; }
+      #menu .where { margin: 0 0 10px; font-size: 13px; letter-spacing: 0.12em; opacity: 0.74; text-align: center; }
       #menu button, #list button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
       #menu .card > button { font-size: 18px; padding: 10px 14px; min-height: 44px; }
-      #menu .card > button.close { font-size: 14px; opacity: 0.55; margin-top: 10px; }
+      #menu .card > button.close { font-size: 14px; opacity: 0.72; margin-top: 10px; }
       #list { overflow-y: auto; padding: calc(18px + env(safe-area-inset-top)) 16px calc(28px + env(safe-area-inset-bottom)); }
       #list .head { display: flex; justify-content: space-between; align-items: baseline; max-width: 30em; margin: 0 auto 6px; }
       #list h2 { font-weight: normal; font-size: 24px; margin: 0; }
-      #list .head .close { font-size: 14px; opacity: 0.6; padding: 10px 4px; }
+      #list .head .close { font-size: 14px; opacity: 0.74; padding: 10px 4px; }
       #list .chapter { max-width: 30em; margin: 22px auto 0; }
-      #list .chapter h3 { font-weight: normal; font-style: italic; font-size: 14px; letter-spacing: 0.04em; opacity: 0.6; margin: 0 0 4px; }
+      #list .chapter h3 { font-weight: normal; font-style: italic; font-size: 14px; letter-spacing: 0.04em; opacity: 0.74; margin: 0 0 4px; }
       #list .row { display: grid; grid-template-columns: 3.2em 1fr auto; align-items: center; width: 100%; text-align: left; padding: 6px 2px; border-bottom: 1px solid rgba(46, 33, 24, 0.12); min-height: 44px; font-size: 17px; }
-      #list .row .n { font-size: 12px; letter-spacing: 0.12em; opacity: 0.55; }
-      #list .row .m { font-size: 12px; letter-spacing: 0.2em; opacity: 0.6; font-variant-numeric: tabular-nums; }
+      #list .row .n { font-size: 12px; letter-spacing: 0.12em; opacity: 0.72; }
+      #list .row .m { font-size: 12px; letter-spacing: 0.2em; opacity: 0.74; font-variant-numeric: tabular-nums; }
       #list .row.here .t { text-decoration: underline; text-underline-offset: 5px; }
       #list .chart { display: block; margin: 26px auto 0; font-size: 15px; font-style: italic; opacity: 0.7; padding: 10px; }
-      #list .about { display: block; margin: 0 auto; font-size: 14px; opacity: 0.5; padding: 10px; min-height: 44px; }
-      #list .rules { max-width: 22em; margin: 0 auto; text-align: center; font-size: 14px; line-height: 1.55; opacity: 0.65; text-wrap: balance; }
+      #list .about { display: block; margin: 0 auto; font-size: 14px; opacity: 0.7; padding: 10px; min-height: 44px; }
+      #list .rules { max-width: 22em; margin: 0 auto; text-align: center; font-size: 14px; line-height: 1.55; opacity: 0.76; text-wrap: balance; }
       /* The card the world begins from: one touch, which lets the phone share how it's held. */
       /* The card: the world itself above (seen whole, turning slowly), the words beneath on the paper. */
       #begin { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 14px; padding-bottom: calc(18px + env(safe-area-inset-bottom)); box-sizing: border-box; background: transparent; transition: opacity 1.5s; cursor: pointer; }
@@ -118,35 +118,35 @@
       #begin.gone { opacity: 0; pointer-events: none; }
       #begin p { margin: 0; text-align: center; }
       /* (Three sizes only: small for the numeral and the stars, the body for the aim, and the name.) */
-      #begin .world { font-size: 13px; letter-spacing: 0.2em; opacity: 0.5; }
+      #begin .world { font-size: 13px; letter-spacing: 0.2em; opacity: 0.7; }
       #begin .name { font-size: 30px; font-weight: normal; margin: -8px 0 0; letter-spacing: 0.01em; text-align: center; }
       #begin .first { font-size: 17px; font-style: italic; max-width: 22em; line-height: 1.45; padding: 0 24px; opacity: 0.8; }
       #begin .hands { font-size: 13px; letter-spacing: 0.04em; max-width: 24em; line-height: 1.7; padding: 0 24px; opacity: 0.7; margin-top: -4px; white-space: pre-line; }
       #begin .second { text-wrap: pretty; font-size: 16px; max-width: 21em; line-height: 1.55; padding: 0 28px; opacity: 0.9; }
-      #begin .marks { font-size: 13px; letter-spacing: 0.25em; opacity: 0.45; margin-top: -2px; }
+      #begin .marks { font-size: 13px; letter-spacing: 0.25em; opacity: 0.68; margin-top: -2px; }
       #begin .marks:empty { display: none; }
       #begin .second .aim { display: block; font-weight: normal; font-size: 17px; line-height: 1.45; opacity: 0.85; text-wrap: balance; }
       #begin button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
       #begin .touch { font-size: 17px; letter-spacing: 0.06em; margin-top: 14px; padding: 12px 38px; border: 1px solid rgba(46, 33, 24, 0.35); border-radius: 999px; }
-      #begin .chapter { font-size: 13px; opacity: 0.55; margin-bottom: -4px; }
+      #begin .chapter { font-size: 13px; opacity: 0.72; margin-bottom: -4px; }
       #begin .chapter:empty { display: none; }
       #begin .why { font-size: 14px; max-width: 24em; line-height: 1.45; padding: 0 24px; margin: 0; opacity: 0.72; }
       #begin .first:empty, #begin .hands:empty, #begin .why:empty { display: none; }
       #atlas .plates-head .play { font: italic 14px "Newsreader", "Iowan Old Style", Georgia, serif; color: #2e2118; background: none; border: none; text-decoration: underline; text-underline-offset: 4px; padding: 4px; cursor: pointer; }
       #begin .worlds { display: flex; flex-direction: row; flex-wrap: wrap; justify-content: center; align-items: center; max-width: min(100%, 30em); padding: 0 12px; box-sizing: border-box; margin-top: 4px; }
       #begin .worlds > button + button::before { content: '·'; margin-right: 12px; opacity: 0.7; }
-      #begin .worlds .chapter-name { font-size: 12px; opacity: 0.45; margin-top: 6px; line-height: 1.1; }
+      #begin .worlds .chapter-name { font-size: 12px; opacity: 0.68; margin-top: 6px; line-height: 1.1; }
       #begin .worlds .chapter-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 0 4px; }
       /* (On a short screen, the rows alone, a little apart: the card names the chapter above its title.) */
       @media (max-height: 720px) { #begin .worlds .chapter-name { display: none; } #begin .worlds .chapter-row + .chapter-name + .chapter-row { margin-top: 2px; } #begin .worlds button { min-height: 30px; } }
-      #begin .worlds button { font-size: 14px; letter-spacing: 0.08em; opacity: 0.65; min-width: 36px; min-height: 34px; padding: 4px 6px; }
+      #begin .worlds button { font-size: 14px; letter-spacing: 0.08em; opacity: 0.76; min-width: 36px; min-height: 34px; padding: 4px 6px; }
       #begin .worlds button.here { opacity: 0.95; text-decoration: underline; text-underline-offset: 6px; cursor: default; }
-      #begin .more-toggle { font-size: 14px; opacity: 0.6; padding: 10px 16px; }
+      #begin .more-toggle { font-size: 14px; opacity: 0.74; padding: 10px 16px; }
       #begin .more { display: flex; flex-direction: column; align-items: center; gap: 2px; margin-top: -8px; }
       #begin .more[hidden] { display: none !important; }
       #begin .more > button { font-size: 15px; opacity: 0.8; padding: 9px 14px; }
       #begin .more .ink { display: flex; gap: 4px; margin: 4px 0 0; }
-      #begin .more .ink button { font-size: 14px; opacity: 0.6; padding: 8px 10px; }
+      #begin .more .ink button { font-size: 14px; opacity: 0.74; padding: 8px 10px; }
       #begin .more .ink button.here { opacity: 1; text-decoration: underline; text-underline-offset: 5px; cursor: default; }
       /* The atlas: every chart kept, as pages to leaf through; one opened fills the page. */
       /* The solar system's chart, over the card: its worlds round the star, to choose the next. */
@@ -154,10 +154,10 @@
       #system.open { display: block; }
       #system .head { display: flex; justify-content: space-between; align-items: baseline; margin: 0 4px 6px; }
       #system h2 { margin: 0; font-weight: normal; font-style: italic; font-size: 22px; letter-spacing: 0.04em; }
-      #system .close { font: italic 14px "Newsreader", "Iowan Old Style", Georgia, serif; color: #2e2118; background: none; border: none; opacity: 0.6; padding: 6px; cursor: pointer; }
+      #system .close { font: italic 14px "Newsreader", "Iowan Old Style", Georgia, serif; color: #2e2118; background: none; border: none; opacity: 0.74; padding: 6px; cursor: pointer; }
       #system .about { margin: 0 4px 10px; font-size: 13px; font-style: italic; opacity: 0.7; line-height: 1.45; }
       #system .foot { text-align: center; font-size: 14px; font-style: italic; margin-top: 8px; }
-      #system .foot .again { opacity: 0.55; font-size: 13px; cursor: pointer; padding: 8px; }
+      #system .foot .again { opacity: 0.72; font-size: 13px; cursor: pointer; padding: 8px; }
       #atlas { position: fixed; inset: 0; z-index: 35; display: none; overflow-y: auto; background: #1b2341; color: #efe7d3; padding: calc(20px + env(safe-area-inset-top)) 16px 40px; box-sizing: border-box; touch-action: pan-y; }
       #atlas.open { display: block; }
       #atlas .head { position: sticky; top: calc(-20px - env(safe-area-inset-top)); z-index: 2; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; margin: calc(-20px - env(safe-area-inset-top)) -16px 10px; padding: calc(12px + env(safe-area-inset-top)) 12px 10px; background: #1b2341; border-bottom: 1px solid rgba(226, 194, 122, 0.25); } /* (a plain dark band: over the sky's fade, its words were lost) */
@@ -165,13 +165,13 @@
       #atlas h2 { margin: 0; font-weight: normal; font-style: italic; font-size: 20px; letter-spacing: 0.04em; text-align: center; }
       #atlas .close, #atlas .tolist { font: 16px "Newsreader", "Iowan Old Style", Georgia, serif; color: #efe7d3; background: none; border: none; opacity: 0.9; padding: 10px 6px; min-height: 44px; cursor: pointer; }
       #atlas .sky { position: relative; height: max(320px, min(calc(100svh - 120px - env(safe-area-inset-top) - env(safe-area-inset-bottom)), 1000px)); margin: 0 -16px 8px; } /* (the whole screen's height: capped at the width's, the globe sat in a short band with the page empty below) */
-      #atlas .credit { text-align: center; font-style: italic; font-size: 11px; opacity: 0.45; margin: 0 0 30px; }
+      #atlas .credit { text-align: center; font-style: italic; font-size: 11px; opacity: 0.68; margin: 0 0 30px; }
       #atlas .plates-head { text-align: center; font-style: italic; font-size: 14px; opacity: 0.7; margin: 0 0 14px; }
       #atlas .pages { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 20px 14px; max-width: 900px; margin: 0 auto; }
       #atlas figure { margin: 0; cursor: pointer; }
       #atlas figure img { width: 100%; display: block; box-shadow: 0 1px 6px rgba(0, 0, 0, 0.35); }
       #atlas figcaption { font-size: 13px; font-style: italic; text-align: center; margin-top: 6px; opacity: 0.85; }
-      #atlas figcaption small { font-size: 11px; opacity: 0.6; }
+      #atlas figcaption small { font-size: 11px; opacity: 0.74; }
       #atlas .pick { position: fixed; inset: 0; display: none; align-items: flex-end; justify-content: center; padding: 16px 16px calc(24px + env(safe-area-inset-bottom)); box-sizing: border-box; }
       #atlas .pick.shown { display: flex; }
       #atlas .pick .card { width: 100%; max-width: 360px; background: #f4efe4; color: #2e2118; border: 1px solid rgba(46, 33, 24, 0.22); box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45); padding: 22px 20px 16px; text-align: center; box-sizing: border-box; animation: rise 0.35s ease-out; }
@@ -179,7 +179,7 @@
       #atlas .pick .globe { width: 150px; height: 150px; margin: -6px auto 6px; filter: drop-shadow(0 7px 9px rgba(46, 33, 24, 0.22)); }
       #atlas .pick .t { margin: 0; font-size: 21px; }
       #atlas .pick .k { margin: 4px 0 16px; font-style: italic; font-size: 15px; opacity: 0.7; }
-      #atlas .pick .m { margin: -8px 0 14px; font-size: 13px; letter-spacing: 0.25em; opacity: 0.45; }
+      #atlas .pick .m { margin: -8px 0 14px; font-size: 13px; letter-spacing: 0.25em; opacity: 0.68; }
       #atlas .pick .m:empty, #begin .marks:empty { display: none; }
       #atlas .pick .acts { display: flex; justify-content: center; align-items: baseline; gap: 22px; }
       #atlas .pick .go { font: 17px "Newsreader", "Iowan Old Style", Georgia, serif; color: #f4efe4; background: #2e2118; border: none; padding: 9px 30px; cursor: pointer; }
@@ -189,16 +189,16 @@
       #atlas .view img { max-width: 100%; max-height: 100%; box-shadow: 0 2px 10px rgba(46, 33, 24, 0.2); }
       /* After the chart: a word on beginning again, and a way to keep it. */
       #again { position: fixed; bottom: calc(50px + env(safe-area-inset-bottom)); /* (at the foot, under the chart: over the world's top they crowded the title) */ left: 0; right: 0; text-align: center; font-size: 12px; opacity: 0; pointer-events: none; transition: opacity 2s; margin: 0; }
-      #again.shown { opacity: 0.65; }
+      #again.shown { opacity: 0.76; }
       /* In free play, a quiet way to end the fire when you choose, where the chart's keep will be. */
       #finish { position: fixed; top: calc(22px + env(safe-area-inset-top)); right: 24px; font: italic 12px "Newsreader", "Iowan Old Style", Georgia, serif; color: #2e2118; background: none; border: none; opacity: 0; pointer-events: none; transition: opacity 2s; cursor: pointer; padding: 4px; }
-      #finish.shown { opacity: 0.6; pointer-events: auto; }
+      #finish.shown { opacity: 0.74; pointer-events: auto; }
       #keep { position: fixed; bottom: calc(26px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); font: 12px "Newsreader", "Iowan Old Style", Georgia, serif; color: #2e2118; background: none; border: none; opacity: 0; pointer-events: none; transition: opacity 2s; cursor: pointer; padding: 4px; }
-      #keep.shown { opacity: 0.65; pointer-events: auto; }
+      #keep.shown { opacity: 0.76; pointer-events: auto; }
       #retry { position: fixed; top: calc(140px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); font: 12px "Newsreader", "Iowan Old Style", Georgia, serif; color: #2e2118; background: none; border: none; border-bottom: 1px solid rgba(46,33,24,0.35); opacity: 0; pointer-events: none; transition: opacity 2s; cursor: pointer; padding: 4px 2px; white-space: nowrap; }
       #retry.shown { opacity: 0.75; pointer-events: auto; }
       /* The worlds, in a corner off the world: back to the card that lists them. */
-      #worlds { position: fixed; top: calc(22px + env(safe-area-inset-top)); left: 20px; font: 12px "Newsreader", "Iowan Old Style", Georgia, serif; letter-spacing: 0.12em; color: #2e2118; background: none; border: none; opacity: 0.6; cursor: pointer; padding: 12px; min-width: 44px; min-height: 44px; }
+      #worlds { position: fixed; top: calc(22px + env(safe-area-inset-top)); left: 20px; font: 12px "Newsreader", "Iowan Old Style", Georgia, serif; letter-spacing: 0.12em; color: #2e2118; background: none; border: none; opacity: 0.74; cursor: pointer; padding: 12px; min-width: 44px; min-height: 44px; }
       #worlds .n { display: block; }
       #worlds .w { display: block; font-size: 10px; font-style: italic; letter-spacing: 0.04em; margin-top: 2px; opacity: 0.85; }
       #worlds.ended { opacity: 0 !important; pointer-events: none; } /* (hidden on the end plate, whose corner it sat in: tapping goes on, and the menu is there in the next world) */
@@ -206,7 +206,7 @@
   </head>
   <body class="carding">
     <div id="stage"></div>
-    <canvas id="frame"></canvas>
+    <canvas id="frame" role="img" aria-label=""></canvas>
     <div id="stage-name" class="engraved"></div>
     <div id="goal" class="engraved" aria-live="polite"></div>
     <div id="pace" class="engraved"></div>
@@ -232,9 +232,9 @@
         <button class="set" data-to="settings">settings</button>
       </nav>
       <div class="settings" hidden>
-        <div class="row" data-row="haptics"><span class="label">Vibration</span><span class="opts"><button data-v="on">on</button><button data-v="off">off</button></span></div>
-        <div class="row" data-row="motion"><span class="label">Motion</span><span class="opts"><button data-v="phone">normal</button><button data-v="still">reduced</button></span></div>
-        <div class="row" data-row="ink"><span class="label">Ink</span><span class="opts"><button data-v="water">watercolour</button><button data-v="quiet">quiet print</button></span></div>
+        <div class="row" data-row="haptics"><span class="label">Vibration</span><span class="opts" role="group" aria-label="Vibration"><button data-v="on">on</button><button data-v="off">off</button></span></div>
+        <div class="row" data-row="motion"><span class="label">Motion</span><span class="opts" role="group" aria-label="Motion"><button data-v="phone">normal</button><button data-v="still">reduced</button></span></div>
+        <div class="row" data-row="ink"><span class="label">Ink</span><span class="opts" role="group" aria-label="Ink"><button data-v="water">watercolour</button><button data-v="quiet">quiet print</button></span></div>
         <p class="note"></p>
         <button class="back">done</button>
       </div>
