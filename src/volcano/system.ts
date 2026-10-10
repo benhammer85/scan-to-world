@@ -192,18 +192,13 @@ export function worldFor(sys: System, i: number): World {
     numeral: name.numeral,
     title: name.title,
     first: `${name.title}, round ${sys.star}.`,
-    then: base.then.replace(/\b\d+(\.\d+)?( km|%)/, (m) => scaleWords(m, aim)) + (words.length ? ' ' + words.join(' ') : ''),
+    why: base.why + (words.length ? ' ' + words.join(' ') : ''),
+    real: undefined, // (its aim is scaled: not the real one's)
     height: base.height ? { ...base.height, target: Math.round(base.height.target * aim) } : undefined,
     cover: base.cover ? Math.round(base.cover * aim * 100) / 100 : undefined,
     orbit: base.orbit ? Math.round(base.orbit * aim) : undefined,
   };
 }
-/** "28 km", say, scaled: as the card says it. */
-function scaleWords(m: string, f: number): string {
-  const n = parseFloat(m);
-  return `${Math.round(n * f)}${m.slice(String(n).length)}`;
-}
-
 /** What a body that was made passes on to the next world played; and, for a young world, its moon. */
 export function giftOf(sys: System, i: number): Gift | null {
   const b = sys.bodies[i];
