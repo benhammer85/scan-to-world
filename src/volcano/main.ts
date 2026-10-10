@@ -650,7 +650,7 @@ const dropStone = mark((g) => {
 });
 dropStone.material.depthTest = true; dropStone.material.color.set('#6d655f');
 /** And the wet wash it leaves behind as it falls: soft drops, paling. */
-const dropTrail = Array.from({ length: 14 }, () => mark((g) => { const rg = g.createRadialGradient(32, 32, 0, 32, 32, 28); rg.addColorStop(0, 'rgba(255,255,255,0.7)'); rg.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = rg; g.fillRect(0, 0, 64, 64); }));
+const dropTrail = Array.from({ length: 24 }, () => mark((g) => { const rg = g.createRadialGradient(32, 32, 0, 32, 32, 28); rg.addColorStop(0, 'rgba(255,255,255,0.7)'); rg.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = rg; g.fillRect(0, 0, 64, 64); }));
 for (const d of dropTrail) { d.material.depthTest = true; d.material.color.set('#8a827a'); }
 /**
  * A falling stone, stronger: a warm glow round it as it nears (the heat it brings), and where it strikes, a flash, its
@@ -1153,7 +1153,7 @@ function drawMarks(): void {
       dropStone.position.copy(STONE_AT); dropStone.scale.setScalar((0.045 + 0.045 * (1 - f)) * (dist / 3.2)); dropStone.material.opacity = Math.min(0.92, (1 - f) * 6);
       dropStone.material.color.set(s.icy ? '#9cc3dd' : '#4f4842'); dropGlow.material.color.set(s.icy ? '#cfe6f3' : '#e8913a');
       dropGlow.visible = true; dropGlow.position.copy(STONE_AT); dropGlow.scale.setScalar((0.08 + 0.12 * (1 - f)) * (dist / 3.2)); dropGlow.material.opacity = Math.min(0.8, (1 - f) * (1 - f) * 1.4);
-      dropTrail.forEach((d, i) => { d.material.color.set(s.icy ? '#a9c6d8' : '#8a827a'); stoneAt(s.vertex, Math.min(1, f + 0.018 * (i + 1)), d.position); d.scale.setScalar((0.034 - 0.0021 * i) * (dist / 3.2)); d.material.opacity = 0.42 * (1 - i / 14) * Math.min(1, (1 - f) * 6); });
+      dropTrail.forEach((d, i) => { d.material.color.set(s.icy ? '#a9c6d8' : '#8a827a'); stoneAt(s.vertex, Math.min(1, f + 0.005 * (i + 1)), d.position); d.scale.setScalar((0.03 - 0.001 * i) * (dist / 3.2)); d.material.opacity = 0.3 * (1 - i / 24) * Math.min(1, (1 - f) * 6); }); // (close and overlapping: one soft streak behind it, not a line of dots that read as a path)
     }
     stoneWas = { vertex: s.vertex, icy: !!s.icy, water: planet.water };
   } else if (stoneWas) {
@@ -1727,7 +1727,9 @@ const AIM: Record<string, string> = {
 /** How to erupt, wherever the aim asks for an eruption rather than a pour: the circle round the volcano shows when. */
 const ERUPT = `Wait for the circle round the volcano to close, then ${COMPUTER ? 'click' : 'tap'} the world to erupt.`;
 const HOLD = COMPUTER ? 'Hold the mouse button down on the world' : 'Hold a finger on the world';
-const POUR = `${HOLD} to pour lava.`;
+/** The touches already learned (each the first time its line was done), so they're not taught again on every world. */
+const LEARNED = { hold: remembered('volcano.learned.hold') === '1', drag: remembered('volcano.learned.drag') === '1' };
+const POUR = LEARNED.hold ? '' : `${HOLD} to pour lava.`;
 const TIP: Record<string, string> = {
   ring: `${POUR} The sea floor slides over the hot spot, so the volcano moves along the dotted line, as Hawaii's did. Pour as it goes. Old islands sink, so keep going.`,
   basins: `The craters still to fill are dotted in pencil. Turn one to just below the volcano. ${HOLD} to pour into it.`,
@@ -2251,14 +2253,14 @@ const HAND_CUES: Cue[] = LAMP ? [
   { ready: () => true, hand: 'tap', at: () => townSpot(), say: `${TAP} the ground to build a wall`, done: () => planet.walls.length > 0 },
   { ready: () => planet.walls.length > 0, say: `${TAP} again nearby to make the wall longer`, done: (s) => s > 12 },
 ] : [
-  { ready: () => true, hand: 'hold', say: `${HOLD} to pour lava`, done: () => planet.tally.flows > 0 },
-  { ready: () => !planet.pouring, hand: 'drag', at: () => null, say: 'Drag to turn the world: lava runs down the screen', done: (s) => (turnedAt > lessonSince && s > 3) || s > 14 },
-];
+  ...(LEARNED.hold ? [] : [{ ready: () => true, hand: 'hold' as const, say: `${HOLD} to pour lava`, done: () => planet.tally.flows > 0 }]),
+  ...(LEARNED.drag ? [] : [{ ready: () => !planet.pouring, hand: 'drag' as const, at: () => null, say: 'Drag to turn the world: lava runs down the screen', done: (s: number) => (turnedAt > lessonSince && s > 3) || s > 14 }]),
+]; // (each taught until it's been done once, on whatever world that was; not again on every world after)
 /** Then what's this world's own, each when it matters. */
 const CUES: Cue[] = [
   ...HAND_CUES,
   // (What to do on this world, said once the hands are known: it was on the card, and the card is only the aim now.)
-  ...(FREE ? [] : [{ ready: () => true, get say() { return words$(OWN_TIP[WORLD.id] ?? TIP[WORLD.goal] ?? ''); }, done: (s: number) => s > 16 }]), // (said when it's reached, by then every word table is made)
+  ...(FREE ? [] : [{ ready: () => true, get say() { return words$((OWN_TIP[WORLD.id] ?? TIP[WORLD.goal] ?? '').trim()); }, done: (s: number) => s > 16 }]), // (said when it's reached, by then every word table is made)
   ...(WORLD.rules.rises ? [{ ready: () => true, say: 'The volcano moves to whatever is at the top: turn the world to move it', done: (s: number) => s > 20 }] : []),
   // (Mars: a storm wears old rock but not fresh lava, so the first one coming is the moment to say so.)
   ...(planet.k.stormFresh > 0 ? [{ ready: () => planet.stormComing !== null, hand: 'hold' as const, say: 'A dust storm is coming: pour now. Fresh lava doesn\'t wear away', done: (s: number) => s > 12 }] : []),
@@ -2315,7 +2317,7 @@ function lessons(): void {
       showGhost(L.hand ?? null, L.at);
       return;
     }
-    if (L.done(seconds - lessonSince) && seconds - lessonSince > 6) { lesson++; lessonShown = false; $('legend').classList.remove('new'); showGhost(null); }
+    if (L.done(seconds - lessonSince) && seconds - lessonSince > 6) { if ((L.hand === 'hold' && planet.tally.flows > 0) || (L.hand === 'drag' && turnedAt > lessonSince)) remember(`volcano.learned.${L.hand}`, '1'); lesson++; lessonShown = false; $('legend').classList.remove('new'); showGhost(null); }
     // (Once the touch it shows has been made, the finger goes, though its line may stay a little longer.)
     else if (ghostKind && L.done(seconds - lessonSince)) showGhost(null);
     return;

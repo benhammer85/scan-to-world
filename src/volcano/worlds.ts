@@ -283,7 +283,7 @@ export const WORLDS: World[] = [
     first: 'All ocean, with a volcano on the sea floor.',
     why: 'The sea floor slowly slides over a hot spot, so the volcano leaves a line of islands behind it, like Hawaii.',
     second: 'Pour as the volcano moves, and islands rise along the line.',
-    rules: { drift: 0.0125, rises: 0, heat: 600, rising: 1.4, steady: true, reseed: 15, floor: -0.22, sink: 0.0001, impactEvery: [60, 100], atolls: true }, // (islands sinking slowly, so the chain is built steadily, not raced)
+    rules: { drift: 0.0125, rises: 0, heat: 600, rising: 1.4, steady: true, reseed: 15, floor: -0.22, sink: 0.0001, impactEvery: [0, 0], atolls: true }, // (no stones: the path is the lesson, and a stone's trail of dots read as a second one) // (islands sinking slowly, so the chain is built steadily, not raced)
     palette: {
       paper: '#ecdfc2', basalt: '#9a8a76', ash: '#b3ada2', lava: '#b8563c', deepLava: '#8f3b28',
       shallow: '#d4e3ec', deep: '#b1c8d8',
