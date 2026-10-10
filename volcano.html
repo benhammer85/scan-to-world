@@ -35,26 +35,27 @@
       #event.shown { opacity: 0.75; }
       /* A burst's moment: the words fall quiet. */
       #stage-name, #legend { transition: opacity 1.2s ease; }
-      /* The ghost finger: how a touch is made, shown once in a loop where it belongs, while its line is said. An ink fingertip
-         (pointing up, as a finger comes from below), and a ring for what the touch does: swelling while held, a ripple for a tap. */
+      /* How a touch is made, shown as a touch: a soft round light where a fingertip would press, as a phone shows a
+         touch, never a drawn finger. It presses and a ring swells (hold), glides (drag), or presses once with a ripple (tap). */
       #ghost { position: fixed; left: 0; top: 0; width: 60px; height: 110px; pointer-events: none; z-index: 6; opacity: 0; transition: opacity 0.5s ease; will-change: transform; }
       #ghost.on { opacity: 1; }
       body.touching #ghost, body.carding #ghost { opacity: 0 !important; }
       #ghost .mv { position: absolute; inset: 0; opacity: 0; }
-      #ghost .f { position: absolute; left: 0; top: 0; overflow: visible; -webkit-mask-image: linear-gradient(to bottom, #000 45%, transparent 92%); mask-image: linear-gradient(to bottom, #000 45%, transparent 92%); } /* (the finger fades out below, as if from off the page) */
-      #ghost .f path { fill: rgba(244, 239, 228, 0.55); stroke: #3a2c22; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
-      #ghost .f path.nail { fill: none; stroke-width: 1.1; opacity: 0.6; }
-      #ghost .ring { position: absolute; left: 30px; top: 6px; width: 0; height: 0; border: 1.5px solid #3a2c22; border-radius: 50%; transform: translate(-50%, -50%); opacity: 0; }
+      #ghost .dot { position: absolute; left: 30px; top: 6px; width: 30px; height: 30px; margin: -15px 0 0 -15px; border-radius: 50%; background: radial-gradient(circle, rgba(255, 252, 244, 0.85) 0%, rgba(255, 252, 244, 0.55) 60%, rgba(255, 252, 244, 0) 100%); box-shadow: 0 0 0 1px rgba(46, 33, 24, 0.12), 0 2px 10px rgba(46, 33, 24, 0.18); }
+      #ghost .ring { position: absolute; left: 30px; top: 6px; width: 0; height: 0; border: 1.5px solid rgba(255, 252, 244, 0.9); box-shadow: 0 0 0 1px rgba(46, 33, 24, 0.1); border-radius: 50%; transform: translate(-50%, -50%); opacity: 0; }
       #ghost.hold .mv { animation: ghHold 2.6s ease-in-out infinite; }
+      #ghost.hold .dot { animation: ghPress 2.6s ease-in-out infinite; }
       #ghost.hold .ring { animation: ghHoldRing 2.6s ease-out infinite; }
       #ghost.drag .mv { animation: ghDrag 2.6s ease-in-out infinite; }
-      #ghost.drag .ring { width: 16px; height: 16px; opacity: 0.5; }
       #ghost.tap .mv { animation: ghTap 1.8s ease-out infinite; }
+      #ghost.tap .dot { animation: ghTapDot 1.8s ease-out infinite; }
       #ghost.tap .ring { animation: ghTapRing 1.8s ease-out infinite; }
-      @keyframes ghHold { 0% { transform: translateY(18px); opacity: 0; } 15%, 80% { transform: translateY(0); opacity: 0.85; } 95%, 100% { transform: translateY(18px); opacity: 0; } }
+      @keyframes ghPress { 0%, 12% { transform: scale(1.25); } 22%, 80% { transform: scale(0.9); } 100% { transform: scale(1.25); } }
+      @keyframes ghTapDot { 0%, 20% { transform: scale(1.25); } 30% { transform: scale(0.85); } 42%, 100% { transform: scale(1.1); } }
+      @keyframes ghHold { 0% { opacity: 0; } 15%, 80% { opacity: 1; } 95%, 100% { opacity: 0; } }
       @keyframes ghHoldRing { 0%, 16% { width: 0; height: 0; opacity: 0; } 22% { width: 12px; height: 12px; opacity: 0.7; } 78% { width: 64px; height: 64px; opacity: 0.45; } 90%, 100% { width: 70px; height: 70px; opacity: 0; } }
-      @keyframes ghDrag { 0% { transform: translate(-70px, 18px); opacity: 0; } 15% { transform: translate(-70px, 0); opacity: 0.85; } 75% { transform: translate(70px, 0); opacity: 0.85; } 90%, 100% { transform: translate(70px, 18px); opacity: 0; } }
-      @keyframes ghTap { 0% { transform: translateY(18px); opacity: 0; } 22% { transform: translateY(0); opacity: 0.85; } 30% { transform: translateY(4px); } 38% { transform: translateY(0); opacity: 0.85; } 62%, 100% { transform: translateY(16px); opacity: 0; } }
+      @keyframes ghDrag { 0% { transform: translate(-70px, 0); opacity: 0; } 15% { transform: translate(-70px, 0); opacity: 1; } 75% { transform: translate(70px, 0); opacity: 1; } 90%, 100% { transform: translate(70px, 0); opacity: 0; } }
+      @keyframes ghTap { 0% { opacity: 0; } 20%, 45% { opacity: 1; } 65%, 100% { opacity: 0; } }
       @keyframes ghTapRing { 0%, 29% { width: 0; height: 0; opacity: 0; } 32% { width: 10px; height: 10px; opacity: 0.8; } 60%, 100% { width: 56px; height: 56px; opacity: 0; } }
       @media (prefers-reduced-motion: reduce) { #ghost .mv { animation: none !important; opacity: 0.85; transform: none; } #ghost .ring { animation: none !important; width: 18px; height: 18px; opacity: 0.5; } }
       body.hush #event, body.hush #stage-name, body.hush #goal, body.hush #pace, body.hush #legend { opacity: 0.12 !important; transition: opacity 0.6s ease; }
@@ -113,15 +114,17 @@
       body.carding #stage-name, body.carding #goal, body.carding #pace, body.carding #event, body.carding #worlds, body.carding #finish { opacity: 0 !important; pointer-events: none; }
       #begin.gone { opacity: 0; pointer-events: none; }
       #begin p { margin: 0; text-align: center; }
-      #begin .world { font-size: 13px; letter-spacing: 0.2em; opacity: 0.65; }
+      /* (Three sizes only: small for the numeral and the stars, the body for the aim, and the name.) */
+      #begin .world { font-size: 13px; letter-spacing: 0.2em; opacity: 0.5; }
       #begin .name { font-size: 30px; font-weight: normal; margin: -8px 0 0; letter-spacing: 0.01em; text-align: center; }
       #begin .first { font-size: 17px; font-style: italic; max-width: 22em; line-height: 1.45; padding: 0 24px; opacity: 0.8; }
       #begin .hands { font-size: 13px; letter-spacing: 0.04em; max-width: 24em; line-height: 1.7; padding: 0 24px; opacity: 0.7; margin-top: -4px; white-space: pre-line; }
       #begin .second { text-wrap: pretty; font-size: 16px; max-width: 21em; line-height: 1.55; padding: 0 28px; opacity: 0.9; }
-      #begin .marks { font-size: 13px; max-width: 24em; padding: 0 28px; opacity: 0.6; text-wrap: balance; margin-top: 0; }
-      #begin .second .aim { display: block; font-weight: normal; font-size: 19px; line-height: 1.4; margin-bottom: 8px; opacity: 1; text-wrap: balance; }
+      #begin .marks { font-size: 13px; letter-spacing: 0.25em; opacity: 0.45; margin-top: -2px; }
+      #begin .marks:empty { display: none; }
+      #begin .second .aim { display: block; font-weight: normal; font-size: 17px; line-height: 1.45; opacity: 0.85; text-wrap: balance; }
       #begin button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
-      #begin .touch { font-size: 16px; letter-spacing: 0.08em; margin-top: 10px; padding: 12px 34px; border: 1px solid rgba(46, 33, 24, 0.35); border-radius: 999px; }
+      #begin .touch { font-size: 17px; letter-spacing: 0.06em; margin-top: 14px; padding: 12px 38px; border: 1px solid rgba(46, 33, 24, 0.35); border-radius: 999px; }
       #begin .chapter { font-size: 13px; opacity: 0.55; margin-bottom: -4px; }
       #begin .chapter:empty { display: none; }
       #begin .why { font-size: 14px; max-width: 24em; line-height: 1.45; padding: 0 24px; margin: 0; opacity: 0.72; }
@@ -207,7 +210,7 @@
     <div id="pace" class="engraved"></div>
     <div id="event" class="engraved" aria-live="polite"></div>
     <div id="legend" class="engraved"></div>
-    <div id="ghost" aria-hidden="true"><div class="mv"><i class="ring"></i><svg class="f" viewBox="0 0 60 110" width="60" height="110"><path d="M17 104 L17 30 Q17 5 30 5 Q43 5 43 30 L43 104" /><path class="nail" d="M23 24 Q23 12 30 12 Q37 12 37 24" /></svg></div></div>
+    <div id="ghost" aria-hidden="true"><div class="mv"><i class="ring"></i><i class="dot"></i></div></div>
     <p id="again" class="engraved">tap to play again</p>
     <button id="keep">save picture</button>
     <button id="retry">rewind 1 minute</button>
