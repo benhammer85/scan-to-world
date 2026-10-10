@@ -456,6 +456,17 @@ export const VOLCANO = {
    * `hearth` (radians) of the vent, the one warm place (0: anywhere).
    */
   warmLasts: 0,
+  /**
+   * The rogue planet: ground is warm for `warmLasts` seconds after lava last ran beside it (within two steps of the
+   * mesh), not only where it was laid; so life does best in a band along a flow's edge, and dies under the lava. 0: off.
+   */
+  warmNear: 0,
+  /**
+   * Pluto: its slush freezes fast, so a mound is built in short pours, each layer let freeze. Poured on for more
+   * than this many seconds at once, the mound slumps, its top lowered by `slumpBy` a second (0: never).
+   */
+  slumpAfter: 0,
+  slumpBy: 0.03,
   hearth: 0,
   /**
    * Snowball Earth: ice from pole to pole, and the eruptions' gas warming the sky. Each unit of heat
@@ -658,6 +669,8 @@ export class Planet {
   private onBank: Uint8Array | null = null;
   /** Seconds since lava last set into rock at each vertex (for its tubes). */
   readonly laid: Float32Array;
+  /** Seconds since lava last ran at or beside each vertex (see `warmNear`). */
+  readonly nearLaid: Float32Array;
   /** Each place's own moment for breaking out (see `breakout`). */
   private readonly breakPhase: Float32Array;
   /** Whether stones fall at all: off until the player has been shown them. */
@@ -752,6 +765,7 @@ export class Planet {
       for (let v = 0; v < n; v++) if (Math.hypot(p[v * 3] - b.x, p[v * 3 + 1] - b.y, p[v * 3 + 2] - b.z) < b.r) this.onBank[v] = 1;
     }
     this.laid = new Float32Array(n).fill(1e6);
+    this.nearLaid = new Float32Array(n).fill(1e6);
     this.breakPhase = new Float32Array(n);
     for (let v = 0; v < n; v++) { const x = Math.sin(v * 12.9898 + 78.233) * 43758.5453; this.breakPhase[v] = (x - Math.floor(x)) * Math.PI * 2; }
     // Wright Mons's hollow: a great pit, the heat beginning on the ring round it.
@@ -1168,9 +1182,14 @@ export class Planet {
     return Math.hypot(g.x - along * p[v * 3], g.y - along * p[v * 3 + 1], g.z - along * p[v * 3 + 2]);
   }
 
+  /** Seconds poured without a rest (see `slumpAfter`), and rested since. */
+  private pourRun = 0;
+  private pourRest = 0;
+  private slumpSaid = false;
   /** Held like a globe: level, the pressure builds; tipped, it pours, and tipped when full, it bursts. */
   private tipped(dt: number): void {
     const tip = this.tip;
+    if (this.k.slumpAfter > 0) this.slumping(dt);
     // Held shut, nothing pours: the world can be turned and tipped to aim, and the pressure builds.
     if (this.clamped) { this.pouring = tip >= this.k.tipPour; return; }
     // The lava lamp: tipped, the bud lets go (once each time the world is tipped); held level, it grows.
@@ -1200,6 +1219,18 @@ export class Planet {
     // (Most of it a few steps out the way it's tipped: a pour shows its way at once, as from a jug.)
     const v = this.plumeVertex, a = amount * this.scale;
     this.eruptions.push({ vertex: v, flank: this.aimedFlank(v) ?? v, left: a, rate: a / dt });
+  }
+
+  /** Pluto: poured on too long at once, the mound's top slumps, as slush does that can't freeze as fast as it comes. */
+  private slumping(dt: number): void {
+    if (this.pouring) { this.pourRun += dt; this.pourRest = 0; } else { this.pourRest += dt; if (this.pourRest > 1) { this.pourRun = 0; this.slumpSaid = false; } }
+    if (this.pourRun <= this.k.slumpAfter) return;
+    if (!this.slumpSaid) { this.slumpSaid = true; this.tell('The mound slumps: pour in short bursts, and let each freeze'); }
+    const p = this.topo.basePositions, v0 = this.plumeVertex, r = 0.07;
+    for (let v = 0; v < this.rock.length; v++) {
+      const d = Math.hypot(p[v * 3] - p[v0 * 3], p[v * 3 + 1] - p[v0 * 3 + 1], p[v * 3 + 2] - p[v0 * 3 + 2]);
+      if (d < r && this.rock[v] > this.start[v]) this.rock[v] = Math.max(this.start[v], this.rock[v] - this.k.slumpBy * dt * (1 - d / r));
+    }
   }
 
   // ------------------------------------------------------------------ the lava lamp
@@ -1359,6 +1390,18 @@ export class Planet {
     this.skies(dt);
     this.farSide();
     for (let v = 0; v < this.age.length; v++) { if (this.lava[v] < this.k.thin) this.age[v] += dt; this.laid[v] += dt; }
+    if (this.k.warmNear > 0) {
+      const t = this.topo, N = this.nearLaid;
+      for (let v = 0; v < N.length; v++) N[v] += dt;
+      for (let v = 0; v < N.length; v++) {
+        if (this.lava[v] <= this.k.thin) continue;
+        N[v] = 0;
+        for (let k = t.nbrOffsets[v]; k < t.nbrOffsets[v + 1]; k++) {
+          const a = t.nbrList[k]; N[a] = 0;
+          for (let j = t.nbrOffsets[a]; j < t.nbrOffsets[a + 1]; j++) N[t.nbrList[j]] = 0;
+        }
+      }
+    }
     // The slow forces every quarter second, and life the step after, so no one step carries both.
     this.slowIn -= dt;
     const half = this.rock.length >> 1;
@@ -2149,7 +2192,7 @@ export class Planet {
     if (h < 0) return h > this.k.reefDeep && this.k.reef > 0 ? 0.7 : 0; // the shallows, as reef (where reefs grow); the deep holds none
     const soil = this.k.soil + (this.k.ashSoil - this.k.soil) * this.rich[v];
     // (On a rogue planet, only while the ground is warm.)
-    const warm = this.k.warmLasts > 0 ? Math.max(0, Math.min(1, (this.k.warmLasts - this.laid[v]) / (this.k.warmLasts * 0.3))) : 1; // (warm from lava set there; ash falls cold)
+    const since = this.k.warmNear > 0 ? this.nearLaid[v] : this.laid[v], warm = this.k.warmLasts > 0 ? Math.max(0, Math.min(1, (this.k.warmLasts - since) / (this.k.warmLasts * 0.3))) : 1; // (warm from lava set there, or run beside it; ash falls cold)
     return Math.min(1, this.age[v] / soil) * (0.7 + 0.3 * this.rich[v]) * warm;
   }
 

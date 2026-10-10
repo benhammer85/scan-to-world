@@ -476,12 +476,14 @@ describe('life growing up', () => {
 });
 
 describe('a rogue planet', () => {
-  it('keeps life only on ground still warm from lava', () => {
+  it('keeps life only on ground lava has lately run beside', () => {
     const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('rogue').rules);
     pl.stonesFall = false;
-    // Warm ground by the vent, and old cold ground the same: life lands on the one, and lives.
-    for (let v = 0; v < pl.rock.length; v++) if (p[v * 3 + 2] > 0.9) { pl.laid[v] = 30; pl.age[v] = 30; }
-    for (let t = 0; t < 40; t += 1 / 20) { pl.pressure = 0; pl.step(1 / 20); }
+    // Ground by the vent warmed by lava beside it, kept warm a while: life lands there, and lives.
+    for (let t = 0; t < 30; t += 1 / 20) {
+      for (let v = 0; v < pl.rock.length; v++) if (p[v * 3 + 2] > 0.9) { pl.nearLaid[v] = 0; pl.age[v] = Math.max(pl.age[v], 30); }
+      pl.pressure = 0; pl.step(1 / 20);
+    }
     expect(pl.livingLand).toBeGreaterThan(20);
     // Left to cool, it dies back.
     for (let t = 0; t < 200; t += 1 / 20) { pl.pressure = 0; pl.step(1 / 20); }
@@ -590,6 +592,14 @@ describe('Europa', () => {
 });
 
 describe('Venus and Pluto', () => {
+  it('on Pluto, a long pour makes the mound slump; a short one does not', () => {
+    const short = new Planet(topo, nearest(0, 0, 1), 3, worldOf('pluto').rules), long = new Planet(topo, nearest(0, 0, 1), 3, worldOf('pluto').rules);
+    for (const pl of [short, long]) { pl.stonesFall = false; pl.gravity = { x: 0, y: 0, z: -1 }; pl.pressure = 30; }
+    long.tilt = 1; run(long, 8);
+    short.tilt = 1; run(short, 2); short.tilt = 0; run(short, 2); short.tilt = 1; run(short, 2); short.tilt = 0; run(short, 2);
+    expect(long.log.some((e) => /The mound slumps/.test(e.text))).toBe(true);
+    expect(short.log.some((e) => /The mound slumps/.test(e.text))).toBe(false);
+  });
   it('counts a dome once the ground at the vent stands tall enough, and not another on top of it', () => {
     const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('venus').rules);
     run(pl, 1);

@@ -15,7 +15,7 @@
  *       at the height of the tide throws a great ring of sulphur. Raise great plumes, each on
  *       fresh ground: the question here is when, not only where.
  *   VI  Enceladus: a small ice moon of a ringed giant, its plumes feeding the giant's ring, which
- *       thins away unless it's fed. Tip each burst towards the giant: the question is which way.
+ *       thins away unless it's fed. Turn each burst towards the giant: the question is which way.
  *   VII A lumpy asteroid, not yet pulled round: fill its hollows with lava until it's a little
  *       round world, as Vesta began to be. The question is where not to put it.
  *   VIII A world spinning so fast it bulges, as Haumea does: lava is flung to its equator, and the
@@ -152,7 +152,7 @@ export const WORLDS: World[] = [
     title: 'The Moon',
     first: 'Old and airless, with almost no heat left.',
     why: "These are the Moon's real big craters. The dark patches you can see from Earth are old lava that filled them.",
-    second: 'Turn a basin uppermost and tip gently, and it fills dark.',
+    second: 'Turn a crater just below the volcano and pour, and it fills.',
     rules: {
       thin: 0.0015, // (runny, as the Moon's flood basalts were: its aim is to cover ground, and stiff lava covers less)
       g: 0.17, // (the Moon's gravity, Earth's being 1)
@@ -180,7 +180,7 @@ export const WORLDS: World[] = [
     title: 'An Ice Moon',
     first: 'A shell of ice over an ocean.',
     why: 'On icy moons, water is the lava: it comes up from below and freezes into fresh white ice.',
-    second: 'Tip the world to pour, and the old grey ice turns new.',
+    second: 'Pour, and grow one sheet of new white ice outward from its edge.',
     rules: {
       thin: 0.0015, // (runny, as water is: its aim is to cover ground, and stiff lava covers less)
       g: 0.15, // (an icy moon, as Ganymede's gravity, Earth's being 1)
@@ -233,11 +233,11 @@ export const WORLDS: World[] = [
     title: 'A Rogue Planet',
     first: 'A planet with no sun. Only volcanic heat keeps it warm.',
     why: 'Some planets drift through space with no star, so the only heat they have comes from inside.',
-    second: 'Pour, turn a little, and pour beside it, to keep warm ground alive.',
+    second: 'Pour beside the green, never on it, to keep it warm and alive.',
     rules: {
       terrain: 'rogue', basins: 0, craters: 14, floor: 0.05, rough: 0.02,
       waves: 0, rain: 0, sink: 0, swell: 0,
-      origin: 1e9, arrives: 0.5, hearth: 1.0, warmLasts: 160, reef: 0, wishes: false, // (life lands only near the vent, and lives only while the rock is warm)
+      origin: 1e9, arrives: 4, spread: 0.3, grow: 0.15, hearth: 1.0, warmLasts: 45, warmNear: 1, reef: 0, wishes: false, // (life lands only near the vent, and lives only on ground lava has lately run beside: a band along each flow's edge)
       talus: 2.2, flow: 10, channel: 2, coolLand: 0.25,
       drift: 0, rises: 0.035, heat: 520, rising: 1.2, steady: true,
       impactEvery: [90, 140], impactWarning: 14, impactHeat: 6,
@@ -248,7 +248,7 @@ export const WORLDS: World[] = [
       landInk: '#3d4250', landInkHigh: '#262a35', pencil: '#a3a8b4', seaInk: '#5b82a3',
     },
     goal: 'hearth',
-    hearth: 1850,
+    hearth: 1200,
   },
   {
     id: 'hollow',
@@ -282,7 +282,7 @@ export const WORLDS: World[] = [
     title: 'An Ocean World',
     first: 'All ocean, with a volcano on the sea floor.',
     why: 'The sea floor slowly slides over a hot spot, so the volcano leaves a line of islands behind it, like Hawaii.',
-    second: 'Tip the world as the fire moves, and islands rise along the line.',
+    second: 'Pour as the volcano moves, and islands rise along the line.',
     rules: { drift: 0.0125, rises: 0, heat: 600, rising: 1.4, steady: true, reseed: 15, floor: -0.22, sink: 0.0001, impactEvery: [60, 100], atolls: true }, // (islands sinking slowly, so the chain is built steadily, not raced)
     palette: {
       paper: '#ecdfc2', basalt: '#9a8a76', ash: '#b3ada2', lava: '#b8563c', deepLava: '#8f3b28',
@@ -347,7 +347,7 @@ export const WORLDS: World[] = [
     title: 'A Young Earth',
     first: 'A young, hot Earth with no moon yet.',
     why: 'Rock thrown up fast enough goes into orbit instead of falling back. Our Moon probably formed from rock knocked off the young Earth.',
-    second: 'Let the pressure build, then tip, and a moon begins to gather.',
+    second: 'Build a tall volcano, then erupt, and a moon begins to gather.',
     rules: {
       terrain: 'young', basins: 0, craters: 25, floor: 0.05, rough: 0.02,
       waves: 0, rain: 0, sink: 0, swell: 0, life: false,
@@ -532,7 +532,7 @@ export const WORLDS: World[] = [
     title: 'Enceladus',
     first: 'A small icy moon of Saturn that feeds one of its rings.',
     why: "Geysers on Enceladus spray ice into space, and that ice feeds one of Saturn's rings.",
-    second: 'Tip toward the giant, and the ring grows.',
+    second: 'Turn the volcano towards the giant and erupt, and the ring grows.',
     rules: {
       g: 0.011, // (Enceladus's gravity, Earth's being 1)
       terrain: 'ice', basins: 0, craters: 30, floor: 0.05, rough: 0.012,
@@ -559,7 +559,7 @@ export const WORLDS: World[] = [
     title: 'Triton',
     first: "Neptune's largest moon: pink nitrogen ice in faint sunlight.",
     why: "Triton's geysers rise about 8 km high, and thin winds blow their dark dust into long streaks.",
-    second: 'Hold until the sun is over the vent, and lift: a geyser.',
+    second: 'Erupt with the volcano in sunlight: a geyser.',
     rules: {
       g: 0.08, // (Triton's gravity, Earth's being 1)
       terrain: 'triton', basins: 0, craters: 8, floor: 0.05, rough: 0.02,
@@ -717,10 +717,10 @@ export const WORLDS: World[] = [
     second: 'Pour, and a ridge rises all the way round its middle.',
     rules: {
       g: 0.04, // (Haumea's gravity, Earth's being 1)
-      terrain: 'spin', basins: 0, craters: 25, floor: 0.05, rough: 0.015, bulge: 0.08, spin: 2.5, ridge: 0.034,
+      terrain: 'spin', basins: 0, craters: 25, floor: 0.05, rough: 0.015, bulge: 0.08, spin: 2.5, ridge: 0.026,
       waves: 0, rain: 0, sink: 0, swell: 0, life: false,
       flow: 10, channel: 2, coolLand: 0.12,
-      drift: 0, rises: 0.04, heat: 400, rising: 1.2, steady: true,
+      drift: 0, rises: 0.04, heat: 480, rising: 1.8, steady: true,
       impactEvery: [55, 95], impactWarning: 14, impactHeat: 5,
     },
     palette: {
@@ -764,7 +764,7 @@ export const WORLDS: World[] = [
     title: 'Pluto',
     first: 'Reddish ice at the edge of the solar system.',
     why: 'Wright Mons on Pluto is a ring of icy mounds about 150 km wide, round a deep hollow, probably built by slush welling up from below.',
-    second: 'Raise each mound on the dotted ring round the hollow, each apart from the last.',
+    second: 'Raise each mound on the dotted ring in short pours, letting each freeze.',
     rules: {
       g: 0.06, // (Pluto's gravity, Earth's being 1)
       terrain: 'ice', basins: 0, craters: 10, floor: 0.08, rough: 0.015,
@@ -772,6 +772,7 @@ export const WORLDS: World[] = [
       talus: 1.6, flow: 4, channel: 1, thin: 0.01, coolLand: 1.5, grainPull: 0,
       drift: 0, rises: 0.035, heat: 80, rising: 1.0, steady: true,
       dome: 0.1, domeRing: 0.45, domeBand: 0.12, plumesApart: 0.3, ashShare: 0.1,
+      slumpAfter: 3, slumpBy: 0.03, // (slush freezes fast: short pours, each let freeze, or the mound slumps)
       impactEvery: [90, 140], impactWarning: 14, impactHeat: 6,
     },
     palette: {
