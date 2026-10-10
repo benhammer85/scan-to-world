@@ -149,7 +149,7 @@ export const WORLDS: World[] = [
     numeral: 'II',
     title: 'The Moon',
     first: 'Old and airless, with almost no heat left.',
-    why: "These are the Moon's real basins. The dark patches you can see from Earth are old lava that filled them.",
+    why: "These are the Moon's real big craters. The dark patches you can see from Earth are old lava that filled them.",
     second: 'Turn a basin uppermost and tip gently, and it fills dark.',
     rules: {
       thin: 0.0015, // (runny, as the Moon's flood basalts were: its aim is to cover ground, and stiff lava covers less)
