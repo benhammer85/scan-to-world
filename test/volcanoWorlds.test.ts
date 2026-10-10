@@ -18,7 +18,7 @@ const run = (pl: Planet, seconds: number) => { for (let t = 0; t < seconds; t +=
 
 describe('the worlds', () => {
   it('come one after another, and each has its own aim', () => {
-    expect(WORLDS.map((w) => w.id)).toEqual(['mars', 'moon', 'ice', 'asteroid', 'rogue', 'first', 'young', 'archean', 'snowball', 'ocean', 'lengai', 'ijen', 'tonga', 'io', 'europa', 'enceladus', 'triton', 'tumble', 'mercury', 'magma', 'dust', 'spin', 'deep', 'lamp', 'hollow', 'venus', 'pluto', 'grindavik']);
+    expect(WORLDS.map((w) => w.id)).toEqual(['mars', 'moon', 'ice', 'asteroid', 'rogue', 'first', 'young', 'archean', 'snowball', 'ocean', 'lengai', 'ijen', 'tonga', 'io', 'europa', 'enceladus', 'triton', 'tumble', 'mercury', 'magma', 'dust', 'spin', 'deep', 'lamp', 'hollow', 'venus', 'pluto', 'twofires', 'grindavik']);
     expect(worldOf('moon').goal).toBe('basins');
     expect(worldOf('nowhere').id).toBe('mars');
     expect(nextWorld(worldOf('mars'))!.id).toBe('moon');
@@ -47,7 +47,8 @@ describe('the worlds', () => {
     expect(nextWorld(worldOf('lamp'))!.id).toBe('hollow');
     expect(nextWorld(worldOf('hollow'))!.id).toBe('venus');
     expect(nextWorld(worldOf('venus'))!.id).toBe('pluto');
-    expect(nextWorld(worldOf('pluto'))!.id).toBe('grindavik');
+    expect(nextWorld(worldOf('pluto'))!.id).toBe('twofires');
+    expect(nextWorld(worldOf('twofires'))!.id).toBe('grindavik');
     expect(nextWorld(worldOf('grindavik'))).toBe(null);
   });
 });
@@ -601,6 +602,27 @@ describe('Venus and Pluto', () => {
     pl.rock[pl.plumeVertex] += 0.3;
     run(pl, 1);
     expect(pl.plumes.length).toBe(0);
+  });
+});
+
+describe('The Two Fires of Io', () => {
+  it('pushes earlier colour outward into rings, newest in the middle', () => {
+    const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('twofires').rules);
+    const c = pl.marbleAt!;
+    expect(c).not.toBeNull();
+    expect(pl.marbleRings).toBe(0);
+    const drop = (pl as unknown as { marbleDrop(at: typeof c, kind: number, area: number): void }).marbleDrop.bind(pl);
+    for (let i = 0; i < 6; i++) drop(c, i % 2 ? 2 : 1, 0.004);
+    expect(pl.marbleKindAt(c)).toBe(2);
+    expect(pl.marbleRings).toBe(6);
+    // Outside the pool there's no colour.
+    expect(pl.marbleKindAt({ x: -c.x, y: -c.y, z: -c.z })).toBe(0);
+  });
+  it('a pour inside the pool drops colour, not running lava', () => {
+    const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('twofires').rules);
+    pl.pressure = 20; pl.erupt();
+    expect(pl.drops.lava).toBe(1);
+    expect(pl.marbleKindAt(pl.marbleAt!)).toBe(1);
   });
 });
 

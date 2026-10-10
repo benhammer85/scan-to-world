@@ -42,6 +42,7 @@
  *   Hunga Tonga     send the waves, and more: every one needs the cone built again.
  *   Mercury         raise the far side, and the near side as little: bursts heap ash here too.
  *   Venus, Pluto    raise the domes, and one as tall as can be: time on one dome is time not on the next.
+ *   Io's two fires  ring the pool, with as many drops of colour as can be.
  *   Grindavík       keep the town, with as little earth moved as can be.
  *   A lava world    make rock snow, and pile it deep in one place: snow spreads along all the edge
  *                   of night, and turning the world to pile it costs the molten pool.
@@ -86,6 +87,7 @@ export function secondWords(goal: World['goal'], value: number): string {
     case 'chaos': return `${value}% of the ice broken`;
     case 'streaks': return `${value}% of the ice streaked`;
     case 'domes': return `the tallest ${value} km high`;
+    case 'marble': return `${value} drops of colour`;
     case 'town': return `${value} ${value === 1 ? 'tap' : 'taps'} of earth to spare`;
   }
 }
@@ -180,6 +182,9 @@ export function measureSecond(world: World, pl: Planet, topo: Topology, islands:
     let most = 0;
     for (let v = 0; v < n; v++) most = Math.max(most, pl.rock[v] - pl.start[v]);
     value = Math.round(most * 10 * 10) / 10;
+  } else if (world.goal === 'marble') {
+    // As many drops as went into it, both colours: a pool marbled finely.
+    value = pl.drops.lava + pl.drops.sulphur;
   } else if (world.goal === 'town') {
     // Earth to spare: the town kept with fewer walls.
     value = pl.wallsLeft;
