@@ -9,8 +9,8 @@
  * Heat and time pull against each other (waiting for a big eruption saves heat but costs time), which is
  * the choice the second and third stars ask you to make.
  *
- * The shares and minutes were set by letting the skilled bot play every world with one hand (bots/; and,
- * where it aims by tilting, as one hand can't, a bot that aims by turning the world), then asking
+ * The shares and minutes were set by letting the skilled bot play every world with one hand, aiming by
+ * turning the world so the place it wants is down the screen from the volcano (bots/), then asking
  * a little less of the heat (about six tenths of what it kept) and a little more of the time (about
  * a third more than it took, in whole minutes), so a calm, careful game earns them.
  */
@@ -21,30 +21,30 @@ export type Marks = [boolean, boolean, boolean];
 /** For each world: the share of heat to have left (in hundredths: a half, third, quarter, fifth or tenth), and the minutes to be done within. */
 export const MARK_AT: Record<WorldId, { heat: number; minutes: number }> = {
   first: { heat: 50, minutes: 4 },
-  ocean: { heat: 25, minutes: 6 },
-  moon: { heat: 20, minutes: 4 },
-  mars: { heat: 25, minutes: 3 },
-  ice: { heat: 10, minutes: 6 },
-  asteroid: { heat: 10, minutes: 7 },
+  ocean: { heat: 10, minutes: 7 },
+  moon: { heat: 33, minutes: 3 },
+  mars: { heat: 25, minutes: 4 },
+  ice: { heat: 25, minutes: 3 },
+  asteroid: { heat: 25, minutes: 5 },
   young: { heat: 25, minutes: 4 },
   rogue: { heat: 33, minutes: 4 },
   snowball: { heat: 25, minutes: 3 },
-  archean: { heat: 10, minutes: 6 },
-  lengai: { heat: 20, minutes: 5 },
-  ijen: { heat: 25, minutes: 4 },
-  tonga: { heat: 33, minutes: 3 },
+  archean: { heat: 10, minutes: 7 },
+  lengai: { heat: 10, minutes: 5 },
+  ijen: { heat: 10, minutes: 5 },
+  tonga: { heat: 33, minutes: 4 },
   io: { heat: 25, minutes: 4 },
   europa: { heat: 20, minutes: 4 },
   enceladus: { heat: 25, minutes: 4 },
   triton: { heat: 10, minutes: 5 },
   tumble: { heat: 33, minutes: 2 },
   mercury: { heat: 25, minutes: 4 },
-  magma: { heat: 20, minutes: 4 },
+  magma: { heat: 20, minutes: 5 },
   dust: { heat: 25, minutes: 4 },
-  spin: { heat: 10, minutes: 7 },
+  spin: { heat: 10, minutes: 6 },
   deep: { heat: 33, minutes: 2 },
   lamp: { heat: 33, minutes: 4 },
-  hollow: { heat: 33, minutes: 3 },
+  hollow: { heat: 33, minutes: 4 },
   venus: { heat: 33, minutes: 3 },
   pluto: { heat: 50, minutes: 2 },
   grindavik: { heat: 50, minutes: 4 },

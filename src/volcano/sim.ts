@@ -2254,6 +2254,8 @@ export class Planet {
     if (this.over || !this.stonesFall || this.k.impactEvery[1] <= 0) return null;
     return this.impactIn / Math.max(0.05, this.heatLeft) + this.k.impactWarning;
   }
+  /** Io's two lavas: when the blue next wells up, in seconds (null on other worlds). */
+  get blueDue(): number | null { return this.marble && !this.over && this.reserve > 0.01 ? Math.max(0, this.sulphurIn) : null; }
   /** When the next dust storm comes, in seconds (0 while one blows; null: none on this world). */
   get stormDue(): number | null {
     if (this.k.stormEvery[1] <= 0) return null;
