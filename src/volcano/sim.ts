@@ -341,6 +341,14 @@ export const VOLCANO = {
   impactMelt: 0,
   /** Stones fall within this far of the vent (radians; 0: half near it, the rest anywhere), so each can be reached in time. */
   impactNear: 0,
+  /**
+   * Earth's first water: this share of the stones are icy comets (pale), the rest rock. A comet brings no heat: landing on
+   * the volcano it chills it, taking `iceCool` of the heat; landing on lava laid within `iceWarmFor` seconds, it melts
+   * into a pond (counted in `water`); on cold ground it only freezes. 0: all rock.
+   */
+  icy: 0,
+  iceCool: 20,
+  iceWarmFor: 30,
   /** The orange Earth: life in the shallows breathes out this much oxygen a second, at full strength over a planet of the drawn detail's worth of shallows. 0: none. */
   breathe: 0,
   /**
@@ -500,7 +508,7 @@ export interface Blob { x: number; y: number; z: number; area: number; heat: num
 /** A blob's radius, in radians across the world, from how much of it there is. */
 export const blobRadius = (area: number): number => 0.035 * Math.sqrt(area);
 
-export interface Impact { vertex: number; in: number }
+export interface Impact { vertex: number; in: number; icy?: boolean }
 
 export class Planet {
   /** Rock height at each vertex, relative to the sea. */
@@ -649,6 +657,8 @@ export class Planet {
   private readonly breakPhase: Float32Array;
   /** Whether stones fall at all: off until the player has been shown them. */
   stonesFall = true;
+  /** Earth's first water: icy comets melted into ponds on warm lava. */
+  water = 0;
   seconds = 0;
 
   private eruptions: Eruption[] = [];
@@ -1479,8 +1489,11 @@ export class Planet {
   }
 
   /** A stone from the sky, at a vertex: a crater with a raised rim, and death round it. Its heat joins yours. */
-  strike(at: number): void {
-    const p = this.topo.basePositions, r = this.k.crater;
+  strike(at: number, icy = false): void {
+    const p = this.topo.basePositions, r = this.k.crater * (icy ? 0.75 : 1);
+    // (An icy comet: is the ground it strikes warm with lava laid lately? Looked at before its crater changes it.)
+    let warm = false;
+    if (icy) for (let v = 0; v < this.rock.length && !warm; v++) if (Math.hypot(p[v * 3] - p[at * 3], p[v * 3 + 1] - p[at * 3 + 1], p[v * 3 + 2] - p[at * 3 + 2]) < r * 1.3 && (this.lava[v] > this.k.thin || this.age[v] < this.k.iceWarmFor)) warm = true;
     this.craters.push({ x: p[at * 3], y: p[at * 3 + 1], z: p[at * 3 + 2], r, born: this.seconds });
     for (let v = 0; v < this.rock.length; v++) {
       const d = Math.hypot(p[v * 3] - p[at * 3], p[v * 3 + 1] - p[at * 3 + 1], p[v * 3 + 2] - p[at * 3 + 2]);
@@ -1491,6 +1504,15 @@ export class Planet {
       this.life[v] *= Math.min(1, k / 2.5);
       if (k < 1.5) this.age[v] = 0;
       if (this.k.impactMelt > 0 && k < 1) this.lava[v] += this.k.impactMelt * (1 - k * k);
+      // (Melted on warm lava, it pools: its crater's floor below the sea, a pond of the first water.)
+      if (icy && warm && k < 0.85) { this.rock[v] = Math.min(this.rock[v], -0.012 * (1 - k)); this.lava[v] = 0; }
+    }
+    if (icy) {
+      this.tally.stones++;
+      if (this.warmthAt(at) > 0.5) { const cool = Math.min(this.reserve, this.k.iceCool); this.reserve -= cool; this.tell('An icy comet hit the volcano and cooled it'); }
+      else if (warm) { this.water++; this.tell(`Ice melted on warm lava: water ${this.water}`); }
+      else this.tell('The ice froze on cold ground: pour lava where the next one lands');
+      return;
     }
     // Its heat joins yours, and far more of it if the plume is there to take it in.
     const caught = this.warmthAt(at);
@@ -2253,7 +2275,7 @@ export class Planet {
   private stones(dt: number): void {
     if (this.impact) {
       this.impact.in -= dt;
-      if (this.impact.in <= 0) { this.strike(this.impact.vertex); this.impact = null; this.tell('The stone falls'); }
+      if (this.impact.in <= 0) { const icy = !!this.impact.icy; this.strike(this.impact.vertex, icy); this.impact = null; if (!icy) this.tell('The stone falls'); }
       return;
     }
     if (this.over || !this.stonesFall || this.k.impactEvery[1] <= 0) return;
@@ -2266,8 +2288,8 @@ export class Planet {
       const v = Math.floor(this.rand() * this.rock.length);
       const d = Math.hypot(p[v * 3] - this.plume.x, p[v * 3 + 1] - this.plume.y, p[v * 3 + 2] - this.plume.z);
       if (d < 0.08) continue; // not on the vent itself
-      if (this.k.impactNear > 0) { if (d > 0.2 && d < this.k.impactNear) { this.impact = { vertex: v, in: this.k.impactWarning }; this.tell('A stone is coming'); return; } continue; }
-      if (this.rand() < 0.5 || d < 0.5) { this.impact = { vertex: v, in: this.k.impactWarning }; this.tell('A stone is coming'); return; }
+      if (this.k.impactNear > 0) { if (d > 0.2 && d < this.k.impactNear) { this.impact = { vertex: v, in: this.k.impactWarning, icy: this.rand() < this.k.icy }; this.tell(this.impact.icy ? 'An icy comet is coming' : 'A stone is coming'); return; } continue; }
+      if (this.rand() < 0.5 || d < 0.5) { this.impact = { vertex: v, in: this.k.impactWarning, icy: this.rand() < this.k.icy }; this.tell(this.impact.icy ? 'An icy comet is coming' : 'A stone is coming'); return; }
     }
   }
 

@@ -21,6 +21,7 @@ export type Marks = [boolean, boolean, boolean];
 /** For each world: the share of heat to have left (in hundredths: a half, third, quarter, fifth or tenth), and the minutes to be done within. */
 export const MARK_AT: Record<WorldId, { heat: number; minutes: number }> = {
   first: { heat: 50, minutes: 4 },
+  comets: { heat: 20, minutes: 5 },
   ocean: { heat: 10, minutes: 7 },
   moon: { heat: 33, minutes: 3 },
   mars: { heat: 25, minutes: 4 },
@@ -47,12 +48,11 @@ export const MARK_AT: Record<WorldId, { heat: number; minutes: number }> = {
   hollow: { heat: 33, minutes: 4 },
   venus: { heat: 33, minutes: 3 },
   pluto: { heat: 50, minutes: 2 },
-  grindavik: { heat: 50, minutes: 4 },
   twofires: { heat: 25, minutes: 4 },
 };
 
 /** Worlds whose first mark is every house standing, not heat left (the fire there runs its course whatever you do). */
-const HOUSES: WorldId[] = ['grindavik'];
+const HOUSES: WorldId[] = []; // (Grindavík, the one world that was a town: taken out, as the game never shows Earth itself)
 
 const SHARE: [number, string][] = [[50, 'half'], [33, 'a third'], [25, 'a quarter'], [20, 'a fifth'], [10, 'a tenth']];
 const shareWords = (heat: number) => { const w = SHARE.find(([h]) => h <= heat)?.[1] ?? 'some'; return w === 'half' ? 'keep half the heat' : `keep ${w} of the heat`; };

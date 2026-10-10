@@ -19,7 +19,7 @@ const run = (pl: Planet, seconds: number) => { for (let t = 0; t < seconds; t +=
 
 describe('the worlds', () => {
   it('come one after another, and each has its own aim', () => {
-    expect(WORLDS.map((w) => w.id)).toEqual(['mars', 'moon', 'ice', 'asteroid', 'rogue', 'first', 'young', 'archean', 'snowball', 'ocean', 'lengai', 'ijen', 'tonga', 'io', 'europa', 'enceladus', 'triton', 'tumble', 'mercury', 'magma', 'dust', 'spin', 'deep', 'lamp', 'hollow', 'venus', 'pluto', 'twofires', 'grindavik']);
+    expect(WORLDS.map((w) => w.id)).toEqual(['mars', 'moon', 'ice', 'asteroid', 'rogue', 'first', 'comets', 'young', 'archean', 'snowball', 'ocean', 'lengai', 'ijen', 'tonga', 'io', 'europa', 'enceladus', 'triton', 'tumble', 'mercury', 'magma', 'dust', 'spin', 'deep', 'lamp', 'hollow', 'venus', 'pluto', 'twofires']);
     expect(worldOf('moon').goal).toBe('basins');
     expect(worldOf('nowhere').id).toBe('mars');
     expect(nextWorld(worldOf('mars'))!.id).toBe('moon');
@@ -27,7 +27,8 @@ describe('the worlds', () => {
     expect(nextWorld(worldOf('ice'))!.id).toBe('asteroid');
     expect(nextWorld(worldOf('asteroid'))!.id).toBe('rogue');
     expect(nextWorld(worldOf('rogue'))!.id).toBe('first');
-    expect(nextWorld(worldOf('first'))!.id).toBe('young');
+    expect(nextWorld(worldOf('first'))!.id).toBe('comets');
+    expect(nextWorld(worldOf('comets'))!.id).toBe('young');
     expect(nextWorld(worldOf('young'))!.id).toBe('archean');
     expect(nextWorld(worldOf('archean'))!.id).toBe('snowball');
     expect(nextWorld(worldOf('snowball'))!.id).toBe('ocean');
@@ -49,8 +50,7 @@ describe('the worlds', () => {
     expect(nextWorld(worldOf('hollow'))!.id).toBe('venus');
     expect(nextWorld(worldOf('venus'))!.id).toBe('pluto');
     expect(nextWorld(worldOf('pluto'))!.id).toBe('twofires');
-    expect(nextWorld(worldOf('twofires'))!.id).toBe('grindavik');
-    expect(nextWorld(worldOf('grindavik'))).toBe(null);
+    expect(nextWorld(worldOf('twofires'))).toBe(null);
   });
 });
 
@@ -606,6 +606,30 @@ describe('Venus and Pluto', () => {
   });
 });
 
+describe("Earth's first water", () => {
+  it('melts an icy comet on warm lava into a pond, chills the volcano with one, and freezes one on cold ground', () => {
+    const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('comets').rules);
+    const p = topo.basePositions, far = nearest(0.6, 0, 0.8);
+    // On cold ground: frozen, no water.
+    pl.strike(far, true);
+    expect(pl.water).toBe(0);
+    // On warm lava: melted, a pond below the sea.
+    for (let v = 0; v < pl.rock.length; v++) if (Math.hypot(p[v * 3] - p[far * 3], p[v * 3 + 1] - p[far * 3 + 1], p[v * 3 + 2] - p[far * 3 + 2]) < 0.15) pl.age[v] = 1;
+    pl.strike(far, true);
+    expect(pl.water).toBe(1);
+    expect(pl.rock[far]).toBeLessThan(0);
+    // On the volcano: it cools it.
+    const before = pl.reserve;
+    pl.strike(pl.plumeVertex, true);
+    expect(pl.reserve).toBeLessThan(before);
+    expect(pl.water).toBe(1);
+    // A rocky stone still brings heat.
+    const r0 = pl.reserve;
+    pl.strike(far, false);
+    expect(pl.reserve).toBeGreaterThan(r0);
+  });
+});
+
 describe("Io's Two Lavas", () => {
   it('pours lava where a finger is held, pushing what was there outward, newest in the middle', () => {
     const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('twofires').rules);
@@ -647,25 +671,6 @@ describe("Io's Two Lavas", () => {
     expect(rings).toBeGreaterThan(0.2);
     for (let i = 0; i < 6; i++) m.stir(-R, (i / 5 - 0.5) * R * 1.4, R, (i / 5 - 0.5) * R * 1.4, R * 0.16, 0);
     expect(pl.marbled).toBeGreaterThan(rings);
-  });
-});
-
-describe('Grindavík', () => {
-  it('raises a wall where tapped, runs it on from a tap nearby, and spends earth on each', () => {
-    const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('grindavik').rules);
-    expect(pl.houses.length).toBeGreaterThan(10);
-    expect(pl.housesKept).toBe(pl.houses.length);
-    const left = pl.wallsLeft, q = pl.plume, c = pl.townAt!;
-    const mid = { x: (q.x + c.x) / 2, y: (q.y + c.y) / 2, z: (q.z + c.z) / 2 };
-    expect(pl.raiseWall(mid)).toBe(true);
-    let raised = 0;
-    for (let v = 0; v < pl.rock.length; v++) raised = Math.max(raised, pl.rock[v] - pl.start[v]);
-    expect(raised).toBeGreaterThan(pl.k.wallHeight * 0.3); // (on this coarse test mesh, no vertex lies right on the wall's line)
-    expect(pl.wallsLeft).toBe(left - 1);
-    // Not on the town itself.
-    expect(pl.raiseWall(c)).toBe(false);
-    pl.wallsLeft = 0;
-    expect(pl.raiseWall(q)).toBe(false);
   });
 });
 
