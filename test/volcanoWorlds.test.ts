@@ -856,5 +856,9 @@ describe('the chapters', () => {
   it('hold every world once, in the order they come', () => {
     expect(CHAPTERS.flatMap((c) => c.worlds)).toEqual(WORLDS.map((w) => w.id));
     expect(chapterOf('mercury').title).toBe('Pressure');
+    // Earth's one world, in two: its past, and its future, the ages going on from one chapter into the next.
+    expect(chapterOf('ocean').title).toBe('Earth\'s Past');
+    expect(chapterOf('atolls').title).toBe('Earth\'s Future');
+    expect(chapterOf('giant').numeral).toBe('III');
   });
 });

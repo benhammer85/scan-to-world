@@ -1,6 +1,7 @@
 /**
- * Your Earth: once the red giant is done, the one world of Chapter II told through its ages, each as you left it.
- * Each age's chart keeps a small round picture of the world and a line of what was made (see save.ts's pages);
+ * Your Earth: once the red giant is done, the one world of Chapters II and III told through its ages, each as you left it.
+ * Each age's chart keeps a small round picture of the world and a line of what was made (see save.ts's pages,
+ * and its story pages, kept apart so an age is never lost);
  * here they stand in a column, oldest first, each with when it was. An age not yet played is an empty ring.
  */
 import type { Page } from './save';
@@ -18,7 +19,7 @@ export const STORY: [WorldId, string][] = [
   ['giant', 'Five billion years from now'],
 ];
 
-/** The latest page kept for each age (and `now`, the age just finished, which may not be kept yet). */
+/** The latest page kept for each age, from pages oldest first (and `now`, the age just finished, which may not be kept yet). */
 export function storyOf(all: Page[], now?: Page): Map<string, Page> {
   const out = new Map<string, Page>();
   for (const p of all) out.set(p.world, p);

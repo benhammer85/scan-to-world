@@ -902,19 +902,21 @@ export const WORLDS: World[] = [
 ];
 
 /**
- * The worlds in seven chapters, each teaching one thing (see the README): pouring and turning, ending on the
- * hollow world, where pouring too fast sets you back; one world through its ages (ages.ts); Earth's strangest
+ * The worlds in eight chapters, each teaching one thing (see the README): pouring and turning, ending on the
+ * hollow world, where pouring too fast sets you back; one world through its ages (ages.ts), in two: Earth's
+ * past, from the first rubble to the ocean world, and its future, from the atolls to the red giant; Earth's strangest
  * real volcanoes; bursts, each world's its own way; placing and steering; slow fires, stiff lava and ice heaped
  * into domes and mounds; and last, two extras that play differently: the lava lamp and Io's Two Lavas.
  */
 export const CHAPTERS: { numeral: string; title: string; worlds: WorldId[] }[] = [
   { numeral: 'I', title: 'Our Neighbours', worlds: ['mars', 'moon', 'ice', 'asteroid', 'rogue', 'hollow'] },
-  { numeral: 'II', title: 'Earth Through Time', worlds: ['first', 'comets', 'young', 'archean', 'snowball', 'ocean', 'atolls', 'drying', 'giant'] },
-  { numeral: 'III', title: 'Unusual Volcanoes', worlds: ['lengai', 'ijen', 'tonga'] },
-  { numeral: 'IV', title: 'Pressure', worlds: ['io', 'europa', 'enceladus', 'triton', 'tumble', 'mercury'] },
-  { numeral: 'V', title: 'Other Worlds', worlds: ['magma', 'dust', 'deep', 'spin'] },
-  { numeral: 'VI', title: 'Slow Lava', worlds: ['venus', 'pluto'] },
-  { numeral: 'VII', title: 'Extras', worlds: ['lamp', 'twofires'] },
+  { numeral: 'II', title: 'Earth\'s Past', worlds: ['first', 'comets', 'young', 'archean', 'snowball', 'ocean'] },
+  { numeral: 'III', title: 'Earth\'s Future', worlds: ['atolls', 'drying', 'giant'] },
+  { numeral: 'IV', title: 'Unusual Volcanoes', worlds: ['lengai', 'ijen', 'tonga'] },
+  { numeral: 'V', title: 'Pressure', worlds: ['io', 'europa', 'enceladus', 'triton', 'tumble', 'mercury'] },
+  { numeral: 'VI', title: 'Other Worlds', worlds: ['magma', 'dust', 'deep', 'spin'] },
+  { numeral: 'VII', title: 'Slow Lava', worlds: ['venus', 'pluto'] },
+  { numeral: 'VIII', title: 'Extras', worlds: ['lamp', 'twofires'] },
 ];
 
 /** The chapter a world is in. */

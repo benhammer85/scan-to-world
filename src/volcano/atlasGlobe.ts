@@ -44,18 +44,20 @@ interface Figure { name: string; src: string; w: number; h: number; stars: [numb
 const FIGURES: Record<string, Figure> = {
   // I · Our neighbours: the Great Bear, its worlds on the Dipper (η, ζ, ε, δ, α).
   I: { name: 'Ursa Major', src: ursa, w: 820, h: 672, stars: [[58, 93], [178, 50], [233, 93], [305, 140], [476, 173], [435, 255]], ra: 11.2, dec: 52, span: 60 },
-  // II · One world, through time: the Hydra, the long water-serpent, tail to head (π, γ, β, ν, μ, θ, α, ζ, ε).
-  II: { name: 'Hydra', src: hydra, w: 820, h: 269, stars: [[60, 40], [117, 50], [190, 150], [270, 213], [340, 180], [412, 133], [495, 150], [580, 138], [712, 38]], ra: 10.6, dec: -14, span: 100 },
-  // III · Strange fires: the Dragon, curled round the pole: tail, coil, head.
-  III: { name: 'Draco', src: draco, w: 677, h: 818, stars: [[80, 710], [182, 262], [293, 80]], ra: 16.2, dec: 66, span: 36 },
-  // IV · Pressure: Hercules, kneeling: club, face, shoulder, hip, knee, foot.
-  IV: { name: 'Hercules', src: hercules, w: 686, h: 819, stars: [[318, 44], [427, 213], [418, 392], [310, 494], [120, 600], [478, 770]], ra: 17.4, dec: 21, span: 36 },
-  // V · Far worlds: Pegasus, flying: muzzle, neck, wing, wingtip, cloud.
-  // VI · Slow fires: Orion, the hunter: Betelgeuse, his shoulder, Rigel, his foot, and Bellatrix, his other shoulder.
-  VI: { name: 'Orion', src: orion, w: 536, h: 559, stars: [[160, 150], [340, 418], [282, 162]], ra: 5.6, dec: 4, span: 26 },
-  // VII · Earth's fires: Eridanus, the river, as lava runs to the sea: its bend, then on up towards its source.
-  VII: { name: 'Eridanus', src: eridanus, w: 457, h: 560, stars: [[270, 408], [320, 165], [272, 35]], ra: 3.7, dec: -32, span: 36 },
-  V: { name: 'Pegasus', src: pegasus, w: 820, h: 573, stars: [[57, 232], [265, 158], [372, 186], [616, 72], [671, 292], [455, 380]], ra: 22.6, dec: 17, span: 52 },
+  // II · Earth's past: the Hydra, the long water-serpent, tail to head (γ, β, θ, α, ζ, ε).
+  II: { name: 'Hydra', src: hydra, w: 820, h: 269, stars: [[117, 50], [190, 150], [270, 213], [412, 133], [580, 138], [712, 38]], ra: 10.6, dec: -14, span: 100 },
+  // III · Earth's future: Argo, the ship, sailing on: along its oars, to its bow.
+  III: { name: 'Argo Navis', src: argo, w: 560, h: 425, stars: [[232, 247], [330, 232], [455, 180]], ra: 8.2, dec: -44, span: 46 },
+  // IV · Strange fires: the Dragon, curled round the pole: tail, coil, head.
+  IV: { name: 'Draco', src: draco, w: 677, h: 818, stars: [[80, 710], [182, 262], [293, 80]], ra: 16.2, dec: 66, span: 36 },
+  // V · Pressure: Hercules, kneeling: club, face, shoulder, hip, knee, foot.
+  V: { name: 'Hercules', src: hercules, w: 686, h: 819, stars: [[318, 44], [427, 213], [418, 392], [310, 494], [120, 600], [478, 770]], ra: 17.4, dec: 21, span: 36 },
+  // VI · Far worlds: Pegasus, flying: muzzle, neck, wing, wingtip, cloud.
+  VI: { name: 'Pegasus', src: pegasus, w: 820, h: 573, stars: [[57, 232], [265, 158], [372, 186], [616, 72], [671, 292], [455, 380]], ra: 22.6, dec: 17, span: 52 },
+  // VII · Slow fires: Orion, the hunter: Betelgeuse, his shoulder, Rigel, his foot, and Bellatrix, his other shoulder.
+  VII: { name: 'Orion', src: orion, w: 536, h: 559, stars: [[160, 150], [340, 418], [282, 162]], ra: 5.6, dec: 4, span: 26 },
+  // VIII · Earth's fires: Eridanus, the river, as lava runs to the sea: its bend, then on up towards its source.
+  VIII: { name: 'Eridanus', src: eridanus, w: 457, h: 560, stars: [[270, 408], [320, 165], [272, 35]], ra: 3.7, dec: -32, span: 36 },
 };
 
 /**
@@ -71,7 +73,6 @@ const BACKGROUND: Figure[] = [
   { name: 'Canis Major', src: canis, w: 462, h: 559, stars: [], ra: 6.9, dec: -22, span: 22 },
   // The southern sky, from the same atlas's southern plates, so it isn't left bare.
   { name: 'Cetus', src: cetus, w: 560, h: 470, stars: [], ra: 1.7, dec: -8, span: 36 },
-  { name: 'Argo Navis', src: argo, w: 560, h: 425, stars: [], ra: 8.2, dec: -44, span: 46 },
   { name: 'Centaurus', src: centaurus, w: 532, h: 560, stars: [], ra: 13.0, dec: -48, span: 34 },
   { name: 'Lupus', src: lupus, w: 525, h: 560, stars: [], ra: 15.3, dec: -43, span: 18 },
   { name: 'Scorpius', src: scorpius, w: 560, h: 535, stars: [], ra: 16.9, dec: -30, span: 30 },

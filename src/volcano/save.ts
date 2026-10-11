@@ -128,6 +128,22 @@ export async function keepPage(page: Page): Promise<void> {
   } catch { /* not kept, and that's all */ }
 }
 
+/**
+ * Your Earth (story.ts): each age of Earth's last chart kept as well on its own, apart from the atlas, so however
+ * many worlds are played after, the story never loses an age (the atlas keeps only its last sixty).
+ */
+const STORY_KEY = 'story';
+export async function keepStoryPage(page: Page): Promise<void> {
+  try {
+    const all = ((await run('readonly', (s) => s.get(STORY_KEY))) as Record<string, Page> | undefined) ?? {};
+    all[page.world] = { ...page, image: '' }; // (not the plate's picture: only the world's portrait and its line)
+    await run('readwrite', (s) => s.put(all, STORY_KEY));
+  } catch { /* not kept, and that's all */ }
+}
+export async function storyPages(): Promise<Page[]> {
+  try { return Object.values(((await run('readonly', (s) => s.get(STORY_KEY))) as Record<string, Page> | undefined) ?? {}); } catch { return []; }
+}
+
 export async function pages(): Promise<Page[]> {
   try { return ((await run('readonly', (s) => s.get(ATLAS))) as Page[] | undefined) ?? []; } catch { return []; }
 }

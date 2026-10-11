@@ -51,7 +51,7 @@ import SurfaceWorker from './surface.worker?worker&inline';
 import { handleDrafts } from './drafts';
 import { handleSurface } from './surface';
 import { offThread } from './offthread';
-import { snapshotOf, restoreInto, keep, recall, forget, keepGround, recallGround, keepPage, pages, type Page } from './save';
+import { snapshotOf, restoreInto, keep, recall, forget, keepGround, recallGround, keepPage, pages, keepStoryPage, storyPages, type Page } from './save';
 import { worldOf, nextWorld, chapterOf, CHAPTERS, type WorldId } from './worlds';
 import { openGlobe, type Globe } from './atlasGlobe';
 import { keepsakeOf, turningGlobe } from './keepsakeGlobe';
@@ -3171,8 +3171,8 @@ $('earth').addEventListener('pointerdown', (e) => e.stopPropagation());
 $('earth').addEventListener('click', (e) => {
   e.stopPropagation();
   const i = ending?.info, now = i ? { world: WORLD.id, numeral: WORLD.numeral, title: i.title, subtitle: i.subtitle, summary: i.summary, when: Date.now(), image: '', portrait: portrait || undefined } : undefined;
-  void pages().then((all) => {
-    drawStory($('story').querySelector('ol') as HTMLElement, storyOf(all, now), (id) => worldOf(id).title);
+  void Promise.all([pages(), storyPages()]).then(([all, kept]) => {
+    drawStory($('story').querySelector('ol') as HTMLElement, storyOf([...all, ...kept].sort((a, b) => a.when - b.when), now), (id) => worldOf(id).title);
     $('story').hidden = false;
     requestAnimationFrame(() => $('story').classList.add('open'));
   });
@@ -3206,7 +3206,9 @@ function intoTheAtlas(): void {
   small.width = 480; small.height = Math.round(480 * big.height / big.width);
   small.getContext('2d')!.drawImage(big, 0, 0, small.width, small.height);
   const i = ending.info;
-  void keepPage({ world: WORLD.id, numeral: WORLD.numeral, title: i.title, subtitle: i.subtitle, summary: i.summary, when: Date.now(), image: small.toDataURL('image/jpeg', 0.82), portrait: portrait || undefined, globe: keepsakeOf(planet) });
+  const page: Page = { world: WORLD.id, numeral: WORLD.numeral, title: i.title, subtitle: i.subtitle, summary: i.summary, when: Date.now(), image: small.toDataURL('image/jpeg', 0.82), portrait: portrait || undefined, globe: keepsakeOf(planet) };
+  void keepPage(page);
+  if (AGES.includes(WORLD.id)) void keepStoryPage({ ...page, globe: undefined }); // (and for your Earth's story, kept apart: see story.ts)
 }
 
 // ---------------------------------------------------------------- held like a globe

@@ -738,3 +738,9 @@ Bursting in the night builds much faster than pouring. With the first aim (just 
 Hydra now has nine stars, one for each world in Chapter II.
 
 **Your Earth.** When the Red Giant is done, *your Earth* sits beside *play again* under its chart. It opens one quiet page (`story.ts`): Chapter II's one world through its ages, oldest at the top, joined by a dotted line. Each age shows the small round picture of the world kept with its chart, when it was ("4.6 billion years ago", "Today", "Five billion years from now"), its name, and the line of what you made there. An age not played yet is an empty dashed ring. The Red Giant now uses the Drying Seas' own colours, so before Begin its world is the one the Drying Seas left; the giant's red is its light, the molten day and the Sun, not a different paper.
+
+**Earth's past and Earth's future.** The one world's chapter is now two:
+* **II · Earth's Past** (the first world, the comets, the young Earth, the orange Earth, Snowball Earth, the ocean world), on Hydra, back to the six stars it had.
+* **III · Earth's Future** (the Atolls, the Drying Seas, the Red Giant), on Argo Navis, the ship sailing on, promoted from the sky's background figures, its stars along the oars to the bow.
+
+The chapters after them move up a numeral (IV Unusual Volcanoes to VIII Extras). The world numerals don't change. The comets stay in Earth's Past: they don't carry the ground on, but they are Earth's history, and in order (its first water). Your Earth's pictures are now also kept apart from the atlas, one per age (`keepStoryPage` in `save.ts`), so the story never loses an age however many worlds are played after (the atlas keeps only its last sixty).
