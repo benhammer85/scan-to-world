@@ -330,7 +330,7 @@ export const VOLCANO = {
    */
   arrives: 0,
   /** Whether life asks for kinds of ground (ecology.ts's wishes). */
-  wishes: true,
+  wishes: false, // (the kinds are no longer an aim anywhere, so a wish for one was a stray sign)
 
   /**
    * Real terrain: the world's own heights, from NASA's maps (see real/), each km of them `realScale`
