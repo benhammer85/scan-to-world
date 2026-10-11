@@ -24,7 +24,7 @@
  *
  * Everything takes a View (hand.ts), so the same drawing makes the live slice and the plate.
  */
-import { K, type TreeSim } from './tree';
+import { K, noise, type TreeSim } from './tree';
 import { radiusAt, type View } from './hand';
 
 export { radiusAt, type View } from './hand';
@@ -70,7 +70,7 @@ const meanOf = (r: (n: number) => number) => { let s = 0; for (let n = 0; n < K;
  * One ring's line, from where its stroke began round its loop the way it went (`dir`), or as far as
  * `upto` (0 to 1) of it: pale to dark in bands, faded towards pencil arc by arc as `fadeOf` says.
  */
-export function strokeRing(g: CanvasRenderingContext2D, v: View, radius: (n: number) => number, start: number, width: number, opts: { upto?: number; fadeOf?: (arc: number) => number; from?: number; dir?: number; tone?: Float32Array } = {}): void {
+export function strokeRing(g: CanvasRenderingContext2D, v: View, radius: (n: number) => number, start: number, width: number, opts: { upto?: number; fadeOf?: (arc: number) => number; from?: number; dir?: number; tone?: Float32Array; faint?: number } = {}): void {
   const upto = opts.upto ?? 1, from = opts.from ?? 0, dir = opts.dir ?? 1, tone = opts.tone;
   if (upto <= from) return;
   // Crowded rings are drawn fainter, so a run of thin years reads as a tone and a wide one stands out.
@@ -89,7 +89,7 @@ export function strokeRing(g: CanvasRenderingContext2D, v: View, radius: (n: num
     // spiral arc. The heavy line is kept for the bark, scars and wounds. Where the hand went slowly,
     // the latewood is darker; quickly, lighter: the pace's only mark.)
     const t = tone ? toneAt(tone, a) : 0.5, deep = Math.round((0.26 + (0.5 * b) / (BANDS - 1) + 0.34 * t) * 12) / 12;
-    const colour = ink(Math.min(0.95, deep) * crowd, Math.round(fade * 20) / 20), weight = fine(v);
+    const colour = ink(Math.min(0.95, deep) * crowd * (opts.faint ?? 1), Math.round(fade * 20) / 20), weight = fine(v);
     const now = colour + weight;
     if (now !== style) {
       if (style) g.stroke();
@@ -130,7 +130,7 @@ export function drawSlice(g: CanvasRenderingContext2D, tree: TreeSim, v: View, l
   if (look.water) washes(g, tree, v, upto);
   for (let i = 0; i < upto; i++) {
     const ring = tree.rings[i];
-    strokeRing(g, v, (n) => ring[n], tree.starts[i], widthOf(tree, i, v), { dir: tree.dirs[i], tone: tree.tones[i], ...(fadeOf ? { fadeOf: (c: number) => fadeOf(i, c) } : {}) });
+    strokeRing(g, v, (n) => ring[n], tree.starts[i], widthOf(tree, i, v), { dir: tree.dirs[i], tone: tree.tones[i], faint: look.water ? 0.45 : 1, ...(fadeOf ? { fadeOf: (c: number) => fadeOf(i, c) } : {}) });
   }
   for (const s of tree.scars) if (s.ring - 1 < upto) scar(g, tree, v, s.ring - 1, s.angle, s.half);
   for (const w of tree.wounds) if (w.ring < upto) wound(g, tree, v, w.ring, w.a0, w.a1);
@@ -142,41 +142,158 @@ export function drawSlice(g: CanvasRenderingContext2D, tree: TreeSim, v: View, l
   g.beginPath(); g.arc(px, py, Math.max(1.2 * v.px, Math.min(2.6 * v.px, tree.k.pith * v.s * 0.45)), 0, TAU); g.fill();
 }
 
-/** Watercolour: each ring's wood washed in, pale earlywood and deeper latewood, the heartwood a shade darker. */
-function washes(g: CanvasRenderingContext2D, tree: TreeSim, v: View, upto: number): void {
-  g.save();
-  g.globalCompositeOperation = 'multiply';
-  // The heartwood: all but the last thirty years' wood, the sapwood, which stays pale.
-  const heart = upto - Math.round(30 / tree.k.yearsPerRing);
-  if (heart > 1) {
-    g.fillStyle = 'rgba(176, 128, 82, 0.22)';
-    band(g, tree, v, -1, heart - 1, 0, 1, 0, TAU);
-    g.fill();
+// ---------------------------------------------------------------- watercolour
+/**
+ * Two small tiles of noise, made once: the paper's tooth (laid faintly over everything, as a plate is
+ * printed on laid paper) and pigment's granulation (specks where it settles into the tooth).
+ */
+const tiles: Record<string, HTMLCanvasElement> = {};
+function tile(kind: 'paper' | 'grain'): HTMLCanvasElement {
+  if (tiles[kind]) return tiles[kind];
+  const n = 192, c = document.createElement('canvas');
+  c.width = c.height = n;
+  const x = c.getContext('2d')!, img = x.createImageData(n, n), d = img.data;
+  let s = kind === 'paper' ? 17 : 91;
+  const rnd = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
+  for (let p = 0; p < n * n; p++) {
+    const r = rnd();
+    // Paper: a soft, even tooth; granulation: sparse specks, some dark, most faint.
+    const a = kind === 'paper' ? 4 + 13 * r * r : r > 0.82 ? 60 + 140 * (r - 0.82) / 0.18 : 0;
+    d[p * 4] = kind === 'paper' ? 120 : 96; d[p * 4 + 1] = kind === 'paper' ? 104 : 62; d[p * 4 + 2] = kind === 'paper' ? 84 : 34; d[p * 4 + 3] = a;
   }
-  for (let i = 0; i < upto; i++) washRing(g, tree, v, i);
+  x.putImageData(img, 0, 0);
+  if (kind === 'paper') {
+    // (A few laid lines and fibres, very faint.)
+    x.strokeStyle = 'rgba(120,104,84,0.025)'; x.lineWidth = 1;
+    for (let k = 0; k < n; k += 6) { x.beginPath(); x.moveTo(0, k + 0.5); x.lineTo(n, k + 0.5); x.stroke(); }
+    for (let k = 0; k < 14; k++) { const fx = rnd() * n, fy = rnd() * n, a = rnd() * TAU, l = 6 + 14 * rnd(); x.beginPath(); x.moveTo(fx, fy); x.quadraticCurveTo(fx + Math.cos(a + 0.5) * l * 0.5, fy + Math.sin(a + 0.5) * l * 0.5, fx + Math.cos(a) * l, fy + Math.sin(a) * l); x.stroke(); }
+  }
+  tiles[kind] = c;
+  return c;
+}
+
+/** The paper's tooth over the whole sheet (watercolour): faint, never a gradient. */
+export function drawPaper(g: CanvasRenderingContext2D, w: number, h: number): void {
+  const pat = g.createPattern(tile('paper'), 'repeat');
+  if (!pat) return;
+  g.save();
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.globalCompositeOperation = 'multiply';
+  g.fillStyle = pat; g.fillRect(0, 0, w, h);
   g.restore();
 }
 
-/** One ring's wash: earlywood across its width, palest where it began; latewood in its outer third, deepening round the loop. */
-function washRing(g: CanvasRenderingContext2D, tree: TreeSim, v: View, i: number): void {
-  const start = tree.starts[i], dir = tree.dirs[i] ?? 1, tone = 0.85 + 0.3 * hash(i * 3.1 + tree.seed);
-  for (let b = 0; b < BANDS; b++) {
-    const f0 = b / BANDS, f1 = (b + 1) / BANDS, deep = b / (BANDS - 1);
-    let a0 = start + dir * f0 * TAU, a1 = start + dir * f1 * TAU;
-    if (a1 < a0) [a0, a1] = [a1, a0];
-    g.fillStyle = `rgba(196, 150, 98, ${((0.05 + 0.07 * deep) * tone).toFixed(3)})`;
-    band(g, tree, v, i - 1, i, 0, 1, a0, a1 + 0.004);
-    g.fill();
-    g.fillStyle = `rgba(128, 84, 46, ${((0.06 + 0.16 * deep) * tone).toFixed(3)})`;
-    band(g, tree, v, i - 1, i, 0.66, 1, a0, a1 + 0.004);
-    g.fill();
-  }
+type RGB = [number, number, number];
+const mix = (a: RGB, b: RGB, t: number): RGB => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+const rgba = (c: RGB, a: number) => `rgba(${Math.round(c[0])},${Math.round(c[1])},${Math.round(c[2])},${Math.max(0, Math.min(1, a)).toFixed(3)})`;
+/** A year's colours, by its weather: earlywood wash, latewood pigment, how full the wash is. */
+function paletteOf(weather: number): { early: RGB; late: RGB; full: number } {
+  if (weather === 1) return { early: [168, 156, 140], late: [92, 82, 76], full: 1.35 }; // rain: cooler, fuller
+  if (weather === 2) return { early: [226, 188, 112], late: [170, 122, 50], full: 0.6 }; // drought: thin ochre
+  if (weather === 4) return { early: [196, 176, 156], late: [118, 92, 72], full: 0.9 }; // frost: a cooler, paler year
+  return { early: [214, 168, 110], late: [136, 84, 42], full: 1 };
 }
+
+/**
+ * Watercolour as the wood's own look, from how a wash dries: each ring's wash is pale across its width
+ * (the earlywood), and as it dried the pigment gathered at its edge (the coffee-ring effect), a dark
+ * dried line that is its latewood. A ring painted while the last was still damp bled softly into it
+ * (wet-in-wet), and its edge there is soft. Rain years are cooler, fuller washes; drought years thin
+ * ochre with dry-brush breaks; fire scars sepia and charcoal; the inner rings deepen with the tree's age
+ * to a warm heartwood brown. Granulation specks the washes; the paper's tooth lies over it all.
+ */
+let washCanvas: HTMLCanvasElement | null = null;
+function washes(g: CanvasRenderingContext2D, tree: TreeSim, v: View, upto: number): void {
+  const W = g.canvas.width, H = g.canvas.height;
+  washCanvas ??= document.createElement('canvas');
+  if (washCanvas.width !== W || washCanvas.height !== H) { washCanvas.width = W; washCanvas.height = H; }
+  const o = washCanvas.getContext('2d')!;
+  o.setTransform(1, 0, 0, 1, 0, 0);
+  o.globalCompositeOperation = 'source-over';
+  o.clearRect(0, 0, W, H);
+  o.lineJoin = 'round'; o.lineCap = 'round';
+  // (The pith, washed as the first ring's earlywood is.)
+  if (upto > 0) { const [px, py] = at(v, 0, 0); o.fillStyle = rgba(mix(paletteOf(tree.ringWeather[0] ?? 0).early, [158, 100, 58], 0.75 * smooth01(((upto - 1) * tree.k.yearsPerRing - 25) / 160)), 0.3); o.beginPath(); o.arc(px, py, tree.k.pith * v.s, 0, TAU); o.fill(); }
+  for (let i = 0; i < upto; i++) washRing(o, tree, v, i, upto);
+  // Fire scars: a sepia stain, charcoal at its heart.
+  for (const sc of tree.scars) {
+    if (sc.ring - 1 >= upto) continue;
+    const r = sc.ring - 1, out = Math.min(upto - 1, r + 2);
+    o.fillStyle = 'rgba(112,72,40,0.3)';
+    band(o, tree, v, r - 1, out, 0.4, 1, sc.angle - sc.half * 1.15, sc.angle + sc.half * 1.15); o.fill();
+    o.fillStyle = 'rgba(52,44,40,0.35)';
+    band(o, tree, v, r - 1, r, 0.55, 1, sc.angle - sc.half * 0.8, sc.angle + sc.half * 0.8); o.fill();
+  }
+  // Granulation: pigment settles into the paper's tooth, only where there's pigment.
+  const pat = o.createPattern(tile('grain'), 'repeat');
+  if (pat) { o.globalCompositeOperation = 'source-atop'; o.globalAlpha = 0.55; o.fillStyle = pat; o.fillRect(0, 0, W, H); o.globalAlpha = 1; }
+  g.save();
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.globalCompositeOperation = 'multiply';
+  g.drawImage(washCanvas, 0, 0);
+  g.restore();
+}
+
+/** One ring's wash, its dried edge, and (if the next was painted while it was damp) their soft bleed. */
+function washRing(g: CanvasRenderingContext2D, tree: TreeSim, v: View, i: number, upto: number): void {
+  const per = tree.k.yearsPerRing, years = (upto - 1 - i) * per;
+  const p = paletteOf(tree.ringWeather[i] ?? 0), tone = 0.85 + 0.3 * hash(i * 3.1 + tree.seed);
+  // Heartwood: the older the wood within the trunk, the warmer and deeper its brown (sapwood stays pale).
+  const heart = smooth01((years - 25) / 160);
+  const early = mix(p.early, [158, 100, 58], 0.75 * heart), late = mix(p.late, [96, 56, 30], 0.6 * heart);
+  const full = p.full * tone, bled = !!tree.bleeds[i] && i + 1 < upto, dry = (tree.ringWeather[i] ?? 0) === 2;
+  // The earlywood: a pale wash across the ring (broken by dry-brush streaks in a drought).
+  g.fillStyle = rgba(early, (0.2 + 0.16 * heart) * full);
+  if (dry) {
+    const N = 48;
+    for (let k = 0; k < N; k++) {
+      if (noise(k * 0.7 + i * 5.3 + tree.seed) > 0.68) continue;
+      band(g, tree, v, i - 1, i, 0.1, 1, (k / N) * TAU, ((k + 1) / N) * TAU + 0.01); g.fill();
+    }
+  } else { band(g, tree, v, i - 1, i, 0, 1, 0, TAU); g.fill(); }
+  // The pigment gathered at the edge as it dried: deepening toward it, then the dark dried line itself.
+  g.fillStyle = rgba(late, 0.12 * full + 0.06 * heart);
+  band(g, tree, v, i - 1, i, 0.7, 1, 0, TAU); g.fill();
+  g.fillStyle = rgba(late, 0.16 * full + 0.06 * heart);
+  band(g, tree, v, i - 1, i, 0.88, 1, 0, TAU); g.fill();
+  const r = tree.rings[i], edgeW = Math.max(0.9 * v.px, Math.min(2.2 * v.px, widthOf(tree, i, v) * 0.18));
+  if (bled) {
+    // Wet-in-wet: the next ring's wash ran into this one's edge before it set; the line is soft.
+    g.fillStyle = rgba(late, 0.16 * full);
+    band(g, tree, v, i, i + 1, 0, 0.35, 0, TAU); g.fill();
+    g.strokeStyle = rgba(late, 0.22 * full); g.lineWidth = edgeW * 1.8;
+  } else { g.strokeStyle = rgba(late, (0.5 + 0.15 * heart) * Math.min(1.2, full)); g.lineWidth = edgeW; }
+  g.beginPath();
+  const n = Math.max(K, Math.ceil((TAU * radiusAt(r, 0) * v.s) / (2 * v.px)));
+  for (let j = 0; j <= n; j++) { const a = (j / n) * TAU, [x, y] = at(v, a, radiusAt(r, a)); if (j) g.lineTo(x, y); else g.moveTo(x, y); }
+  g.stroke();
+}
+
+/**
+ * The ring just laid, still damp: dark wet ink over its wash, drying (wet 1 to 0) over a few seconds
+ * into the watercolour beneath. While it's damp, the next ring painted bleeds into it.
+ */
+export function drawDamp(g: CanvasRenderingContext2D, tree: TreeSim, v: View, i: number, wet: number): void {
+  if (wet <= 0.01 || i < 0 || i >= tree.rings.length) return;
+  g.save();
+  g.globalCompositeOperation = 'multiply';
+  g.fillStyle = `rgba(92,60,34,${(0.38 * wet).toFixed(3)})`;
+  band(g, tree, v, i - 1, i, 0, 1, 0, TAU); g.fill();
+  g.globalCompositeOperation = 'source-over';
+  const r = tree.rings[i];
+  g.strokeStyle = `rgba(52,34,20,${(0.75 * wet).toFixed(3)})`; g.lineWidth = heavy(v) * (1 + 0.5 * wet);
+  g.beginPath();
+  for (let j = 0; j <= K * 2; j++) { const a = (j / (K * 2)) * TAU, [x, y] = at(v, a, radiusAt(r, a)); if (j) g.lineTo(x, y); else g.moveTo(x, y); }
+  g.stroke();
+  g.restore();
+}
+
+const smooth01 = (x: number) => { const t = Math.max(0, Math.min(1, x)); return t * t * (3 - 2 * t); };
 
 /** Just the ring laid last (ring i), added to what's drawn: its wash, and its line. */
 export function drawRing(g: CanvasRenderingContext2D, tree: TreeSim, v: View, look: SliceLook, i: number): void {
   g.lineJoin = 'round'; g.lineCap = 'butt';
-  if (look.water) { g.save(); g.globalCompositeOperation = 'multiply'; washRing(g, tree, v, i); g.restore(); }
+  if (look.water) { g.save(); g.globalCompositeOperation = 'multiply'; washRing(g, tree, v, i, i + 1); g.restore(); }
   const ring = tree.rings[i];
   strokeRing(g, v, (n) => ring[n], tree.starts[i], widthOf(tree, i, v), { dir: tree.dirs[i], tone: tree.tones[i] });
 }
@@ -400,9 +517,9 @@ export function drawWet(g: CanvasRenderingContext2D, tree: TreeSim, v: View, ban
       if (d < 0.05 && hash(i * 3.7 + tree.rings.length) > 0.45) continue;
       const [x0, y0] = pt(i, 0), [x1, y1] = pt(i, hi[i]);
       const nj = state[j] === 1 ? j : i, [x2, y2] = pt(i + 1, hi[nj]), [x3, y3] = pt(i + 1, 0);
-      // (Mottled, as wet pigment settles unevenly into the paper's tooth.)
-      const deep = 0.18 + 0.22 * f + 0.15 * tone[i], a = 0.42 * fadeAll * (0.8 + 0.4 * hash(i * 1.37 + tree.rings.length * 4.1));
-      g.fillStyle = `rgba(${Math.round(190 - 70 * f)},${Math.round(140 - 60 * f)},${Math.round(90 - 45 * f)},${(a * (0.6 + deep)).toFixed(3)})`;
+      // Dark, wet ink, mottled as wet pigment settles unevenly into the paper's tooth.
+      const deep = 0.25 + 0.2 * f + 0.2 * tone[i], a = 0.6 * fadeAll * (0.85 + 0.3 * hash(i * 1.37 + tree.rings.length * 4.1));
+      g.fillStyle = `rgba(${Math.round(110 - 30 * f)},${Math.round(72 - 20 * f)},${Math.round(42 - 12 * f)},${(a * (0.6 + deep)).toFixed(3)})`;
       g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.lineTo(x2, y2); g.lineTo(x3, y3); g.closePath(); g.fill();
     }
     g.globalCompositeOperation = 'source-over';
@@ -421,7 +538,7 @@ export function drawWet(g: CanvasRenderingContext2D, tree: TreeSim, v: View, ban
     }
   }
   // The edge, the line the hand drew: fine, a smooth curve through the drawn points.
-  g.strokeStyle = ink((water ? 0.6 : 0.8) * fadeAll); g.lineWidth = fine(v);
+  g.strokeStyle = ink((water ? 0.9 : 0.8) * fadeAll); g.lineWidth = water ? heavy(v) : fine(v);
   const R = (i: number) => e(((i % K) + K) % K) * v.s + hi[((i % K) + K) % K] * scale;
   g.beginPath();
   let open = false;

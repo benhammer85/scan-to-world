@@ -22,7 +22,7 @@ import { TreeSim, DROUGHT, RAIN, WIND, type News, type Weather } from './tree';
 import { pen, setSound, soundOff, tick, wake, weather as weatherSound } from './sound';
 import { treeOf, EVEN_AIM } from './trees';
 import { bandOf, brushAt, pointerAt, roomOf, scaleFor, tall, type View } from './hand';
-import { ARCS, PAPER, drawBark, drawGuide, drawShadow, drawSlice, drawSun, drawTip, drawWet, inkArc, radiusAt } from './draw';
+import { ARCS, PAPER, drawBark, drawDamp, drawGuide, drawPaper, drawShadow, drawSlice, drawSun, drawTip, drawWet, inkArc, radiusAt } from './draw';
 import { drawHabit, type Box, type Scene } from './habit';
 import { drawPlate, recordOf } from './plate';
 import { forgetTree, keepPlate, keepTree, plates, recallTree, snapshotTree, treeFrom, type KeptTree } from './save';
@@ -39,8 +39,11 @@ function remembered(key: string): string | null { try { return localStorage.getI
 function remember(key: string, value: string): void { try { localStorage.setItem(key, value); } catch { /* not remembered */ } }
 
 // ---------------------------------------------------------------- settings
-/** The ink: engraving (ink only, the default) or watercolour, as the volcano game offers it. */
-let WATER = (ASKED.get('ink') ?? remembered('annulus.ink')) === 'water';
+/** The ink: watercolour (the default, as in the volcano game) or engraving, ink only. */
+let WATER = (ASKED.get('ink') ?? remembered('annulus.ink') ?? 'water') === 'water';
+/** Seconds a ring laid stays damp: its dark wet ink drying into the wash; painted over before then, they bleed. */
+const DAMP = 3.6;
+let closedAt = -100;
 /** The pencil circle breathes, slowly (about six breaths a minute), as a suggestion of pace; or keeps still. */
 let BREATH = remembered('annulus.breath') !== 'off';
 
@@ -196,7 +199,9 @@ canvas.addEventListener('pointerdown', (e) => {
   if (b.u < -2.5 || b.u > 5) return;
   strokeView = v; strokeBand = band;
   const sb = brushAt(tree, strokeView, strokeBand, e.clientX * px, e.clientY * px);
-  if (tree.begin(now(e), sb.a, sb.u)) { painter = e.pointerId; enter('painting'); feel(6); }
+  // (Begun while the last ring is still damp, the two washes bleed together, wet-in-wet.)
+  const damp = WATER && tree.ring > 0 && clock() - closedAt < DAMP;
+  if (tree.begin(now(e), sb.a, sb.u)) { painter = e.pointerId; enter('painting'); feel(6); if (damp) { tree.bleed(); dirty = true; } }
 });
 canvas.addEventListener('pointermove', (e) => {
   if (!pointers.has(e.pointerId)) return;
@@ -275,6 +280,7 @@ function heard(n: News): void {
     seen[i] = new Float32Array(ARCS).fill(clock());
     dirty = true;
     enter('drying');
+    closedAt = clock();
     restAngle = tree.starts[i] + tree.dirs[i] * TAU;
     // A soft tick in the hand as a ring closes (on the iPhone's own engine; in a browser, nothing).
     if (clock() - lastTickAt > 0.3) { lastTickAt = clock(); tick(); if (NATIVE) tap({ strength: 0.24, sharpness: 0.7 }); }
@@ -383,6 +389,7 @@ $('corner').addEventListener('click', () => {
   if (!playing()) return;
   // (A ring part drawn is let go: it's drawn again, from the start, when the tree is taken up.)
   if (tree.stroke) { tree.cancel(); painter = null; strokeView = null; enter('ready'); }
+  closedAt = -100;
   pen(0); weatherSound(0, 0, 0); if (NATIVE) rumble(0);
   paused = true; save();
   card();
@@ -563,6 +570,8 @@ function draw(dt: number): void {
     g.globalAlpha = bark; g.drawImage(barkCache, 0, 0);
     g.restore();
   }
+  // The ring just laid, still damp in watercolour: dark wet ink, drying over a few seconds into its wash.
+  if (WATER && playing() && tree.ring > 0 && phase !== 'drying') drawDamp(g, tree, sv, tree.ring - 1, 1 - smooth((clock() - closedAt) / DAMP));
   for (const f of fresh) inkArc(g, tree, sv, f.i, (f.c / ARCS) * TAU, ((f.c + 1) / ARCS) * TAU);
   if (inking) inkArc(g, tree, sv, inking.i, (inking.c / ARCS) * TAU, ((inking.c + Math.min(1, inking.t / inking.dur)) / ARCS) * TAU);
   const band = wet ? strokeBand : bandOf(tree, v);
@@ -582,6 +591,7 @@ function draw(dt: number): void {
   }
   drawSun(g, tree, sv, tree.weatherNow === DROUGHT, 3.5 * band);
   drawHabit(g, habitBox(), sceneNow());
+  if (WATER) drawPaper(g, W, H);
   placeGhost(sv);
 }
 
@@ -591,6 +601,7 @@ function drawEnding(v: View): void {
   g.drawImage(cache, 0, 0);
   g.drawImage(barkCache, 0, 0);
   if (!ending!.plate) drawHabit(g, habitBox(), sceneLapse(f, upto - 1));
+  if (WATER) drawPaper(g, W, H);
 }
 
 // ---------------------------------------------------------------- begin

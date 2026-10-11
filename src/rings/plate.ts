@@ -7,7 +7,7 @@
  */
 import type { TreeSim } from './tree';
 import type { Tree } from './trees';
-import { drawBark, drawShadow, drawSlice, ink, PAPER, barkThickness, type View } from './draw';
+import { drawBark, drawPaper, drawShadow, drawSlice, ink, PAPER, barkThickness, type View } from './draw';
 import { drawHabit } from './habit';
 
 const SERIF = '"Newsreader", "Iowan Old Style", Georgia, serif';
@@ -91,5 +91,6 @@ export function drawPlate(tree: TreeSim, T: Tree, water: boolean): HTMLCanvasEle
   g.fillText(T.fact.split('.')[0] + '.', W / 2, H - 128);
   g.font = `18px ${SERIF}`; g.fillStyle = FAINT;
   g.fillText('The decade dots, as on a core: one at each ten years, two at fifty, three at a hundred.', W / 2, H - 88);
+  if (water) drawPaper(g, W, H);
   return cv;
 }

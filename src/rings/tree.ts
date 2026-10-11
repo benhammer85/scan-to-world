@@ -199,6 +199,8 @@ export class TreeSim {
   readonly dirs: number[] = [];
   readonly ringWeather: number[] = [];
   readonly ringEven: number[] = [];
+  /** Whether each ring was still damp when the next was painted, so the two bled together (1), as watercolour does wet-in-wet. */
+  readonly bleeds: number[] = [];
   /** Whether the cambium lives at each angle (1) or is dead under a wound (0); and if fire killed it (1). */
   readonly alive = new Uint8Array(K).fill(1);
   readonly burnt = new Uint8Array(K);
@@ -384,6 +386,9 @@ export class TreeSim {
 
   /** The finger lifts: the line rests where it is, to be taken up again. */
   lift(): void { if (this.stroke && !this.over) this.stroke.resting = true; }
+
+  /** The last ring was still damp when this one began: their washes bleed together. */
+  bleed(): void { if (this.rings.length) this.bleeds[this.rings.length - 1] = 1; }
 
   /** The line given up (the card opened mid-ring): it's drawn again from the start. */
   cancel(): void { this.stroke = null; this.state.fill(0); }

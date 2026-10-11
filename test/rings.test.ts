@@ -275,12 +275,14 @@ describe('a life', () => {
 
   it('kept and taken up again, it is the same tree (a stroke cut off is drawn again)', () => {
     const t = new TreeSim(20, { fires: [[2, 2]] });
-    for (let n = 0; n < 4; n++) paint(t);
+    for (let n = 0; n < 4; n++) { if (n === 2) t.bleed(); paint(t); }
+    expect(t.bleeds[1]).toBe(1); // (ring 2 begun while ring 1 was damp: wet-in-wet)
     t.begin(clock, 0, 1); t.move(clock + 0.1, 0.3, 1);
     const again = treeFrom({ tree: 'oak', seed: 20, wander: false, turn: 0, sim: structuredClone(snapshotTree(t)) }, { fires: [[2, 2]] })!;
     expect(again.ring).toBe(t.ring);
     expect(again.rings[2][17]).toBe(t.rings[2][17]);
     expect(Array.from(again.tones[1])).toEqual(Array.from(t.tones[1]));
+    expect(again.bleeds).toEqual(t.bleeds);
     expect(again.scars.length).toBe(t.scars.length);
     expect(Array.from(again.alive)).toEqual(Array.from(t.alive));
     expect(again.evenness).toBeCloseTo(t.evenness);

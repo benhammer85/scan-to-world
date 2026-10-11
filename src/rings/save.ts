@@ -43,7 +43,7 @@ export function snapshotTree(t: TreeSim): Record<string, unknown> {
   s.alive = t.alive.slice();
   s.burnt = t.burnt.slice();
   s.stressed = t.stressed.slice();
-  for (const k of ['starts', 'dirs', 'ringWeather', 'ringEven'] as const) s[k] = t[k].slice();
+  for (const k of ['starts', 'dirs', 'ringWeather', 'ringEven', 'bleeds'] as const) s[k] = t[k].slice();
   s.scars = t.scars.map((x) => ({ ...x }));
   s.cracks = t.cracks.map((x) => ({ ...x }));
   s.wounds = t.wounds.map((x) => ({ ...x }));

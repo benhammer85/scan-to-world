@@ -43,7 +43,7 @@ export const TREES: Tree[] = [
     fact: 'Each ring is a year: pale wood laid down in spring, dark wood in late summer. Here each ring you draw is five.',
     todo: 'Draw each ring’s edge in one unhurried line round the slice, tracing the pencil circle. Rest when you like.',
     years: 300,
-    second: 'And paint the most even slice: a set of true circles.',
+    second: 'And draw the most even slice: a set of true circles.',
     // (Steady seasons: calm mostly, rain, drought, wind or frost every several rings, and two fires, which on a slope burn the uphill side.)
     rules: {},
   },
