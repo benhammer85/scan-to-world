@@ -10,14 +10,14 @@
  *   settle    as the ring closes, it sinks softly into the paper (and on the iPhone app, a faint
  *             pressure in the hand); its relief stays, caught by raking light
  *
- * Nothing else on the page while you draw: no print behind the slice, no words, and the guide only to
- * begin by (it fades once the brush is down).
+ * Nothing else on the page while you draw: no print behind the slice, no words, no line to keep to.
+ * `?demo` shows a year already drawn (not kept), to see what a year of days looks like.
  */
 import '../volcano/fonts.css';
 import { NATIVE, rumble, tap } from '../volcano/native';
 import { K, OAK, TreeSim } from './tree';
-import { bandOf, brushAt, pointerAt, radiusAt, roomOf, scaleFor, unwarpR, warpFor, type View, type Warp } from './hand';
-import { at, drawGuide, drawPaper } from './draw';
+import { brushAt, pointerAt, radiusAt, roomOf, scaleFor, unwarpR, warpFor, type View, type Warp } from './hand';
+import { at, drawPaper } from './draw';
 import { Paper } from './paint';
 import { holdStill, steadySize } from './steady';
 import { keepTree, recallTree, snapshotTree, treeFrom } from './save';
@@ -43,7 +43,11 @@ const smooth = (x: number) => { const t = Math.max(0, Math.min(1, x)); return t 
 // ring remembers the day it was drawn. Draw one a day, or as many as you like; a day missed is no matter.
 // The wood a ring holds is a fifth of the game's five-year ring, and the crown is grown in a few rings
 // (so the first days aren't hairlines); the tree never grows old.
-const DAILY = { yearsPerRing: 1, crown: OAK.crown / 5, crownYears: 6, oldFrom: 1e6, oldTo: 2e6 };
+// No line to keep to and no wood to run out of: wherever the circle is drawn, round the slice, is the
+// year's edge (a loose, wide circle a wide year; a close one, a narrow year).
+const DAILY = { yearsPerRing: 1, crown: OAK.crown / 5, crownYears: 6, oldFrom: 1e6, oldTo: 2e6, ink: 1e6 };
+/** The widest year (steady widths): a circle drawn at the screen's edge stops at this. */
+const WIDEST = 6;
 const DIARY = 'diary', params = new URLSearchParams(location.search);
 let tree = new TreeSim(Number(params.get('seed')) || 1 + Math.floor(Math.random() * 1e6), DAILY);
 /** The day each ring was drawn (local, as 2026-10-11). */
@@ -53,13 +57,40 @@ const daysDrawn = () => new Set(days).size;
 /** How deep each ring was pressed (0 to 1). */
 let depths: number[] = [];
 
-const paper = new Paper(320);
+const paper = new Paper(512);
 // (The season's colour stays, half settled into the wood: green and gold to rust and violet, in oak.)
 paper.turn = 0.5;
+// Each year grown across its ring, as wood is (pale spring wood, a dark band of late summer's), in the
+// colour of its day's season: spring green, summer gold, autumn rust, winter violet (northern seasons).
+paper.across = (ring) => {
+  const [y, m, d] = (days[ring] ?? dayOf()).split('-').map(Number);
+  const doy = (Date.UTC(y, m - 1, d) - Date.UTC(y, 0, 1)) / 864e5;
+  return (((doy - 59) % 365) + 365) % 365 / 365;
+};
 let warp: Warp = warpFor(tree), view: View | null = null;
+
+/** A year already drawn, by a hand that's calm some days and loose on others (for `?demo`; not kept). */
+function demoYear(): void {
+  let time = 0, rnd = tree.seed;
+  const r = () => { rnd = (rnd * 16807) % 2147483647; return rnd / 2147483647; };
+  const start = new Date(); start.setDate(start.getDate() - 365);
+  for (let n = 0; n < 365; n++) {
+    if (r() < 0.12) continue; // (some days missed)
+    const day = new Date(start); day.setDate(start.getDate() + n);
+    const width = 0.6 + 1.6 * r() ** 1.5, wob = 0.15 + 0.5 * r(), ph = r() * TAU;
+    // (A person draws a round circle about the slice, at the day's distance, not the bark's shape again.)
+    const R = tree.radius + width * tree.wRef, u = (b: number) => Math.max(0.1, (R - radiusAt((i) => tree.inner(i), b)) / tree.wRef + wob * Math.sin(2 * b + ph));
+    let a = r() * TAU;
+    tree.begin(time, a, u(a));
+    while (tree.stroke) { a += TAU / 5 / 60; time += 1 / 60; tree.move(time, a % TAU, u(a % TAU)); }
+    days.push(dayOf(day)); time += 2;
+  }
+  tree.news.length = 0;
+}
 
 /** The kept tree, if there is one (`?fresh` begins another). */
 async function recall(): Promise<void> {
+  if (params.has('demo')) { demoYear(); return; }
   if (params.has('fresh')) return;
   const k = await recallTree(DIARY), t = k && treeFrom(k, DAILY);
   if (!k || !t) return;
@@ -67,6 +98,7 @@ async function recall(): Promise<void> {
   while (days.length < t.rings.length) days.unshift(days[0] ?? dayOf());
 }
 function keep(): void {
+  if (params.has('demo')) return;
   void keepTree({ tree: 'oak', seed: tree.seed, wander: false, turn: 0, sim: snapshotTree(tree), days: days.slice() }, DIARY);
 }
 
@@ -103,21 +135,21 @@ canvas.addEventListener('pointerdown', (e) => {
   const v = viewNow();
   if (tree.stroke && tree.resting) {
     const b = brushAt(tree, strokeView ?? v, 0, x, y);
-    if (tree.begin(e.timeStamp / 1000, b.a, b.u)) painter = e.pointerId;
+    if (tree.begin(e.timeStamp / 1000, b.a, Math.min(WIDEST, b.u))) painter = e.pointerId;
     return;
   }
   const b = brushAt(tree, v, 0, x, y);
-  if (b.u < -2.5) { readDay(v, x, y); return; }
-  if (b.u > 5) return;
+  // Inside the slice, a ring's day is read; anywhere outside it, the circle begins.
+  if (b.u < 0) { readDay(v, x, y); return; }
   strokeView = v;
-  if (tree.begin(e.timeStamp / 1000, b.a, b.u)) { painter = e.pointerId; paper.begin(tree); trailAt(); }
+  if (tree.begin(e.timeStamp / 1000, b.a, Math.min(WIDEST, b.u))) { painter = e.pointerId; paper.begin(tree); trailAt(); }
 });
 canvas.addEventListener('pointermove', (e) => {
   if (e.pointerId !== painter || phase !== 'trace' || !strokeView) return;
   const evs = typeof e.getCoalescedEvents === 'function' ? e.getCoalescedEvents() : [];
   for (const c of evs.length ? evs : [e]) {
     const b = brushAt(tree, strokeView, 0, c.clientX * px, c.clientY * px);
-    tree.move(c.timeStamp / 1000, b.a, b.u);
+    tree.move(c.timeStamp / 1000, b.a, Math.min(WIDEST, b.u));
     trailAt();
     if (!tree.stroke) break;
   }
@@ -130,7 +162,7 @@ for (const type of ['pointerup', 'pointercancel'] as const) canvas.addEventListe
 });
 
 /** A touch inside the slice: the ring under it, lit for a moment, and the day it was drawn. */
-let lit = -1, litAt = 0, guideAt = 0;
+let lit = -1, litAt = 0;
 function readDay(v: View, x: number, y: number): void {
   const dx = x - v.cx, dy = v.cy - y, a = (((Math.atan2(dy, dx) - v.turn) % TAU) + TAU) % TAU;
   const r = unwarpR(v.warp, Math.hypot(dx, dy) / v.s);
@@ -178,11 +210,30 @@ function hear(): void {
 /** A ring's relief: pressed into the paper, its edge catches the light above and falls into shadow below. */
 function drawRelief(v: View, i: number, d: number): void {
   if (d <= 0.01) return;
-  const r = tree.rings[i], o = (0.6 + 1.8 * d) * px;
+  const r = tree.rings[i], o = (0.4 + 0.7 * d) * px;
   const path = (dx: number, dy: number) => { g.beginPath(); for (let j = 0; j <= K * 2; j++) { const a = (j / (K * 2)) * TAU, [x, y] = at(v, a, radiusAt(r, a)); if (j) g.lineTo(x + dx, y + dy); else g.moveTo(x + dx, y + dy); } };
-  g.lineWidth = (0.9 + 0.6 * d) * px;
-  g.strokeStyle = `rgba(70,50,32,${(0.32 * d).toFixed(3)})`; path(o, o); g.stroke();
-  g.strokeStyle = `rgba(255,252,244,${(0.75 * d).toFixed(3)})`; path(-o * 0.8, -o * 0.8); g.stroke();
+  g.lineWidth = 0.8 * px;
+  g.strokeStyle = `rgba(70,50,32,${(0.14 * d).toFixed(3)})`; path(o, o); g.stroke();
+  g.strokeStyle = `rgba(255,252,244,${(0.3 * d).toFixed(3)})`; path(-o * 0.8, -o * 0.8); g.stroke();
+}
+
+/**
+ * Oak's rays: fine pale lines running out from the heart across the rings (the "silver grain" of oak).
+ * Each begins at a year of its own and runs on to the bark, so they're the same as the tree grows.
+ */
+const RAYS = Array.from({ length: 150 }, (_, k) => ({ a: hash(k + 0.31) * TAU, from: 900 * hash(k + 0.77) ** 1.6, w: 0.5 + hash(k + 0.13) }));
+function drawRays(v: View): void {
+  const n = tree.rings.length;
+  if (!n) return;
+  const bark = tree.rings[n - 1];
+  g.lineCap = 'round';
+  for (const ray of RAYS) {
+    const end = radiusAt(bark, ray.a);
+    if (ray.from >= end * 0.92) continue;
+    const [x0, y0] = at(v, ray.a, Math.max(ray.from, tree.k.pith)), [x1, y1] = at(v, ray.a, end * 0.985);
+    g.strokeStyle = `rgba(255,247,230,${(0.1 * ray.w).toFixed(3)})`; g.lineWidth = (0.5 + 0.6 * ray.w) * px;
+    g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke();
+  }
 }
 
 /** A fast, steady little hash, 0 to 1: which bristles have run dry where. */
@@ -249,26 +300,13 @@ function frame(): void {
 
   g.setTransform(1, 0, 0, 1, 0, 0);
   g.fillStyle = PAPER; g.fillRect(0, 0, W, H);
-  paper.draw(g, v); paper.heartwood(g, tree, v);
+  // (No heartwood laid over it: a ring is a day here, and every day's colour stays to be read.)
+  paper.draw(g, v); drawRays(v);
   const n = tree.rings.length;
   for (let i = 0; i < n; i++) {
     const live = i === n - 1 && phase === 'settling';
     // (Older years' relief softens into the slice, as the press's edges wear: the last few stand out.)
-    drawRelief(v, i, (live ? depth : depths[i] ?? 0) * (0.25 + 0.75 * Math.exp(-(n - 1 - i) / 5)));
-  }
-  // The whole slice pressed into the paper as the platen comes down: the paper's edge round it falls
-  // into shadow on the side away from the light and catches it on the other, deepening as it's held.
-  const sink = phase === 'settling' ? depth : phase === 'lifting' ? (1 - smooth((t - since) / 1.2)) * (depths[n - 1] ?? 0) : 0;
-  if (sink > 0.01 && n > 0) {
-    const r = tree.rings[n - 1], o = 3.2 * px * sink;
-    const rim = (dx: number, dy: number) => { g.beginPath(); for (let j = 0; j <= K * 2; j++) { const a = (j / (K * 2)) * TAU, [x, y] = at(v, a, radiusAt(r, a)); if (j) g.lineTo(x + dx, y + dy); else g.moveTo(x + dx, y + dy); } };
-    g.save();
-    g.lineWidth = 7 * px * sink;
-    g.strokeStyle = `rgba(255,252,244,${(0.8 * sink).toFixed(3)})`; rim(o, o); g.stroke();
-    g.strokeStyle = `rgba(60,42,28,${(0.3 * sink).toFixed(3)})`; rim(-o * 0.7, -o * 0.7); g.stroke();
-    g.globalCompositeOperation = 'multiply';
-    g.fillStyle = `rgba(150,120,95,${(0.16 * sink).toFixed(3)})`; rim(0, 0); g.fill();
-    g.restore();
+    drawRelief(v, i, (live ? depth : depths[i] ?? 0) * Math.exp(-(n - 1 - i) / 3));
   }
   // A ring touched: lit softly along its edge for a moment, as its day is read.
   const glow = lit >= 0 && lit < n ? 1 - smooth((t - litAt - 2) / 1.2) : 0;
@@ -286,9 +324,6 @@ function frame(): void {
     g.stroke();
   }
   if (phase === 'trace') {
-    // The guide shows where to begin, then leaves you to it: it fades as soon as the brush is down.
-    if (!tree.stroke) guideAt = t;
-    drawGuide(g, tree, strokeView ?? v, bandOf(tree, v), (0.75 + 0.25 * Math.cos(t * TAU / 10)) * (1 - smooth((t - guideAt) / 1.5)));
     // The ink: a brush's line, wet at first, then drying into bristle-streaks and evaporating.
     const sv = strokeView ?? v;
     drawBrush(g, sv, t);
@@ -311,7 +346,7 @@ void (async () => {
   warp = warpFor(tree); paper.fit(warp, warp.R); paper.bake(tree);
   fit(); view = null;
   const today = dayOf();
-  say(!tree.rings.length ? 'Trace a circle, in one unhurried line: a ring a day.' : days.includes(today) ? 'Today’s ring is drawn. Another, if you like.' : 'Today’s ring.', 8);
+  say(!tree.rings.length ? 'Draw a circle round the slice, as wide or close as you like: a ring a day.' : days.includes(today) ? 'Today’s ring is drawn. Another, if you like.' : 'Today’s ring.', 8);
   Object.assign(window, { press: { get tree() { return tree; }, get phase() { return phase; }, get view() { return viewNow(); }, get days() { return days; } } });
   requestAnimationFrame(frame);
 })();

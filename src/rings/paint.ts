@@ -76,6 +76,12 @@ export class Paper {
   wood: WoodPalette = OAK_WOOD;
   /** How far the paint settles into the wood as it dries (0 keeps the season's colour, 1 is all wood). */
   turn = 0.85;
+  /**
+   * Each year laid as wood grows it, across the ring: pale, open spring wood within, and a narrow, dense
+   * band of late summer's wood at its edge, the whole year in one season's colour, `across(ring)` (0
+   * spring to 1, as the calendar has it). Else (null) the seasons run round the ring.
+   */
+  across: ((ring: number) => number) | null = null;
   warp: Warp | undefined;
   /** Points of the ring being painted already laid on the paper. */
   private laid = new Uint8Array(K);
@@ -115,8 +121,8 @@ export class Paper {
     for (let i = 0; i < K; i++) {
       if (tree.state[i] !== 1 || this.laid[i]) continue;
       this.laid[i] = 1;
-      const out = inner(i) + edge[i] * w, ink = pigmentOf(wx, tree.at[i], tree.tone[i]);
-      this.wash.layArc((i - 0.5) * STEP, (i + 0.5) * STEP, (a) => (n ? warpR(this.warp, radiusAt(inner, a)) : 0), () => warpR(this.warp, out), wx === RAIN ? 1 : 0.9, () => ink, granulation(wx), woodOf(this.wood, wx), this.turn);
+      const out = inner(i) + edge[i] * w;
+      this.layYear((i - 0.5) * STEP, (i + 0.5) * STEP, (a) => (n ? radiusAt(inner, a) : 0), () => out, wx, this.across ? this.across(n) : tree.at[i], tree.tone[i]);
     }
     this.dirty = true;
   }
@@ -151,8 +157,7 @@ export class Paper {
       this.wash.weather = { ...weatheringOf(tree, n), dry: 0 };
       for (let i = 0; i < K; i++) {
         const a = i * STEP, f = ((((dir * (a - start)) % TAU) + TAU) % TAU) / TAU, tone = tones ? tones[Math.floor(i / 8) % tones.length] : 0.5;
-        const ink = pigmentOf(wx, f, tone);
-        this.wash.layArc(a - STEP / 2, a + STEP / 2, (b) => warpR(this.warp, inner(b)), (b) => warpR(this.warp, radiusAt(ring, b)), wx === RAIN ? 1 : 0.9, () => ink, granulation(wx), woodOf(this.wood, wx), this.turn);
+        this.layYear(a - STEP / 2, a + STEP / 2, inner, (b) => radiusAt(ring, b), wx, this.across ? this.across(n) : f, tone);
       }
       this.wash.weather = weatheringOf(tree, n);
       for (const s of tree.scars) if (s.ring === n + 1) this.fireOn(tree, n, s.angle);
@@ -163,6 +168,28 @@ export class Paper {
     for (let k = 0; k < 400 && this.wash.wet; k++) this.wash.step(1 / 20);
     this.wash.dryAll();
     this.dirty = true;
+  }
+
+  /** A stretch of a year's ring laid on the paper, between radii (mm, unwarped): see `across`. */
+  private layYear(a0: number, a1: number, rIn: (a: number) => number, rOut: (a: number) => number, wx: number, f: number, tone: number): void {
+    const ink = pigmentOf(wx, f, tone), water = wx === RAIN ? 1 : 0.9, gran = granulation(wx), dries = woodOf(this.wood, wx);
+    const W = (r: (a: number) => number) => (a: number) => warpR(this.warp, r(a));
+    if (!this.across) { this.wash.layArc(a0, a1, W(rIn), W(rOut), water, () => ink, gran, dries, this.turn); return; }
+    // Earlywood, thin paint, most of the year; latewood, the season's colour deepened toward the
+    // heartwood's, dense at the ring's outer edge (its drying edge darkens it further, as latewood is).
+    const heart = absorb(this.wood.heart), mid = (a: number) => rIn(a) + 0.86 * (rOut(a) - rIn(a));
+    const early: RGB = [ink[0] * 0.6, ink[1] * 0.6, ink[2] * 0.6];
+    const late: RGB = [0.62 * ink[0] + 0.2 * heart[0], 0.62 * ink[1] + 0.2 * heart[1], 0.62 * ink[2] + 0.2 * heart[2]];
+    // (A ring finer than the paper's grain can't show its two woods, only their blend, as wood seen from
+    // across a room: laid so, it never shimmers into moiré.)
+    const am = (a0 + a1) / 2;
+    if (W(rOut)(am) - W(rIn)(am) < 3 * this.wash.h) {
+      const blend: RGB = [0.86 * early[0] + 0.14 * late[0], 0.86 * early[1] + 0.14 * late[1], 0.86 * early[2] + 0.14 * late[2]];
+      this.wash.layArc(a0, a1, W(rIn), W(rOut), water, () => blend, gran, dries, this.turn);
+      return;
+    }
+    this.wash.layArc(a0, a1, W(rIn), W(mid), water, () => early, gran, dries, this.turn);
+    this.wash.layArc(a0, a1, W(mid), W(rOut), water * 0.8, () => late, gran, heart, this.turn);
   }
 
   private fireOn(tree: TreeSim, n: number, angle: number): void {
