@@ -1,42 +1,56 @@
 /**
- * The ocean world's aim: a chain of living islands all the way round the world.
+ * The ocean world's aim: a chain of separate islands along the volcano's path.
  *
- * The crust carries the heat along a great circle from where it began. The first part of the way
- * round is cut into stretches; a stretch is held while an island of its own, with life on it, stands by it
- * (one island along several stretches holds only one). The world is ringed when every stretch is held
- * at once, before the fire goes out. (It was the whole way round, then half: too long a wait on the drift.) Old islands sink and wear, and unless reef holds them they
- * drop out of the chain, so the ring is a race against the sea as much as against the cooling.
+ * The crust carries the heat along a great circle from where it began, and the dotted line is the first part
+ * of that way. Every separate island by the line counts, wherever along it (it once counted only one island
+ * in each fifth of the line, which nobody could see: seven islands could count as two). The line's end is
+ * the challenge: the heat drifts past it in about two and a half minutes, so the islands must come quickly,
+ * and apart. Once counted, an island stays counted, though it sinks or grows into another later, as the
+ * oldest of Hawaii's have sunk.
  */
 import type { Topology } from '../mesh/topology';
 import type { Planet } from './sim';
 
 export const CHAIN = {
-  /** Stretches along the way. */
+  /** Separate islands to raise. */
   stretches: 5,
-  /** How much of the way round the world the chain runs. */
+  /** How far round the world the line runs (a share of the way round). */
   arc: 0.3,
-  /** How near the way (as the sine of an angle from its circle) living ground must be to hold a stretch. */
+  /** The stretch just ahead of the volcano, drawn a little stronger (a share of the way round). */
+  ahead: 0.05,
+  /** How near the path (as the sine of an angle from its circle) an island must come to be on it. */
   near: 0.14,
-  /** Life at least this strong holds. */
-  living: 0.3,
   /** Land on fewer vertices than this (on a planet of the drawn detail) is a rock, not an island of the chain. */
-  least: 4,
+  least: 12,
 };
 
 type V3 = { x: number; y: number; z: number };
 
 export class Chain {
-  readonly held: boolean[];
   /** The way round: where it starts, the way it goes, and the pole of its circle. */
   readonly a: V3;
   readonly b: V3;
   readonly pole: V3;
+  /** Each island counted: how far round the path it lies (from, to; shares of the way round). */
+  readonly spans: { from: number; to: number }[] = [];
+  /** Which counted island each vertex was last part of (-1: none). */
+  private owner: Int32Array | null = null;
+  /** Islands counted before the world was taken up again, whose ground isn't known now; and where they lay. */
+  private before = 0;
+  readonly earlier: { from: number; to: number }[] = [];
+  private adopting = false;
 
   constructor(start: V3, along: V3) {
     this.a = norm(start);
     this.b = norm(along);
     this.pole = norm(cross(this.a, this.b));
-    this.held = new Array(CHAIN.stretches).fill(false);
+  }
+
+  /** Taken up again: so many islands were counted, along these spans; the islands standing now are among them. */
+  restore(count: number, spans: { from: number; to: number }[] = []): void {
+    this.before = count;
+    this.earlier.push(...spans.map((s) => ({ ...s })));
+    this.adopting = true;
   }
 
   /** How far round a point on the world is along the way (0 to 1), and how far off it (as a sine). */
@@ -47,62 +61,61 @@ export class Chain {
     return { round: t, off: Math.abs(dot(p, this.pole)) };
   }
 
-  /**
-   * Reckon which stretches are held. Returns how many. Each stretch is held by an island of its own standing by
-   * the way there (land on enough of the world to be an island, not a rock); one island stretched along
-   * the way holds only one of them, so the chain is of separate islands, as Hawaii's is. Once held, a stretch stays
-   * held, though its island sinks later (as the oldest of Hawaii's have): the count never goes back.
-   */
+  /** Reckon the islands along the path. Returns how many have been counted. */
   update(pl: Planet, topo: Topology): number {
-    const p = topo.basePositions, n = CHAIN.stretches, N = pl.rock.length;
-    const island = new Int32Array(N).fill(-1), least = CHAIN.least * (topo.vertexCount / 16002);
-    let islands = 0;
+    const p = topo.basePositions, N = pl.rock.length, least = CHAIN.least * (topo.vertexCount / 16002);
+    if (!this.owner) this.owner = new Int32Array(N).fill(-1);
+    const owner = this.owner, seen = new Uint8Array(N), taken = new Set<number>();
+    let adopted = 0;
     for (let v = 0; v < N; v++) {
-      if (island[v] !== -1 || pl.rock[v] <= 0) continue;
+      if (seen[v] || pl.rock[v] <= 0) continue;
       const piece: number[] = [], stack = [v];
-      island[v] = -2;
+      seen[v] = 1;
       while (stack.length) {
         const u = stack.pop()!;
         piece.push(u);
-        for (let k = topo.nbrOffsets[u]; k < topo.nbrOffsets[u + 1]; k++) { const w = topo.nbrList[k]; if (island[w] === -1 && pl.rock[w] > 0) { island[w] = -2; stack.push(w); } }
+        for (let k = topo.nbrOffsets[u]; k < topo.nbrOffsets[u + 1]; k++) { const w = topo.nbrList[k]; if (!seen[w] && pl.rock[w] > 0) { seen[w] = 1; stack.push(w); } }
       }
-      const id = piece.length >= least ? islands++ : -3; // (-3: a rock, too small to count)
-      for (const u of piece) island[u] = id;
+      if (piece.length < least) continue; // (a rock, too small to count)
+      // Where it lies along the path, if it comes near it at all.
+      let from = 2, to = -1;
+      for (const u of piece) {
+        const w = this.where({ x: p[u * 3], y: p[u * 3 + 1], z: p[u * 3 + 2] });
+        if (w.off <= CHAIN.near && w.round < CHAIN.arc) { from = Math.min(from, w.round); to = Math.max(to, w.round); }
+      }
+      if (to < 0) continue;
+      // An island counted before (or grown from one, or joined to one) is that island; else it's a new one.
+      // (One that has split, or been cut, in two is two: the second piece is a new island.)
+      let id = -1;
+      for (const u of piece) if (owner[u] >= 0 && !taken.has(owner[u])) { id = owner[u]; break; }
+      if (id < 0) {
+        if (this.adopting) adopted++;
+        id = this.spans.length;
+        this.spans.push({ from, to });
+      } else {
+        const s = this.spans[id];
+        s.from = Math.min(s.from, from); s.to = Math.max(s.to, to);
+      }
+      taken.add(id);
+      for (const u of piece) owner[u] = id;
     }
-    // Which stretches each island stands by the way in.
-    const on: Set<number>[] = Array.from({ length: islands }, () => new Set<number>());
-    for (let v = 0; v < N; v++) {
-      if (island[v] < 0) continue;
-      const w = this.where({ x: p[v * 3], y: p[v * 3 + 1], z: p[v * 3 + 2] });
-      if (w.off > CHAIN.near || w.round >= CHAIN.arc) continue;
-      on[island[v]].add(Math.min(n - 1, Math.floor((w.round / CHAIN.arc) * n)));
-    }
-    // An island by a stretch already held is the island that holds it (or one joined to it since): it holds no other.
-    const used = new Uint8Array(islands);
-    for (let j = 0; j < islands; j++) for (const i of on[j]) if (this.held[i]) used[j] = 1;
-    // Each other island to one stretch: along the way, each stretch still unheld takes the free island that could hold fewest others.
-    for (let i = 0; i < n; i++) {
-      if (this.held[i]) continue;
-      let best = -1;
-      for (let j = 0; j < islands; j++) if (!used[j] && on[j].has(i) && (best < 0 || on[j].size < on[best].size)) best = j;
-      if (best >= 0) { used[best] = 1; this.held[i] = true; }
-    }
+    if (this.adopting) { this.adopting = false; this.before = Math.max(0, this.before - adopted); }
     return this.count;
   }
 
   get count(): number {
-    return this.held.filter(Boolean).length;
+    return this.before + this.spans.length;
   }
 
   get ringed(): boolean {
-    return this.held.every(Boolean);
+    return this.count >= CHAIN.stretches;
   }
 
-  /** The way, as points round its circle (on the unit sphere), for drawing: `per` points to a stretch. */
-  points(per = 12): V3[] {
-    const out: V3[] = [], total = CHAIN.stretches * per;
-    for (let i = 0; i <= total; i++) {
-      const t = (i / total) * Math.PI * 2 * CHAIN.arc;
+  /** The path between two shares of the way round, as points (on the unit sphere), for drawing. */
+  between(from: number, to: number, step = 0.004): V3[] {
+    const out: V3[] = [];
+    for (let r = from; r <= to + 1e-9; r += step) {
+      const t = r * Math.PI * 2;
       out.push({ x: this.a.x * Math.cos(t) + this.b.x * Math.sin(t), y: this.a.y * Math.cos(t) + this.b.y * Math.sin(t), z: this.a.z * Math.cos(t) + this.b.z * Math.sin(t) });
     }
     return out;

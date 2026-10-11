@@ -2012,9 +2012,13 @@ function drawAim(now: number): void {
     return;
   }
   if (chain) {
-    // The route in small dots round the world: pale across what's still to do, inked where held.
-    const per = 12, pts = chain.points(per), here = Math.floor((chain.where(planet.plume).round / CHAIN.arc) * CHAIN.stretches);
-    chain.held.forEach((h, i) => onGround(pts.slice(i * per, (i + 1) * per), h ? inked : (i - here + CHAIN.stretches) % CHAIN.stretches <= 1 ? next : pencilled));
+    // The line in small dots: pale, a little stronger just ahead of the volcano, and inked by each island counted
+    // (so it's plain which have counted).
+    const here = Math.min(CHAIN.arc, chain.where(planet.plume).round);
+    onGround(chain.between(0, here), pencilled);
+    onGround(chain.between(here, Math.min(CHAIN.arc, here + CHAIN.ahead)), next);
+    onGround(chain.between(Math.min(CHAIN.arc, here + CHAIN.ahead), CHAIN.arc), pencilled);
+    for (const sp of [...chain.earlier, ...chain.spans]) onGround(chain.between(Math.max(0, sp.from - 0.006), sp.to + 0.006, 0.003), inked);
   } else if (WORLD.goal === 'ridge') {
     // The equator, in dots, round the spin's axis: a stretch inked once it's raised into ridge.
     const raise = planet.ridgeRaise(), per = 8, n = Planet.RIDGE_STRETCHES;
@@ -2790,7 +2794,7 @@ const AGE_WORDS = (met: boolean) => GOAL_WORDS[WORLD.goal].age(met);
 function tale(met: boolean): string {
   const pct = Math.min(100, Math.round(aimDone));
   switch (WORLD.goal) {
-    case 'ring': return met ? 'A chain of islands a third of the way round the world. The oldest are already sinking.' : `${aimDone} of ${aimOf} separate islands along the line.`;
+    case 'ring': return met ? 'A chain of separate islands along the volcano\'s path. The oldest are already sinking.' : `${aimDone} of ${aimOf} separate islands along the line.`;
     case 'basins': return `${aimDone} of ${aimOf} big craters filled with lava.`;
     case 'height': { const km = Math.round(aimDone); return met ? `A mountain ${km} km high, ${km >= 26 ? 'three times' : 'twice'} the height of Everest.` : `A mountain ${km} km high.`; }
     case 'cover': return `One sheet of new white ice over ${Math.round(aimDone)}% of the moon.`;
@@ -3172,7 +3176,7 @@ interface Kept {
   run?: string;
   /** Whether it was being played free, with no clock. */
   free?: boolean;
-  way: { a: { x: number; y: number; z: number }; b: { x: number; y: number; z: number }; held?: boolean[] } | null;
+  way: { a: { x: number; y: number; z: number }; b: { x: number; y: number; z: number }; held?: boolean[]; count?: number; spans?: { from: number; to: number }[] } | null;
   seed: number;
   planet: Record<string, unknown>;
   ecology: Record<string, unknown>;
@@ -3183,7 +3187,7 @@ function world(): Kept {
   return {
     world: WORLD.id,
     free: FREE,
-    way: chain ? { a: chain.a, b: chain.b, held: chain.held.slice() } : null, // (and which stretches are held: once held, kept, though their islands have sunk since)
+    way: chain ? { a: chain.a, b: chain.b, count: chain.count, spans: [...chain.earlier, ...chain.spans].map((s) => ({ ...s })) } : null, // (and the islands counted: once counted, kept, though they have sunk since)
     seed,
     // (Not its rules, nor what's worked out from the ground: those come fresh from this version of the game.)
     planet: snapshotOf(planet, ['topo', 'next', 'firmness', 'scale', 'news', 'k', 'grainOf', 'slowDelta', 'moltenWas', 'moltenKnown']),
@@ -3210,7 +3214,7 @@ async function resume(): Promise<boolean> {
 }
 /** Put a kept world back: the planet, its life and islands, and where the page had got to. */
 function takeUp(w: Kept): boolean {
-  if (w.way && chain) { chain = new Chain(w.way.a, w.way.b); w.way.held?.forEach((h, i) => { if (h && i < chain!.held.length) chain!.held[i] = true; }); }
+  if (w.way && chain) { chain = new Chain(w.way.a, w.way.b); chain.restore(w.way.count ?? w.way.held?.filter(Boolean).length ?? 0, w.way.spans); }
   seed = w.seed;
   // (A save from an older game kept its rules too: they are the game's own now.)
   const { k: _oldRules, grainOf: _grain, slowDelta: _scratch, moltenWas: _m, moltenKnown: _mk, ...kept } = w.planet as Record<string, unknown>;
