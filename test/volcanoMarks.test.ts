@@ -6,8 +6,10 @@ describe('marks', () => {
   it('every world has its thresholds, in shares that have words', () => {
     for (const w of WORLDS) {
       expect(MARK_AT[w.id], w.id).toBeDefined();
-      expect([10, 20, 25, 33, 50]).toContain(MARK_AT[w.id].heat);
       expect(markNames(w.id)[0]).toBe('reach the goal');
+      // (The drying seas' fire runs its course whatever you do: their stars are the share of the world still sea.)
+      if (w.goal === 'sea') { expect(markNames(w.id)[1]).toMatch(/^keep \d+% of the world sea$/); continue; }
+      expect([10, 20, 25, 33, 50]).toContain(MARK_AT[w.id].heat);
       expect(markNames(w.id)[1]).toMatch(w.goal === 'town' ? /every house/ : /^keep .*heat$/);
     }
   });
