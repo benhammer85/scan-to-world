@@ -10,8 +10,8 @@
  *   settle    as the ring closes, it sinks softly into the paper (and on the iPhone app, a faint
  *             pressure in the hand); its relief stays, caught by raking light
  *
- * The tree is in the paper too, never inked: the real print of its age as a blind embossing, seen only
- * as relief in the light.
+ * Nothing else on the page while you draw: no print behind the slice, no words, and the guide only to
+ * begin by (it fades once the brush is down).
  */
 import '../volcano/fonts.css';
 import { NATIVE, rumble, tap } from '../volcano/native';
@@ -19,7 +19,6 @@ import { K, OAK, TreeSim } from './tree';
 import { bandOf, brushAt, pointerAt, radiusAt, roomOf, scaleFor, unwarpR, warpFor, type View, type Warp } from './hand';
 import { at, drawGuide, drawPaper } from './draw';
 import { Paper } from './paint';
-import { plateImage, preloadPlates, stageAt, type Stage } from './plates';
 import { holdStill, steadySize } from './steady';
 import { keepTree, recallTree, snapshotTree, treeFrom } from './save';
 
@@ -88,6 +87,8 @@ let trail: { a: number; r: number; t: number; w: number; fast: number }[] = [];
 let strokeView: View | null = null, painter: number | null = null;
 
 function say(text: string, fade = 10): void {
+  // (Nothing to read while the hand is drawing.)
+  if (painter !== null) return;
   words.textContent = text; words.classList.add('shown');
   clearTimeout(sayT); sayT = window.setTimeout(() => words.classList.remove('shown'), fade * 1000);
 }
@@ -96,6 +97,7 @@ let sayT = 0;
 canvas.addEventListener('pointerdown', (e) => {
   canvas.setPointerCapture(e.pointerId);
   if (painter !== null) return;
+  words.classList.remove('shown');
   const x = e.clientX * px, y = e.clientY * px;
   if (phase !== 'trace') return;
   const v = viewNow();
@@ -128,7 +130,7 @@ for (const type of ['pointerup', 'pointercancel'] as const) canvas.addEventListe
 });
 
 /** A touch inside the slice: the ring under it, lit for a moment, and the day it was drawn. */
-let lit = -1, litAt = 0;
+let lit = -1, litAt = 0, guideAt = 0;
 function readDay(v: View, x: number, y: number): void {
   const dx = x - v.cx, dy = v.cy - y, a = (((Math.atan2(dy, dx) - v.turn) % TAU) + TAU) % TAU;
   const r = unwarpR(v.warp, Math.hypot(dx, dy) / v.s);
@@ -173,30 +175,6 @@ function hear(): void {
 }
 
 // ---------------------------------------------------------------- drawing
-/** The tree, pressed blind into the paper: the real print of its age, no ink, only its relief in the light. */
-const blind = new Map<string, { hi: HTMLCanvasElement; lo: HTMLCanvasElement }>();
-function blindOf(st: Stage): { hi: HTMLCanvasElement; lo: HTMLCanvasElement } | null {
-  const img = plateImage(st);
-  if (!img || !img.complete || !img.naturalWidth) return null;
-  let b = blind.get(st.id);
-  if (!b) {
-    const make = (colour: string) => { const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight; const x = c.getContext('2d')!; x.drawImage(img, 0, 0); x.globalCompositeOperation = 'source-in'; x.fillStyle = colour; x.fillRect(0, 0, c.width, c.height); return c; };
-    b = { hi: make('rgb(255,253,247)'), lo: make('rgb(92,74,58)') };
-    blind.set(st.id, b);
-  }
-  return b;
-}
-function drawBlindTree(v: View): void {
-  const { stage } = stageAt(tree.year), b = blindOf(stage);
-  if (!b) return;
-  const h = H * stage.page * 0.95, w = (h * b.hi.width) / b.hi.height, x = W / 2 - w * stage.trunk, y = H - 18 * px - h * (1 - stage.foot), o = 1.1 * px;
-  // (Light from the upper left: each pressed line's lower right falls in shadow, its upper left catches the light.)
-  g.save();
-  g.globalAlpha = 0.09; g.drawImage(b.lo, x + o, y + o, w, h);
-  g.globalAlpha = 0.5; g.drawImage(b.hi, x - o, y - o, w, h);
-  g.restore();
-  void v;
-}
 /** A ring's relief: pressed into the paper, its edge catches the light above and falls into shadow below. */
 function drawRelief(v: View, i: number, d: number): void {
   if (d <= 0.01) return;
@@ -271,7 +249,6 @@ function frame(): void {
 
   g.setTransform(1, 0, 0, 1, 0, 0);
   g.fillStyle = PAPER; g.fillRect(0, 0, W, H);
-  drawBlindTree(v);
   paper.draw(g, v); paper.heartwood(g, tree, v);
   const n = tree.rings.length;
   for (let i = 0; i < n; i++) {
@@ -309,7 +286,9 @@ function frame(): void {
     g.stroke();
   }
   if (phase === 'trace') {
-    drawGuide(g, tree, strokeView ?? v, bandOf(tree, v), 0.75 + 0.25 * Math.cos(t * TAU / 10));
+    // The guide shows where to begin, then leaves you to it: it fades as soon as the brush is down.
+    if (!tree.stroke) guideAt = t;
+    drawGuide(g, tree, strokeView ?? v, bandOf(tree, v), (0.75 + 0.25 * Math.cos(t * TAU / 10)) * (1 - smooth((t - guideAt) / 1.5)));
     // The ink: a brush's line, wet at first, then drying into bristle-streaks and evaporating.
     const sv = strokeView ?? v;
     drawBrush(g, sv, t);
@@ -331,7 +310,6 @@ void (async () => {
   depths = tree.rings.map(() => 0.55);
   warp = warpFor(tree); paper.fit(warp, warp.R); paper.bake(tree);
   fit(); view = null;
-  void preloadPlates();
   const today = dayOf();
   say(!tree.rings.length ? 'Trace a circle, in one unhurried line: a ring a day.' : days.includes(today) ? 'Today’s ring is drawn. Another, if you like.' : 'Today’s ring.', 8);
   Object.assign(window, { press: { get tree() { return tree; }, get phase() { return phase; }, get view() { return viewNow(); }, get days() { return days; } } });
