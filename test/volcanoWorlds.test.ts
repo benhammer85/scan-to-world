@@ -22,7 +22,7 @@ const run = (pl: Planet, seconds: number) => { for (let t = 0; t < seconds; t +=
 
 describe('the worlds', () => {
   it('come one after another, and each has its own aim', () => {
-    expect(WORLDS.map((w) => w.id)).toEqual(['mars', 'moon', 'ice', 'asteroid', 'rogue', 'hollow', 'first', 'comets', 'young', 'archean', 'snowball', 'ocean', 'atolls', 'drying', 'giant', 'lengai', 'ijen', 'tonga', 'io', 'europa', 'enceladus', 'triton', 'tumble', 'mercury', 'magma', 'dust', 'deep', 'spin', 'venus', 'pluto', 'lamp', 'twofires']);
+    expect(WORLDS.map((w) => w.id)).toEqual(['mars', 'moon', 'ice', 'asteroid', 'rogue', 'hollow', 'first', 'comets', 'young', 'archean', 'snowball', 'ocean', 'atolls', 'drying', 'giant', 'surtsey', 'lengai', 'ijen', 'tonga', 'io', 'europa', 'enceladus', 'triton', 'tumble', 'mercury', 'magma', 'dust', 'deep', 'spin', 'venus', 'pluto', 'lamp', 'twofires']);
     expect(worldOf('moon').goal).toBe('basins');
     expect(worldOf('nowhere').id).toBe('mars');
     expect(nextWorld(worldOf('mars'))!.id).toBe('moon');
@@ -39,7 +39,8 @@ describe('the worlds', () => {
     expect(nextWorld(worldOf('ocean'))!.id).toBe('atolls');
     expect(nextWorld(worldOf('atolls'))!.id).toBe('drying');
     expect(nextWorld(worldOf('drying'))!.id).toBe('giant');
-    expect(nextWorld(worldOf('giant'))!.id).toBe('lengai');
+    expect(nextWorld(worldOf('giant'))!.id).toBe('surtsey');
+    expect(nextWorld(worldOf('surtsey'))!.id).toBe('lengai');
     expect(nextWorld(worldOf('lengai'))!.id).toBe('ijen');
     expect(nextWorld(worldOf('ijen'))!.id).toBe('tonga');
     expect(nextWorld(worldOf('tonga'))!.id).toBe('io');
@@ -297,6 +298,43 @@ describe('the Red Giant', () => {
     expect(pl.rock[night]).toBeCloseTo(0.2, 3);
     pl.reserve = pl.k.heat * 0.2;
     expect(pl.nightShare).toBeLessThan(night0 * 0.6);
+  });
+});
+
+describe('Surtsey', () => {
+  const rules = worldOf('surtsey').rules;
+  const island = (lava: boolean) => {
+    // (A sea a little deep, and land round the vent: lava rock, set a while ago, or ash.)
+    const start = new Float32Array(topo.vertexCount).fill(-0.08), vent = nearest(0, 0, 1);
+    for (let v = 0; v < topo.vertexCount; v++) if (Math.hypot(p[v * 3], p[v * 3 + 1], p[v * 3 + 2] - 1) < 0.25) start[v] = 0.06;
+    const pl = new Planet(topo, vent, 3, rules, start);
+    for (let v = 0; v < topo.vertexCount; v++) if (start[v] > 0) { if (lava) pl.laid[v] = 0; else pl.ash[v] = 1; }
+    return pl;
+  };
+  it('turns a burst all to ash while the sea still reaches the vent', () => {
+    const pl = new Planet(topo, nearest(0, 0, 1), 3, rules);
+    pl.pressure = pl.k.explosive * 1.2;
+    expect(pl.erupt()).toBe('burst');
+    expect(pl.erupting).toBe(false);
+    expect(pl.ash[pl.plumeVertex]).toBeGreaterThan(0.5);
+  });
+  it('has birds nest on cooled lava, not on ash, and loses a nest to lava over it', () => {
+    const ashy = island(false), rock = island(true);
+    run(ashy, 30); run(rock, 30);
+    expect(ashy.nests.length).toBe(0);
+    expect(rock.nests.length).toBeGreaterThan(2);
+    const v = rock.nests[0].v, before = rock.nests.length;
+    rock.lava[v] = 0.02;
+    run(rock, 1);
+    expect(rock.nestsLost.lava).toBe(1);
+    expect(rock.nests.length).toBeLessThan(before + 1);
+  });
+  it('keeps pillow lava in the field book when lava from the land runs into the sea', () => {
+    const pl = island(true), sea = nearest(Math.sin(0.4), 0, Math.cos(0.4));
+    expect(pl.rock[sea]).toBeLessThan(0);
+    pl.lava[sea] = 0.01;
+    run(pl, 1);
+    expect(pl.found).toContain('pillow');
   });
 });
 

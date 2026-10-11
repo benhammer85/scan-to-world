@@ -34,6 +34,7 @@ export const MARK_AT: Record<WorldId, { heat: number; minutes: number }> = {
   rogue: { heat: 33, minutes: 4 },
   snowball: { heat: 25, minutes: 3 },
   archean: { heat: 10, minutes: 5 },
+  surtsey: { heat: 20, minutes: 2 },
   lengai: { heat: 10, minutes: 5 },
   ijen: { heat: 10, minutes: 5 },
   tonga: { heat: 33, minutes: 4 },

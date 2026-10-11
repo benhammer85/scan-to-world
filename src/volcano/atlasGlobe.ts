@@ -49,7 +49,7 @@ const FIGURES: Record<string, Figure> = {
   // III · Earth's future: Argo, the ship, sailing on: along its oars, to its bow.
   III: { name: 'Argo Navis', src: argo, w: 560, h: 425, stars: [[232, 247], [330, 232], [455, 180]], ra: 8.2, dec: -44, span: 46 },
   // IV · Strange fires: the Dragon, curled round the pole: tail, coil, head.
-  IV: { name: 'Draco', src: draco, w: 677, h: 818, stars: [[80, 710], [182, 262], [293, 80]], ra: 16.2, dec: 66, span: 36 },
+  IV: { name: 'Draco', src: draco, w: 677, h: 818, stars: [[80, 710], [210, 495], [182, 262], [293, 80]], ra: 16.2, dec: 66, span: 36 },
   // V · Pressure: Hercules, kneeling: club, face, shoulder, hip, knee, foot.
   V: { name: 'Hercules', src: hercules, w: 686, h: 819, stars: [[318, 44], [427, 213], [418, 392], [310, 494], [120, 600], [478, 770]], ra: 17.4, dec: 21, span: 36 },
   // VI · Far worlds: Pegasus, flying: muzzle, neck, wing, wingtip, cloud.

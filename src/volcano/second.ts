@@ -93,6 +93,7 @@ export function secondWords(goal: World['goal'], value: number): string {
     case 'atolls': return `${value}% of the heat to spare`;
     case 'sea': return `${value}% of the world still sea`;
     case 'giant': return `a mountain ${value} km high`;
+    case 'nests': return value === 0 ? 'no nests lost' : `${value} ${value === 1 ? 'nest' : 'nests'} lost`;
   }
 }
 
@@ -173,6 +174,8 @@ export function measureSecond(world: World, pl: Planet, topo: Topology, islands:
     value = Math.round(Math.max(0, pl.summit) * (world.height?.kmPerUnit ?? 40));
   } else if (world.goal === 'sea') {
     value = Math.round(100 * pl.seaShare);
+  } else if (world.goal === 'nests') {
+    value = pl.nestsLost.lava + pl.nestsLost.sea + pl.nestsLost.ash;
   } else if (world.goal === 'water' || world.goal === 'atolls') {
     value = Math.round(100 * pl.heatLeft);
   } else if (world.goal === 'gather') {

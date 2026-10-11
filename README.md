@@ -806,3 +806,10 @@ Choosing whether a fall was icy afresh at each try at a landing place had also l
   * The tumbling moon says when it's tumbling again, and when an eruption was too near the still point to help.
   * Europa says when an eruption was too early.
   * Mercury says when one was too small to reach the far side, and when a shock is on its way and how soon it will rise.
+
+**A test level: Surtsey (XVI).** The first world built around the lessons from other games: a fixed amount of fire, something living to protect, steering that matters, and things hidden to find.
+* **The island.** While the sea still reaches the vent, every eruption is all ash (`wet`), as at the real Surtsey. The ash builds the island fast, but the waves wash ash away five times faster than lava rock (`softer: 5`). Once the island stands clear of the sea, the circle round the volcano goes and lava is poured instead. Lava over ash makes it hard.
+* **The birds.** Seabirds nest on lava rock that has set and cooled for 15 seconds, never on loose ash (`nests`). A nest is lost to lava run over it, to ash from an eruption, or to the sea. The aim is 8 nests at once. Each nest is drawn as a small knot of ink, and the ground they could take next is stippled in pencil.
+* **A fixed fire.** The heat is small (130), so it can't be wasted. Careful play wins in about 70 seconds with a third of the heat left. Random play takes 100 to 120 seconds and uses it all, missing the heat star. Pouring in one place without steering fails.
+* **The field book** (`fieldbook.ts`). Two real formations are hidden on Surtsey. **Pillow lava** is made by steering lava from the land into the sea. **Pele's hair** is made by a tall fountain from a dry vent, let go nearly full (a gamble, as its ash buries nests). Each is kept for good once found, and the card shows how many are found.
+* Unusual Volcanoes now has four worlds, and the later worlds' numerals move up by one. Draco has a fourth star.

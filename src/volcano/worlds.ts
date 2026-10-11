@@ -31,7 +31,7 @@
  */
 import type { Rules } from './sim';
 
-export type WorldId = 'comets' | 'ocean' | 'moon' | 'mars' | 'ice' | 'io' | 'enceladus' | 'asteroid' | 'spin' | 'lamp' | 'tumble' | 'deep' | 'young' | 'rogue' | 'snowball' | 'dust' | 'magma' | 'first' | 'archean' | 'europa' | 'triton' | 'mercury' | 'lengai' | 'ijen' | 'tonga' | 'hollow' | 'venus' | 'pluto' | 'twofires' | 'atolls' | 'drying' | 'giant';
+export type WorldId = 'comets' | 'ocean' | 'moon' | 'mars' | 'ice' | 'io' | 'enceladus' | 'asteroid' | 'spin' | 'lamp' | 'tumble' | 'deep' | 'young' | 'rogue' | 'snowball' | 'dust' | 'magma' | 'first' | 'archean' | 'europa' | 'triton' | 'mercury' | 'lengai' | 'ijen' | 'tonga' | 'hollow' | 'venus' | 'pluto' | 'twofires' | 'atolls' | 'drying' | 'giant' | 'surtsey';
 
 export interface Palette {
   /** The ground: bare old rock, fresh basalt, ash, lava as it runs (and where it lies thick), and, for worlds that keep a mark of it, rock that lava has flooded. */
@@ -65,7 +65,7 @@ export interface World {
   /** Its second aim, for the card: one that pulls against the first (see second.ts). */
   second: string;
   palette: Palette;
-  goal: 'ring' | 'basins' | 'height' | 'cover' | 'plumes' | 'feed' | 'round' | 'ridge' | 'lamp' | 'calm' | 'bank' | 'orbit' | 'hearth' | 'thaw' | 'outbuild' | 'snow' | 'gather' | 'oxygen' | 'chaos' | 'streaks' | 'antipode' | 'white' | 'glow' | 'waves' | 'domes' | 'town' | 'marble' | 'water' | 'atolls' | 'sea' | 'giant';
+  goal: 'ring' | 'basins' | 'height' | 'cover' | 'plumes' | 'feed' | 'round' | 'ridge' | 'lamp' | 'calm' | 'bank' | 'orbit' | 'hearth' | 'thaw' | 'outbuild' | 'snow' | 'gather' | 'oxygen' | 'chaos' | 'streaks' | 'antipode' | 'white' | 'glow' | 'waves' | 'domes' | 'town' | 'marble' | 'water' | 'atolls' | 'sea' | 'giant' | 'nests';
   /** For Ol Doinyo Lengai: how much of the summit must turn white, once the peak stands its `height`. */
   whiteness?: number;
   /** For Kawah Ijen: how much must glow at once (in vertices of a planet of the drawn detail), for two minutes in all, to count as lit. */
@@ -120,6 +120,8 @@ export interface World {
   sea?: number;
   /** The red giant: how fast the world turns by itself (radians a second), carrying the ground from night into day. */
   spin?: number;
+  /** A new island: how many seabirds' nests must stand at once. */
+  nests?: number;
   /** How far apart its contours are, in height (0.035 unless it says). */
   contour?: number;
 }
@@ -472,9 +474,33 @@ export const WORLDS: World[] = [
     spin: 0.05,
   },
   {
+    id: 'surtsey',
+    kind: 'A new island',
+    numeral: 'XVI',
+    title: 'Surtsey',
+    first: 'An island being born from the sea.',
+    why: 'In 1963 Surtsey rose from the sea off Iceland. The waves washed its ash away, until lava covered the ash and made it hard. Seabirds came to nest within a few years.',
+    second: 'Lose no nests on the way.',
+    rules: {
+      floor: -0.08, drift: 0, rises: 0, sink: 0, swell: 0, life: false,
+      heat: 130, rising: 1.3, steady: true, cap: 8, explosive: 4, // (a small fire: every eruption counts)
+      waves: 0.004, softer: 5, // (the sea takes Surtsey's ash fast; lava rock it can hardly touch)
+      wet: 0.03, // (until the cone stands clear of the sea, every eruption is all ash)
+      nests: 8, formations: true,
+      impactEvery: [0, 0],
+    },
+    palette: {
+      paper: '#e9e2d2', basalt: '#5f5a55', ash: '#9b948a', lava: '#b8563c', deepLava: '#8f3b28',
+      shallow: '#c9dce4', deep: '#9fbccb',
+      landInk: '#4d4a46', landInkHigh: '#2f2d2a', pencil: '#b6ad9c', seaInk: '#476f8c',
+    },
+    goal: 'nests',
+    nests: 8,
+  },
+  {
     id: 'lengai',
     kind: 'A volcano of black lava that turns white',
-    numeral: 'XVI',
+    numeral: 'XVII',
     title: 'Ol Doinyo Lengai',
     first: 'A volcano whose black lava turns white.',
     why: 'Ol Doinyo Lengai in Tanzania is the only active volcano with black lava that turns white within days.',
@@ -499,7 +525,7 @@ export const WORLDS: World[] = [
   {
     id: 'ijen',
     kind: 'A crater of blue fire',
-    numeral: 'XVII',
+    numeral: 'XVIII',
     title: 'Kawah Ijen',
     first: 'A crater with an acid lake and blue flames at night.',
     why: 'At Kawah Ijen in Indonesia, sulphur gas burns as it meets the air, making blue flames at night.',
@@ -523,7 +549,7 @@ export const WORLDS: World[] = [
   {
     id: 'tonga',
     kind: 'A volcano under the sea',
-    numeral: 'XVIII',
+    numeral: 'XIX',
     title: 'Hunga Tonga',
     first: 'An undersea volcano in the South Pacific.',
     why: 'In 2022 Hunga Tonga erupted just under the sea, and its pressure wave went round the whole Earth several times.',
@@ -543,7 +569,7 @@ export const WORLDS: World[] = [
   {
     id: 'io',
     kind: 'A tidal moon',
-    numeral: 'XIX',
+    numeral: 'XX',
     title: 'Io',
     first: 'A yellow moon with hundreds of volcanoes.',
     why: "Jupiter's pull squeezes Io harder at some points of its orbit than others, so its heat rises and falls. It is the most volcanic place in the solar system.",
@@ -569,7 +595,7 @@ export const WORLDS: World[] = [
   {
     id: 'europa',
     kind: 'An ice moon with a sea beneath',
-    numeral: 'XX',
+    numeral: 'XXI',
     title: 'Europa',
     first: 'Smooth ice over a salty ocean.',
     why: "Where warm water rises under Europa's ice, the ice breaks into rafts that drift and freeze again. Scientists call this chaos terrain.",
@@ -595,7 +621,7 @@ export const WORLDS: World[] = [
   {
     id: 'enceladus',
     kind: 'A small ice moon',
-    numeral: 'XXI',
+    numeral: 'XXII',
     title: 'Enceladus',
     first: 'A small icy moon of Saturn that feeds one of its rings.',
     why: "Geysers on Enceladus spray ice into space, and that ice feeds one of Saturn's rings.",
@@ -622,7 +648,7 @@ export const WORLDS: World[] = [
   {
     id: 'triton',
     kind: 'A frozen moon going round backwards',
-    numeral: 'XXII',
+    numeral: 'XXIII',
     title: 'Triton',
     first: "Neptune's largest moon: pink nitrogen ice in faint sunlight.",
     why: "Triton's geysers rise about 8 km high, and thin winds blow their dark dust into long streaks.",
@@ -649,7 +675,7 @@ export const WORLDS: World[] = [
   {
     id: 'tumble',
     kind: 'A tumbling moon',
-    numeral: 'XXIII',
+    numeral: 'XXIV',
     title: 'A Tumbling Moon',
     first: 'A moon tumbling end over end.',
     why: "Some moons tumble instead of spinning steadily, like Saturn's moon Hyperion.",
@@ -676,7 +702,7 @@ export const WORLDS: World[] = [
   {
     id: 'mercury',
     kind: 'A small scorched world',
-    numeral: 'XXIV',
+    numeral: 'XXV',
     title: 'Mercury',
     first: 'Small and hot, wrinkled as it cooled.',
     why: 'When a huge rock hit Mercury, the shock went right through the planet and broke up the ground on the opposite side.',
@@ -701,7 +727,7 @@ export const WORLDS: World[] = [
   {
     id: 'magma',
     kind: 'A lava world',
-    numeral: 'XXV',
+    numeral: 'XXVI',
     title: 'A Lava World',
     first: 'One side always faces its star, and that side is molten.',
     why: 'Some planets orbit so close to their star that one side is molten. Rock boils there and may fall as rock snow on the night side.',
@@ -727,7 +753,7 @@ export const WORLDS: World[] = [
   {
     id: 'dust',
     kind: 'A world boiling away',
-    numeral: 'XXVI',
+    numeral: 'XXVII',
     title: 'A Disintegrating Planet',
     first: 'So close to its star that it is boiling away.',
     why: 'Some planets are so close to their star that they are boiling away, leaving a tail of dust like a comet.',
@@ -753,7 +779,7 @@ export const WORLDS: World[] = [
   {
     id: 'deep',
     kind: 'A deep ocean world',
-    numeral: 'XXVII',
+    numeral: 'XXVIII',
     title: 'A Deep Ocean World',
     first: 'A deep, cold ocean with volcanoes on the floor.',
     why: 'Lava in deep water cools fast on the outside, but inside its own crust it stays hot and keeps flowing.',
@@ -777,7 +803,7 @@ export const WORLDS: World[] = [
   {
     id: 'spin',
     kind: 'A spinning world',
-    numeral: 'XXVIII',
+    numeral: 'XXIX',
     title: 'A Spinning World',
     first: 'Spinning so fast it bulges at the middle.',
     why: 'Fast-spinning planets bulge at the middle, and the spin pushes flowing lava towards the equator.',
@@ -802,7 +828,7 @@ export const WORLDS: World[] = [
   {
     id: 'venus',
     kind: 'A hot world under thick cloud',
-    numeral: 'XXIX',
+    numeral: 'XXX',
     title: 'Venus',
     first: 'Scorching ground under thick yellow clouds.',
     why: 'Venus has flat, round lava domes about 25 km wide, made by thick lava that barely flows.',
@@ -827,7 +853,7 @@ export const WORLDS: World[] = [
   {
     id: 'pluto',
     kind: 'A small, far, frozen world',
-    numeral: 'XXX',
+    numeral: 'XXXI',
     title: 'Pluto',
     first: 'Reddish ice at the edge of the solar system.',
     why: 'Wright Mons on Pluto is a ring of icy mounds about 150 km wide, round a deep hollow, probably built by slush welling up from below.',
@@ -854,7 +880,7 @@ export const WORLDS: World[] = [
   {
     id: 'lamp',
     kind: 'A world of glass',
-    numeral: 'XXXI',
+    numeral: 'XXXII',
     title: 'A World of Glass',
     first: 'A planet of glass. Hot rock floats up through it.',
     why: 'An imagined world: here hot rock is lighter than the rock around it, so it floats up, as in a lava lamp.',
@@ -878,7 +904,7 @@ export const WORLDS: World[] = [
   {
     id: 'twofires',
     kind: 'A moon with two kinds of lava',
-    numeral: 'XXXII',
+    numeral: 'XXXIII',
     title: "Io's Two Lavas",
     first: 'Two kinds of lava that never mix.',
     why: 'Io has two kinds of lava, molten rock and molten sulphur, and they flow side by side without mixing.',
@@ -913,7 +939,7 @@ export const CHAPTERS: { numeral: string; title: string; worlds: WorldId[] }[] =
   { numeral: 'I', title: 'Our Neighbours', worlds: ['mars', 'moon', 'ice', 'asteroid', 'rogue', 'hollow'] },
   { numeral: 'II', title: 'Earth\'s Past', worlds: ['first', 'comets', 'young', 'archean', 'snowball', 'ocean'] },
   { numeral: 'III', title: 'Earth\'s Future', worlds: ['atolls', 'drying', 'giant'] },
-  { numeral: 'IV', title: 'Unusual Volcanoes', worlds: ['lengai', 'ijen', 'tonga'] },
+  { numeral: 'IV', title: 'Unusual Volcanoes', worlds: ['surtsey', 'lengai', 'ijen', 'tonga'] },
   { numeral: 'V', title: 'Pressure', worlds: ['io', 'europa', 'enceladus', 'triton', 'tumble', 'mercury'] },
   { numeral: 'VI', title: 'Other Worlds', worlds: ['magma', 'dust', 'deep', 'spin'] },
   { numeral: 'VII', title: 'Slow Lava', worlds: ['venus', 'pluto'] },

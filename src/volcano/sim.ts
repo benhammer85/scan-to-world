@@ -411,6 +411,24 @@ export const VOLCANO = {
   fissure: 0,
   fissureTurn: 0.35,
   /**
+   * A new island, as Surtsey was: seabirds come to nest on land that has stood dry and cool for `nestAfter`
+   * seconds (lava rock, set and cooled, not ash), one every `nestEvery` seconds, no nearer than `nestApart` (radians) to another nest or `nestVent`
+   * to the vent. A nest is lost where lava reaches it, ash buries it, or the sea wears away the ground under it.
+   * 0: no birds come.
+   */
+  nests: 0,
+  nestAfter: 15,
+  nestEvery: 3,
+  nestApart: 0.07,
+  nestVent: 0.07,
+  /**
+   * Whether this world's rock keeps a record of how it was made, for the field book: lava run into the sea from
+   * land sets as pillows; a fountain let go nearly full from a dry vent spins threads of glass.
+   */
+  formations: false,
+  /** Where the vent stands lower than this, the sea still reaches it, and a burst is all ash. 0: as on any world. */
+  wet: 0,
+  /**
    * Io's two fires, a lava lamp: within this far (radians) of where the heat begins is a round pool of two fluids
    * that never mix, marbled as ink is on water (see marble.ts). A finger held in it pours your lava there, `marblePour`
    * heat a second, each unit of heat covering `marbleArea` (square radians); drawn through it, it drags the colours
@@ -706,6 +724,15 @@ export class Planet {
   readonly laid: Float32Array;
   /** Seconds since lava last ran at or beside each vertex (see `warmNear`). */
   readonly nearLaid: Float32Array;
+  /** A new island: how long the ground at each vertex has stood dry, out of the sea and clear of lava (seconds). */
+  readonly dryFor: Float32Array;
+  /** ...the seabirds' nests standing, and how many have been lost, to the lava and to the sea. */
+  readonly nests: { v: number; at: number }[] = [];
+  readonly nestsLost = { lava: 0, sea: 0, ash: 0 };
+  nestIn = 0;
+  private nestTick = 0;
+  /** The field book: the formations this world's rock has made so far (see `formations`), as they were first made. */
+  readonly found: string[] = [];
   /** Each place's own moment for breaking out (see `breakout`). */
   private readonly breakPhase: Float32Array;
   /** Whether stones fall at all: off until the player has been shown them. */
@@ -815,6 +842,7 @@ export class Planet {
     }
     this.laid = new Float32Array(n).fill(1e6);
     this.nearLaid = new Float32Array(n).fill(1e6);
+    this.dryFor = new Float32Array(n);
     this.breakPhase = new Float32Array(n);
     for (let v = 0; v < n; v++) { const x = Math.sin(v * 12.9898 + 78.233) * 43758.5453; this.breakPhase[v] = (x - Math.floor(x)) * Math.PI * 2; }
     // Wright Mons's hollow: a great pit, the heat beginning on the ring round it.
@@ -1203,8 +1231,12 @@ export class Planet {
     }
     // (On Triton, a burst in sunlight is a geyser: all its plume blown downwind into a streak.)
     const geysering = !blast && this.k.streak > 0 && !!this.star && this.dayAt(this.plumeVertex) > 0.2;
-    if (geysering) this.geyser(left * this.k.ashShare * s);
-    else this.fallOfAsh(v, left * this.k.ashShare * s, (blast ? 3 : 1) * far);
+    // (Where the sea still reaches the vent, the water shatters all of it to ash: no lava wells out after, as at Surtsey.)
+    const ashShare = this.k.wet > 0 && this.rock[v] < this.k.wet ? 1 : this.k.ashShare;
+    // (The field book: a fountain from a dry vent, let go nearly full, flung high enough for the wind to spin its lava into glass.)
+    if (this.k.formations && !blast && ashShare < 1 && volume >= this.capNow * 0.9 && !this.found.includes('hair')) { this.found.push('hair'); this.tell("Found: Pele's hair. A tall lava fountain, spun by the wind into threads of glass"); }
+    if (geysering) this.geyser(left * ashShare * s);
+    else this.fallOfAsh(v, left * ashShare * s, (blast ? 3 : 1) * far);
     if (!blast) this.tally.bursts++;
     // (Its shock on its way through the world: the bigger the burst, the more of it reaches the far side.)
     if (!blast && this.k.antipode > 0) { this.echoes.push({ at: this.seconds + this.k.antipodeDelay, volume: volume * this.k.antipode * Math.min(2.5, (volume / this.k.explosive) ** 2) }); this.tell(`The shock is on its way to the far side: it rises in ${Math.round(this.k.antipodeDelay)} seconds`); }
@@ -1212,8 +1244,8 @@ export class Planet {
       if (this.tideNow < this.k.greatTide) this.tell('A big eruption, but not at high tide: it falls short');
       else this.greatPlume(this.k.ashReach * this.k.ashRing * far);
     }
-    const lava = left * (1 - this.k.ashShare) * s;
-    this.eruptions.push({ vertex: v, flank: v, left: lava, rate: lava / this.k.pour, total: lava, t: 0, dur: this.k.pour * 1.5 });
+    const lava = left * (1 - ashShare) * s;
+    if (lava > 0) this.eruptions.push({ vertex: v, flank: v, left: lava, rate: lava / this.k.pour, total: lava, t: 0, dur: this.k.pour * 1.5 });
     if (!blast) this.kick(volume, 1);
     return 'burst';
   }
@@ -1465,6 +1497,7 @@ export class Planet {
     else if (this.livingDue) { this.livingDue = false; this.living(0.25); }
     else if (this.slowIn <= 0) { this.slow(0.25, 0, half); this.slowIn = 0.25; this.slowHalf = true; }
     if (this.k.dome > 0 && (this.domeIn -= dt) <= 0) { this.domeIn = 0.5; this.domed(); }
+    if (this.k.nests > 0) { this.nestTick += dt; if (this.nestTick >= 0.5) { this.nesting(this.nestTick); this.nestTick = 0; } }
     if (this.marble && !this.over) this.lampOfIo(dt);
     this.stones(dt);
     this.storms(dt);
@@ -2079,8 +2112,54 @@ export class Planet {
       if (solid > 2e-5) this.laid[v] = 0; // (a layer, not a trace: a last trickle setting doesn't make it fresh again)
       this.lava[v] -= solid;
       this.rock[v] += solid;
+      if (this.k.formations && solid > 2e-5 && sea) this.formed(v);
       if (l > this.k.cover) { if (this.life[v] > 0.05) this.scorch[v] = 1; this.age[v] = 0; this.life[v] = 0; this.grown[v] = 0; this.ash[v] = 0; this.rich[v] = 0; }
     }
+  }
+
+  /**
+   * The field book: what the rock setting here says of how it was made, the first time it says it. (Lava welling
+   * up under the sea at the vent doesn't count as pillows: it's lava run from the land into the sea that does.)
+   */
+  private formed(v: number): void {
+    if (this.found.includes('pillow') || this.rock[this.plumeVertex] <= 0) return;
+    const p = this.topo.basePositions, q = this.plume, d = Math.hypot(p[v * 3] - q.x, p[v * 3 + 1] - q.y, p[v * 3 + 2] - q.z);
+    if (d > 0.08) { this.found.push('pillow'); this.tell('Found: pillow lava. Lava running into the sea cools in round pillows'); }
+  }
+
+  /**
+   * A new island: the seabirds. Ground that stands dry and clear of lava long enough is somewhere to nest, and
+   * now and then a bird comes and does; a nest is lost to lava running over it, or to the sea taking its ground.
+   */
+  private nesting(dt: number): void {
+    const n = this.rock.length, thin = this.k.thin;
+    for (let v = 0; v < n; v++) this.dryFor[v] = this.rock[v] > 0.004 && this.lava[v] < thin ? this.dryFor[v] + dt : 0;
+    for (let i = this.nests.length - 1; i >= 0; i--) {
+      const v = this.nests[i].v, burnt = this.lava[v] >= thin, drowned = this.rock[v] < 0.002, buried = this.ash[v] > 0.5;
+      if (!burnt && !drowned && !buried) continue;
+      this.nests.splice(i, 1);
+      if (burnt) { this.nestsLost.lava++; this.tell('A nest lost under the lava: steer the lava away from the birds'); }
+      else if (buried) { this.nestsLost.ash++; this.tell('A nest buried in ash: once birds come, pour rather than erupt'); }
+      else { this.nestsLost.sea++; this.tell('A nest lost to the sea: the waves wore its ground away'); }
+    }
+    if ((this.nestIn -= dt) > 0 || this.nests.length >= this.k.nests * 2) return;
+    this.nestIn = this.k.nestEvery;
+    // (Somewhere it's been dry and cool long enough, away from the vent and the other nests: one such place, by lot.)
+    const p = this.topo.basePositions, q = this.plume, apart = this.k.nestApart;
+    let pick = -1, seen = 0;
+    for (let v = 0; v < n; v++) {
+      // (On lava rock, set and cooled: not loose ash, which the birds won't trust, nor fresh lava, still hot.)
+      if (this.dryFor[v] < this.k.nestAfter || this.laid[v] < this.k.nestAfter || this.laid[v] >= 1e5 || this.ash[v] > 0.3) continue;
+      const x = p[v * 3], y = p[v * 3 + 1], z = p[v * 3 + 2];
+      if (Math.hypot(x - q.x, y - q.y, z - q.z) < this.k.nestVent) continue;
+      let near = false;
+      for (const s of this.nests) { const w = s.v; if (Math.hypot(x - p[w * 3], y - p[w * 3 + 1], z - p[w * 3 + 2]) < apart) { near = true; break; } }
+      if (near) continue;
+      if (this.rand() * ++seen < 1) pick = v;
+    }
+    if (pick < 0) return;
+    this.nests.push({ v: pick, at: this.seconds });
+    this.tell(this.nests.length === 1 && this.nestsLost.lava + this.nestsLost.sea + this.nestsLost.ash === 0 ? 'A seabird nests on the new land' : `A seabird nests: ${this.nests.length}`);
   }
 
   /** Mercury: a burst's shock arriving at the far side, and erupting there. */
