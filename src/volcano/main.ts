@@ -2033,12 +2033,9 @@ function drawAim(now: number): void {
     return;
   }
   if (chain) {
-    // The line in small dots: pale, a little stronger just ahead of the volcano, and inked by each island counted
-    // (so it's plain which have counted).
-    const here = Math.min(CHAIN.arc, chain.where(planet.plume).round);
-    onGround(chain.between(0, here), pencilled);
-    onGround(chain.between(here, Math.min(CHAIN.arc, here + CHAIN.ahead)), next);
-    onGround(chain.between(Math.min(CHAIN.arc, here + CHAIN.ahead), CHAIN.arc), pencilled);
+    // The line in small pale dots, inked only beside each island counted, so dark means one thing: this island
+    // counts. (The stretch just ahead of the volcano was drawn darker too, and read as another island counted.)
+    onGround(chain.between(0, CHAIN.arc), pencilled);
     for (const sp of [...chain.earlier, ...chain.spans]) onGround(chain.between(Math.max(0, sp.from - 0.006), sp.to + 0.006, 0.003), inked);
   } else if (WORLD.goal === 'ridge') {
     // The equator, in dots, round the spin's axis: a stretch inked once it's raised into ridge.

@@ -102,8 +102,12 @@ describe('the ocean world', () => {
     expect(chain.update(pl, topo)).toBe(3);
     raise(0.6, 0.625); // (beyond the line's end: not on it)
     expect(chain.update(pl, topo)).toBe(3);
+    // An island sinks; another grows where it stood, and one more beside: each standing island counts.
+    for (let v = 0; v < topo.vertexCount; v++) if (at(v).round > 0.24 && at(v).round < 0.285) pl.rock[v] = -0.1;
+    raise(0.255, 0.285); raise(0.13, 0.155);
+    expect(chain.update(pl, topo)).toBe(4);
     raise(0.01, 0.08); // (the first two joined: both still counted)
-    expect(chain.update(pl, topo)).toBe(3);
+    expect(chain.update(pl, topo)).toBe(4);
   });
 });
 

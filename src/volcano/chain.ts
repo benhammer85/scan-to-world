@@ -16,8 +16,6 @@ export const CHAIN = {
   stretches: 5,
   /** How far round the world the line runs (a share of the way round). */
   arc: 0.3,
-  /** The stretch just ahead of the volcano, drawn a little stronger (a share of the way round). */
-  ahead: 0.05,
   /** How near the path (as the sine of an angle from its circle) an island must come to be on it. */
   near: 0.14,
   /** Land on fewer vertices than this (on a planet of the drawn detail) is a rock, not an island of the chain. */
@@ -33,8 +31,6 @@ export class Chain {
   readonly pole: V3;
   /** Each island counted: how far round the path it lies (from, to; shares of the way round). */
   readonly spans: { from: number; to: number }[] = [];
-  /** Which counted island each vertex was last part of (-1: none). */
-  private owner: Int32Array | null = null;
   /** Islands counted before the world was taken up again, whose ground isn't known now; and where they lay. */
   private before = 0;
   readonly earlier: { from: number; to: number }[] = [];
@@ -61,12 +57,17 @@ export class Chain {
     return { round: t, off: Math.abs(dot(p, this.pole)) };
   }
 
-  /** Reckon the islands along the path. Returns how many have been counted. */
+  /**
+   * Reckon the islands along the path. Returns how many have been counted. Every separate island standing by the
+   * line now counts; and so does every one counted before that has gone under since. (An island is known again by
+   * where it lies along the line: one standing where a counted one stood is that one, but each counted island
+   * stands for only one of those standing now, so two islands in view always count as two. It once knew an island
+   * by the ground it had covered, and an island grown where an older one had sunk, or split from another, could go
+   * uncounted.)
+   */
   update(pl: Planet, topo: Topology): number {
     const p = topo.basePositions, N = pl.rock.length, least = CHAIN.least * (topo.vertexCount / 16002);
-    if (!this.owner) this.owner = new Int32Array(N).fill(-1);
-    const owner = this.owner, seen = new Uint8Array(N), taken = new Set<number>();
-    let adopted = 0;
+    const seen = new Uint8Array(N), now: { from: number; to: number }[] = [];
     for (let v = 0; v < N; v++) {
       if (seen[v] || pl.rock[v] <= 0) continue;
       const piece: number[] = [], stack = [v];
@@ -77,27 +78,24 @@ export class Chain {
         for (let k = topo.nbrOffsets[u]; k < topo.nbrOffsets[u + 1]; k++) { const w = topo.nbrList[k]; if (!seen[w] && pl.rock[w] > 0) { seen[w] = 1; stack.push(w); } }
       }
       if (piece.length < least) continue; // (a rock, too small to count)
-      // Where it lies along the path, if it comes near it at all.
+      // Where it lies along the line, if it comes near it at all.
       let from = 2, to = -1;
       for (const u of piece) {
         const w = this.where({ x: p[u * 3], y: p[u * 3 + 1], z: p[u * 3 + 2] });
         if (w.off <= CHAIN.near && w.round < CHAIN.arc) { from = Math.min(from, w.round); to = Math.max(to, w.round); }
       }
-      if (to < 0) continue;
-      // An island counted before (or grown from one, or joined to one) is that island; else it's a new one.
-      // (One that has split, or been cut, in two is two: the second piece is a new island.)
-      let id = -1;
-      for (const u of piece) if (owner[u] >= 0 && !taken.has(owner[u])) { id = owner[u]; break; }
-      if (id < 0) {
-        if (this.adopting) adopted++;
-        id = this.spans.length;
-        this.spans.push({ from, to });
-      } else {
-        const s = this.spans[id];
-        s.from = Math.min(s.from, from); s.to = Math.max(s.to, to);
-      }
-      taken.add(id);
-      for (const u of piece) owner[u] = id;
+      if (to >= 0) now.push({ from, to });
+    }
+    // Each island standing now is the counted one it overlaps most, if that one isn't already taken; else it's new.
+    const taken = new Set<number>();
+    let adopted = 0;
+    for (const isle of now) {
+      let best = -1, most = 0;
+      this.spans.forEach((s, i) => { const o = Math.min(s.to, isle.to) - Math.max(s.from, isle.from); if (!taken.has(i) && o >= 0 && (best < 0 || o > most)) { best = i; most = o; } });
+      if (best >= 0) { taken.add(best); const s = this.spans[best]; s.from = Math.min(s.from, isle.from); s.to = Math.max(s.to, isle.to); continue; }
+      if (this.adopting) adopted++;
+      taken.add(this.spans.length);
+      this.spans.push({ ...isle });
     }
     if (this.adopting) { this.adopting = false; this.before = Math.max(0, this.before - adopted); }
     return this.count;
