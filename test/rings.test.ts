@@ -3,6 +3,7 @@ import { TreeSim, K, RAIN, DROUGHT, WIND, FROST, type Rules } from '../src/rings
 import { brushAt, pointerAt, bandOf, radiusAt, scaleFor, viewFor, warpFor, warpR, unwarpR } from '../src/rings/hand';
 import { Wash, type RGB } from '../src/rings/wash';
 import { pigmentOf, weatheringOf } from '../src/rings/paint';
+import { STAGES, stageAt } from '../src/rings/plates';
 import { snapshotTree, treeFrom } from '../src/rings/save';
 
 const TAU = Math.PI * 2;
@@ -398,5 +399,22 @@ describe('the hand', () => {
     expect(size(young)).toBeGreaterThan(room * 0.6);
     expect(size(old)).toBeGreaterThan(room * 0.6);
     expect(size(young) / size(old)).toBeGreaterThan(0.75);
+  });
+});
+
+describe('the plates', () => {
+  it('the tree is drawn from real prints, one for each stage of its life, crossing over as it ages', () => {
+    expect(STAGES.map((s) => s.id)).toEqual(['acorns', 'young', 'sapling', 'lane', 'prime', 'great', 'ancient']);
+    expect(stageAt(0)).toMatchObject({ blend: 0 });
+    expect(stageAt(0).stage.id).toBe('acorns');
+    expect(stageAt(120).stage.id).toBe('lane');
+    expect(stageAt(300).stage.id).toBe('great');
+    expect(stageAt(500).stage.id).toBe('ancient');
+    // (Nearing the next stage, the one gives way to the other.)
+    const near = stageAt(145);
+    expect(near.next?.id).toBe('prime');
+    expect(near.blend).toBeGreaterThan(0);
+    expect(near.blend).toBeLessThan(1);
+    for (const s of STAGES) { expect(s.url).toBeTruthy(); expect(s.credit.length).toBeGreaterThan(5); }
   });
 });

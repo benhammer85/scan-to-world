@@ -26,6 +26,7 @@ import { Paper } from './paint';
 import { ARCS, PAPER, at, drawBark, drawGuide, drawMarks, drawPaper, drawShadow, drawSlice, drawTip, drawWet, inkArc, radiusAt } from './draw';
 import { type Box, type Scene } from './habit';
 import { OakPage, MILESTONES, drawFigure } from './oak';
+import { WINTER, preloadPlates } from './plates';
 import { drawPlate, recordOf } from './plate';
 import { forgetTree, keepPlate, keepTree, plates, recallTree, snapshotTree, treeFrom, type KeptTree } from './save';
 
@@ -105,12 +106,9 @@ function drawGrowthFigure(): void {
   if (t > 9) { figure = null; return; }
   g.save();
   g.globalAlpha = k;
-  // (The figure's own frame fits it: a sapling's is small, a grown oak's larger.)
-  const size = (60 + 70 * Math.min(1, Math.pow(figure.age / 300, 0.55))) * px, x = 66 * px, y = 140 * px + size * 0.9;
-  const fw = Math.max(108 * px, size * 1.05), top = y - size * 0.95;
-  g.fillStyle = 'rgba(244,239,228,0.88)'; g.fillRect(x - fw / 2, top, fw, size * 0.95 + 28 * px);
-  g.strokeStyle = 'rgba(46,33,24,0.45)'; g.lineWidth = 0.7 * px; g.strokeRect(x - fw / 2, top, fw, size * 0.95 + 28 * px);
-  drawFigure(g, x, y - 2 * px, size, figure.age, { seed: tree.seed, px, water: WATER, font: `italic ${10.5 * px}px "Newsreader", Georgia, serif` });
+  // (A small print of the tree at that age, in the upper corner, with its caption and its engraver.)
+  const size = 112 * px;
+  drawFigure(g, 80 * px, 120 * px + size, size, figure.age, { px, paper: true, font: `italic ${11 * px}px "Newsreader", Georgia, serif` });
   g.restore();
 }
 
@@ -699,6 +697,8 @@ function growFirst(years: number): void {
 // (?debug: the tree and the view, for a headless browser to paint with, as hand.ts paints.)
 if (ASKED.has('debug')) Object.assign(window, { annulus: { get tree() { return tree; }, get view() { return view(); }, get phase() { return phase; }, get band() { return bandOf(tree, view()); } } });
 fit();
+void preloadPlates();
+{ const f = $('begin').querySelector('.frontis img') as HTMLImageElement | null; if (f) f.src = WINTER.url; }
 card();
 void (async () => {
   const grow = Number(ASKED.get('grow'));

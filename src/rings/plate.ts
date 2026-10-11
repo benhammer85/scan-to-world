@@ -9,6 +9,7 @@ import type { Tree } from './trees';
 import { drawBark, drawPaper, drawShadow, drawSlice, ink, PAPER, barkThickness, type View } from './draw';
 import { Paper } from './paint';
 import { MILESTONES, drawFigure } from './oak';
+import { stageAt } from './plates';
 
 const SERIF = '"Newsreader", "Iowan Old Style", Georgia, serif';
 const INK = '#2e2118', FAINT = 'rgba(46,33,24,0.7)';
@@ -83,19 +84,21 @@ export function drawPlate(tree: TreeSim, T: Tree, water: boolean): HTMLCanvasEle
   // Figs. 2 and on: the tree at each age it reached, as a plate of about 1838 drew a tree at its ages,
   // and as it stood when it was kept.
   const ages = MILESTONES.filter((a) => a <= tree.year);
-  if (tree.year > (ages[ages.length - 1] ?? 0) && tree.year >= 10) ages.push(tree.year);
+  if (tree.year >= 10 && stageAt(tree.year).stage !== stageAt(ages[ages.length - 1] ?? -1).stage) ages.push(tree.year);
   const rowY = footY + 300, cell = (W - 192) / Math.max(1, ages.length);
   ages.forEach((age, k) => {
     const x = 96 + cell * (k + 0.5), size = Math.min(cell * 0.95, 250);
-    drawFigure(g, x, rowY, size, age, { seed: tree.seed, px: 1.5, water, caption: false });
+    drawFigure(g, x, rowY, size, age, { px: 1.5, caption: false });
     g.fillStyle = INK; g.textAlign = 'center'; g.font = `italic 19px ${SERIF}`;
     g.fillText(`Fig. ${k + 2}.`, x, rowY + 34);
     g.fillStyle = FAINT; g.font = `17px ${SERIF}`;
     g.fillText(age === tree.year && !MILESTONES.includes(age) ? `as kept, at ${age} years` : `at ${age} years`, x, rowY + 58);
+    g.font = `italic 14px ${SERIF}`;
+    g.fillText(stageAt(age).stage.credit, x, rowY + 80);
   });
 
   // What the wood records, beneath.
-  const ny = rowY + (ages.length ? 120 : 0);
+  const ny = rowY + (ages.length ? 136 : 0);
   g.font = `23px ${SERIF}`; g.fillStyle = INK; g.textAlign = 'center';
   for (let k = 0; k < rec.notes.length; k += 2) g.fillText(rec.notes.slice(k, k + 2).join('   ·   '), W / 2, ny + (k / 2) * 36);
   g.font = `italic 23px ${SERIF}`; g.fillStyle = FAINT;

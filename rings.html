@@ -29,6 +29,10 @@
       #begin { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: calc(24px + env(safe-area-inset-top)) 0 calc(18px + env(safe-area-inset-bottom)); box-sizing: border-box; background: #f4efe4; transition: opacity 1.2s; overflow-y: auto; z-index: 10; }
       #begin.gone { opacity: 0; pointer-events: none; }
       #begin p { margin: 0; text-align: center; }
+      #begin .frontis { margin: 0 0 2px; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+      #begin .frontis img { width: 112px; height: auto; mix-blend-mode: multiply; opacity: 0.9; }
+      #begin .frontis figcaption { font-size: 11px; font-style: italic; opacity: 0.6; }
+      #begin .credits { font-size: 12px; font-style: italic; opacity: 0.6; max-width: 26em; text-align: center; padding: 0 24px; line-height: 1.4; }
       #begin .game { font-size: 13px; letter-spacing: 0.24em; text-transform: uppercase; opacity: 0.62; margin-bottom: 4px; }
       #begin .numeral { font-size: 13px; letter-spacing: 0.2em; opacity: 0.7; }
       #begin .name { font-size: 30px; font-weight: normal; margin: -6px 0 0; letter-spacing: 0.01em; text-align: center; }
@@ -100,6 +104,7 @@
     <div id="endlinks"><button data-end="keep">save picture</button><button data-end="again">plant another</button><button data-end="xylo">the xylotheque</button></div>
     <div id="xylo" class="engraved"><div class="head"><button class="close">‹ back</button><h2>Xylotheque</h2><span></span></div><p class="sub">Well Rounded: a library of wood, every slice kept</p><div class="pages"></div><div class="view"><img alt=""></div></div>
     <div id="begin" class="engraved">
+      <figure class="frontis"><img alt="The Oak in Winter: a woodcut of a bare oak, 1825"><figcaption>The Oak in Winter, after W. Billington, 1825</figcaption></figure>
       <p class="game">Well Rounded</p>
       <p class="numeral"></p><h1 class="name"></h1><p class="latin"></p>
       <div class="rule"></div>
@@ -114,6 +119,7 @@
         <div class="row" data-row="ink"><span class="label">Ink</span><span class="opts" role="group" aria-label="Ink"><button data-v="water">watercolour</button><button data-v="ink">engraving</button></span></div>
         <div class="row" data-row="sound"><span class="label">Sound</span><span class="opts" role="group" aria-label="Sound"><button data-v="on">on</button><button data-v="off">muted</button></span></div>
         <div class="row" data-row="breath"><span class="label">Breathing circle</span><span class="opts" role="group" aria-label="Breathing circle"><button data-v="on">on</button><button data-v="off">still</button></span></div>
+        <p class="credits">The trees are drawn from prints of 1805 to 1825 by J. G. Strutt, W. Delamotte and W. Billington, in the public domain, from the Wellcome Collection.</p>
         <div class="row" data-row="haptics"><span class="label">Vibration</span><span class="opts" role="group" aria-label="Vibration"><button data-v="on">on</button><button data-v="off">off</button></span></div>
       </div>
     </div>
