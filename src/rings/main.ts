@@ -184,7 +184,8 @@ canvas.addEventListener('pointerdown', (e) => {
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   document.body.classList.add('touching');
   wake();
-  if (ending) { if (clock() - ending.at > 1.2 && !ending.plate) ending.skip = true; return; }
+  // (A tap skips the time-lapse to its end: the clock moves on from there, so the plate and its links follow.)
+  if (ending) { if (clock() - ending.at > 1.2 && clock() - ending.at < LAPSE + FALLING) ending.at = clock() - LAPSE - FALLING - 0.05; return; }
   if (pointers.size === 2 && painter === null) { pinch = { d: spread(), z: zoom }; return; }
   if (pointers.size !== 1 || !playing()) return;
   // Resting: a touch near the drop takes the line up again, where it stopped.
@@ -410,7 +411,7 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 // ---------------------------------------------------------------- the end: the whole life again, then the plate
 /** The time-lapse: about twenty seconds, the rings spreading from the pith as the little tree grows, then it falls. */
 const LAPSE = 18, FALLING = 2.5;
-let ending: { at: number; plate?: HTMLCanvasElement; skip?: boolean } | null = null;
+let ending: { at: number; plate?: HTMLCanvasElement } | null = null;
 function end(): void {
   ending = { at: clock() };
   painter = null; ghostOn = false; hush();
@@ -424,7 +425,7 @@ function end(): void {
   scale = 0; zoom = 1; dirty = true;
 }
 /** How far through the time-lapse (seconds), or past it. */
-const lapsed = () => (ending ? (ending.skip ? LAPSE + FALLING + 1 : clock() - ending.at) : 0);
+const lapsed = () => (ending ? clock() - ending.at : 0);
 function drawEndFrame(): void {
   fg.setTransform(1, 0, 0, 1, 0, 0);
   fg.clearRect(0, 0, W, H);
