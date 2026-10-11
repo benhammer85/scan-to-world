@@ -813,3 +813,10 @@ Choosing whether a fall was icy afresh at each try at a landing place had also l
 * **A fixed fire.** The heat is small (130), so it can't be wasted. Careful play wins in about 70 seconds with a third of the heat left. Random play takes 100 to 120 seconds and uses it all, missing the heat star. Pouring in one place without steering fails.
 * **The field book** (`fieldbook.ts`). Two real formations are hidden on Surtsey. **Pillow lava** is made by steering lava from the land into the sea. **Pele's hair** is made by a tall fountain from a dry vent, let go nearly full (a gamble, as its ash buries nests). Each is kept for good once found, and the card shows how many are found.
 * Unusual Volcanoes now has four worlds, and the later worlds' numerals move up by one. Draco has a fourth star.
+
+**Mars rebuilt around a decision: tall or wide.**
+* **Only so tall for its width** (`taper`). Olympus Mons is 22 km tall and 600 km wide, ringed by cliffs where its sides gave way. Here the mountain may stand only so high for how far its narrowest side reaches (lava-built ground at least `baseThick` thick). Built taller, that side gives way: whatever stands above what it can hold falls back, and the side slides out beyond as a hummocky apron. A dotted ring shows how wide the base must be for the next 2 km, inked on each side that reaches it, pencil where it doesn't yet.
+* **Storms from one side** (`stormSide`). Each storm blows from its own side, hatched as it comes, and wears that side hardest. Fresh lava still doesn't wear.
+* **Ice under the ground** (`groundIce`): pale blue stipple. Lava over it blasts small steam cones.
+* **Field book:** an aureole (a side that gave way) and rootless cones (lava over ground ice).
+* Bots: turning between pours wins in 2.8–3.4 minutes with a quarter to a third of the heat left. Tapping in one place takes nearly 4 minutes and keeps an eighth. Random play sometimes fails. The heat star is now a fifth.
