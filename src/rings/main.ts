@@ -1,5 +1,5 @@
 /**
- * Annulus, the prototype: you are one tree, and the screen shows its trunk in cross-section. Each
+ * Well Rounded (the working title was Annulus), the prototype: you are one tree, and the screen shows its trunk in cross-section. Each
  * ring is painted by hand, in one stroke round the last (an ensō): the finger is the brush (the mouse,
  * dragged, on a computer). Slow lays wide wood, quick a thin line; the brush holds one ring's ink; a
  * ring too thin anywhere kills the wood there, and a gap where the finger lifted stays (see tree.ts).
@@ -397,7 +397,7 @@ function keepThePlate(): void {
 }
 $('endlinks').addEventListener('click', (e) => {
   const to = (e.target as HTMLElement).closest('button')?.dataset.end;
-  if (to === 'keep' && ending?.plate) void keepImage(ending.plate, `annulus-${T.id}-${tree.year}`);
+  if (to === 'keep' && ending?.plate) void keepImage(ending.plate, `well-rounded-${T.id}-${tree.year}`);
   if (to === 'again') { const q = new URLSearchParams(location.search); q.delete('seed'); q.delete('grow'); location.search = q.toString().replace(/wander=(&|$)/, 'wander$1'); }
   if (to === 'xylo') void openXylo();
 });

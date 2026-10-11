@@ -18,7 +18,7 @@ import { TreeSim, WIND, DROUGHT, RAIN, FROST } from '../src/rings/tree';
 import { TREES, treeOf, EVEN_AIM } from '../src/rings/trees';
 import { bandOf, brushAt, pointerAt, viewFor } from '../src/rings/hand';
 
-// Annulus's trees are painted by their own bots (see paintTree, at the foot), stroke by stroke, with
+// Well Rounded's trees are painted by their own bots (see paintTree, at the foot), stroke by stroke, with
 // pointer positions over time through the game's own hand (hand.ts):
 //   npx vite-node scripts/playtest.ts oak <bot> [seed]     one life, as JSON
 //   npx vite-node scripts/playtest.ts oak table [seeds]    every bot on seeds 1 to 8 (or as many), as a table
@@ -359,7 +359,7 @@ const [d, of] = aim();
 longestStill = Math.max(longestStill, t - lastGain);
 console.log(JSON.stringify({ world: worldId, bot: botKind, seed, won: wonAt >= 0, at: Math.round(t), over: pl.over, done: Math.round((100 * d) / Math.max(1e-9, of)), heatLeft: Math.round(100 * pl.heatLeft), firstGain: Math.round(firstGain), longestStill: Math.round(longestStill), bursts: pl.tally.bursts, flows: pl.tally.flows, blewApart: pl.tally.calderas, trace: trace.join(' ') }));
 
-// ---------------------------------------------------------------- Annulus
+// ---------------------------------------------------------------- Well Rounded
 /**
  * A tree painted to its fall, ring by ring, with a player's hand on a phone's screen (390 × 844):
  * each stroke a run of pointer positions, 60 a second, through hand.ts as the game takes them, with

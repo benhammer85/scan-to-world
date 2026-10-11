@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#f4efe4" />
-    <title>Annulus</title>
+    <title>Well Rounded</title>
     <style>
       html, body { margin: 0; height: 100%; background: #f4efe4; overflow: hidden; touch-action: none; -webkit-user-select: none; user-select: none; }
       #slice { position: fixed; inset: 0; width: 100vw; height: 100dvh; display: block; opacity: 0; transition: opacity 1.2s ease; }
@@ -29,6 +29,7 @@
       #begin { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: calc(24px + env(safe-area-inset-top)) 0 calc(18px + env(safe-area-inset-bottom)); box-sizing: border-box; background: #f4efe4; transition: opacity 1.2s; overflow-y: auto; z-index: 10; }
       #begin.gone { opacity: 0; pointer-events: none; }
       #begin p { margin: 0; text-align: center; }
+      #begin .game { font-size: 12px; letter-spacing: 0.24em; text-transform: uppercase; opacity: 0.6; margin-bottom: 6px; }
       #begin .numeral { font-size: 13px; letter-spacing: 0.2em; opacity: 0.7; }
       #begin .name { font-size: 30px; font-weight: normal; margin: -6px 0 0; letter-spacing: 0.01em; text-align: center; }
       #begin .latin { font-size: 14px; font-style: italic; opacity: 0.66; margin-top: -8px; }
@@ -92,9 +93,9 @@
     <button id="corner" aria-label="Back to the card"></button>
     <button id="finish">fell the tree</button>
     <div id="endlinks"><button data-end="keep">save picture</button><button data-end="again">plant another</button><button data-end="xylo">the xylotheque</button></div>
-    <div id="xylo" class="engraved"><div class="head"><button class="close">‹ back</button><h2>Xylotheque</h2><span></span></div><p class="sub">a library of wood: every slice kept</p><div class="pages"></div><div class="view"><img alt=""></div></div>
+    <div id="xylo" class="engraved"><div class="head"><button class="close">‹ back</button><h2>Xylotheque</h2><span></span></div><p class="sub">Well Rounded’s library of wood: every slice kept</p><div class="pages"></div><div class="view"><img alt=""></div></div>
     <div id="begin" class="engraved">
-      <p class="numeral"></p><h1 class="name"></h1><p class="latin"></p>
+      <p class="game">Well Rounded</p><p class="numeral"></p><h1 class="name"></h1><p class="latin"></p>
       <div class="rule"></div>
       <p class="mood"></p>
       <p class="fact"></p>

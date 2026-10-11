@@ -45,7 +45,7 @@ export function drawPlate(tree: TreeSim, T: Tree, water: boolean): HTMLCanvasEle
   g.lineWidth = 1; g.strokeRect(48, 48, W - 96, H - 96);
   g.textAlign = 'center'; g.fillStyle = FAINT;
   g.font = `20px ${SERIF}`;
-  g.fillText(`PLATE ${T.numeral}.`.split('').join(String.fromCharCode(8202)), W / 2, 104);
+  g.fillText(`WELL ROUNDED  ·  PLATE ${T.numeral}.`.split('').join(String.fromCharCode(8202)), W / 2, 104);
   g.fillStyle = INK; g.font = `italic 56px ${SERIF}`;
   g.fillText(T.latin, W / 2, 172);
   const rec = recordOf(tree, T);
