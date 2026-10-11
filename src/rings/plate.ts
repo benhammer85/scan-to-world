@@ -1,11 +1,14 @@
 /**
  * The plate: the finished slice set out as a botanical engraver's plate. A double rule round it, the
  * plate's number, the tree's Latin and common names, the slice itself as large as the plate allows
- * (Fig. 1, a transverse section of the trunk), a scale, and beneath it what the wood records.
+ * (Fig. 1, a transverse section of the trunk) with a scale, and beside what the wood records, the
+ * whole tree on its hill as it stood (Fig. 2, its habit), as a plate sets a small drawing of the
+ * whole plant beside its details.
  */
 import type { TreeSim } from './tree';
 import type { Tree } from './trees';
 import { drawBark, drawShadow, drawSlice, ink, PAPER, barkThickness, type View } from './draw';
+import { drawHabit } from './habit';
 
 const SERIF = '"Newsreader", "Iowan Old Style", Georgia, serif';
 const INK = '#2e2118', FAINT = 'rgba(46,33,24,0.7)';
@@ -14,18 +17,20 @@ const ORDINAL = (n: number) => { const s = n % 100 >= 11 && n % 100 <= 13 ? 'th'
 
 /** What the wood records, in a line or two. */
 export function recordOf(tree: TreeSim, T: Tree): { subtitle: string; notes: string[]; fate: string } {
-  const fires = tree.scars.map((s) => s.year), even = Math.round(100 * tree.evenness);
+  const per = tree.k.yearsPerRing, fires = tree.scars.map((s) => s.ring * per), even = Math.round(100 * tree.evenness);
+  const wounds = new Set(tree.wounds.map((w) => w.ring)).size;
   const notes = [
-    `${tree.surges} surge year${tree.surges === 1 ? '' : 's'}`,
+    `${tree.rings.length} rings, each ${per} years’ wood`,
     fires.length ? `fire in the ${fires.map(ORDINAL).join(' and ')} year${fires.length > 1 ? 's' : ''}` : 'no fire',
-    tree.cracks.length ? `${tree.cracks.length} frost crack${tree.cracks.length > 1 ? 's' : ''}` : 'no frost crack',
+    wounds ? `wood died in ${wounds} ring${wounds > 1 ? 's' : ''}` : 'no wood died',
+    tree.cracks.length + tree.gaps ? `${tree.cracks.length + tree.gaps} ring${tree.cracks.length + tree.gaps > 1 ? 's' : ''} left open` : 'every ring closed',
     `even to ${even} parts in a hundred`,
   ];
   const fate = tree.k.endless && tree.cause === 'felled' ? `Felled in its ${ORDINAL(tree.year)} year.`
+    : tree.cause === 'felled' ? `Felled in its ${ORDINAL(tree.year)} year.`
     : tree.cause === 'old' ? `It fell of age, in its ${ORDINAL(tree.year)} year.`
-    : tree.cause === 'cracked' ? `Split by frost, it fell in its ${ORDINAL(tree.year)} year.`
-    : tree.cause === 'burnt' ? `Weakened by fire, it fell in its ${ORDINAL(tree.year)} year.`
-    : `Starved of light, it fell in its ${ORDINAL(tree.year)} year.`;
+    : tree.cause === 'withered' ? `Its wood dead round half its girth, it fell in its ${ORDINAL(tree.year)} year.`
+    : `Starved, it fell in its ${ORDINAL(tree.year)} year.`;
   const reached = tree.year >= T.years ? '' : ` (it was to live ${T.years})`;
   return { subtitle: `${T.name}: a section of the trunk at ${tree.year} years${reached}`, notes, fate };
 }
@@ -47,19 +52,18 @@ export function drawPlate(tree: TreeSim, T: Tree, water: boolean): HTMLCanvasEle
   g.fillStyle = FAINT; g.font = `22px ${SERIF}`;
   g.fillText(rec.subtitle, W / 2, 212);
 
-  // The slice, as large as the plate allows, the pith in the middle.
+  // Fig. 1: the slice, as large as the plate allows, the pith in the middle.
   let maxR = tree.k.pith;
   for (const r of tree.rings) for (let i = 0; i < r.length; i += 6) maxR = Math.max(maxR, r[i]);
-  for (let i = 0; i < tree.cur.length; i += 6) maxR = Math.max(maxR, tree.outer(i));
-  const box = 900, cx = W / 2, cy = 250 + box / 2;
+  const box = 840, cx = W / 2, cy = 250 + box / 2;
   const v: View = { cx, cy, s: 1, turn: 0, px: 1.5 };
   v.s = (box / 2) / (maxR + barkThickness(tree, { ...v, s: box / 2 / maxR }));
   drawShadow(g, tree, v);
   drawSlice(g, tree, v, { water });
   drawBark(g, tree, v);
 
-  // The figure's number, and a scale in centimetres, as a plate's scale is ruled.
-  const footY = cy + box / 2 + 64;
+  // Its number, and a scale in centimetres, as a plate's scale is ruled.
+  const footY = cy + box / 2 + 56;
   g.fillStyle = INK; g.font = `italic 22px ${SERIF}`; g.textAlign = 'left';
   g.fillText('Fig. 1.', 96, footY);
   const cm = 10 * v.s, step = maxR > 250 ? 10 : maxR > 60 ? 5 : 1, bar = cm * step * 2, bx = W - 96 - bar;
@@ -71,14 +75,21 @@ export function drawPlate(tree: TreeSim, T: Tree, water: boolean): HTMLCanvasEle
   for (let k = 0; k <= 2; k++) g.fillText(`${k * step}`, bx + (bar * k) / 2, footY + 22);
   g.textAlign = 'left'; g.fillText('cm', bx + bar + 8, footY + 22);
 
-  // What the wood records.
-  g.textAlign = 'center'; g.fillStyle = INK; g.font = `24px ${SERIF}`;
-  g.fillText(rec.notes.join('  ·  '), W / 2, footY + 82);
-  g.font = `italic 24px ${SERIF}`; g.fillStyle = FAINT;
-  g.fillText(rec.fate, W / 2, footY + 122);
-  g.font = `italic 22px ${SERIF}`; g.fillStyle = INK;
-  g.fillText(T.fact, W / 2, footY + 210);
+  // Fig. 2: the habit, the whole oak on its hill in high summer, as it stood.
+  const hb = { x: 96, y: footY + 54, w: 360, h: 250 };
+  drawHabit(g, hb, { age: tree.year, season: 0.3, weather: 0, now: 0, coming: 0, gather: 0, fire: 0, fireComing: 0, wind: 0, time: 0, fallen: 0, water, seed: tree.seed, px: 1.5 });
+  g.fillStyle = INK; g.font = `italic 22px ${SERIF}`; g.textAlign = 'left';
+  g.fillText('Fig. 2. Habit.', hb.x, hb.y + hb.h + 34);
+
+  // What the wood records, beside it.
+  const tx = hb.x + hb.w + 56;
+  g.font = `23px ${SERIF}`; g.fillStyle = INK;
+  rec.notes.forEach((n, i) => g.fillText(n, tx, hb.y + 30 + i * 36));
+  g.font = `italic 23px ${SERIF}`; g.fillStyle = FAINT;
+  g.fillText(rec.fate, tx, hb.y + 30 + rec.notes.length * 36 + 18);
+  g.textAlign = 'center'; g.font = `italic 21px ${SERIF}`; g.fillStyle = INK;
+  g.fillText(T.fact.split('.')[0] + '.', W / 2, H - 128);
   g.font = `18px ${SERIF}`; g.fillStyle = FAINT;
-  g.fillText('The decade dots, as on a core: one at each ten years, two at fifty, three at a hundred.', W / 2, H - 92);
+  g.fillText('The decade dots, as on a core: one at each ten years, two at fifty, three at a hundred.', W / 2, H - 88);
   return cv;
 }

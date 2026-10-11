@@ -14,27 +14,17 @@
       /* The tree's name, as a plate's title; and under it how many years, quietly. */
       #stage-name { position: fixed; top: calc(22px + env(safe-area-inset-top)); left: 92px; right: 92px; text-align: center; font-size: 19px; letter-spacing: 0.04em; pointer-events: none; transition: opacity 1.2s ease; }
       #goal { position: fixed; top: calc(52px + env(safe-area-inset-top)); left: 72px; right: 72px; text-align: center; font-size: 14px; letter-spacing: 0.03em; opacity: 0.7; pointer-events: none; font-variant-numeric: tabular-nums; transition: opacity 1.2s ease; }
-      #event { position: fixed; bottom: calc(40px + env(safe-area-inset-bottom)); left: 16px; right: 16px; text-align: center; font-size: 14px; font-style: italic; opacity: 0; pointer-events: none; transition: opacity 2s; text-wrap: balance; }
+      #event { position: fixed; top: calc(76px + env(safe-area-inset-top)); left: 16px; right: 16px; text-align: center; font-size: 14px; font-style: italic; opacity: 0; pointer-events: none; transition: opacity 2s; text-wrap: balance; }
       #event.shown { opacity: 0.75; }
       #event, #stage-name, #goal { text-shadow: 0 0 2px #f4efe4, 0 0 6px #f4efe4, 0 0 12px #f4efe4, 0 0 18px #f4efe4; }
       body.carding #stage-name, body.carding #goal, body.carding #event, body.carding #corner, body.carding #finish { opacity: 0 !important; pointer-events: none; }
       body.ended #goal, body.ended #event, body.ended #corner, body.ended #finish { opacity: 0 !important; pointer-events: none; }
-      /* How a touch is made, shown as a touch (as in the volcano game): a soft round light where a fingertip would press. */
-      #ghost { position: fixed; left: 0; top: 0; width: 60px; height: 110px; pointer-events: none; z-index: 6; opacity: 0; transition: opacity 0.5s ease; will-change: transform; }
-      #ghost.on { opacity: 1; }
+      /* How a stroke is made, shown as a touch (as in the volcano game): a soft round light going round the bark, as a fingertip would. */
+      #ghost { position: fixed; left: 0; top: 0; width: 60px; height: 110px; pointer-events: none; z-index: 6; opacity: 0; will-change: transform; display: none; }
+      #ghost.on { display: block; }
       body.touching #ghost, body.carding #ghost { opacity: 0 !important; }
-      #ghost .mv { position: absolute; inset: 0; opacity: 0; }
+      #ghost .mv { position: absolute; inset: 0; }
       #ghost .dot { position: absolute; left: 30px; top: 6px; width: 30px; height: 30px; margin: -15px 0 0 -15px; border-radius: 50%; background: radial-gradient(circle, rgba(255, 252, 244, 0.85) 0%, rgba(255, 252, 244, 0.55) 60%, rgba(255, 252, 244, 0) 100%); box-shadow: 0 0 0 1px rgba(46, 33, 24, 0.12), 0 2px 10px rgba(46, 33, 24, 0.18); }
-      #ghost .ring { position: absolute; left: 30px; top: 6px; width: 0; height: 0; border: 1.5px solid rgba(255, 252, 244, 0.9); box-shadow: 0 0 0 1px rgba(46, 33, 24, 0.1); border-radius: 50%; transform: translate(-50%, -50%); opacity: 0; }
-      #ghost.hold .mv { animation: ghHold 2.6s ease-in-out infinite; }
-      #ghost.hold .dot { animation: ghPress 2.6s ease-in-out infinite; }
-      #ghost.hold .ring { animation: ghHoldRing 2.6s ease-out infinite; }
-      #ghost.drag .mv { animation: ghDrag 2.6s ease-in-out infinite; }
-      @keyframes ghPress { 0%, 12% { transform: scale(1.25); } 22%, 80% { transform: scale(0.9); } 100% { transform: scale(1.25); } }
-      @keyframes ghHold { 0% { opacity: 0; } 15%, 80% { opacity: 1; } 95%, 100% { opacity: 0; } }
-      @keyframes ghHoldRing { 0%, 16% { width: 0; height: 0; opacity: 0; } 22% { width: 12px; height: 12px; opacity: 0.7; } 78% { width: 64px; height: 64px; opacity: 0.45; } 90%, 100% { width: 70px; height: 70px; opacity: 0; } }
-      @keyframes ghDrag { 0% { transform: translate(-70px, 0); opacity: 0; } 15% { transform: translate(-70px, 0); opacity: 1; } 75% { transform: translate(70px, 0); opacity: 1; } 90%, 100% { transform: translate(70px, 0); opacity: 0; } }
-      @media (prefers-reduced-motion: reduce) { #ghost .mv { animation: none !important; opacity: 0.85; transform: none; } #ghost .ring { animation: none !important; width: 18px; height: 18px; opacity: 0.5; } }
       /* The card the tree begins from: its numeral and name, its mood, one true thing, what to do, and its two aims. */
       #begin { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: calc(24px + env(safe-area-inset-top)) 0 calc(18px + env(safe-area-inset-bottom)); box-sizing: border-box; background: #f4efe4; transition: opacity 1.2s; overflow-y: auto; z-index: 10; }
       #begin.gone { opacity: 0; pointer-events: none; }
@@ -93,12 +83,12 @@
     </style>
   </head>
   <body class="carding">
-    <canvas id="slice" role="img" aria-label="A cross-section of a tree's trunk, its rings drawn one a year"></canvas>
+    <canvas id="slice" role="img" aria-label="A cross-section of a tree's trunk: paint each ring round it in one stroke"></canvas>
     <canvas id="frame" aria-hidden="true"></canvas>
     <div id="stage-name" class="engraved"></div>
     <div id="goal" class="engraved" aria-live="polite"></div>
     <div id="event" class="engraved" aria-live="polite"></div>
-    <div id="ghost" aria-hidden="true"><div class="mv"><i class="ring"></i><i class="dot"></i></div></div>
+    <div id="ghost" aria-hidden="true"><div class="mv"><i class="dot"></i></div></div>
     <button id="corner" aria-label="Back to the card"></button>
     <button id="finish">fell the tree</button>
     <div id="endlinks"><button data-end="keep">save picture</button><button data-end="again">plant another</button><button data-end="xylo">the xylotheque</button></div>
@@ -115,7 +105,6 @@
       <div class="foot"><button data-foot="wander"></button><button data-foot="xylo">the xylotheque</button><button data-foot="settings">settings</button></div>
       <div class="settings" hidden>
         <div class="row" data-row="ink"><span class="label">Ink</span><span class="opts" role="group" aria-label="Ink"><button data-v="ink">engraving</button><button data-v="water">watercolour</button></span></div>
-        <div class="row" data-row="tilt"><span class="label">Tipping</span><span class="opts" role="group" aria-label="Tipping"><button data-v="phone">tilt the phone</button><button data-v="finger">a finger only</button></span></div>
         <div class="row" data-row="haptics"><span class="label">Vibration</span><span class="opts" role="group" aria-label="Vibration"><button data-v="on">on</button><button data-v="off">off</button></span></div>
       </div>
     </div>

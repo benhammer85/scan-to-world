@@ -28,7 +28,7 @@ export interface Tree {
   todo: string;
   /** The first aim: live this many years. */
   years: number;
-  /** The second aim, which pulls against the first. */
+  /** The second aim, in a line (its measure is the slice's evenness, met at EVEN_AIM). */
   second: string;
   rules: Partial<Rules>;
 }
@@ -40,14 +40,17 @@ export const TREES: Tree[] = [
     name: 'Oak on a Hill',
     latin: 'Quercus robur',
     mood: 'Sun from the south, and the seasons keep their time.',
-    fact: 'Each ring is a year: pale wood laid down in spring, dark wood in late summer.',
-    todo: 'Let the sap gather, then tip it toward the shaded side.',
+    fact: 'Each ring is a year: pale wood laid down in spring, dark wood in late summer. Here each ring you paint is five.',
+    todo: 'Paint each year’s ring in one stroke: slow for wide wood, quick for thin.',
     years: 300,
-    second: 'And keep the slice even: round, and its rings alike.',
-    // (Steady seasons: rain and drought now and then, and the rare fire, which on a slope burns the uphill side.)
+    second: 'And paint the most even slice: a set of true circles.',
+    // (Steady seasons: rain, drought, wind and frost now and then, and two fires, which on a slope burn the uphill side.)
     rules: {},
   },
 ];
+
+/** The second aim is met at this evenness (%): rings as alike all round as a careful hand makes them. */
+export const EVEN_AIM = 80;
 
 export function treeOf(id: string | null | undefined): Tree {
   return TREES.find((t) => t.id === id) ?? TREES[0];

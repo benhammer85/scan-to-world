@@ -30,13 +30,20 @@ async function run<T>(mode: IDBTransactionMode, act: (s: IDBObjectStore) => IDBR
 /** A tree as it's kept: which, its seed (its weather comes from it), whether wandering, and itself. */
 export interface KeptTree { tree: string; seed: number; wander: boolean; turn: number; sim: Record<string, unknown> }
 
-/** What of a tree is kept: everything but its rules and its weather (which come fresh from its seed). */
+/**
+ * What of a tree is kept: everything but its rules and its weather (which come fresh from its seed),
+ * and the stroke being painted (a stroke cut off is painted again).
+ */
 export function snapshotTree(t: TreeSim): Record<string, unknown> {
-  const s = snapshotOf(t, ['k', 'seed', 'weather', 'fireYears', 'share', 'news']);
+  const s = snapshotOf(t, ['k', 'seed', 'weather', 'winds', 'fireRings', 'news', 'stroke', 'lo', 'hi', 'at', 'inkAt', 'state']);
   // (Each ring copied, so a later change to the tree doesn't reach into what's kept.)
   s.rings = t.rings.map((r) => r.slice());
+  s.alive = t.alive.slice();
+  s.burnt = t.burnt.slice();
+  for (const k of ['starts', 'dirs', 'ringWeather', 'ringEven'] as const) s[k] = t[k].slice();
   s.scars = t.scars.map((x) => ({ ...x }));
   s.cracks = t.cracks.map((x) => ({ ...x }));
+  s.wounds = t.wounds.map((x) => ({ ...x }));
   return s;
 }
 
