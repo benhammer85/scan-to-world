@@ -29,7 +29,7 @@ async function run<T>(mode: IDBTransactionMode, act: (s: IDBObjectStore) => IDBR
 }
 
 /** A tree as it's kept: which, its seed (its weather comes from it), whether wandering, and itself. */
-export interface KeptTree { tree: string; seed: number; wander: boolean; turn: number; sim: Record<string, unknown> }
+export interface KeptTree { tree: string; seed: number; wander: boolean; turn: number; sim: Record<string, unknown>; days?: string[] }
 
 /**
  * What of a tree is kept: everything but its rules and its weather (which come fresh from its seed),
@@ -56,14 +56,15 @@ export function treeFrom(k: KeptTree, rules: Partial<Rules>): TreeSim | null {
   return restoreInto(t, k.sim) ? t : null;
 }
 
-export async function keepTree(k: KeptTree): Promise<void> {
-  try { await run('readwrite', (s) => s.put(k, CURRENT)); } catch { /* not kept, and that's all */ }
+// (`key`: the game's tree is kept as 'current'; the daily practice keeps its own, as 'diary'.)
+export async function keepTree(k: KeptTree, key = CURRENT): Promise<void> {
+  try { await run('readwrite', (s) => s.put(k, key)); } catch { /* not kept, and that's all */ }
 }
-export async function recallTree(): Promise<KeptTree | undefined> {
-  try { return (await run('readonly', (s) => s.get(CURRENT))) as KeptTree | undefined; } catch { return undefined; }
+export async function recallTree(key = CURRENT): Promise<KeptTree | undefined> {
+  try { return (await run('readonly', (s) => s.get(key))) as KeptTree | undefined; } catch { return undefined; }
 }
-export async function forgetTree(): Promise<void> {
-  try { await run('readwrite', (s) => s.delete(CURRENT)); } catch { /* nothing to forget */ }
+export async function forgetTree(key = CURRENT): Promise<void> {
+  try { await run('readwrite', (s) => s.delete(key)); } catch { /* nothing to forget */ }
 }
 
 /** A plate in the xylotheque: a small picture of it, and what it says. The last eighty kept. */
