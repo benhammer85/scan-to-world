@@ -28,6 +28,10 @@
       /* The words float over the world on a soft halo of the paper, as a map's lettering is cleared from the lines beneath it. */
       #pace { position: fixed; top: calc(74px + env(safe-area-inset-top)); left: 40px; right: 40px; text-align: center; font-size: 14px; line-height: 1.5; letter-spacing: 0.03em; opacity: 0; transition: opacity 0.8s ease; pointer-events: none; font-variant-numeric: tabular-nums; text-shadow: 0 0 2px #f4efe4, 0 0 6px #f4efe4, 0 0 12px #f4efe4; }
       #pace.shown { opacity: 0.74; }
+      #lapse { position: fixed; left: 0; right: 0; top: calc(24% + env(safe-area-inset-top)); text-align: center; opacity: 0; transition: opacity 0.9s ease; pointer-events: none; font-variant-numeric: tabular-nums; text-shadow: 0 0 3px #f4efe4, 0 0 10px #f4efe4, 0 0 22px #f4efe4; }
+      #lapse b { display: block; font-size: 44px; font-weight: 400; letter-spacing: 0.02em; }
+      #lapse span { font-size: 15px; letter-spacing: 0.06em; opacity: 0.74; }
+      #lapse.shown { opacity: 1; }
       #event, #stage-name, #goal { text-shadow: 0 0 2px #f4efe4, 0 0 6px #f4efe4, 0 0 12px #f4efe4, 0 0 18px #f4efe4; }
       /* The world comes in from the paper, and goes back to it, never cut. */
       #stage { opacity: 0; transition: opacity 1.2s ease; }
@@ -202,6 +206,7 @@
     <div id="stage-name" class="engraved"></div>
     <div id="goal" class="engraved" aria-live="polite"></div>
     <div id="pace" class="engraved"></div>
+    <div id="lapse" class="engraved" aria-hidden="true"><b>0</b><span>years later</span></div>
     <div id="event" class="engraved" aria-live="polite"></div>
     <div id="legend" class="engraved"></div>
     <div id="ghost" aria-hidden="true"><div class="mv"><i class="ring"></i><i class="dot"></i></div></div>

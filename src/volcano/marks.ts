@@ -23,6 +23,7 @@ export const MARK_AT: Record<WorldId, { heat: number; minutes: number }> = {
   first: { heat: 50, minutes: 4 },
   comets: { heat: 20, minutes: 5 },
   ocean: { heat: 33, minutes: 4 },
+  atolls: { heat: 20, minutes: 4 },
   moon: { heat: 33, minutes: 3 },
   mars: { heat: 25, minutes: 4 },
   ice: { heat: 10, minutes: 6 },
