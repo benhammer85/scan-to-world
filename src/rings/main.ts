@@ -21,10 +21,11 @@ import { feel, keepImage, NATIVE, rumble, tap } from '../volcano/native';
 import { K, TreeSim, DROUGHT, RAIN, WIND, type News, type Weather } from './tree';
 import { pen, setSound, soundOff, tick, wake, weather as weatherSound } from './sound';
 import { treeOf } from './trees';
-import { bandOf, brushAt, pointerAt, roomOf, scaleFor, tall, warpFor, type View, type Warp } from './hand';
+import { bandOf, brushAt, pointerAt, roomOf, scaleFor, warpFor, type View, type Warp } from './hand';
 import { Paper } from './paint';
-import { ARCS, PAPER, at, drawBark, drawGuide, drawMarks, drawPaper, drawShadow, drawSlice, drawSun, drawTip, drawWet, inkArc, radiusAt } from './draw';
-import { drawHabit, type Box, type Scene } from './habit';
+import { ARCS, PAPER, at, drawBark, drawGuide, drawMarks, drawPaper, drawShadow, drawSlice, drawTip, drawWet, inkArc, radiusAt } from './draw';
+import { type Box, type Scene } from './habit';
+import { OakPage, MILESTONES, drawFigure } from './oak';
 import { drawPlate, recordOf } from './plate';
 import { forgetTree, keepPlate, keepTree, plates, recallTree, snapshotTree, treeFrom, type KeptTree } from './save';
 
@@ -90,15 +91,27 @@ function view(): View {
   if (!scale) scale = scaleFor(tree, r.room, px, warpNow!);
   return { cx: r.cx, cy: r.cy, s: scale * zoom, turn: 0, px, warp: warpNow! };
 }
-/** Where the habit drawing sits: under the slice on a tall screen, else in the lower right corner. */
-function habitBox(): Box {
-  if (ending && ending.plate) return { x: 0, y: 0, w: 0, h: 0 };
-  if (tall(W, H)) {
-    const w = Math.min(W - 40 * px, 300 * px), h = Math.min(150 * px, w * 0.55);
-    return { x: (W - w) / 2, y: H - h - 22 * px, w, h };
-  }
-  const w = Math.min(260 * px, W * 0.24), h = w * 0.72;
-  return { x: W - w - 22 * px, y: H - h - 22 * px, w, h };
+/** The whole oak, drawn up the page behind the slice (oak.ts). */
+const oakPage = new OakPage();
+const pageBox = (): Box => ({ x: 0, y: 0, w: W, h: H });
+/**
+ * A growth figure: as the tree reaches ten, fifty, a hundred, two hundred and three hundred years, a
+ * small etching of it at that age appears in the corner of the page for a while, as a plate adds a figure.
+ */
+let figure: { age: number; at: number } | null = null;
+function drawGrowthFigure(): void {
+  if (!figure) return;
+  const t = clock() - figure.at, k = smooth(t / 1.2) * (1 - smooth((t - 7) / 1.8));
+  if (t > 9) { figure = null; return; }
+  g.save();
+  g.globalAlpha = k;
+  // (The figure's own frame fits it: a sapling's is small, a grown oak's larger.)
+  const size = (60 + 70 * Math.min(1, Math.pow(figure.age / 300, 0.55))) * px, x = 66 * px, y = 140 * px + size * 0.9;
+  const fw = Math.max(108 * px, size * 1.05), top = y - size * 0.95;
+  g.fillStyle = 'rgba(244,239,228,0.88)'; g.fillRect(x - fw / 2, top, fw, size * 0.95 + 28 * px);
+  g.strokeStyle = 'rgba(46,33,24,0.45)'; g.lineWidth = 0.7 * px; g.strokeRect(x - fw / 2, top, fw, size * 0.95 + 28 * px);
+  drawFigure(g, x, y - 2 * px, size, figure.age, { seed: tree.seed, px, water: WATER, font: `italic ${10.5 * px}px "Newsreader", Georgia, serif` });
+  g.restore();
 }
 
 // ---------------------------------------------------------------- the ink kept, and fading
@@ -324,6 +337,7 @@ function heard(n: News): void {
     enter('drying');
     // (The last of the ring laid on the paper, which begins to dry.)
     paper.paint(tree); paper.close(tree);
+    if (MILESTONES.includes(tree.year)) figure = { age: tree.year, at: clock() + 1.5 };
     restAngle = tree.starts[i] + tree.dirs[i] * TAU;
     // A soft tick in the hand as a ring closes (on the iPhone's own engine; in a browser, nothing).
     if (clock() - lastTickAt > 0.3) { lastTickAt = clock(); tick(); if (NATIVE) tap({ strength: 0.24, sharpness: 0.7 }); }
@@ -596,6 +610,8 @@ function draw(dt: number): void {
   g.setTransform(1, 0, 0, 1, 0, 0);
   g.fillStyle = PAPER; g.fillRect(0, 0, W, H);
   if (ending) { drawEnding(v); return; }
+  // The oak up the page behind it all, and the weather across it.
+  if (begun) oakPage.draw(g, pageBox(), sceneNow());
   if (playing()) survey(v);
   reink(dt, v);
   const moving = clock() - lastMoved < 0.15, k = cacheView ? v.s / cacheView.s : 1;
@@ -609,8 +625,8 @@ function draw(dt: number): void {
     g.drawImage(cache, 0, 0);
     g.restore();
   }
-  // The paper, and its paint (watercolour), then the marks and the bark over it.
-  if (WATER) { paper.draw(g, sv); drawMarks(g, tree, sv); }
+  // The paper, and its paint (watercolour), its heartwood deepening, then the marks and the bark over it.
+  if (WATER) { paper.draw(g, sv); paper.heartwood(g, tree, sv); drawMarks(g, tree, sv); }
   if (cacheView) {
     g.save();
     g.translate(sv.cx, sv.cy); g.scale(sv.s / cacheView.s, sv.s / cacheView.s); g.translate(-cacheView.cx, -cacheView.cy);
@@ -635,8 +651,7 @@ function draw(dt: number): void {
     }
     if (phase === 'ready') { const gu = tree.guide(), p = pointerAt(tree, sv, band, restAngle, radiusAt(gu, restAngle)), pulse = 0.85 + 0.15 * Math.sin(clock() * 1.3); drawTip(g, p.x, p.y, pulse, sv, band); }
   }
-  drawSun(g, tree, sv, tree.weatherNow === DROUGHT, 3.5 * band);
-  drawHabit(g, habitBox(), sceneNow());
+  drawGrowthFigure();
   if (WATER) drawPaper(g, W, H);
   placeGhost(sv);
 }
@@ -644,6 +659,7 @@ function draw(dt: number): void {
 function drawEnding(v: View): void {
   const t = lapsed(), n = tree.rings.length, f = Math.min(1, t / LAPSE), upto = Math.min(n, Math.ceil(f * n));
   if (!cacheView || cacheUpto !== upto || dirty || Math.abs(cacheView.s - v.s) > 1e-6) renderCache(v, upto);
+  if (!ending!.plate) oakPage.draw(g, pageBox(), sceneLapse(f, upto - 1));
   g.drawImage(cache, 0, 0);
   if (WATER && upto > 0) {
     // (The paint revealed ring by ring, as the little tree grows.)
@@ -653,10 +669,10 @@ function drawEnding(v: View): void {
     g.clip();
     paper.draw(g, v);
     g.restore();
+    paper.heartwood(g, tree, v, upto);
     drawMarks(g, tree, v, upto);
   }
   g.drawImage(barkCache, 0, 0);
-  if (!ending!.plate) drawHabit(g, habitBox(), sceneLapse(f, upto - 1));
   if (WATER) drawPaper(g, W, H);
 }
 

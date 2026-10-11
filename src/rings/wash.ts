@@ -12,6 +12,8 @@
  *     latewood line, made by the paint.
  *   Where two wet colours meet, they run into one another.
  *   Water evaporates, quicker at an edge; as it goes the pigment settles, and when it's gone, it stays.
+ *   Pigment may change as it settles: laid with a colour to dry to, a cell's paint goes down in one
+ *     colour and settles into another (the season's living colour drying into wood).
  *   Wind drifts the suspended pigment downwind.
  *
  * The grid lies in the slice's own plane (warped millimetres: see hand.ts), centred on the pith, so the
@@ -39,6 +41,9 @@ export class Wash {
   readonly tooth: Float32Array;
   /** How much each cell's pigment granulates (drought's ochre does; most don't much). */
   readonly gran: Float32Array;
+  /** The colour each cell's pigment settles into (absorbance, summing to 1), and how far (0 keeps its own). */
+  readonly tint: Float32Array;
+  readonly turn: Float32Array;
   private active: Int32Array;
   private count = 0;
   private next: Int32Array;
@@ -59,6 +64,8 @@ export class Wash {
     this.dep = new Float32Array(N * 3);
     this.tooth = new Float32Array(N);
     this.gran = new Float32Array(N);
+    this.tint = new Float32Array(N * 3);
+    this.turn = new Float32Array(N);
     this.active = new Int32Array(N);
     this.next = new Int32Array(N);
     this.mark = new Uint32Array(N);
@@ -91,7 +98,7 @@ export class Wash {
    * Wet paint laid on a cell: water to `water`, and pigment of absorbance `ink` (added to what's there,
    * so a colour laid into a wet one mixes with it).
    */
-  lay(c: number, water: number, ink: RGB, granulate = 0): void {
+  lay(c: number, water: number, ink: RGB, granulate = 0, dries?: RGB, turn = 0.85): void {
     if (c < 0) return;
     // Water on dried paint lifts some of it again (as re-wetting a wash does), so it can run anew.
     if (water > this.water[c] && this.water[c] < 0.3) {
@@ -101,6 +108,7 @@ export class Wash {
     this.water[c] = Math.max(this.water[c], water);
     this.sus[c * 3] += ink[0]; this.sus[c * 3 + 1] += ink[1]; this.sus[c * 3 + 2] += ink[2];
     this.gran[c] = Math.max(this.gran[c] * 0.7, granulate);
+    if (dries) { const t = dries[0] + dries[1] + dries[2] || 1; this.tint[c * 3] = dries[0] / t; this.tint[c * 3 + 1] = dries[1] / t; this.tint[c * 3 + 2] = dries[2] / t; this.turn[c] = turn; }
     if (!this.listed[c]) { this.listed[c] = 1; this.active[this.count++] = c; }
   }
 
@@ -109,7 +117,7 @@ export class Wash {
    * anticlockwise, in the plane) and between radii rIn and rOut (mm) there. `ink(a)` gives the pigment at
    * angle a. Each cell is laid once a call, so a sector is laid exactly, with no seams between sectors.
    */
-  layArc(a0: number, a1: number, rIn: (a: number) => number, rOut: (a: number) => number, water: number, ink: (a: number) => RGB, granulate = 0): void {
+  layArc(a0: number, a1: number, rIn: (a: number) => number, rOut: (a: number) => number, water: number, ink: (a: number) => RGB, granulate = 0, dries?: RGB, turn = 0.85): void {
     const TAU = Math.PI * 2, span = a1 - a0;
     if (span <= 0) return;
     // The sector's bounding box, from points along its edges.
@@ -128,14 +136,24 @@ export class Wash {
       if (a >= span) continue;
       const r = Math.hypot(x, y), at = a0 + a;
       if (r < rIn(at) || r > rOut(at)) continue;
-      this.lay(j * n + i, water, ink(at), granulate);
+      this.lay(j * n + i, water, ink(at), granulate, dries, turn);
     }
+  }
+
+  /** Pigment `f` (three channels) settles into cell c: turned toward the colour it dries to. */
+  private settle(c: number, f0: number, f1: number, f2: number): void {
+    const k = this.turn[c], D = this.dep;
+    if (k <= 0) { D[c * 3] += f0; D[c * 3 + 1] += f1; D[c * 3 + 2] += f2; return; }
+    const m = f0 + f1 + f2;
+    D[c * 3] += f0 * (1 - k) + this.tint[c * 3] * m * k;
+    D[c * 3 + 1] += f1 * (1 - k) + this.tint[c * 3 + 1] * m * k;
+    D[c * 3 + 2] += f2 * (1 - k) + this.tint[c * 3 + 2] * m * k;
   }
 
   /** One step of the paper drying (dt seconds). */
   step(dt = 1 / 60): void {
     if (!this.count) return;
-    const n = this.n, W = this.water, S = this.sus, D = this.dep, dW = this.dW, dS = this.dS, w = this.weather;
+    const n = this.n, W = this.water, S = this.sus, dW = this.dW, dS = this.dS, w = this.weather;
     const kw = 0.22, kp = 0.1, ke = 2.2, kb = w.dry > 0 ? 0.012 * w.wet : 0;
     // How quickly it dries: about four seconds for a wash, slower in rain, quicker in a drought.
     const ev = (dt / 4) * w.dry / w.wet;
@@ -198,13 +216,18 @@ export class Wash {
       for (let ch = 0; ch < 3; ch++) S[c * 3 + ch] = Math.max(0, S[c * 3 + ch] + dS[c * 3 + ch]);
       if (wc <= 0.01) {
         // Dry: everything still in suspension settles where it is.
-        for (let ch = 0; ch < 3; ch++) { D[c * 3 + ch] += S[c * 3 + ch]; S[c * 3 + ch] = 0; }
+        this.settle(c, S[c * 3], S[c * 3 + 1], S[c * 3 + 2]);
+        S[c * 3] = 0; S[c * 3 + 1] = 0; S[c * 3 + 2] = 0;
         W[c] = 0;
         continue;
       }
       // Settling as it dries, into the paper's pits first.
       const settle = w.dry > 0 ? (0.004 + 0.05 * (1 - Math.min(1, wc))) * (0.6 + 0.8 * this.tooth[c]) : 0;
-      for (let ch = 0; ch < 3; ch++) { const f = S[c * 3 + ch] * settle; D[c * 3 + ch] += f; S[c * 3 + ch] -= f; }
+      if (settle > 0) {
+        const f0 = S[c * 3] * settle, f1 = S[c * 3 + 1] * settle, f2 = S[c * 3 + 2] * settle;
+        this.settle(c, f0, f1, f2);
+        S[c * 3] -= f0; S[c * 3 + 1] -= f1; S[c * 3 + 2] -= f2;
+      }
       W[c] = Math.min(1.2, wc);
       act[alive++] = c;
       this.listed[c] = 1;
@@ -216,14 +239,15 @@ export class Wash {
   dryAll(): void {
     for (let k = 0; k < this.count; k++) {
       const c = this.active[k];
-      for (let ch = 0; ch < 3; ch++) { this.dep[c * 3 + ch] += this.sus[c * 3 + ch]; this.sus[c * 3 + ch] = 0; }
+      this.settle(c, this.sus[c * 3], this.sus[c * 3 + 1], this.sus[c * 3 + 2]);
+      for (let ch = 0; ch < 3; ch++) this.sus[c * 3 + ch] = 0;
       this.water[c] = 0; this.listed[c] = 0;
     }
     this.count = 0;
   }
 
   /** Clear the paper. */
-  clear(): void { this.water.fill(0); this.sus.fill(0); this.dep.fill(0); this.gran.fill(0); this.listed.fill(0); this.count = 0; }
+  clear(): void { this.water.fill(0); this.sus.fill(0); this.dep.fill(0); this.gran.fill(0); this.tint.fill(0); this.turn.fill(0); this.listed.fill(0); this.count = 0; }
 
   /**
    * Resample the paper for a new plane: `from(x, y)` says where in the old plane (mm) a point of the new
@@ -231,10 +255,10 @@ export class Wash {
    */
   remap(extent: number, from: (x: number, y: number) => [number, number]): void {
     const n = this.n, N = n * n, oldE = this.extent, oldH = this.h;
-    const W = this.water.slice(), S = this.sus.slice(), D = this.dep.slice(), G = this.gran.slice();
+    const W = this.water.slice(), S = this.sus.slice(), D = this.dep.slice(), G = this.gran.slice(), Tn = this.tint.slice(), Tk = this.turn.slice();
     this.extent = extent;
     const h = this.h;
-    this.water.fill(0); this.sus.fill(0); this.dep.fill(0); this.gran.fill(0);
+    this.water.fill(0); this.sus.fill(0); this.dep.fill(0); this.gran.fill(0); this.tint.fill(0); this.turn.fill(0);
     let cnt = 0;
     this.listed.fill(0);
     for (let c = 0; c < N; c++) {
@@ -251,8 +275,12 @@ export class Wash {
         this.dep[c * 3 + ch] = D[a * 3 + ch] * wa + D[b * 3 + ch] * wb + D[cc * 3 + ch] * wcc + D[d * 3 + ch] * wd;
       }
       this.gran[c] = G[a] * wa + G[b] * wb + G[cc] * wcc + G[d] * wd;
+      // (What it dries to: the nearest old cell's.)
+      const near = tx < 0.5 ? (ty < 0.5 ? a : cc) : (ty < 0.5 ? b : d);
+      for (let ch = 0; ch < 3; ch++) this.tint[c * 3 + ch] = Tn[near * 3 + ch];
+      this.turn[c] = Tk[near];
       if (w > 0.01) { this.water[c] = w; this.active[cnt++] = c; this.listed[c] = 1; }
-      else for (let ch = 0; ch < 3; ch++) { this.dep[c * 3 + ch] += this.sus[c * 3 + ch]; this.sus[c * 3 + ch] = 0; }
+      else { this.settle(c, this.sus[c * 3], this.sus[c * 3 + 1], this.sus[c * 3 + 2]); for (let ch = 0; ch < 3; ch++) this.sus[c * 3 + ch] = 0; }
     }
     this.count = cnt;
   }

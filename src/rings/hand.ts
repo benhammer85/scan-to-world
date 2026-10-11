@@ -62,10 +62,15 @@ export function radiusAt(r: Float32Array | ((i: number) => number), a: number): 
 /** Whether the screen is tall enough for the habit drawing to sit under the slice (else in a corner). */
 export const tall = (W: number, H: number) => H > W * 1.25;
 
-/** The room the slice has: its middle and radius (device px). */
+/**
+ * The room the slice has: its middle and radius (device px). On a phone it sits low, in the thumb's
+ * reach, over the trunk of the oak drawn up the page behind it; the foot of the page is the ground.
+ */
 export function roomOf(W: number, H: number, px: number, ending = false): { cx: number; cy: number; room: number } {
-  const top = 92 * px, foot = (ending ? 190 : tall(W, H) ? 190 : 70) * px, side = 30 * px;
-  return { cx: W / 2, cy: top + (H - top - foot) / 2, room: Math.max(40 * px, Math.min((W - side * 2) / 2, (H - top - foot) / 2)) };
+  const top = 92 * px, foot = (ending ? 190 : 96) * px, side = 30 * px;
+  const room = Math.max(40 * px, Math.min((W - side * 2) / 2, (H - top - foot) / 2));
+  const cy = tall(W, H) ? Math.min(H - foot - room, Math.max(top + room, H * 0.58)) : top + (H - top - foot) / 2;
+  return { cx: W / 2, cy, room };
 }
 
 /** The scale (device px a warped mm) that fills the room with the bark and the ring to come. */

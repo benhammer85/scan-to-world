@@ -82,7 +82,7 @@ function formOf(seed: number): { segs: Seg[]; top: number } {
 }
 
 /** How leafy the crown is at a time of year: buds in spring, full in summer, thinning in autumn, bare in winter. */
-function leafiness(season: number): number {
+export function leafiness(season: number): number {
   const s = ((season % 1) + 1) % 1;
   if (s < 0.12) return s / 0.12 * 0.5;
   if (s < 0.22) return 0.5 + ((s - 0.12) / 0.1) * 0.5;
@@ -92,7 +92,7 @@ function leafiness(season: number): number {
   return 0;
 }
 /** The leaves' wash for a time of year: fresh green, deep green, russet. */
-function leafWash(season: number, dry: number): [number, number, number] {
+export function leafWash(season: number, dry: number): [number, number, number] {
   const s = ((season % 1) + 1) % 1;
   const spring: [number, number, number] = [150, 172, 92], summer: [number, number, number] = [92, 122, 62], autumn: [number, number, number] = [176, 112, 52];
   const mix = (a: number[], b: number[], t: number) => a.map((x, i) => x + (b[i] - x) * Math.max(0, Math.min(1, t))) as [number, number, number];
@@ -277,7 +277,7 @@ function hill(g: CanvasRenderingContext2D, b: Box, sc: Scene, ground: (x: number
   }
 }
 
-function smoke(g: CanvasRenderingContext2D, x: number, y: number, amount: number, rise: number, time: number, px: number, water: boolean): void {
+export function smoke(g: CanvasRenderingContext2D, x: number, y: number, amount: number, rise: number, time: number, px: number, water: boolean): void {
   if (water) {
     g.save(); g.globalCompositeOperation = 'multiply';
     g.fillStyle = `rgba(130,124,118,${(0.14 * amount).toFixed(3)})`;
@@ -295,7 +295,7 @@ function smoke(g: CanvasRenderingContext2D, x: number, y: number, amount: number
   }
 }
 
-function flames(g: CanvasRenderingContext2D, x: number, y: number, amount: number, h: number, time: number, px: number, water: boolean): void {
+export function flames(g: CanvasRenderingContext2D, x: number, y: number, amount: number, h: number, time: number, px: number, water: boolean): void {
   const tall = h * 0.3 * amount;
   if (water) {
     g.save(); g.globalCompositeOperation = 'multiply';

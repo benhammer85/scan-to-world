@@ -1,15 +1,14 @@
 /**
  * The plate (Well Rounded's keepsake): the finished slice set out as a botanical engraver's plate. A double rule round it, the
  * plate's number, the tree's Latin and common names, the slice itself as large as the plate allows
- * (Fig. 1, a transverse section of the trunk) with a scale, and beside what the wood records, the
- * whole tree on its hill as it stood (Fig. 2, its habit), as a plate sets a small drawing of the
- * whole plant beside its details.
+ * (Fig. 1, a transverse section of the trunk) with a scale; then the tree drawn at each age it
+ * reached (Figs. 2 and on, as a plate of about 1838 drew a tree at its ages); and what the wood records.
  */
 import type { TreeSim } from './tree';
 import type { Tree } from './trees';
 import { drawBark, drawPaper, drawShadow, drawSlice, ink, PAPER, barkThickness, type View } from './draw';
 import { Paper } from './paint';
-import { drawHabit } from './habit';
+import { MILESTONES, drawFigure } from './oak';
 
 const SERIF = '"Newsreader", "Iowan Old Style", Georgia, serif';
 const INK = '#2e2118', FAINT = 'rgba(46,33,24,0.7)';
@@ -37,7 +36,7 @@ export function recordOf(tree: TreeSim, T: Tree): { subtitle: string; notes: str
 }
 
 export function drawPlate(tree: TreeSim, T: Tree, water: boolean): HTMLCanvasElement {
-  const W = 1200, H = 1680, cv = document.createElement('canvas');
+  const W = 1200, H = 1900, cv = document.createElement('canvas');
   cv.width = W; cv.height = H;
   const g = cv.getContext('2d')!;
   g.fillStyle = PAPER; g.fillRect(0, 0, W, H);
@@ -62,8 +61,10 @@ export function drawPlate(tree: TreeSim, T: Tree, water: boolean): HTMLCanvasEle
   drawShadow(g, tree, v);
   // (Watercolour: the whole tree painted again on a fresh sheet, true to scale, ring by ring.)
   let wash: ((g: CanvasRenderingContext2D) => void) | undefined;
-  if (water) { const p = new Paper(560); p.fit(undefined, maxR * 1.02); p.bake(tree); wash = (h) => p.draw(h, v); }
+  let heart: ((g: CanvasRenderingContext2D) => void) | undefined;
+  if (water) { const p = new Paper(560); p.fit(undefined, maxR * 1.02); p.bake(tree); wash = (h) => p.draw(h, v); heart = (h) => p.heartwood(h, tree, v); }
   drawSlice(g, tree, v, { water, wash });
+  if (water && heart) heart(g);
   drawBark(g, tree, v);
 
   // Its number, and a scale in centimetres, as a plate's scale is ruled.
@@ -79,18 +80,26 @@ export function drawPlate(tree: TreeSim, T: Tree, water: boolean): HTMLCanvasEle
   for (let k = 0; k <= 2; k++) g.fillText(`${k * step}`, bx + (bar * k) / 2, footY + 22);
   g.textAlign = 'left'; g.fillText('cm', bx + bar + 8, footY + 22);
 
-  // Fig. 2: the habit, the whole oak on its hill in high summer, as it stood.
-  const hb = { x: 96, y: footY + 54, w: 360, h: 250 };
-  drawHabit(g, hb, { age: tree.year, season: 0.3, weather: 0, now: 0, coming: 0, gather: 0, fire: 0, fireComing: 0, wind: 0, time: 0, fallen: 0, water, seed: tree.seed, px: 1.5 });
-  g.fillStyle = INK; g.font = `italic 22px ${SERIF}`; g.textAlign = 'left';
-  g.fillText('Fig. 2. Habit.', hb.x, hb.y + hb.h + 34);
+  // Figs. 2 and on: the tree at each age it reached, as a plate of about 1838 drew a tree at its ages,
+  // and as it stood when it was kept.
+  const ages = MILESTONES.filter((a) => a <= tree.year);
+  if (tree.year > (ages[ages.length - 1] ?? 0) && tree.year >= 10) ages.push(tree.year);
+  const rowY = footY + 300, cell = (W - 192) / Math.max(1, ages.length);
+  ages.forEach((age, k) => {
+    const x = 96 + cell * (k + 0.5), size = Math.min(cell * 0.95, 250);
+    drawFigure(g, x, rowY, size, age, { seed: tree.seed, px: 1.5, water, caption: false });
+    g.fillStyle = INK; g.textAlign = 'center'; g.font = `italic 19px ${SERIF}`;
+    g.fillText(`Fig. ${k + 2}.`, x, rowY + 34);
+    g.fillStyle = FAINT; g.font = `17px ${SERIF}`;
+    g.fillText(age === tree.year && !MILESTONES.includes(age) ? `as kept, at ${age} years` : `at ${age} years`, x, rowY + 58);
+  });
 
-  // What the wood records, beside it.
-  const tx = hb.x + hb.w + 56;
-  g.font = `23px ${SERIF}`; g.fillStyle = INK;
-  rec.notes.forEach((n, i) => g.fillText(n, tx, hb.y + 30 + i * 36));
+  // What the wood records, beneath.
+  const ny = rowY + (ages.length ? 120 : 0);
+  g.font = `23px ${SERIF}`; g.fillStyle = INK; g.textAlign = 'center';
+  for (let k = 0; k < rec.notes.length; k += 2) g.fillText(rec.notes.slice(k, k + 2).join('   ·   '), W / 2, ny + (k / 2) * 36);
   g.font = `italic 23px ${SERIF}`; g.fillStyle = FAINT;
-  g.fillText(rec.fate, tx, hb.y + 30 + rec.notes.length * 36 + 18);
+  g.fillText(rec.fate, W / 2, ny + Math.ceil(rec.notes.length / 2) * 36 + 16);
   g.textAlign = 'center'; g.font = `italic 21px ${SERIF}`; g.fillStyle = INK;
   g.fillText(T.fact.split('.')[0] + '.', W / 2, H - 128);
   g.font = `18px ${SERIF}`; g.fillStyle = FAINT;

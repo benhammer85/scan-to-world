@@ -289,6 +289,16 @@ describe('the watercolour paper', () => {
     expect(seam / round).toBeGreaterThan(0.8);
   });
 
+  it('paint goes down in the season\'s colour and settles into the wood\'s as it dries', () => {
+    const w = new Wash(64, 20), green: RGB = [0.5, 0.2, 0.6], wood: RGB = [0.1, 0.3, 0.6];
+    for (let c = 0; c < w.n * w.n; c++) { const [x, y] = w.centre(c); if (Math.hypot(x, y) < 6) w.lay(c, 0.9, green, 0, wood, 0.85); }
+    const c = w.cell(0, 0), share = (a: Float32Array) => a[c * 3] / (a[c * 3] + a[c * 3 + 1] + a[c * 3 + 2]);
+    expect(share(w.sus)).toBeCloseTo(0.5 / 1.3, 3); // (wet: the season's colour)
+    while (w.wet) w.step(1 / 60);
+    expect(share(w.dep)).toBeLessThan(0.2); // (dry: mostly the wood's)
+    expect(share(w.dep)).toBeGreaterThan(0.1 / 1.0); // (with a whisper of its season)
+  });
+
   it('resampled for a new warp, the paint is kept', () => {
     const w = new Wash(96, 20);
     disc(w, 8, [0.3, 0.2, 0.1]);

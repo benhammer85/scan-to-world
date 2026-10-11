@@ -1,6 +1,11 @@
 /**
  * The tree's paint: what colour each year is, and how it goes onto the paper (wash.ts).
  *
+ * Paint goes down in the season's living colour and, as it dries, settles into the colour of the wood
+ * (keeping a whisper of its season): so the ring you're drawing is green and gold and rust, and the
+ * slice it dries into is oak. Each tree has its own wood (a species' palette: see trees.ts), so across
+ * the trees, not within one, the wood library is a spectrum.
+ *
  * The colours carry the year round each ring: as the line goes round, its season turns from spring's
  * sap green to summer's gold, autumn's rust and madder, a winter violet, and back toward green where it
  * closes, so the colours run round the ring and into one another. The weather tints the year and
@@ -28,7 +33,20 @@ const TINTS: Record<number, { c: RGB; k: number }> = {
   [WIND]: { c: absorb([0.6, 0.58, 0.74]), k: 0.35 },
   [FROST]: { c: absorb([0.74, 0.84, 0.94]), k: 0.55 },
 };
-const FIRE = absorb([0.92, 0.4, 0.2]), SEPIA = absorb([0.55, 0.38, 0.26]);
+const FIRE = absorb([0.92, 0.4, 0.2]), SEPIA = absorb([0.55, 0.38, 0.26]), CHAR = absorb([0.42, 0.36, 0.33]);
+
+/** A wood's colours (reflectance): its sapwood (the young wood a ring dries to) and its heartwood. */
+export interface WoodPalette { sap: RGB; heart: RGB }
+export const OAK_WOOD: WoodPalette = { sap: [0.88, 0.74, 0.52], heart: [0.62, 0.42, 0.26] };
+/** What a year's paint dries to: its wood, tinted by the weather (rain greyer, drought golden, frost cold). */
+export function woodOf(wood: WoodPalette, weather: number): RGB {
+  let c = absorb(wood.sap);
+  const toward = (r: RGB, k: number) => { const a = absorb(r); c = [c[0] + (a[0] - c[0]) * k, c[1] + (a[1] - c[1]) * k, c[2] + (a[2] - c[2]) * k]; };
+  if (weather === RAIN) toward([0.68, 0.66, 0.64], 0.45);
+  if (weather === DROUGHT) toward([0.93, 0.8, 0.5], 0.5);
+  if (weather === FROST) toward([0.8, 0.8, 0.82], 0.35);
+  return c;
+}
 
 /** The pigment (absorbance) a year lays at a point `f` (0 to 1) round its ring, in its weather, at a tone (0 quick, 1 slow). */
 export function pigmentOf(weather: number, f: number, tone = 0.5): RGB {
@@ -54,6 +72,8 @@ const granulation = (w: number) => (w === DROUGHT ? 1 : w === FROST ? 0.6 : 0.25
 
 export class Paper {
   readonly wash: Wash;
+  /** The wood the paint dries to. */
+  wood: WoodPalette = OAK_WOOD;
   warp: Warp | undefined;
   /** Points of the ring being painted already laid on the paper. */
   private laid = new Uint8Array(K);
@@ -94,7 +114,7 @@ export class Paper {
       if (tree.state[i] !== 1 || this.laid[i]) continue;
       this.laid[i] = 1;
       const out = inner(i) + edge[i] * w, ink = pigmentOf(wx, tree.at[i], tree.tone[i]);
-      this.wash.layArc((i - 0.5) * STEP, (i + 0.5) * STEP, (a) => (n ? warpR(this.warp, radiusAt(inner, a)) : 0), () => warpR(this.warp, out), wx === RAIN ? 1 : 0.9, () => ink, granulation(wx));
+      this.wash.layArc((i - 0.5) * STEP, (i + 0.5) * STEP, (a) => (n ? warpR(this.warp, radiusAt(inner, a)) : 0), () => warpR(this.warp, out), wx === RAIN ? 1 : 0.9, () => ink, granulation(wx), woodOf(this.wood, wx));
     }
     this.dirty = true;
   }
@@ -130,7 +150,7 @@ export class Paper {
       for (let i = 0; i < K; i++) {
         const a = i * STEP, f = ((((dir * (a - start)) % TAU) + TAU) % TAU) / TAU, tone = tones ? tones[Math.floor(i / 8) % tones.length] : 0.5;
         const ink = pigmentOf(wx, f, tone);
-        this.wash.layArc(a - STEP / 2, a + STEP / 2, (b) => warpR(this.warp, inner(b)), (b) => warpR(this.warp, radiusAt(ring, b)), wx === RAIN ? 1 : 0.9, () => ink, granulation(wx));
+        this.wash.layArc(a - STEP / 2, a + STEP / 2, (b) => warpR(this.warp, inner(b)), (b) => warpR(this.warp, radiusAt(ring, b)), wx === RAIN ? 1 : 0.9, () => ink, granulation(wx), woodOf(this.wood, wx));
       }
       this.wash.weather = weatheringOf(tree, n);
       for (const s of tree.scars) if (s.ring === n + 1) this.fireOn(tree, n, s.angle);
@@ -148,7 +168,28 @@ export class Paper {
     this.wash.layArc(angle - half, angle + half, (a) => warpR(this.warp, inner(a) + (radiusAt(outer, a) - inner(a)) * 0.3), (a) => warpR(this.warp, radiusAt(outer, a)), 1, (a) => {
       const f = 1 - Math.abs(a - angle) / half, k = 0.5 * f;
       return [FIRE[0] * k + SEPIA[0] * 0.15, FIRE[1] * k + SEPIA[1] * 0.15, FIRE[2] * k + SEPIA[2] * 0.15];
-    }, 0.5);
+    }, 0.5, CHAR, 0.6);
+  }
+
+  /**
+   * The heartwood: a warm wash over the older wood, laid as a colourist laid a flat tint over a printed
+   * plate, deepening as the tree ages (true of oak: its heartwood darkens as the sapwood becomes it).
+   */
+  heartwood(g: CanvasRenderingContext2D, tree: TreeSim, v: View, upto = tree.rings.length): void {
+    const sapRings = 6, n = upto - sapRings;
+    if (n < 1) return;
+    const ring = tree.rings[n - 1], h = this.wood.heart, deep = Math.min(1, n / 30);
+    g.save();
+    g.globalCompositeOperation = 'multiply';
+    g.fillStyle = `rgba(${Math.round(h[0] * 255)},${Math.round(h[1] * 255)},${Math.round(h[2] * 255)},${(0.12 + 0.22 * deep).toFixed(3)})`;
+    g.beginPath();
+    for (let j = 0; j <= K; j++) {
+      const a = (j / K) * TAU, r = v.s * warpR(v.warp, radiusAt(ring, a));
+      const x = v.cx + r * Math.cos(a + v.turn), y = v.cy - r * Math.sin(a + v.turn);
+      if (j) g.lineTo(x, y); else g.moveTo(x, y);
+    }
+    g.fill();
+    g.restore();
   }
 
   /** The paper, drawn into the view (whose warp it was laid out for). */
