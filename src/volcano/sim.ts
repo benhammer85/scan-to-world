@@ -1157,6 +1157,8 @@ export class Planet {
     }
     if (volume < this.k.explosive) {
       this.tally.flows++;
+      if (this.k.chaos > 0 && !blast && volume < this.k.chaos) this.tell('Too early: wait for the circle to close');
+      if (this.k.antipode > 0 && !blast) this.tell('Too small to reach the far side: wait for the circle to close');
       if (this.k.chaos > 0 && !blast && volume >= this.k.chaos) this.counted(Math.sqrt(volume / this.k.explosive) * 0.16, 'The ice cracks', 'The ice cracks, but too close to an earlier crack: move further away');
       // (It lasts by its size, so lava comes out at much the same pace whatever the eruption: it
       // lasted the same whatever its size, so a small one dribbled and a big one gushed.)
@@ -1205,7 +1207,7 @@ export class Planet {
     else this.fallOfAsh(v, left * this.k.ashShare * s, (blast ? 3 : 1) * far);
     if (!blast) this.tally.bursts++;
     // (Its shock on its way through the world: the bigger the burst, the more of it reaches the far side.)
-    if (!blast && this.k.antipode > 0) this.echoes.push({ at: this.seconds + this.k.antipodeDelay, volume: volume * this.k.antipode * Math.min(2.5, (volume / this.k.explosive) ** 2) });
+    if (!blast && this.k.antipode > 0) { this.echoes.push({ at: this.seconds + this.k.antipodeDelay, volume: volume * this.k.antipode * Math.min(2.5, (volume / this.k.explosive) ** 2) }); this.tell(`The shock is on its way to the far side: it rises in ${Math.round(this.k.antipodeDelay)} seconds`); }
     if (!blast && this.k.great > 0 && strength >= this.k.great) {
       if (this.tideNow < this.k.greatTide) this.tell('A big eruption, but not at high tide: it falls short');
       else this.greatPlume(this.k.ashReach * this.k.ashRing * far);
@@ -1395,6 +1397,7 @@ export class Planet {
     // (Most where the vent is on the tumble's equator, sweeping fastest; little towards its poles.)
     const square = r > 1e-6 ? (1 - Math.abs(along) / r) ** 2 : 0;
     const by = Math.min(0.45, this.k.tumbleKick * share * Math.min(1.5, volume / this.k.explosive)) * square;
+    if (square < 0.25) this.tell('Too near the still point: erupt on the dotted line');
     w.x -= by * (w.x - along * p.x); w.y -= by * (w.y - along * p.y); w.z -= by * (w.z - along * p.z);
   }
   /** How fast the moon tumbles now, as a share of how fast it tumbles left alone. */
@@ -1534,6 +1537,32 @@ export class Planet {
       most = Math.max(most, size);
     }
     return most / n;
+  }
+
+  /** The ice moon: the edge of the biggest sheet of new ice, the one that counts (its vertices next to old ground). */
+  sheetEdge(): number[] {
+    const n = this.age.length, t = this.topo, seen = new Int32Array(n).fill(-1), stack: number[] = [];
+    const fresh = (v: number) => this.age[v] < 1e5 || this.ash[v] > 0.15;
+    let best = -1, most = 0, id = 0;
+    for (let v0 = 0; v0 < n; v0++) {
+      if (seen[v0] >= 0 || !fresh(v0)) continue;
+      let size = 0;
+      seen[v0] = id; stack.push(v0);
+      while (stack.length) {
+        const v = stack.pop()!;
+        size++;
+        for (let k = t.nbrOffsets[v]; k < t.nbrOffsets[v + 1]; k++) { const w = t.nbrList[k]; if (seen[w] < 0 && fresh(w)) { seen[w] = id; stack.push(w); } }
+      }
+      if (size > most) { most = size; best = id; }
+      id++;
+    }
+    const edge: number[] = [];
+    if (best < 0) return edge;
+    for (let v = 0; v < n; v++) {
+      if (seen[v] !== best) continue;
+      for (let k = t.nbrOffsets[v]; k < t.nbrOffsets[v + 1]; k++) if (seen[t.nbrList[k]] !== best) { edge.push(v); break; }
+    }
+    return edge;
   }
 
   /** Say something, and remember it for the chart. */

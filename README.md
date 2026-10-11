@@ -794,3 +794,15 @@ Choosing whether a fall was icy afresh at each try at a landing place had also l
   * Pluto: two seconds at a time.
   * Venus: outside the inked circles.
   * Hollow world: rest when cracks ring the volcano.
+
+**Progress you can see, on seven more worlds.**
+* **Kawah Ijen:** the lit glow is now blue, as Ijen's burning sulphur is, and freshly laid lava glows too, fading as its 45 seconds run out.
+* **Deep ocean:** the bank dots ink in as the ground under them rises, so the work under the sea shows.
+* **Spinning world:** each ridge stretch inks in dot by dot as it's raised, not all at once when it's done.
+* **Glass world:** the circle round the blob fills as the blob grows; when it closes, the blob bursts.
+* **Ice moon:** the edge of the sheet that counts is drawn in dots.
+* **Rogue planet:** green fades to grey where the lava's warmth is running out.
+* **New explanations:**
+  * The tumbling moon says when it's tumbling again, and when an eruption was too near the still point to help.
+  * Europa says when an eruption was too early.
+  * Mercury says when one was too small to reach the far side, and when a shock is on its way and how soon it will rise.

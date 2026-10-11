@@ -724,7 +724,9 @@ const FL = FLOODED ? rgb(FLOODED) : null;
 /** Scorched ground: charcoal, a little warm. */
 const CHAR = [0.27, 0.2, 0.16];
 /** The light fresh lava throws on the ground round it: warm, and stronger on the dark worlds, where it's the light. */
-const GLOW_C = rgb(new THREE.Color('#ffae6a')), GLOW_BY = ICE ? 0 : DARK_LAVA ? 0.4 : 0.32; // (not on the ice moons: their lava is water)
+/** Kawah Ijen: set lava still counts as lit for this long, so it's drawn lit too, its blue fading as its time runs out. */
+const BURNS = planet.k.burns;
+const GLOW_C = rgb(new THREE.Color(BURNS > 0 ? '#6fb6ec' : '#ffae6a')), GLOW_BY = ICE ? 0 : DARK_LAVA ? 0.4 : 0.32; // (not on the ice moons: their lava is water)
 const glowField = new Float32Array(N), glowNext = new Float32Array(N);
 /**
  * Life's own wash: where something lives, the ground takes its kind's colour, as the hand-coloured
@@ -803,7 +805,7 @@ function coarse(): void {
     glowAt = now;
     const o = topo.nbrOffsets, l = topo.nbrList;
     let any = false;
-    for (let v = 0; v < N; v++) { const lv = planet.lava[v]; glowField[v] = lv > 0.002 ? Math.min(1, lv * 60) : !WASHED && planet.age[v] < 25 && planet.ash[v] < 0.25 ? Math.exp(-planet.age[v] / 8) * 0.45 : 0; if (glowField[v] > 0) any = true; } // (in watercolour, only round running paint: ground just set glowing drew a hot ring round each burst)
+    for (let v = 0; v < N; v++) { const lv = planet.lava[v]; glowField[v] = lv > 0.002 ? Math.min(1, lv * 60) : BURNS > 0 && planet.laid[v] < BURNS && planet.age[v] < 1e5 ? 0.6 * (1 - planet.laid[v] / BURNS) : !WASHED && planet.age[v] < 25 && planet.ash[v] < 0.25 ? Math.exp(-planet.age[v] / 8) * 0.45 : 0; if (glowField[v] > 0) any = true; } // (in watercolour, only round running paint: ground just set glowing drew a hot ring round each burst)
     if (any) for (let pass = 0; pass < 3; pass++) { // (close round the lava: spread wider, on pale worlds it read as a stain)
       for (let v = 0; v < N; v++) { let m = glowField[v]; for (let k = o[v]; k < o[v + 1]; k++) m = Math.max(m, glowField[l[k]] * 0.62); glowNext[v] = m; }
       glowField.set(glowNext);
@@ -869,7 +871,10 @@ function coarse(): void {
       // An earlier fire's seas, faded, as a soft tint (this fire's are drawn crisp in the shader).
       if (FL && MARKED && MARKED[v] && planet.age[v] >= 1e5) x += (FL[i] - x) * 0.45;
       x += (AS[i] - x) * ash;
-      if (wash) washTint[v3 + i] += (wash[i] - washTint[v3 + i]) * (washWeight[v] < 0.05 ? 1 : ease);
+      // (The rogue planet: green whose warmth is running out greys toward the ground, so it's plain which needs lava
+      // beside it again; nothing showed it, and green simply went.)
+      const cooling = ROGUE && wash ? 0.75 * (1 - Math.max(0, Math.min(1, (planet.k.warmLasts - planet.nearLaid[v]) / (planet.k.warmLasts * 0.5)))) : 0;
+      if (wash) washTint[v3 + i] += (wash[i] + (PA[i] * 0.5 + BA[i] * 0.5 - wash[i]) * cooling - washTint[v3 + i]) * (washWeight[v] < 0.05 ? 1 : ease);
       x += (washTint[v3 + i] - x) * washSoft[v];
       // Where lava has just burned what lived, the ground is scorched a while before it's buried or greys.
       if (planet.scorch[v] > 0.01) x += (CHAR[i] - x) * Math.min(0.85, planet.scorch[v] * 0.9);
@@ -1289,7 +1294,9 @@ for (const s of [readyInk, readyPencil]) { s.byDirection = true; s.linger = 0.35
 const READY_GOALS = new Set(['plumes', 'feed', 'calm', 'orbit', 'thaw', 'waves', 'antipode', 'streaks', 'chaos', 'sea']);
 /** How far the circle has inked in: 1 when it's time to let go; null where the aim asks for no eruption. */
 function readyShare(): number | null {
-  if (!READY_GOALS.has(WORLD.goal) || LAMP) return null; // (only where the aim asks for an eruption: on the worlds that want pouring it was one more dotted ring, round the volcano, asking for a tap that wasn't wanted)
+  // (The glass world: the circle fills as the blob grows, and closed, it bursts: a warning, where it had none.)
+  if (LAMP) return Math.max(0, Math.min(0.999, planet.pressure / planet.capNow));
+  if (!READY_GOALS.has(WORLD.goal)) return null; // (only where the aim asks for an eruption: on the worlds that want pouring it was one more dotted ring, round the volcano, asking for a tap that wasn't wanted)
   const k = planet.k, p = planet.pressure;
   let share = WORLD.goal === 'chaos' ? p / k.chaos : k.great > 0 ? planet.throwOf(p) / k.great : p / k.explosive;
   if (WORLD.goal === 'streaks' && planet.dayAt(planet.plumeVertex) <= 0.3) share = Math.min(share, 0.96); // (in the dark it can't close: turn to the sun)
@@ -1664,6 +1671,8 @@ function reckonAim(): void {
   else if (WORLD.goal === 'calm') {
     aimDone = Math.max(0, Math.round((1 - planet.tumbling) * 100)); aimOf = CALM;
     // (Calm has to hold a while: a lucky burst isn't enough.)
+    // (Held a while and lost: said, where the count only went back to nothing.)
+    if (aimDone < aimOf && calmHeld > 3 && begun && !ending) announce('It\'s tumbling again: erupt on the dotted line');
     calmHeld = aimDone >= aimOf ? calmHeld + (planet.seconds - calmAt) : 0;
     calmAt = planet.seconds;
   }
@@ -1786,7 +1795,7 @@ const TIP: Record<string, string> = {
   feed: `Turn the volcano towards the big planet, at the top left. ${ERUPT} The ring fades, so keep going.`,
   round: `Fill the dotted hollows. Turn one to just below the volcano, and ${HOLD.toLowerCase()} to pour into it. Keep off the hatched high ground: lava there makes the surface more uneven.`,
   ridge: 'Lava runs to the dotted line by itself. Turn a bare part of the line to the top.',
-  lamp: `Blobs float to the top of the world. Turn the dotted shore to the top. A blob grows at the volcano: let it grow big, as big blobs stay warm long enough to reach the shore, then ${COMPUTER ? 'click' : 'tap'} to let it go before it bursts.`,
+  lamp: `Blobs float to the top of the world. Turn the dotted shore to the top. A blob grows at the volcano: let it grow big, as big blobs stay warm long enough to reach the shore, then ${COMPUTER ? 'click' : 'tap'} to let it go before the circle round it closes: then it bursts.`,
   calm: `The dotted line is where the ground sweeps past fastest. Turn it to the top, under the volcano. ${ERUPT}`,
   bank: `The undersea mountain's top is dotted in pencil. Turn the world so it's just below the volcano, and ${HOLD.toLowerCase()} to pour there, the same way again and again, without long rests: each flow runs further over the last.`,
   orbit: `Pour first, to build the volcano tall: a taller one holds more. When the circle round it closes, wait a little longer, then ${COMPUTER ? 'click' : 'tap'} the world to erupt: the longer you wait, the more rock flies up.`,
@@ -1998,9 +2007,11 @@ function drawAim(now: number): void {
     // The bank itself, a real seamount's shallow top, stippled in pencil as old charts stippled a shoal: where the
     // island is wanted. The stipple goes as land rises through it, so what's left to do is what's still stippled.
     // (It was a dotted circle round it, a mark with nothing under it.)
-    const dots: number[] = [];
-    for (const d of capDots(planet.bank, planet.bank.r)) if (planet.rock[d.v] <= 0) { const r = Math.max(1, groundOver(d.v)); dots.push(d.at.x * r, d.at.y * r, d.at.z * r); } // (on the sea, over the bank)
-    aimInk.set([]);
+    // (And inked where lava has built the sea floor up under the water: it was all pencil until land broke the
+    // surface, so a minute's building out to it showed nothing.)
+    const dots: number[] = [], built: number[] = [];
+    for (const d of capDots(planet.bank, planet.bank.r)) if (planet.rock[d.v] <= 0) { const r = Math.max(1, groundOver(d.v)); (planet.rock[d.v] - planet.start[d.v] > 0.012 ? built : dots).push(d.at.x * r, d.at.y * r, d.at.z * r); } // (on the sea, over the bank)
+    aimInk.set(built);
     aimPencil.set(dots);
     return;
   }
@@ -2051,6 +2062,13 @@ function drawAim(now: number): void {
       for (let v = 3; v < N; v += 6) if (h(v) > high) { const r = groundOver(v); hatch.push(base[v * 3] * r, base[v * 3 + 1] * r, base[v * 3 + 2] * r); }
       highHatch.set(hatch);
     }
+    // On the ice moon, the edge of the one sheet that counts, finely inked: grow it outward from there. (Nothing
+    // marked which of the new ice was the sheet, and ice poured as a separate patch quietly counted for nothing.)
+    if (WORLD.goal === 'cover') {
+      const edge = planet.sheetEdge(), dots: number[] = [];
+      for (let i = 0; i < edge.length; i += 2) { const v = edge[i], r = groundOver(v); dots.push(base[v * 3] * r, base[v * 3 + 1] * r, base[v * 3 + 2] * r); }
+      aimInk.set(dots);
+    }
     // And the ring round the heat, inked round as far as the aim is met.
     const R = WORLD.goal === 'height' || WORLD.goal === 'giant' ? 0.32 : 0.3, around = Math.max(24, Math.round((Math.PI * 2 * Math.sin(R)) / 0.045));
     const filled = Math.round(around * Math.min(1, WORLD.goal === 'giant' ? peakNow / HEIGHT.target : aimDone / aimOf)), ink: number[] = [], pencil: number[] = [];
@@ -2078,7 +2096,9 @@ function drawAim(now: number): void {
     for (let k = 0; k < n; k++) {
       const pts = [];
       for (let i = 0; i < per; i++) { const a = ((k + i / per) / n) * Math.PI * 2; pts.push({ x: Math.cos(a), y: 0, z: Math.sin(a) }); }
-      onGround(pts, raise[k] >= planet.k.ridge ? inked : pencilled);
+      // (Inked dot by dot as it's raised, so a stretch half built shows it: it stayed pencil until it was whole.)
+      const part = raise[k] >= planet.k.ridge ? per : Math.max(0, Math.floor((per * raise[k]) / planet.k.ridge));
+      onGround(pts.slice(0, part), inked); onGround(pts.slice(part), pencilled);
     }
   } else if (WORLD.goal === 'plumes' || WORLD.goal === 'chaos' || WORLD.goal === 'streaks') {
     // Round each great plume counted (or chaos field, or streak), the ground it has taken: another must rise outside it. The
@@ -2446,7 +2466,7 @@ const ACTION_WORDS = /^(A stone is coming|The ground is sinking|The heat is near
  * above were said, and nearly every world's own word on what had just happened, a crack too late, a comet frozen, a
  * burst not at high tide, the far side rising, was kept quiet.)
  */
-const EXPLAIN = /^(Too late|Too early|Too small|A big eruption|A giant wave|The island is blown|The far side|A dark streak|A streak, but|The ice cracks|A mound|A lava dome|A dome, but|The mound slumps|A blob reaches|Ice reaches the ring|An icy comet|Ice melted|The ice froze|Stone caught|Caught in the glow|The eruption's gas|The ground gives way|The last of the sea|The sea is nearly gone|The day has melted|The volcano is in daylight|That lava)/;
+const EXPLAIN = /^(It's tumbling again|The shock|Too late|Too early|Too small|Too near|A big eruption|A giant wave|The island is blown|The far side|A dark streak|A streak, but|The ice cracks|A mound|A lava dome|A dome, but|The mound slumps|A blob reaches|Ice reaches the ring|An icy comet|Ice melted|The ice froze|Stone caught|Caught in the glow|The eruption's gas|The ground gives way|The last of the sea|The sea is nearly gone|The day has melted|The volcano is in daylight|That lava)/;
 function announce(text: string, lesson = false): void {
   text = words$(text);
   if (BARE && !ending) return;
