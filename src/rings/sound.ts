@@ -9,6 +9,7 @@
 let ctx: AudioContext | null = null;
 let master: GainNode | null = null;
 let penGain: GainNode | null = null, penTone: BiquadFilterNode | null = null;
+let pressGain: GainNode | null = null, pressTone: BiquadFilterNode | null = null;
 let rainGain: GainNode | null = null, windGain: GainNode | null = null, windTone: BiquadFilterNode | null = null;
 let muted = (() => { try { return localStorage.getItem('annulus.sound') === 'off'; } catch { return false; } })();
 
@@ -60,6 +61,10 @@ export function wake(): void {
       windTone = c.createBiquadFilter(); windTone.type = 'bandpass'; windTone.frequency.value = 380; windTone.Q.value = 1.4;
       windGain = c.createGain(); windGain.gain.value = 0;
       source(c, buf).connect(windTone); windTone.connect(windGain); windGain.connect(master);
+      // The press: a low, soft hush, deepening as the platen comes down into the paper.
+      pressTone = c.createBiquadFilter(); pressTone.type = 'lowpass'; pressTone.frequency.value = 220; pressTone.Q.value = 0.7;
+      pressGain = c.createGain(); pressGain.gain.value = 0;
+      source(c, buf).connect(pressTone); pressTone.connect(pressGain); pressGain.connect(master);
     }
     if (ctx.state === 'suspended') void ctx.resume();
   } catch { /* no sound, and that's all */ }
@@ -80,6 +85,27 @@ export function weather(rain: number, wind: number, time: number): void {
   rainGain.gain.setTargetAtTime(0.06 * Math.max(0, Math.min(1, rain)), t, 0.6);
   windGain.gain.setTargetAtTime(0.09 * Math.max(0, Math.min(1, wind)) * swell, t, 0.4);
   windTone.frequency.setTargetAtTime(300 + 160 * swell, t, 0.4);
+}
+
+/** The press, `depth` 0 (lifted) to 1 (pressed deep): a low hush that deepens as it goes down. */
+export function press(depth: number): void {
+  if (!ctx || !pressGain || !pressTone) return;
+  const d = Math.max(0, Math.min(1, depth)), t = ctx.currentTime;
+  pressGain.gain.setTargetAtTime(0.11 * Math.sqrt(d), t, 0.25);
+  pressTone.frequency.setTargetAtTime(260 - 140 * d, t, 0.3);
+}
+
+/** The paper lifting off the block: a muffled, wooden thump, and a breath of paper. */
+export function lift(depth: number): void {
+  if (!ctx || !master || !pressGain) return;
+  try {
+    const c = ctx, t = c.currentTime, k = 0.4 + 0.6 * Math.max(0, Math.min(1, depth));
+    pressGain.gain.setTargetAtTime(0, t, 0.35);
+    const o = c.createOscillator(), e = c.createGain();
+    o.type = 'sine'; o.frequency.setValueAtTime(110, t); o.frequency.exponentialRampToValueAtTime(62, t + 0.25);
+    e.gain.setValueAtTime(0.0001, t); e.gain.exponentialRampToValueAtTime(0.09 * k, t + 0.02); e.gain.exponentialRampToValueAtTime(0.0001, t + 0.45);
+    o.connect(e); e.connect(master); o.start(t); o.stop(t + 0.5);
+  } catch { /* none */ }
 }
 
 /** A soft tick: a ring closed. */

@@ -25,6 +25,7 @@ export default defineConfig({
   build: {
     outDir: 'dist-app',
     emptyOutDir: true,
-    rollupOptions: { input: { [GAME]: resolve(__dirname, `${GAME}.html`) } },
+    // (With the tree-ring game comes its prototype of the press, at press.html.)
+    rollupOptions: { input: { [GAME]: resolve(__dirname, `${GAME}.html`), ...(GAME === 'rings' ? { press: resolve(__dirname, 'press.html') } : {}) } },
   },
 });

@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#f4efe4" />
+    <title>Well Rounded: the Press</title>
+    <style>
+      html, body { margin: 0; height: 100%; background: #f4efe4; overflow: hidden; touch-action: none; -webkit-user-select: none; user-select: none; }
+      #press { position: fixed; inset: 0; width: 100vw; height: 100dvh; display: block; }
+      #words { position: fixed; top: calc(70px + env(safe-area-inset-top)); left: 24px; right: 24px; text-align: center; font: italic 16px "Newsreader", "Iowan Old Style", Georgia, serif; color: #2e2118; opacity: 0; transition: opacity 2s; pointer-events: none; text-wrap: balance; }
+      #words.shown { opacity: 0.6; }
+    </style>
+  </head>
+  <body>
+    <canvas id="press" aria-label="Well Rounded, the press: trace a ring, then press it into the paper"></canvas>
+    <p id="words"></p>
+    <script type="module" src="/src/rings/press.ts"></script>
+  </body>
+</html>
