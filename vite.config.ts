@@ -6,8 +6,8 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     rollupOptions: {
-      // Atlas Minor, and the volcano prototype beside it (volcano.html).
-      input: { main: resolve(__dirname, 'index.html'), volcano: resolve(__dirname, 'volcano.html') },
+      // Atlas Minor, and the volcano and tree-ring prototypes beside it (volcano.html, rings.html).
+      input: { main: resolve(__dirname, 'index.html'), volcano: resolve(__dirname, 'volcano.html'), rings: resolve(__dirname, 'rings.html') },
     },
   },
 });
