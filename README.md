@@ -756,3 +756,11 @@ A frame now takes 0.9 ms. The bots win and lose the first world as before.
 **The first world, crusting and catching.** The first world's magma lay the same depth everywhere, so it all thinned to setting at once, about twenty seconds in. The whole world's running stopped together, which read as the globe stopping turning. It now lies deeper in the low ground and in broad patches, and runs more slowly (`flow` 2.5), so it crusts over a piece at a time through the first minute, the last of it lying molten in the hollows. The gold ring a stone is caught in also grows as the volcano is built: up to 80% wider once 150 of lava has been let out, by pouring or bursting (`catchGrow`, `catchFull`). The ring on the map widens with it, and the tip says so. The bots win and lose the first world as before.
 
 **Frame costs, every world.** Every world was played about two seconds at a phone's pace, resting and mid-eruption, with drawing set aside. Every world now averages 1 to 4 ms a frame. The one hitch left on most worlds was the surface's first two redraws after Begin: 60 to 100 ms each while the page was still learning the work, then 15. They're now worked through twice while the card is up.
+
+**Earth's First Water, made plain.** An icy comet melts into water only if it lands on lava still warm: it isn't melted in the air. That was hard to see and hard to do, so:
+* Icy comets now fall within 0.45 rad of the volcano (`iceNear`), where lava can be poured out to meet them; stones still fall as far as 0.75.
+* Warm lava anywhere within 0.1 rad of where one lands melts it (`iceReach`), and lava stays warm for one 45 seconds.
+* Each comet's landing circle is pale blue, turns orange once warm lava lies under it (it will melt), and deep blue over the volcano (keep it away: it cools it).
+* The tip says so, and the warning says "pour lava where it will land".
+
+Choosing whether a fall was icy afresh at each try at a landing place had also let stones win nearly every time, once comets' ring was narrower; it's now chosen once. Balance: the card's way and the skilled bot win every fire (4 to 6 minutes); aimless play made 3 or 4 of the 5 waters, and once all 5.

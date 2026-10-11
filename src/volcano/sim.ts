@@ -371,6 +371,9 @@ export const VOLCANO = {
   icy: 0,
   iceCool: 20,
   iceWarmFor: 30,
+  /** And how near the volcano an icy comet falls (radians: lava can be poured out that far), and how near the spot it lands warm lava must be to melt it. */
+  iceNear: 0.45,
+  iceReach: 0.1,
   /** The orange Earth: an eruption's gas uses up this much of the oxygen in the sky for each unit of heat let out (a pour's, none). 0: none. */
   gasEats: 0,
   /** The orange Earth: life in the shallows breathes out this much oxygen a second, at full strength over a planet of the drawn detail's worth of shallows. 0: none. */
@@ -1607,7 +1610,7 @@ export class Planet {
     const p = this.topo.basePositions, r = this.k.crater * (icy ? 0.75 : 1);
     // (An icy comet: is the ground it strikes warm with lava laid lately? Looked at before its crater changes it.)
     let warm = false;
-    if (icy) for (let v = 0; v < this.rock.length && !warm; v++) if (Math.hypot(p[v * 3] - p[at * 3], p[v * 3 + 1] - p[at * 3 + 1], p[v * 3 + 2] - p[at * 3 + 2]) < r * 1.3 && (this.lava[v] > this.k.thin || this.age[v] < this.k.iceWarmFor)) warm = true;
+    if (icy) warm = this.warmUnder(at);
     this.craters.push({ x: p[at * 3], y: p[at * 3 + 1], z: p[at * 3 + 2], r, born: this.seconds });
     for (let v = 0; v < this.rock.length; v++) {
       const d = Math.hypot(p[v * 3] - p[at * 3], p[v * 3 + 1] - p[at * 3 + 1], p[v * 3 + 2] - p[at * 3 + 2]);
@@ -2441,14 +2444,25 @@ export class Planet {
     if (this.impactIn > 0) return;
     this.impactIn = this.between(this.k.impactEvery);
     // Half of them fall near the plume, where they matter; the rest anywhere.
-    const p = this.topo.basePositions;
+    const p = this.topo.basePositions, icyNext = this.k.icy > 0 && this.rand() < this.k.icy; // (decided once: chosen afresh at each try, an icy comet's narrower ring lost it to stones nearly every time)
     for (let tries = 0; tries < 200; tries++) {
       const v = Math.floor(this.rand() * this.rock.length);
       const d = Math.hypot(p[v * 3] - this.plume.x, p[v * 3 + 1] - this.plume.y, p[v * 3 + 2] - this.plume.z);
       if (d < 0.08) continue; // not on the vent itself
-      if (this.k.impactNear > 0) { if (d > 0.2 && d < this.k.impactNear) { this.impact = { vertex: v, in: this.k.impactWarning, icy: this.rand() < this.k.icy }; this.tell(this.impact.icy ? 'An icy comet is coming' : 'A stone is coming'); return; } continue; }
+      // (An icy comet falls nearer the volcano than a stone may, where lava can be poured out to meet it.)
+      if (this.k.impactNear > 0) { const icy = icyNext; if (d > 0.2 && d < (icy ? this.k.iceNear : this.k.impactNear)) { this.impact = { vertex: v, in: this.k.impactWarning, icy }; this.tell(icy ? 'An icy comet is coming: pour lava where it will land' : 'A stone is coming'); return; } continue; }
       if (this.rand() < 0.5 || d < 0.5) { this.impact = { vertex: v, in: this.k.impactWarning, icy: this.rand() < this.k.icy }; this.tell(this.impact.icy ? 'An icy comet is coming' : 'A stone is coming'); return; }
     }
+  }
+
+  /** Whether an icy comet landing at a vertex would melt: warm lava lies near enough (lately laid, or still running). */
+  warmUnder(at: number): boolean {
+    const p = this.topo.basePositions, x = p[at * 3], y = p[at * 3 + 1], z = p[at * 3 + 2], r = this.k.iceReach;
+    for (let v = 0; v < this.rock.length; v++) {
+      if (!(this.lava[v] > this.k.thin || this.age[v] < this.k.iceWarmFor)) continue;
+      if (Math.abs(p[v * 3] - x) < r && Math.abs(p[v * 3 + 1] - y) < r && Math.hypot(p[v * 3] - x, p[v * 3 + 1] - y, p[v * 3 + 2] - z) < r) return true;
+    }
+    return false;
   }
 
   /** When the next stone lands, in seconds, counting its warning (null: none to come). */

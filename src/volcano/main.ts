@@ -1136,6 +1136,8 @@ function nearestAbove(u: THREE.Vector3): number {
 }
 const at = (v: number) => [base[v * 3], base[v * 3 + 1], base[v * 3 + 2]] as const;
 
+/** Whether warm lava lies under the coming icy comet (looked at a few times a second). */
+let iceReady = false, iceChecked = -1;
 function drawMarks(): void {
   const s = planet.impact;
   // (In watercolour: a drop of pigment for the stone, its shadow and its landing in the ground's own wash, and only the dotted ring of ink; no sign.)
@@ -1152,7 +1154,9 @@ function drawMarks(): void {
     setMark(stoneRing, s.vertex, Math.max(0.05, planet.k.crater * 1.2));
     // In the lava's red, if the plume is under it and will catch its heat.
     const inGlow = planet.warmthAt(s.vertex) > 0.5, ink = inGlow ? (WORLD.goal === 'gather' ? '#f4b545' : WASHED ? '#c99a3e' : '#9a4230') : WORLD.id === 'first' ? '#efe2c6' : WASHED ? '#6d655f' : INK; // (pale on the first world's dark crust, where ink was lost; gold once the glow is under it, and it will be caught)
-    stoneMark.material.color.set(ink); stoneRing.material.color.set(s.icy ? (inGlow ? '#3f78a8' : '#5b8fb8') : ink); // (an icy comet's ring in blue: deeper if it's over the volcano, to be kept away from)
+    // (An icy comet's ring in pale blue; orange once warm lava lies under it, so it will melt; deep blue over the volcano, to be kept away from.)
+    if (s.icy && seconds - iceChecked > 0.3) { iceChecked = seconds; iceReady = planet.warmUnder(s.vertex); }
+    stoneMark.material.color.set(ink); stoneRing.material.color.set(s.icy ? (inGlow ? '#3f78a8' : iceReady ? '#d9772e' : '#5b8fb8') : ink);
     const f = Math.max(0, Math.min(1, s.in / Math.max(1e-6, planet.k.impactWarning)));
     stoneAt(s.vertex, f, STONE_AT); skyStone.position.copy(STONE_AT);
     skyStone.scale.setScalar((0.06 + 0.03 * (1 - f)) * (dist / 3.2)); skyStone.material.opacity = Math.min(1, (1 - f) * 8);
@@ -1784,7 +1788,7 @@ const TIP: Record<string, string> = {
   glow: `${POUR} Keep pouring over new ground. Old lava stops glowing.`,
   waves: `Build the volcano until its top is just under the sea. Then: ${ERUPT[0].toLowerCase()}${ERUPT.slice(1)}`,
   antipode: `${ERUPT} Turn the world over to watch the far side rise.`,
-  water: 'Dark stones bring heat: turn the world so the volcano is under them. Pale blue comets bring water: pour lava where one will land, so it melts there, and keep the volcano away from them, as they cool it.',
+  water: 'Pale blue comets bring water, but only if they land on warm lava. When one is coming, pour lava out to its blue circle: the circle turns orange once it will melt. Keep the volcano itself out from under them, as they cool it. Dark stones bring heat: turn the volcano under them.',
   atolls: `Turn an island to the top to bring the volcano near it: coral starts round its shore. Then move on. ${HOLD} to pour out in the open sea, never on an island or its coral. As the island sinks, the coral keeps up, and a ring is left. The lowest islands go under first.`,
   sea: `The sea dries a little every second. An eruption's ash shades it and slows the drying for a while, so keep the sky full of ash. ${ERUPT} Pouring lava does nothing for the sea.`,
   giant: `The day side melts whatever stands in it, and the night shrinks as the Sun swells. The world turns slowly by itself: turn it back to keep the volcano in the dark, on the left. ${HOLD} to pour, or erupt, there.`,
