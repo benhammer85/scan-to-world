@@ -426,6 +426,19 @@ export const VOLCANO = {
    * land sets as pillows; a fountain let go nearly full from a dry vent spins threads of glass.
    */
   formations: false,
+  /**
+   * Mars: how tall (in height) the mountain may stand for each radian its narrowest side reaches out from the vent;
+   * built taller, that side gives way, and `collapseTakes` of the excess falls from the top. 0: it never does.
+   */
+  taper: 0,
+  collapseTakes: 0.8,
+  /** ...counting as its base only ground built up this thick. */
+  baseThick: 0.04,
+  /** Mars: patches of ice under the ground, this many, `iceR` across, round the mountain; lava over them blasts small steam cones. */
+  groundIce: 0,
+  iceR: 0.05,
+  /** Mars: how much a storm favours the side facing it (0, all sides alike; 1, only the side facing it, three times as hard). */
+  stormSide: 0,
   /** Where the vent stands lower than this, the sea still reaches it, and a burst is all ash. 0: as on any world. */
   wet: 0,
   /**
@@ -724,6 +737,8 @@ export class Planet {
   readonly laid: Float32Array;
   /** Seconds since lava last ran at or beside each vertex (see `warmNear`). */
   readonly nearLaid: Float32Array;
+  /** Mars: where there's ice under the ground (1), not yet reached by lava. */
+  readonly frozen: Uint8Array;
   /** A new island: how long the ground at each vertex has stood dry, out of the sea and clear of lava (seconds). */
   readonly dryFor: Float32Array;
   /** ...the seabirds' nests standing, and how many have been lost, to the lava and to the sea. */
@@ -809,6 +824,15 @@ export class Planet {
     this.impactIn = this.between(this.k.impactEvery);
     if (ground && ground.length === n) this.rock.set(ground);
     if (this.k.terrain !== 'ocean') this.scar();
+    // Mars: ice under the ground, in patches round where the mountain will stand, a little way off.
+    this.frozen = new Uint8Array(this.rock.length);
+    for (let i = 0; i < this.k.groundIce; i++) {
+      const q = this.plume, t1 = unit(cross(q, Math.abs(q.y) < 0.9 ? { x: 0, y: 1, z: 0 } : { x: 1, y: 0, z: 0 })), t2 = cross(q, t1);
+      const a = (i / this.k.groundIce) * Math.PI * 2 + this.rand() * 1.2, r = 0.2 + this.rand() * 0.12;
+      const c = unit({ x: q.x * Math.cos(r) + (t1.x * Math.cos(a) + t2.x * Math.sin(a)) * Math.sin(r), y: q.y * Math.cos(r) + (t1.y * Math.cos(a) + t2.y * Math.sin(a)) * Math.sin(r), z: q.z * Math.cos(r) + (t1.z * Math.cos(a) + t2.z * Math.sin(a)) * Math.sin(r) });
+      const P = this.topo.basePositions;
+      for (let v = 0; v < this.rock.length; v++) if (Math.hypot(P[v * 3] - c.x, P[v * 3 + 1] - c.y, P[v * 3 + 2] - c.z) < this.k.iceR) this.frozen[v] = 1;
+    }
     // (Not evenly: deeper in the low ground and in broad patches, so it crusts over a piece at a time, the last of it
     // lying molten in the hollows. Even all over, it all thinned to setting at the same moment, some twenty seconds in,
     // and the whole world's running stopped at once.)
@@ -1497,6 +1521,7 @@ export class Planet {
     else if (this.livingDue) { this.livingDue = false; this.living(0.25); }
     else if (this.slowIn <= 0) { this.slow(0.25, 0, half); this.slowIn = 0.25; this.slowHalf = true; }
     if (this.k.dome > 0 && (this.domeIn -= dt) <= 0) { this.domeIn = 0.5; this.domed(); }
+    if (this.k.taper > 0 && (this.collapseIn -= dt) <= 0) { this.collapseIn = 1; this.collapses(); }
     if (this.k.nests > 0) { this.nestTick += dt; if (this.nestTick >= 0.5) { this.nesting(this.nestTick); this.nestTick = 0; } }
     if (this.marble && !this.over) this.lampOfIo(dt);
     this.stones(dt);
@@ -1508,6 +1533,20 @@ export class Planet {
     }
   }
 
+  /**
+   * Which way the coming (or blowing) storm blows from, as a direction along the ground at the vent (a unit vector),
+   * where storms have a side (`stormSide`): it scours the side of the mountain facing it hardest, the lee hardly at all.
+   */
+  stormFrom: { x: number; y: number; z: number } | null = null;
+  /** How hard the storm wears the ground at a vertex, for its side: 1 everywhere where storms have none. */
+  windward(v: number): number {
+    const w = this.stormFrom;
+    if (!w || this.k.stormSide <= 0) return 1;
+    const p = this.topo.basePositions, q = this.plume, dx = p[v * 3] - q.x, dy = p[v * 3 + 1] - q.y, dz = p[v * 3 + 2] - q.z, d = Math.hypot(dx, dy, dz);
+    if (d < 1e-6) return 1;
+    const facing = (dx * w.x + dy * w.y + dz * w.z) / d;
+    return 1 - this.k.stormSide + this.k.stormSide * 3 * Math.max(0, facing);
+  }
   /** Whether a dust storm is blowing now; and, if one is on its way, how soon it comes. */
   storm = false;
   stormComing: number | null = null;
@@ -1518,14 +1557,104 @@ export class Planet {
     if (this.k.stormEvery[1] <= 0) { this.storm = false; return; }
     if (this.storm) {
       this.stormLeft -= dt;
-      if (this.stormLeft <= 0) { this.storm = false; this.stormIn = this.between(this.k.stormEvery); this.tell('The storm passes'); }
+      if (this.stormLeft <= 0) { this.storm = false; this.stormFrom = null; this.stormIn = this.between(this.k.stormEvery); this.tell('The storm passes'); }
       return;
     }
     this.stormIn -= dt;
-    if (this.stormComing === null && this.stormIn <= this.k.stormWarning) { this.stormComing = this.stormIn; this.tell('A dust storm is coming'); }
+    if (this.stormComing === null && this.stormIn <= this.k.stormWarning) {
+      this.stormComing = this.stormIn;
+      // (Where storms have a side: a new one each time, round the mountain.)
+      if (this.k.stormSide > 0) { const q = this.plume, t1 = unit(cross(q, Math.abs(q.y) < 0.9 ? { x: 0, y: 1, z: 0 } : { x: 1, y: 0, z: 0 })), t2 = cross(q, t1), a = this.rand() * Math.PI * 2; this.stormFrom = { x: t1.x * Math.cos(a) + t2.x * Math.sin(a), y: t1.y * Math.cos(a) + t2.y * Math.sin(a), z: t1.z * Math.cos(a) + t2.z * Math.sin(a) }; }
+      this.tell(this.k.stormSide > 0 ? 'A dust storm is coming: pour fresh lava on the hatched side, facing it' : 'A dust storm is coming');
+    }
     if (this.stormComing !== null) this.stormComing = Math.max(0, this.stormIn);
     if (this.stormIn <= 0) { this.storm = true; this.stormComing = null; this.stormLeft = this.k.stormLasts; }
   }
+
+  /** The sides of a mountain, round its vent, as Mars reckons them. */
+  static readonly FLANKS = 8;
+  /** The way round the vent each vertex near it lies (its sector), and how far out; -1 beyond. Reckoned with the vent where it is. */
+  private flankSector: Int8Array | null = null;
+  private flankR: Float32Array | null = null;
+  private flankAt = -1;
+  private flankWays(): void {
+    const n = this.rock.length, p = this.topo.basePositions, q = this.plume, F = Planet.FLANKS;
+    if (this.flankSector && this.flankAt === this.plumeVertex) return;
+    this.flankAt = this.plumeVertex;
+    this.flankSector ??= new Int8Array(n); this.flankR ??= new Float32Array(n);
+    const t1 = unit(cross(q, Math.abs(q.y) < 0.9 ? { x: 0, y: 1, z: 0 } : { x: 1, y: 0, z: 0 })), t2 = cross(q, t1);
+    for (let v = 0; v < n; v++) {
+      const x = p[v * 3], y = p[v * 3 + 1], z = p[v * 3 + 2], r = Math.acos(Math.max(-1, Math.min(1, x * q.x + y * q.y + z * q.z)));
+      if (r > 0.42) { this.flankSector[v] = -1; continue; }
+      const a = Math.atan2(x * t2.x + y * t2.y + z * t2.z, x * t1.x + y * t1.y + z * t1.z);
+      this.flankSector[v] = Math.floor(((a + Math.PI) / (Math.PI * 2)) * F) % F;
+      this.flankR[v] = r;
+    }
+  }
+  /** Mars: how far out each side of the mountain's built ground reaches from the vent (radians), as last reckoned. */
+  readonly reach = new Float32Array(8);
+  /** ...reckoned now. */
+  reaching(): void {
+    this.flankWays();
+    this.reach.fill(0);
+    for (let v = 0; v < this.rock.length; v++) {
+      const s = this.flankSector![v];
+      if (s >= 0 && this.laid[v] < 1e5 && this.ash[v] < 0.4 && this.rock[v] - this.start[v] > this.k.baseThick && this.flankR![v] > this.reach[s]) this.reach[s] = this.flankR![v];
+    }
+  }
+  /** Mars: how wide (radians out from the vent, on every side) the mountain must be to stand this high (in height). */
+  baseFor(height: number): number { return height / this.k.taper; }
+  /**
+   * Mars: a mountain stands only so tall for its width, as Olympus Mons did (it is 600 km across for its 22 km). Built
+   * taller than its narrowest side allows, that side gives way: the ground there slides off from high on the flank and
+   * spreads far out beyond as a hummocky apron (its "aureole"), and the top falls back to what the side can hold.
+   */
+  private collapses(): void {
+    this.reaching();
+    let s = 0;
+    for (let i = 1; i < Planet.FLANKS; i++) if (this.reach[i] < this.reach[s]) s = i;
+    // (Above the ground it was built on: the world's own hills stand as they are.)
+    const h = this.summit;
+    this.summitBefore ??= h;
+    const allowed = this.summitBefore + this.k.taper * this.reach[s];
+    if (h <= allowed || this.seconds < this.slidAt[s] + 8) return;
+    this.slidAt[s] = this.seconds;
+    const p = this.topo.basePositions;
+    let gone = 0;
+    for (let v = 0; v < this.rock.length; v++) {
+      const sec = this.flankSector![v]; if (sec < 0) continue;
+      const r = this.flankR![v];
+      // (Whatever stands above what the side can hold falls back; and the side itself slides, most from high on it.)
+      let take = Math.max(0, this.rock[v] - this.k.floor - allowed) * this.k.collapseTakes;
+      if (sec === s && r < 0.22) take += Math.max(0, this.rock[v] - this.start[v]) * this.k.collapseTakes * 0.5 * (1 - r / 0.22);
+      take = Math.min(take, Math.max(0, this.rock[v] - this.start[v]));
+      if (take <= 0) continue;
+      this.rock[v] -= take; gone += take; this.lava[v] = 0;
+    }
+    if (gone <= 0) return;
+    // (Out beyond the side, in ridges and hummocks, not an even sheet.)
+    const w = this.next, from = Math.max(0.2, this.reach[s]);
+    let sum = 0;
+    for (let v = 0; v < this.rock.length; v++) {
+      w[v] = 0;
+      if (this.flankSector![v] !== s || this.flankR![v] < from) continue;
+      w[v] = Math.max(0, (1 - (this.flankR![v] - from) / 0.2) * (0.5 + 0.5 * Math.sin(p[v * 3] * 90 + p[v * 3 + 1] * 70) * Math.cos(p[v * 3 + 2] * 80)));
+      sum += w[v];
+    }
+    if (sum > 0) for (let v = 0; v < this.rock.length; v++) if (w[v] > 0) { this.rock[v] += (gone * w[v]) / sum; this.ash[v] = Math.max(this.ash[v], 0.5); }
+    this.slides++;
+    this.slidWay = s;
+    if (this.k.formations && !this.found.includes('aureole')) { this.found.push('aureole'); this.tell('Found: an aureole. A side that gave way, spread far out in ridges, as round Olympus Mons'); }
+    this.tell('Too tall for its width: a side gave way. Widen the mountain where the ring is still dotted');
+  }
+  /** Mars: how high the ground under the mountain stood before it, as first reckoned. */
+  summitBefore: number | null = null;
+  /** Mars: the side that last gave way (a sector), if any. */
+  slidWay = -1;
+  /** Mars: how many flanks have given way. */
+  slides = 0;
+  private collapseIn = 1;
+  private readonly slidAt = new Float32Array(8).fill(-100);
 
   /**
    * How high the mountain stands above the floor: not its single highest point (lava piles a spike
@@ -2113,6 +2242,7 @@ export class Planet {
       this.lava[v] -= solid;
       this.rock[v] += solid;
       if (this.k.formations && solid > 2e-5 && sea) this.formed(v);
+      if (this.frozen[v] && l > this.k.cover) this.steamCone(v);
       if (l > this.k.cover) { if (this.life[v] > 0.05) this.scorch[v] = 1; this.age[v] = 0; this.life[v] = 0; this.grown[v] = 0; this.ash[v] = 0; this.rich[v] = 0; }
     }
   }
@@ -2160,6 +2290,20 @@ export class Planet {
     if (pick < 0) return;
     this.nests.push({ v: pick, at: this.seconds });
     this.tell(this.nests.length === 1 && this.nestsLost.lava + this.nestsLost.sea + this.nestsLost.ash === 0 ? 'A seabird nests on the new land' : `A seabird nests: ${this.nests.length}`);
+  }
+
+  /**
+   * Mars: lava run over ice in the ground boils it, and the steam blasts up through the lava in small cones with
+   * craters in their tops, "rootless" because no vent feeds them, as on Mars's lava plains (and Iceland's).
+   */
+  private steamCone(v: number): void {
+    this.frozen[v] = 0;
+    // (Not every point of the patch: a cone here and there.)
+    if (this.rand() > 0.15) return;
+    const t = this.topo;
+    this.rock[v] += 0.006;
+    for (let q = t.nbrOffsets[v]; q < t.nbrOffsets[v + 1]; q++) this.rock[t.nbrList[q]] += 0.01;
+    if (this.k.formations && !this.found.includes('rootless')) { this.found.push('rootless'); this.tell('Found: rootless cones. Lava over ice in the ground boils it, and steam blasts up small cones'); }
   }
 
   /** Mercury: a burst's shock arriving at the far side, and erupting there. */
@@ -2300,7 +2444,7 @@ export class Planet {
       } else this.wear[v] = 0;
       if (r[v] > 0) next[v] -= this.k.rain * dt * r[v] * wear;
       // A dust storm scours whatever stands high, and soft ash most of all.
-      if (this.storm && r[v] > this.k.floor && !(this.age[v] < this.k.stormFresh)) next[v] -= this.k.stormWear * dt * (r[v] - this.k.floor) * (1 + (this.k.softer - 1) * this.ash[v]);
+      if (this.storm && r[v] > this.k.floor && !(this.age[v] < this.k.stormFresh)) next[v] -= this.k.stormWear * dt * (r[v] - this.k.floor) * (1 + (this.k.softer - 1) * this.ash[v]) * this.windward(v);
       // Too steep, and the ground slides towards its lower neighbours; ash stands less steeply than lava rock.
       const talus = this.k.talus * this.firmness[v] * (1 - 0.4 * this.ash[v]);
       // (Reef rock is cemented: in the long age an atoll's rim stands over its deepening lagoon.)

@@ -301,6 +301,24 @@ describe('the Red Giant', () => {
   });
 });
 
+describe('Mars', () => {
+  it('lets a mountain stand only so tall for its width: a narrow one gives way, a wide one stands', () => {
+    const tower = (r: number) => {
+      const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('mars').rules);
+      pl.stonesFall = false;
+      run(pl, 1.2); // (the ground as it was, reckoned before anything is built)
+      for (let v = 0; v < topo.vertexCount; v++) { const d = Math.acos(Math.min(1, p[v * 3 + 2])); if (d < r) { pl.rock[v] = pl.start[v] + 0.3 * (1 - d / r) + 0.05; pl.laid[v] = 0; } }
+      const before = pl.summit;
+      run(pl, 3);
+      return { slides: pl.slides, fell: before - pl.summit };
+    };
+    const narrow = tower(0.12), wide = tower(0.4);
+    expect(narrow.slides).toBeGreaterThan(0);
+    expect(narrow.fell).toBeGreaterThan(0.01);
+    expect(wide.slides).toBe(0);
+  });
+});
+
 describe('Surtsey', () => {
   const rules = worldOf('surtsey').rules;
   const island = (lava: boolean) => {

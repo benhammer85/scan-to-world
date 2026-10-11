@@ -1282,7 +1282,11 @@ if (WORLD.goal === 'calm') for (const st of [aimInk, aimPencil]) { st.linger = 0
 /** The asteroid: its high ground in short strokes, as old charts hatched a height: where lava makes it lumpier, so keep off it. */
 const highHatch = new Stipple('#' + new THREE.Color(AIM_INK).multiplyScalar(0.6).getHexString(), 'dash', 6);
 highHatch.byDirection = true;
-if (WORLD.goal === 'round') group.add(highHatch.object);
+/** Mars: the ice under the ground, in pale blue stipple. */
+const frostDots = new Stipple('#7fa6c4', 'dot', 2);
+frostDots.byDirection = true;
+if ((WORLD.rules.groundIce ?? 0) > 0) group.add(frostDots.object);
+if (WORLD.goal === 'round' || (WORLD.rules.taper ?? 0) > 0) group.add(highHatch.object);
 /**
  * The circle round the volcano, where the aim asks for an eruption: dotted, inking itself in, dot by dot, as the heat
  * builds towards what the aim needs, and closed when it's time to let go. It says what a grey or gold edge on the
@@ -1832,6 +1836,7 @@ const TIP: Record<string, string> = {
 };
 /** A world's own tip, where its aim is shared with others but the way to it isn't. */
 const OWN_TIP: Partial<Record<WorldId, string>> = {
+  mars: `${HOLD} to pour. Lava runs down the screen, so turn the world between pours. A mountain stands only so tall for its width: the dotted ring shows how wide it must be to grow higher. Where a side is still pencil, pour down that side. Built too tall for its narrowest side, that side gives way. Before each dust storm, pour on the hatched side facing it: fresh lava doesn't wear away.`,
   hollow: `${HOLD} to pour a little, then rest. When cracks ring the volcano, stop until they fade, or the top falls in. Don't ${COMPUTER ? 'click' : 'tap'} to erupt: a big eruption empties it at once.`,
 };
 /** How the hands do it, for the way it's being played: tipping a phone, breathing, or a computer's mouse. */
@@ -2080,6 +2085,29 @@ function drawAim(now: number): void {
       const edge = planet.sheetEdge(), dots: number[] = [];
       for (let i = 0; i < edge.length; i += 2) { const v = edge[i], r = groundOver(v); dots.push(base[v * 3] * r, base[v * 3 + 1] * r, base[v * 3 + 2] * r); }
       aimInk.set(dots);
+    }
+    // Mars: how wide the base must be for the next few km, as a ring of dots round the mountain, inked on each side
+    // that reaches it, pencil where it doesn't yet (pour down that side); the side a coming storm faces, hatched;
+    // and the ice under the ground, stippled.
+    if (planet.k.taper > 0) {
+      planet.reaching();
+      const need = Math.min(0.41, planet.baseFor(Math.max(0, planet.summit - (planet.summitBefore ?? 0)) + 2 / HEIGHT.kmPerUnit)), ink: number[] = [], pencil: number[] = [], hatch: number[] = [];
+      const q = planet.plume, t1 = new THREE.Vector3().crossVectors(new THREE.Vector3(q.x, q.y, q.z), Math.abs(q.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0)).normalize(), c = new THREE.Vector3(q.x, q.y, q.z), t2 = new THREE.Vector3().crossVectors(c, t1);
+      const at = (a: number, r: number) => c.clone().multiplyScalar(Math.cos(r)).addScaledVector(t1, Math.sin(r) * Math.cos(a)).addScaledVector(t2, Math.sin(r) * Math.sin(a));
+      for (let k = 0; k < Planet.FLANKS; k++) {
+        const pts: THREE.Vector3[] = [];
+        for (let i = 0; i < 4; i++) pts.push(at(((k + (i + 0.5) / 4) / Planet.FLANKS) * Math.PI * 2 - Math.PI, need));
+        onGround(pts, planet.reach[k] >= need ? ink : pencil);
+      }
+      const w = planet.stormFrom;
+      if (w && (planet.stormComing !== null || planet.storm)) {
+        const a0 = Math.atan2(w.x * t2.x + w.y * t2.y + w.z * t2.z, w.x * t1.x + w.y * t1.y + w.z * t1.z), pts: THREE.Vector3[] = [];
+        for (let i = -4; i <= 4; i++) for (const r of [0.1, 0.16, 0.22]) pts.push(at(a0 + i * 0.09, r));
+        onGround(pts, hatch);
+      }
+      const ice: number[] = [];
+      for (let v = 3; v < N; v += 3) if (planet.frozen[v]) { const r = groundOver(v); ice.push(base[v * 3] * r, base[v * 3 + 1] * r, base[v * 3 + 2] * r); }
+      aimInk.set(ink); aimPencil.set(pencil); highHatch.set(hatch); frostDots.set(ice);
     }
     // And the ring round the heat, inked round as far as the aim is met.
     const R = WORLD.goal === 'height' || WORLD.goal === 'giant' ? 0.32 : 0.3, around = Math.max(24, Math.round((Math.PI * 2 * Math.sin(R)) / 0.045));
@@ -2342,7 +2370,7 @@ const CUES: Cue[] = [
   ...(FREE ? [] : [{ ready: () => true, get say() { return words$((OWN_TIP[WORLD.id] ?? TIP[WORLD.goal] ?? '').trim()); }, done: (s: number) => s > 16 }]), // (said when it's reached, by then every word table is made)
   ...(WORLD.rules.rises ? [{ ready: () => true, say: 'The volcano moves to whatever is at the top: turn the world to move it', done: (s: number) => s > 20 }] : []),
   // (Mars: a storm wears old rock but not fresh lava, so the first one coming is the moment to say so.)
-  ...(planet.k.stormFresh > 0 ? [{ ready: () => planet.stormComing !== null, hand: 'hold' as const, say: 'A dust storm is coming: pour now. Fresh lava doesn\'t wear away', done: (s: number) => s > 12 }] : []),
+  ...(planet.k.stormFresh > 0 ? [{ ready: () => planet.stormComing !== null, hand: 'hold' as const, say: planet.k.stormSide > 0 ? 'A dust storm is coming: pour on the hatched side, facing it. Fresh lava doesn\'t wear away' : 'A dust storm is coming: pour now. Fresh lava doesn\'t wear away', done: (s: number) => s > 12 }] : []),
   ...(WORLD.goal === 'ridge' ? [{ ready: () => planet.tally.flows + planet.tally.bursts > 0, say: 'The spin carries the lava to the dotted line', done: (s: number) => s > 25 }] : []),
   // (Only where a burst is the way: on the worlds that want pouring, or a release short of a burst, or none
   // at all, it pointed the wrong way, and on the hollow world it emptied the ground.)
@@ -2488,7 +2516,7 @@ const ACTION_WORDS = /^(A stone is coming|The ground is sinking|The heat is near
  * above were said, and nearly every world's own word on what had just happened, a crack too late, a comet frozen, a
  * burst not at high tide, the far side rising, was kept quiet.)
  */
-const EXPLAIN = /^(It's tumbling again|The shock|Too late|Too early|Too small|Too near|A big eruption|A giant wave|The island is blown|The far side|A dark streak|A streak, but|The ice cracks|A mound|A lava dome|A dome, but|The mound slumps|A blob reaches|Ice reaches the ring|An icy comet|Ice melted|The ice froze|Stone caught|Caught in the glow|The eruption's gas|The ground gives way|The last of the sea|The sea is nearly gone|The day has melted|The volcano is in daylight|That lava|A seabird|A nest|Found:|The island stands)/;
+const EXPLAIN = /^(It's tumbling again|The shock|Too late|Too early|Too small|Too near|A big eruption|A giant wave|The island is blown|The far side|A dark streak|A streak, but|The ice cracks|A mound|A lava dome|A dome, but|The mound slumps|A blob reaches|Ice reaches the ring|An icy comet|Ice melted|The ice froze|Stone caught|Caught in the glow|The eruption's gas|The ground gives way|The last of the sea|The sea is nearly gone|The day has melted|The volcano is in daylight|That lava|A seabird|A nest|Found:|The island stands|Too tall for its width|A dust storm is coming)/;
 function announce(text: string, lesson = false): void {
   text = words$(text);
   if (BARE && !ending) return;
@@ -3962,7 +3990,8 @@ const loop = (): void => {
     gaugePencil.update(dt);
   }
   for (const s of [...kindDots, foam]) s.update(dt);
-  if (WORLD.goal === 'round') highHatch.update(dt);
+  if (WORLD.goal === 'round' || (WORLD.rules.taper ?? 0) > 0) highHatch.update(dt);
+  if ((WORLD.rules.groundIce ?? 0) > 0) frostDots.update(dt);
   puffs.update(dt * speed);
   if (begun) breathe(dt);
   inTheHand();

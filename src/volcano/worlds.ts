@@ -133,9 +133,9 @@ export const WORLDS: World[] = [
     numeral: 'I',
     title: 'Mars',
     first: 'Cold and dry, with thin, dusty air.',
-    why: 'Mars has weak gravity, so lava can pile up much higher than on Earth: its volcano Olympus Mons is 22 km tall.',
+    why: 'Mars has weak gravity, so lava can pile up much higher than on Earth: Olympus Mons is 22 km tall and 600 km wide. Its sides have given way in giant landslides, and steep cliffs ring it.',
     real: { name: 'Olympus Mons', km: 22 },
-    second: 'Pour in one place again and again, and the mountain rises.',
+    second: 'Build it wide at the base.',
     rules: {
       g: 0.38, // (Mars's gravity, Earth's being 1)
       terrain: 'mars', basins: 0, craters: 18, floor: 0.05, rough: 0.025,
@@ -144,6 +144,9 @@ export const WORLDS: World[] = [
       drift: 0, rises: 0, heat: 210, rising: 0.8, steady: true, // (the heat comes back quickly: the first world, so waiting is short)
       impactEvery: [60, 100], impactWarning: 14, impactHeat: 6,
       stormEvery: [55, 80], stormWarning: 15, stormLasts: 18, stormWear: 0.012, softer: 7, stormFresh: 30, // (often enough to plan for, and hard on old rock and ash: lava poured just before one is still fresh, and keeps the peak)
+      stormSide: 0.7, // (each storm from its own side: that side wears hardest)
+      taper: 1.1, // (only so tall for its width: a narrow side gives way)
+      groundIce: 3, formations: true,
     },
     palette: {
       paper: '#ead3b4', basalt: '#a67a5c', ash: '#c9ad92', lava: '#b8563c', deepLava: '#8f3b28',

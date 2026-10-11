@@ -8,11 +8,14 @@ import type { WorldId } from './worlds';
 export const FORMATIONS: Record<string, { name: string; how: string }> = {
   pillow: { name: 'Pillow lava', how: 'Lava running into the sea cools in round pillows.' },
   hair: { name: "Pele's hair", how: 'A tall lava fountain, spun by the wind into threads of glass.' },
+  aureole: { name: 'An aureole', how: 'A side of the mountain that gave way, spread far out in ridges, as round Olympus Mons.' },
+  rootless: { name: 'Rootless cones', how: 'Lava over ice in the ground boils it, and the steam blasts up small cones.' },
 };
 
 /** Which formations each world hides. */
 export const HIDDEN: Partial<Record<WorldId, string[]>> = {
   surtsey: ['pillow', 'hair'],
+  mars: ['aureole', 'rootless'],
 };
 
 const KEY = 'volcano.fieldbook';
