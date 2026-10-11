@@ -3,10 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#f4efe4" />
+    <meta name="theme-color" content="#f6f1e6" />
     <title>Well Rounded</title>
     <style>
-      html, body { margin: 0; height: 100%; background: #f4efe4; overflow: hidden; touch-action: none; -webkit-user-select: none; user-select: none; }
+      html, body { margin: 0; height: 100%; background: #f6f1e6; overflow: hidden; touch-action: none; -webkit-user-select: none; user-select: none; }
       #slice { position: fixed; inset: 0; width: 100vw; height: 100dvh; display: block; opacity: 0; transition: opacity 1.2s ease; }
       #slice.shown { opacity: 1; }
       .engraved { font-family: "Newsreader", "Iowan Old Style", Georgia, serif; color: #2e2118; }
@@ -16,7 +16,7 @@
       #goal { position: fixed; top: calc(52px + env(safe-area-inset-top)); left: 72px; right: 72px; text-align: center; font-size: 14px; letter-spacing: 0.03em; opacity: 0.7; pointer-events: none; font-variant-numeric: tabular-nums; transition: opacity 1.2s ease; }
       #event { position: fixed; top: calc(76px + env(safe-area-inset-top)); left: 16px; right: 16px; text-align: center; font-size: 14px; font-style: italic; opacity: 0; pointer-events: none; transition: opacity 2s; text-wrap: balance; }
       #event.shown { opacity: 0.75; }
-      #event, #stage-name, #goal { text-shadow: 0 0 2px #f4efe4, 0 0 6px #f4efe4, 0 0 12px #f4efe4, 0 0 18px #f4efe4; }
+      #event, #stage-name, #goal { text-shadow: 0 0 2px #f6f1e6, 0 0 6px #f6f1e6, 0 0 12px #f6f1e6, 0 0 18px #f6f1e6; }
       body.carding #stage-name, body.carding #goal, body.carding #event, body.carding #corner, body.carding #finish { opacity: 0 !important; pointer-events: none; }
       body.ended #goal, body.ended #event, body.ended #corner, body.ended #finish { opacity: 0 !important; pointer-events: none; }
       /* How a stroke is made, shown as a touch (as in the volcano game): a soft round light going round the bark, as a fingertip would. */
@@ -26,7 +26,7 @@
       #ghost .mv { position: absolute; inset: 0; }
       #ghost .dot { position: absolute; left: 30px; top: 6px; width: 30px; height: 30px; margin: -15px 0 0 -15px; border-radius: 50%; background: radial-gradient(circle, rgba(255, 252, 244, 0.85) 0%, rgba(255, 252, 244, 0.55) 60%, rgba(255, 252, 244, 0) 100%); box-shadow: 0 0 0 1px rgba(46, 33, 24, 0.12), 0 2px 10px rgba(46, 33, 24, 0.18); }
       /* The card the tree begins from: its numeral and name, its mood, one true thing, what to do, and its two aims. */
-      #begin { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: calc(24px + env(safe-area-inset-top)) 0 calc(18px + env(safe-area-inset-bottom)); box-sizing: border-box; background: #f4efe4; transition: opacity 1.2s; overflow-y: auto; z-index: 10; }
+      #begin { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: calc(24px + env(safe-area-inset-top)) 0 calc(18px + env(safe-area-inset-bottom)); box-sizing: border-box; background: #f6f1e6; transition: opacity 1.2s; overflow-y: auto; z-index: 10; }
       #begin.gone { opacity: 0; pointer-events: none; }
       #begin p { margin: 0; text-align: center; }
       #begin .game { font-size: 12px; letter-spacing: 0.24em; text-transform: uppercase; opacity: 0.6; margin-bottom: 6px; }
@@ -91,7 +91,7 @@
     <div id="event" class="engraved" aria-live="polite"></div>
     <div id="ghost" aria-hidden="true"><div class="mv"><i class="dot"></i></div></div>
     <button id="corner" aria-label="Back to the card"></button>
-    <button id="finish">fell the tree</button>
+    <button id="finish">let it rest</button>
     <div id="endlinks"><button data-end="keep">save picture</button><button data-end="again">plant another</button><button data-end="xylo">the xylotheque</button></div>
     <div id="xylo" class="engraved"><div class="head"><button class="close">‹ back</button><h2>Xylotheque</h2><span></span></div><p class="sub">Well Rounded’s library of wood: every slice kept</p><div class="pages"></div><div class="view"><img alt=""></div></div>
     <div id="begin" class="engraved">
@@ -103,9 +103,8 @@
       <p class="aims"><span class="first"></span><span class="second"></span></p>
       <p class="best"></p>
       <button class="touch"><span class="what">Begin</span><small></small></button>
-      <div class="foot"><button data-foot="wander"></button><button data-foot="xylo">the xylotheque</button><button data-foot="settings">settings</button></div>
+      <div class="foot"><button data-foot="xylo">the xylotheque</button><button data-foot="settings">settings</button></div>
       <div class="settings" hidden>
-        <div class="row" data-row="ink"><span class="label">Ink</span><span class="opts" role="group" aria-label="Ink"><button data-v="ink">engraving</button><button data-v="water">watercolour</button></span></div>
         <div class="row" data-row="haptics"><span class="label">Vibration</span><span class="opts" role="group" aria-label="Vibration"><button data-v="on">on</button><button data-v="off">off</button></span></div>
       </div>
     </div>

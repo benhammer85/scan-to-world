@@ -1,7 +1,7 @@
 /**
  * The trees, in sequence, as the volcano has its worlds: each with its own physics (its rules), a
- * card (numeral, name, a mood line, one true fact, one line on what to do), a first aim and a second
- * aim that pulls against it.
+ * card (numeral, name, a mood line, one true fact, one line on what to do) and, in place of aims,
+ * two calm lines: nothing can go wrong, and it ends when you let it rest.
  *
  * Only the oak is built so far. Those to come, each with what will set it apart:
  *   II   a redwood, that fires come through and it outlives;
@@ -26,10 +26,9 @@ export interface Tree {
   fact: string;
   /** What to do, in a line. */
   todo: string;
-  /** The first aim: live this many years. */
-  years: number;
-  /** The second aim, in a line (its measure is the slice's evenness, met at EVEN_AIM). */
-  second: string;
+  /** No aims: a line on the calm of it, and one on how it ends. */
+  calm: string;
+  rest: string;
   rules: Partial<Rules>;
 }
 
@@ -41,16 +40,13 @@ export const TREES: Tree[] = [
     latin: 'Quercus robur',
     mood: 'Sun from the south, and the seasons keep their time.',
     fact: 'Each ring is a year: pale wood laid down in spring, dark wood in late summer. Here each ring you paint is five.',
-    todo: 'Paint each year’s ring in one stroke: slow for wide wood, quick for thin.',
-    years: 300,
-    second: 'And paint the most even slice: a set of true circles.',
-    // (Steady seasons: rain, drought, wind and frost now and then, and two fires, which on a slope burn the uphill side.)
+    todo: 'Paint each ring in one stroke round the last: slow for wide wood, quick for thin.',
+    calm: 'Nothing can go wrong. The colours run and fade; the tree keeps growing.',
+    rest: 'Let it rest whenever you like.',
+    // (Steady seasons: rain, drought, wind and frost now and then, and two fires on the slope.)
     rules: {},
   },
 ];
-
-/** The second aim is met at this evenness (%): rings as alike all round as a careful hand makes them. */
-export const EVEN_AIM = 80;
 
 export function treeOf(id: string | null | undefined): Tree {
   return TREES.find((t) => t.id === id) ?? TREES[0];

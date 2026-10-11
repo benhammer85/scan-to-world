@@ -14,8 +14,8 @@ import { Planet } from '../src/volcano/sim';
 import { Ecology } from '../src/volcano/ecology';
 import { Chain, CHAIN } from '../src/volcano/chain';
 import { worldOf } from '../src/volcano/worlds';
-import { TreeSim, WIND, DROUGHT, RAIN, FROST } from '../src/rings/tree';
-import { TREES, treeOf, EVEN_AIM } from '../src/rings/trees';
+import { TreeSim, WIND } from '../src/rings/tree';
+import { TREES, treeOf } from '../src/rings/trees';
 import { bandOf, brushAt, pointerAt, viewFor } from '../src/rings/hand';
 
 // Well Rounded's trees are painted by their own bots (see paintTree, at the foot), stroke by stroke, with
@@ -24,7 +24,8 @@ import { bandOf, brushAt, pointerAt, viewFor } from '../src/rings/hand';
 //   npx vite-node scripts/playtest.ts oak table [seeds]    every bot on seeds 1 to 8 (or as many), as a table
 // bots: careless (fast, wobbly, lifts before the circle closes), steady (follows the card: a steady
 // pace, round and closed), skilled (reads the thin side and slows there, holds the line against the
-// wind, leans on the sun's side, paints generously before a signalled dry spell), idle (never paints).
+// wind, leans on the sun's side), idle (never paints). Nothing can be lost, so what they show is the
+// pacing (minutes to three hundred years), that no hand ends the tree, and how even each paints.
 if (TREES.some((t) => t.id === process.argv[2])) {
   if (process.argv[3] === 'table') paintTable(process.argv[2], Number(process.argv[4] ?? 8));
   else console.log(JSON.stringify(paintTree(process.argv[2], process.argv[3] ?? 'steady', Number(process.argv[4] ?? 5))));
@@ -361,42 +362,35 @@ console.log(JSON.stringify({ world: worldId, bot: botKind, seed, won: wonAt >= 0
 
 // ---------------------------------------------------------------- Well Rounded
 /**
- * A tree painted to its fall, ring by ring, with a player's hand on a phone's screen (390 × 844):
- * each stroke a run of pointer positions, 60 a second, through hand.ts as the game takes them, with
- * noise for how steady the hand is (a slow wander of the finger, in CSS pixels). Between strokes,
- * the game's beat and a moment to react, so the seconds are a player's. What a bot sees is what the
- * screen shows: the mark under its finger, the slice, and the habit drawing's coming weather.
+ * A tree painted to three hundred years, ring by ring, with a player's hand on a phone's screen
+ * (390 × 844): each stroke a run of pointer positions, 60 a second, through hand.ts as the game takes
+ * them, with noise for how steady the hand is (a slow wander of the finger, in CSS pixels). Between
+ * strokes, the game's beat and a moment to react, so the seconds are a player's.
  */
 type Painter = 'careless' | 'steady' | 'skilled' | 'idle';
 /** (Functions, not constants: this part runs before the module's constants are set, see the top.) */
 function painters(): Painter[] { return ['careless', 'steady', 'skilled', 'idle']; }
 /** The beat between strokes, as the game has it (seconds: the drying and the turn of the year). */
-function beat(): number { return 1.3; }
+function beat(): number { return 1.4; }
 
-export function paintTree(id: string, kind: string, seed: number) {
+export function paintTree(id: string, kind: string, seed: number, years = 300) {
   const T = treeOf(id), tree = new TreeSim(seed, { ...T.rules, ...JSON.parse(process.env.RULES ?? '{}') });
   const px = 3, W = 390 * px, H = 844 * px, TAU = Math.PI * 2, dt = 1 / 60;
   let r = (seed * 7919 + kind.length * 104729) % 233280;
   const rand = () => { r = (r * 9301 + 49297) % 233280; return r / 233280; };
   const gauss = () => Math.sqrt(-2 * Math.log(Math.max(1e-9, rand()))) * Math.cos(TAU * rand());
-  /** How far the finger wanders (CSS px) and how quickly; how long to react before each stroke. */
+  /** How far the finger wanders (CSS px), and how long to react before each stroke. */
   const hand = { careless: { wander: 9, react: 0.4 }, steady: { wander: 3.2, react: 0.8 }, skilled: { wander: 1.3, react: 1.2 }, idle: { wander: 0, react: 0 } }[kind as Painter] ?? { wander: 3.2, react: 0.8 };
-  let clock = 0, wonAt = -1, died = 0, gaps = 0;
-  const diedBy: Record<number, number> = {};
-  const trace: string[] = [];
-  if (kind === 'idle') {
-    // (Nothing is painted, so nothing grows: the game waits for the brush, and the tree for its spring.)
-    return { tree: id, bot: kind, seed, won: false, even: false, lived: 0, minutes: 0, cause: 'waits', evenness: 0, died: 0, gaps: 0, cracks: 0, fires: 0, trace: '' };
-  }
-  while (!tree.over && clock < 1800) {
+  let clock = 0, lifts = 0;
+  if (kind === 'idle') return { tree: id, bot: kind, seed, years: 0, minutes: 0, rings: 0, evenness: 0, fell: false, lifts: 0 };
+  while (!tree.over && tree.year < years && clock < 3600) {
     clock += beat() + hand.react;
     const v = viewFor(tree, W, H, px), band = bandOf(tree, v), steady = TAU / tree.strokeSeconds, sun = tree.k.sun;
-    const w = tree.weatherNow, wind = tree.windOf(), next = tree.weatherOf(tree.ring + 1);
+    const w = tree.weatherNow, wind = tree.windOf();
     const sunF = (a: number) => 1 + sun * Math.cos(a - tree.k.sunAngle);
-    let wob = 0, a = rand() * TAU, t = clock, swept = 0, seen = 1;
+    let wob = 0, a = rand() * TAU, t = clock, swept = 0;
     const dir = rand() < 0.5 ? 1 : -1;
-    const stopAt = kind === 'careless' ? TAU * (0.8 + 0.25 * rand()) : TAU * 1.4;
-    // Where the bot means the brush to be: on the bark; skilled, held against the wind it sees pushing.
+    const stopAt = kind === 'careless' ? TAU * (0.7 + 0.25 * rand()) : TAU * 1.4;
     const meant = (a: number, ts: number) => {
       if (kind !== 'skilled' || w !== WIND) return 0;
       const g = Math.min(1, ts / 0.7);
@@ -409,63 +403,33 @@ export function paintTree(id: string, kind: string, seed: number) {
     };
     const b0 = touch(a, 0);
     tree.begin(t, b0.a, b0.u);
-    while (tree.stroke) {
-      let omega: number;
-      if (kind === 'careless') omega = steady * (1.7 + 0.6 * rand());
-      else if (kind === 'steady') {
-        // A steady pace; only when the brush's drop is plainly running low for the way left, quicker.
-        const left = tree.inkLeft * tree.capacity, rest = Math.max(0.05, 1 - swept / TAU);
-        omega = steady * 1.05 * Math.min(2.5, Math.max(1, 0.9 / (left / rest)));
-      }
-      else {
-        // The width the ink left can keep up all the way round, a little held back; never under the
-        // least the wood needs, if the ink allows. Before a dry spell, a fire or a frost, spend it all.
-        const left = tree.inkLeft * tree.capacity, rest = Math.max(0.05, 1 - swept / TAU);
-        const spend = next === DROUGHT || next === FROST || tree.fireBefore(tree.ring + 1) || w === RAIN ? 1 : 0.96;
-        const want = Math.max(Math.min(tree.uMin * 1.5, left / rest), (left / rest) * spend);
-        // Slow where the mark comes out thin (the shaded side, a dry streak), quick where it's wide.
-        omega = (steady * sunF(a) * seen) / want;
-      }
+    while (tree.stroke && !tree.waiting) {
+      const left = tree.inkLeft * tree.capacity, rest = Math.max(0.05, 1 - swept / TAU);
+      const omega = kind === 'careless' ? steady * (1.7 + 0.6 * rand())
+        : kind === 'steady' ? steady * 1.05
+        : (steady * sunF(a)) / Math.max(0.3, (left / rest) * 0.96);
       a += dir * omega * dt; swept += omega * dt; t += dt;
       const b = touch(a, t - clock);
       tree.move(t, b.a, b.u);
-      // (What it sees: how the mark is coming out against what it meant, a moment late.)
-      const tip = tree.tip;
-      if (tip && kind === 'skilled') seen += (Math.max(0.4, Math.min(1.3, tip.h / ((steady * sunF(a)) / omega))) - seen) * 0.08;
-      if (swept >= stopAt) tree.lift();
+      if (swept >= stopAt) { tree.lift(t); lifts++; }
     }
+    // (Lifted and left: the water closes the ring, after the game's moment of waiting.)
+    if (tree.stroke) { t += 1.6; tree.finish(); }
     clock = t;
-    for (const n of tree.news) { if (n.kind === 'died') { died += n.count ?? 0; diedBy[w] = (diedBy[w] ?? 0) + (n.count ?? 0); } if (n.kind === 'gap') gaps++; }
     tree.news.length = 0;
-    if (wonAt < 0 && tree.year >= T.years) wonAt = clock;
-    if (tree.ring % 10 === 0) trace.push(`${Math.round(clock)}s:${tree.year}y:${Math.round(100 * tree.living)}l:${Math.round(100 * tree.vigour)}v:${Math.round(100 * tree.evenness)}e`);
   }
-  const evenness = Math.round(100 * tree.evenness);
-  // (WHY=1: how even each weather's rings came out, and how much wood died in each, to stderr.)
-  if (process.env.WHY) {
-    const by: Record<number, number[]> = {};
-    tree.ringWeather.forEach((w, i) => (by[w] ??= []).push(tree.ringEven[i]));
-    console.error(`died by weather ${JSON.stringify(diedBy)}; even by weather ${Object.entries(by).map(([w, e]) => `${w}:${(e.reduce((a, b) => a + b, 0) / e.length).toFixed(2)}×${e.length}`).join(' ')}`);
-  }
-  return { tree: id, bot: kind, seed, won: wonAt >= 0, even: wonAt >= 0 && evenness >= EVEN_AIM, at: wonAt < 0 ? null : +(wonAt / 60).toFixed(1), lived: tree.year, minutes: +(clock / 60).toFixed(1), cause: tree.cause, evenness, died, gaps, cracks: tree.cracks.length, fires: tree.scars.length, trace: trace.join(' ') };
+  return { tree: id, bot: kind, seed, years: tree.year, minutes: +(clock / 60).toFixed(1), rings: tree.ring, evenness: Math.round(100 * tree.evenness), fell: tree.over, lifts };
 }
 
 function paintTable(id: string, seeds: number): void {
   const T = treeOf(id), PAINTERS = painters();
-  console.log(`${T.name}: live ${T.years} years; even to ${EVEN_AIM}%.`);
-  console.log('seed | ' + PAINTERS.map((p) => p.padEnd(30)).join(' | '));
-  const tally: Record<string, { won: number; both: number }> = {};
+  console.log(`${T.name}: three hundred years, painted. Nothing can be lost; minutes, and how even.`);
+  console.log('seed | ' + PAINTERS.map((p) => p.padEnd(24)).join(' | '));
   for (let s = 1; s <= seeds; s++) {
     const cells = PAINTERS.map((p) => {
       const l = paintTree(id, p, s);
-      tally[p] ??= { won: 0, both: 0 };
-      if (l.won) tally[p].won++;
-      if (l.even) tally[p].both++;
-      const aims = l.even ? '★★' : l.won ? '★ ' : '  ';
-      return `${aims} ${String(l.lived).padStart(3)}y ${String(l.evenness).padStart(3)}% ${String(l.at ?? l.minutes).padStart(4)}m ${String(l.cause).padEnd(8)}`.padEnd(30);
+      return (p === 'idle' ? 'waits' : `${l.years}y ${String(l.minutes).padStart(4)}m even ${String(l.evenness).padStart(2)}%${l.fell ? ' FELL' : ''}`).padEnd(24);
     });
     console.log(`${String(s).padStart(4)} | ${cells.join(' | ')}`);
   }
-  console.log('     | ' + PAINTERS.map((p) => `lived ${T.years}: ${tally[p].won}/${seeds}, both aims: ${tally[p].both}/${seeds}`.padEnd(30)).join(' | '));
-  console.log('(★ lived its years, ★★ and even to the aim; minutes are when it reached its years, else when it fell)');
 }

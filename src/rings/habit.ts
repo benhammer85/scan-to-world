@@ -296,15 +296,19 @@ function smoke(g: CanvasRenderingContext2D, x: number, y: number, amount: number
 }
 
 function flames(g: CanvasRenderingContext2D, x: number, y: number, amount: number, h: number, time: number, px: number, water: boolean): void {
-  const tall = h * 0.3 * amount;
+  const tall = h * 0.26 * amount;
   if (water) {
+    // Washes of flame: soft, overlapping, flickering, gold at the heart and vermilion out.
     g.save(); g.globalCompositeOperation = 'multiply';
-    g.fillStyle = `rgba(228,120,52,${(0.45 * amount).toFixed(3)})`;
-    g.beginPath(); g.ellipse(x, y - tall * 0.4, tall * 1.1, tall * 0.7, 0, 0, TAU); g.fill();
+    for (let k = 0; k < 7; k++) {
+      const bx = x + (k - 3) * tall * 0.28, t = tall * (0.55 + 0.45 * hash(k * 3.3)) * (0.85 + 0.15 * Math.sin(time * 7 + k * 2));
+      g.fillStyle = k % 2 ? `rgba(240,170,70,${(0.32 * amount).toFixed(3)})` : `rgba(226,92,48,${(0.26 * amount).toFixed(3)})`;
+      g.beginPath(); g.ellipse(bx, y - t * 0.45, tall * 0.2, t * 0.5, Math.sin(time * 3 + k) * 0.15, 0, TAU); g.fill();
+    }
     g.restore();
   }
   // Tongues of flame, outlined, licking up and to the right; the ground beneath them hatched dark.
-  g.strokeStyle = ink(0.9); g.lineWidth = 1.1 * px;
+  g.strokeStyle = ink(water ? 0.45 : 0.9); g.lineWidth = (water ? 0.7 : 1.1) * px;
   for (let k = 0; k < 5; k++) {
     const bx = x + (k - 2) * tall * 0.4, t = tall * (0.6 + 0.5 * hash(k * 3.3)) * (0.85 + 0.15 * Math.sin(time * 9 + k * 2)), lean = Math.sin(time * 5 + k) * tall * 0.15 + tall * 0.1;
     g.beginPath();

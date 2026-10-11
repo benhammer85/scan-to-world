@@ -38,12 +38,8 @@ export function snapshotTree(t: TreeSim): Record<string, unknown> {
   const s = snapshotOf(t, ['k', 'seed', 'weather', 'winds', 'fireRings', 'news', 'stroke', 'lo', 'hi', 'at', 'inkAt', 'state']);
   // (Each ring copied, so a later change to the tree doesn't reach into what's kept.)
   s.rings = t.rings.map((r) => r.slice());
-  s.alive = t.alive.slice();
-  s.burnt = t.burnt.slice();
-  for (const k of ['starts', 'dirs', 'ringWeather', 'ringEven'] as const) s[k] = t[k].slice();
+  for (const k of ['starts', 'dirs', 'ringWeather'] as const) s[k] = t[k].slice();
   s.scars = t.scars.map((x) => ({ ...x }));
-  s.cracks = t.cracks.map((x) => ({ ...x }));
-  s.wounds = t.wounds.map((x) => ({ ...x }));
   return s;
 }
 
