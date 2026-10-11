@@ -1,20 +1,20 @@
 /**
- * A prototype: trace a ring with a brush, then press it into the paper, as a printing press presses
- * without ink (karazuri, the Japanese "empty printing", or a blind embossing). The press is a quiet
- * pause between rings: nothing says how long, and a longer, stiller press only goes deeper. Silent.
+ * A prototype: one ring a year, traced with a brush, then settling into the paper by itself, as a
+ * printing press presses without ink (karazuri, the Japanese "empty printing", or a blind embossing).
+ * Nothing to learn and nothing said: silent.
  *
- *   trace     draw the ring at your own pace with a wet brush: its stroke is dark at the brush and
- *             evaporates behind it (disappearing ink), leaving only the paint's colour
- *   press     hold anywhere: the platen comes down and the ring sinks into the paper (and on the
- *             iPhone app, a growing pressure in the hand)
- *   let go    the paper lifts; the ring's relief stays, caught by raking light
+ *   trace     draw the year's ring at your own pace with a wet brush: its stroke is dark at the brush
+ *             and evaporates behind it (disappearing ink), leaving the year's colour, spring to winter
+ *             round the ring, settling only partly into the wood
+ *   settle    as the ring closes, it sinks softly into the paper (and on the iPhone app, a faint
+ *             pressure in the hand); its relief stays, caught by raking light
  *
  * The tree is in the paper too, never inked: the real print of its age as a blind embossing, seen only
  * as relief in the light.
  */
 import '../volcano/fonts.css';
 import { NATIVE, rumble, tap } from '../volcano/native';
-import { K, TreeSim } from './tree';
+import { K, OAK, TreeSim } from './tree';
 import { bandOf, brushAt, pointerAt, radiusAt, roomOf, scaleFor, warpFor, type View, type Warp } from './hand';
 import { at, drawGuide, drawPaper } from './draw';
 import { Paper } from './paint';
@@ -34,11 +34,12 @@ const clock = () => performance.now() / 1000;
 const smooth = (x: number) => { const t = Math.max(0, Math.min(1, x)); return t * t * (3 - 2 * t); };
 
 // ---------------------------------------------------------------- a young tree to begin from
-const tree = new TreeSim(Number(new URLSearchParams(location.search).get('seed')) || 1 + Math.floor(Math.random() * 1e6));
+// One ring is one year, as in the wood: the crown's wood a year is a fifth of the game's five-year ring.
+const tree = new TreeSim(Number(new URLSearchParams(location.search).get('seed')) || 1 + Math.floor(Math.random() * 1e6), { yearsPerRing: 1, crown: OAK.crown / 5 });
 {
-  // (A few rings already, traced by a calm hand, so there's wood to press into.)
+  // (Some years already, traced by a calm hand, so there's a slice to begin from.)
   let time = 0;
-  for (let n = 0; n < 6; n++) {
+  for (let n = 0; n < 24; n++) {
     const gu = tree.guide(), start = Math.random() * TAU;
     let a = start;
     tree.begin(time, a, radiusAt(gu, a));
@@ -51,6 +52,8 @@ const tree = new TreeSim(Number(new URLSearchParams(location.search).get('seed')
 const depths: number[] = tree.rings.map(() => 0.55);
 
 const paper = new Paper(320);
+// (The season's colour stays, half settled into the wood: green and gold to rust and violet, in oak.)
+paper.turn = 0.5;
 let warp: Warp = warpFor(tree), view: View | null = null;
 paper.fit(warp, warp.R); paper.bake(tree);
 function viewNow(): View {
@@ -62,12 +65,12 @@ function viewNow(): View {
 }
 
 // ---------------------------------------------------------------- the turn of a ring
-type Phase = 'trace' | 'press' | 'pressing' | 'lifting';
-let phase: Phase = 'trace', since = 0, depth = 0, pressedOnce = 0;
+type Phase = 'trace' | 'settling' | 'lifting';
+let phase: Phase = 'trace', since = 0, depth = 0;
 function enter(p: Phase): void { phase = p; since = clock(); }
 /** The brush's track: where, when, how wide it laid (slow is wide), and how fast. */
 let trail: { a: number; r: number; t: number; w: number; fast: number }[] = [];
-let strokeView: View | null = null, painter: number | null = null, mustLift = false;
+let strokeView: View | null = null, painter: number | null = null;
 
 function say(text: string, fade = 10): void {
   words.textContent = text; words.classList.add('shown');
@@ -79,10 +82,6 @@ canvas.addEventListener('pointerdown', (e) => {
   canvas.setPointerCapture(e.pointerId);
   if (painter !== null) return;
   const x = e.clientX * px, y = e.clientY * px;
-  if (phase === 'press' && !mustLift) {
-    painter = e.pointerId; depth = 0; enter('pressing');
-    return;
-  }
   if (phase !== 'trace') return;
   const v = viewNow();
   if (tree.stroke && tree.resting) {
@@ -107,18 +106,9 @@ canvas.addEventListener('pointermove', (e) => {
   hear();
 });
 for (const type of ['pointerup', 'pointercancel'] as const) canvas.addEventListener(type, (e) => {
-  // (The finger that finished the ring, lifting: now a press can begin.)
-  if (painter === null) { mustLift = false; return; }
   if (e.pointerId !== painter) return;
-  painter = null; mustLift = false;
+  painter = null;
   if (phase === 'trace') tree.lift();
-  if (phase === 'pressing') {
-    // Let go: the paper lifts, and the ring's relief stays.
-    depths[tree.rings.length - 1] = Math.max(depths[tree.rings.length - 1] ?? 0, depth);
-    if (NATIVE) { rumble(0); tap({ strength: 0.25 + 0.5 * depth, sharpness: 0.25 }); }
-    pressedOnce++;
-    enter('lifting');
-  }
 });
 
 function trailAt(): void {
@@ -141,10 +131,9 @@ function hear(): void {
   for (const n of tree.news) if (n.kind === 'ring') {
     paper.paint(tree); paper.close(tree);
     depths.push(0);
-    // (The finger may still be down from the stroke: the press waits for it to lift and come again.)
-    mustLift = painter !== null; painter = null;
-    enter('press');
-    if (pressedOnce < 1) say('Hold anywhere to press the ring into the paper.', 8);
+    // (The ring is done: the finger, still down or not, rests while it settles.)
+    painter = null; depth = 0;
+    enter('settling');
   }
   tree.news.length = 0;
 }
@@ -192,7 +181,7 @@ function hash(x: number): number { const h = Math.sin(x * 127.1) * 43758.5453; r
 function drawBrush(g: CanvasRenderingContext2D, sv: View, t: number): void {
   const n = trail.length;
   if (n < 2) return;
-  const pts = trail.map((q) => { const [x, y] = at(sv, q.a, q.r); return { x, y, life: Math.exp(-(t - q.t) / 3), q, nx: 0, ny: 0, hw: 0 }; });
+  const pts = trail.map((q) => { const [x, y] = at(sv, q.a, q.r); return { x, y, life: Math.exp(-(t - q.t) / 5), q, nx: 0, ny: 0, hw: 0 }; });
   const lap = (i: number) => Math.abs(trail[i].a - trail[i - 1].a) > 0.5;
   for (let i = 0; i < n; i++) {
     const a = pts[i > 0 && !lap(i) ? i - 1 : i], b = pts[i + 1 < n && !lap(i + 1) ? i + 1 : i];
@@ -228,12 +217,17 @@ function drawBrush(g: CanvasRenderingContext2D, sv: View, t: number): void {
 
 function frame(): void {
   const t = clock(), dt = 1 / 60, v = viewNow();
-  if (phase === 'pressing') {
-    // Deeper the longer it's held: most of the way in five seconds, never quite all.
-    depth = 1 - Math.exp(-(t - since) / 2.2);
-    if (NATIVE) rumble(0.08 + 0.45 * depth, 0.15);
+  if (phase === 'settling') {
+    // The ring sinks softly into the paper, by itself, then the paper lifts.
+    depth = 0.6 * smooth((t - since) / 1.6);
+    if (NATIVE) rumble(0.05 + 0.2 * depth, 0.15);
+    if (t - since > 1.9) {
+      depths[tree.rings.length - 1] = depth;
+      if (NATIVE) { rumble(0); tap({ strength: 0.3, sharpness: 0.2 }); }
+      enter('lifting');
+    }
   }
-  if (phase === 'lifting' && t - since > 1.4) {
+  if (phase === 'lifting' && t - since > 1.2) {
     // The next ring: the slice settles to its new size.
     warp = warpFor(tree); paper.fit(warp, warp.R); view = null; trail = [];
     enter('trace');
@@ -247,12 +241,13 @@ function frame(): void {
   paper.draw(g, v); paper.heartwood(g, tree, v);
   const n = tree.rings.length;
   for (let i = 0; i < n; i++) {
-    const live = i === n - 1 && (phase === 'pressing' || phase === 'lifting');
-    drawRelief(v, i, live ? depth : depths[i] ?? 0);
+    const live = i === n - 1 && phase === 'settling';
+    // (Older years' relief softens into the slice, as the press's edges wear: the last few stand out.)
+    drawRelief(v, i, (live ? depth : depths[i] ?? 0) * (0.25 + 0.75 * Math.exp(-(n - 1 - i) / 5)));
   }
   // The whole slice pressed into the paper as the platen comes down: the paper's edge round it falls
   // into shadow on the side away from the light and catches it on the other, deepening as it's held.
-  const sink = phase === 'pressing' ? depth : phase === 'lifting' ? (1 - smooth((t - since) / 1.2)) * (depths[n - 1] ?? 0) : 0;
+  const sink = phase === 'settling' ? depth : phase === 'lifting' ? (1 - smooth((t - since) / 1.2)) * (depths[n - 1] ?? 0) : 0;
   if (sink > 0.01) {
     const r = tree.rings[n - 1], o = 3.2 * px * sink;
     const rim = (dx: number, dy: number) => { g.beginPath(); for (let j = 0; j <= K * 2; j++) { const a = (j / (K * 2)) * TAU, [x, y] = at(v, a, radiusAt(r, a)); if (j) g.lineTo(x + dx, y + dy); else g.moveTo(x + dx, y + dy); } };
@@ -278,11 +273,11 @@ function frame(): void {
     drawBrush(g, sv, t);
     if (tip && tree.resting) { const p = pointerAt(tree, sv, 0, tip.a, tip.u); g.strokeStyle = 'rgba(30,24,20,0.35)'; g.lineWidth = 1 * px; g.beginPath(); g.arc(p.x, p.y, 5 * px, 0, TAU); g.stroke(); }
   }
-  // The platen coming down: the page's edges darken softly as it presses, and lift as it rises.
-  const platen = phase === 'pressing' ? depth : phase === 'lifting' ? (1 - smooth((t - since) / 0.9)) * depths[n - 1] : phase === 'press' ? 0.06 * (0.5 + 0.5 * Math.sin(t * TAU / 4)) : 0;
+  // The platen coming down: the page's edges darken a little as the ring settles, and lift as it rises.
+  const platen = phase === 'settling' ? depth : phase === 'lifting' ? (1 - smooth((t - since) / 0.9)) * depths[n - 1] : 0;
   if (platen > 0.005) {
     const grd = g.createRadialGradient(W / 2, v.cy, Math.min(W, H) * 0.35, W / 2, v.cy, Math.max(W, H) * 0.75);
-    grd.addColorStop(0, 'rgba(60,44,30,0)'); grd.addColorStop(1, `rgba(60,44,30,${(0.38 * platen).toFixed(3)})`);
+    grd.addColorStop(0, 'rgba(60,44,30,0)'); grd.addColorStop(1, `rgba(60,44,30,${(0.2 * platen).toFixed(3)})`);
     g.fillStyle = grd; g.fillRect(0, 0, W, H);
   }
   drawPaper(g, W, H);

@@ -74,6 +74,8 @@ export class Paper {
   readonly wash: Wash;
   /** The wood the paint dries to. */
   wood: WoodPalette = OAK_WOOD;
+  /** How far the paint settles into the wood as it dries (0 keeps the season's colour, 1 is all wood). */
+  turn = 0.85;
   warp: Warp | undefined;
   /** Points of the ring being painted already laid on the paper. */
   private laid = new Uint8Array(K);
@@ -114,7 +116,7 @@ export class Paper {
       if (tree.state[i] !== 1 || this.laid[i]) continue;
       this.laid[i] = 1;
       const out = inner(i) + edge[i] * w, ink = pigmentOf(wx, tree.at[i], tree.tone[i]);
-      this.wash.layArc((i - 0.5) * STEP, (i + 0.5) * STEP, (a) => (n ? warpR(this.warp, radiusAt(inner, a)) : 0), () => warpR(this.warp, out), wx === RAIN ? 1 : 0.9, () => ink, granulation(wx), woodOf(this.wood, wx));
+      this.wash.layArc((i - 0.5) * STEP, (i + 0.5) * STEP, (a) => (n ? warpR(this.warp, radiusAt(inner, a)) : 0), () => warpR(this.warp, out), wx === RAIN ? 1 : 0.9, () => ink, granulation(wx), woodOf(this.wood, wx), this.turn);
     }
     this.dirty = true;
   }
@@ -150,7 +152,7 @@ export class Paper {
       for (let i = 0; i < K; i++) {
         const a = i * STEP, f = ((((dir * (a - start)) % TAU) + TAU) % TAU) / TAU, tone = tones ? tones[Math.floor(i / 8) % tones.length] : 0.5;
         const ink = pigmentOf(wx, f, tone);
-        this.wash.layArc(a - STEP / 2, a + STEP / 2, (b) => warpR(this.warp, inner(b)), (b) => warpR(this.warp, radiusAt(ring, b)), wx === RAIN ? 1 : 0.9, () => ink, granulation(wx), woodOf(this.wood, wx));
+        this.wash.layArc(a - STEP / 2, a + STEP / 2, (b) => warpR(this.warp, inner(b)), (b) => warpR(this.warp, radiusAt(ring, b)), wx === RAIN ? 1 : 0.9, () => ink, granulation(wx), woodOf(this.wood, wx), this.turn);
       }
       this.wash.weather = weatheringOf(tree, n);
       for (const s of tree.scars) if (s.ring === n + 1) this.fireOn(tree, n, s.angle);
