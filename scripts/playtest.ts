@@ -14,6 +14,16 @@ import { Planet } from '../src/volcano/sim';
 import { Ecology } from '../src/volcano/ecology';
 import { Chain, CHAIN } from '../src/volcano/chain';
 import { worldOf } from '../src/volcano/worlds';
+import { TreeSim, angleDiff, K as RING_POINTS } from '../src/rings/tree';
+import { TREES, treeOf } from '../src/rings/trees';
+import { feltBy, fingerTip, type Held } from '../src/rings/hold';
+
+// Annulus's trees are played by their own bots (see playTree, at the foot):
+//   npx vite-node scripts/playtest.ts oak <bot> [seed]
+// bots: card (lets the sap gather, turns the shaded side down, and holds a finger to tip it there once
+// the sap is heavy), skilled (even years while the tree is strong, a surge when it flags), sunward (pours toward the sun,
+// for vigour), early (tips at once, every time), idle (never touches it), aimless (turns and holds at random).
+if (TREES.some((t) => t.id === process.argv[2])) { playTree(process.argv[2], process.argv[3] ?? 'card', Number(process.argv[4] ?? 5)); process.exit(0); }
 
 const [worldId, botKind, seedArg] = process.argv.slice(2);
 const seed = Number(seedArg ?? 5);
@@ -342,3 +352,68 @@ while (t < LIMIT) {
 const [d, of] = aim();
 longestStill = Math.max(longestStill, t - lastGain);
 console.log(JSON.stringify({ world: worldId, bot: botKind, seed, won: wonAt >= 0, at: Math.round(t), over: pl.over, done: Math.round((100 * d) / Math.max(1e-9, of)), heatLeft: Math.round(100 * pl.heatLeft), firstGain: Math.round(firstGain), longestStill: Math.round(longestStill), bursts: pl.tally.bursts, flows: pl.tally.flows, blewApart: pl.tally.calderas, trace: trace.join(' ') }));
+
+// ---------------------------------------------------------------- Annulus
+/**
+ * A tree played to its fall with a player's hands: a finger turns the slice (at a hand's pace) and,
+ * held on it, tips it down the screen; and what it sees is what the slice shows: the sap's crescent,
+ * heavy-edged once it's heavy. Prints one line of JSON: won (lived its years), at (seconds when it
+ * did), lived (years), fell (seconds), cause, evenness (%), surges, cracks, fires, and the age every minute.
+ */
+function playTree(id: string, kind: string, seed: number): void {
+  const T = treeOf(id), tree = new TreeSim(seed, { ...T.rules, ...JSON.parse(process.env.RULES ?? '{}') });
+  const held: Held = { turn: 0, tipAngle: -Math.PI / 2, tip: 0 };
+  let r = seed * 7 + 3; const rand = () => { r = (r * 9301 + 49297) % 233280; return r / 233280; };
+  const TURN_PACE = 2.5; // (radians a second: a finger turning a slice)
+  let pouring = false, pourSince = 0, aimAt = 0, next = 0, act = 'still';
+  /** Turn the slice so the tree's angle `a` is at the foot of the screen, at a hand's pace. */
+  const bring = (a: number, dt: number) => { const want = -Math.PI / 2 - a, d = angleDiff(want, held.turn); held.turn += Math.sign(d) * Math.min(Math.abs(d), TURN_PACE * dt); return Math.abs(d) < 0.15; };
+  /** Where the slice is thinnest against a circle round the pith (what an eye sees as the flat side). */
+  const thinnest = () => { let best = 0, bv = Infinity; for (let i = 0; i < RING_POINTS; i += 4) { const v = tree.outer(i); if (v < bv) { bv = v; best = i; } } return (best / RING_POINTS) * Math.PI * 2; };
+  const shade = tree.k.sunAngle + Math.PI;
+  const bots: Record<string, (dt: number) => void> = {
+    card: (dt) => {
+      const there = bring(shade, dt);
+      if (!pouring && tree.fullness >= 1 && there) { pouring = true; pourSince = tree.seconds; }
+      if (pouring && tree.sap < 0.05) pouring = false;
+    },
+    skilled: (dt) => {
+      // (Even years while the tree is strong, a surge when it flags: a player's feel for it, read here from the vigour.)
+      const there = bring(shade, dt), want = tree.vigour > 0.8 ? 0.3 : 1;
+      if (!pouring && tree.fullness >= want && there) { pouring = true; pourSince = tree.seconds; }
+      if (pouring && tree.sap < 0.05) pouring = false;
+    },
+    sunward: (dt) => {
+      const there = bring(tree.k.sunAngle, dt);
+      if (!pouring && tree.fullness >= 1 && there) { pouring = true; pourSince = tree.seconds; }
+      if (pouring && tree.sap < 0.05) pouring = false;
+    },
+    early: (dt) => {
+      const there = bring(shade, dt);
+      if (!pouring && tree.fullness >= 0.25 && there) { pouring = true; pourSince = tree.seconds; }
+      if (pouring && tree.sap < 0.05) pouring = false;
+    },
+    idle: () => { /* never touches it */ },
+    aimless: (dt) => {
+      next -= dt;
+      if (next <= 0) { const q = rand(); act = q < 0.35 ? 'turn' : q < 0.65 ? 'hold' : 'still'; next = 1 + rand() * 5; aimAt = rand() * Math.PI * 2; pouring = act === 'hold'; pourSince = tree.seconds; }
+      if (act === 'turn') bring(aimAt, dt);
+    },
+  };
+  const bot = bots[kind] ?? bots.card;
+  const dt = 1 / 30;
+  let wonAt = -1;
+  const trace: string[] = [];
+  while (!tree.over && tree.seconds < 3600) {
+    bot(dt);
+    held.tipAngle = -Math.PI / 2;
+    held.tip = pouring ? fingerTip(tree.seconds - pourSince) : 0;
+    Object.assign(tree, feltBy(held));
+    const was = Math.floor(tree.seconds / 60);
+    tree.step(dt);
+    if (Math.floor(tree.seconds / 60) > was) trace.push(`${Math.round(tree.seconds)}s:${tree.year}y:${Math.round(100 * tree.vigour)}v`);
+    if (wonAt < 0 && tree.year >= T.years) wonAt = tree.seconds;
+    tree.news.length = 0;
+  }
+  console.log(JSON.stringify({ tree: id, bot: kind, seed, won: wonAt >= 0, at: Math.round(wonAt), lived: tree.year, fell: Math.round(tree.seconds), cause: tree.cause, evenness: Math.round(100 * tree.evenness), radiusMm: Math.round(tree.radius), surges: tree.surges, cracks: tree.cracks.length, fires: tree.scars.length, trace: trace.join(' ') }));
+}

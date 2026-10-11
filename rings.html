@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#f4efe4" />
+    <title>Annulus</title>
+    <style>
+      html, body { margin: 0; height: 100%; background: #f4efe4; overflow: hidden; touch-action: none; -webkit-user-select: none; user-select: none; }
+      #slice { position: fixed; inset: 0; width: 100vw; height: 100dvh; display: block; opacity: 0; transition: opacity 1.2s ease; }
+      #slice.shown { opacity: 1; }
+      .engraved { font-family: "Newsreader", "Iowan Old Style", Georgia, serif; color: #2e2118; }
+      #frame { position: fixed; inset: 0; width: 100vw; height: 100dvh; pointer-events: none; }
+      /* The tree's name, as a plate's title; and under it how many years, quietly. */
+      #stage-name { position: fixed; top: calc(22px + env(safe-area-inset-top)); left: 92px; right: 92px; text-align: center; font-size: 19px; letter-spacing: 0.04em; pointer-events: none; transition: opacity 1.2s ease; }
+      #goal { position: fixed; top: calc(52px + env(safe-area-inset-top)); left: 72px; right: 72px; text-align: center; font-size: 14px; letter-spacing: 0.03em; opacity: 0.7; pointer-events: none; font-variant-numeric: tabular-nums; transition: opacity 1.2s ease; }
+      #event { position: fixed; bottom: calc(40px + env(safe-area-inset-bottom)); left: 16px; right: 16px; text-align: center; font-size: 14px; font-style: italic; opacity: 0; pointer-events: none; transition: opacity 2s; text-wrap: balance; }
+      #event.shown { opacity: 0.75; }
+      #event, #stage-name, #goal { text-shadow: 0 0 2px #f4efe4, 0 0 6px #f4efe4, 0 0 12px #f4efe4, 0 0 18px #f4efe4; }
+      body.carding #stage-name, body.carding #goal, body.carding #event, body.carding #corner, body.carding #finish { opacity: 0 !important; pointer-events: none; }
+      body.ended #goal, body.ended #event, body.ended #corner, body.ended #finish { opacity: 0 !important; pointer-events: none; }
+      /* How a touch is made, shown as a touch (as in the volcano game): a soft round light where a fingertip would press. */
+      #ghost { position: fixed; left: 0; top: 0; width: 60px; height: 110px; pointer-events: none; z-index: 6; opacity: 0; transition: opacity 0.5s ease; will-change: transform; }
+      #ghost.on { opacity: 1; }
+      body.touching #ghost, body.carding #ghost { opacity: 0 !important; }
+      #ghost .mv { position: absolute; inset: 0; opacity: 0; }
+      #ghost .dot { position: absolute; left: 30px; top: 6px; width: 30px; height: 30px; margin: -15px 0 0 -15px; border-radius: 50%; background: radial-gradient(circle, rgba(255, 252, 244, 0.85) 0%, rgba(255, 252, 244, 0.55) 60%, rgba(255, 252, 244, 0) 100%); box-shadow: 0 0 0 1px rgba(46, 33, 24, 0.12), 0 2px 10px rgba(46, 33, 24, 0.18); }
+      #ghost .ring { position: absolute; left: 30px; top: 6px; width: 0; height: 0; border: 1.5px solid rgba(255, 252, 244, 0.9); box-shadow: 0 0 0 1px rgba(46, 33, 24, 0.1); border-radius: 50%; transform: translate(-50%, -50%); opacity: 0; }
+      #ghost.hold .mv { animation: ghHold 2.6s ease-in-out infinite; }
+      #ghost.hold .dot { animation: ghPress 2.6s ease-in-out infinite; }
+      #ghost.hold .ring { animation: ghHoldRing 2.6s ease-out infinite; }
+      #ghost.drag .mv { animation: ghDrag 2.6s ease-in-out infinite; }
+      @keyframes ghPress { 0%, 12% { transform: scale(1.25); } 22%, 80% { transform: scale(0.9); } 100% { transform: scale(1.25); } }
+      @keyframes ghHold { 0% { opacity: 0; } 15%, 80% { opacity: 1; } 95%, 100% { opacity: 0; } }
+      @keyframes ghHoldRing { 0%, 16% { width: 0; height: 0; opacity: 0; } 22% { width: 12px; height: 12px; opacity: 0.7; } 78% { width: 64px; height: 64px; opacity: 0.45; } 90%, 100% { width: 70px; height: 70px; opacity: 0; } }
+      @keyframes ghDrag { 0% { transform: translate(-70px, 0); opacity: 0; } 15% { transform: translate(-70px, 0); opacity: 1; } 75% { transform: translate(70px, 0); opacity: 1; } 90%, 100% { transform: translate(70px, 0); opacity: 0; } }
+      @media (prefers-reduced-motion: reduce) { #ghost .mv { animation: none !important; opacity: 0.85; transform: none; } #ghost .ring { animation: none !important; width: 18px; height: 18px; opacity: 0.5; } }
+      /* The card the tree begins from: its numeral and name, its mood, one true thing, what to do, and its two aims. */
+      #begin { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: calc(24px + env(safe-area-inset-top)) 0 calc(18px + env(safe-area-inset-bottom)); box-sizing: border-box; background: #f4efe4; transition: opacity 1.2s; overflow-y: auto; z-index: 10; }
+      #begin.gone { opacity: 0; pointer-events: none; }
+      #begin p { margin: 0; text-align: center; }
+      #begin .numeral { font-size: 13px; letter-spacing: 0.2em; opacity: 0.7; }
+      #begin .name { font-size: 30px; font-weight: normal; margin: -6px 0 0; letter-spacing: 0.01em; text-align: center; }
+      #begin .latin { font-size: 14px; font-style: italic; opacity: 0.66; margin-top: -8px; }
+      #begin .rule { width: 46px; height: 0; border-top: 1px solid rgba(46, 33, 24, 0.4); margin: 4px auto; }
+      #begin .mood { font-size: 17px; font-style: italic; max-width: 22em; line-height: 1.45; padding: 0 24px; opacity: 0.8; }
+      #begin .fact { font-size: 14px; max-width: 24em; line-height: 1.45; padding: 0 28px; opacity: 0.72; text-wrap: pretty; }
+      #begin .todo { font-size: 16px; max-width: 22em; line-height: 1.5; padding: 0 28px; opacity: 0.9; text-wrap: balance; }
+      #begin .aims { font-size: 17px; line-height: 1.5; max-width: 22em; padding: 0 28px; text-wrap: balance; }
+      #begin .aims span { display: block; }
+      #begin .aims .second { font-size: 15px; opacity: 0.74; font-style: italic; }
+      #begin .best { font-size: 13px; letter-spacing: 0.04em; opacity: 0.62; margin-top: -6px; }
+      #begin .best:empty { display: none; }
+      #begin button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
+      #begin .touch { font-size: 17px; letter-spacing: 0.06em; margin-top: 10px; padding: 12px 38px; border: 1px solid rgba(46, 33, 24, 0.35); border-radius: 999px; display: flex; flex-direction: column; align-items: center; gap: 2px; min-height: 44px; }
+      #begin .touch small { font-size: 13px; font-style: italic; opacity: 0.74; }
+      #begin .touch small:empty { display: none; }
+      #begin .foot { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; padding: 0 12px; }
+      #begin .foot > button { font-size: 14px; letter-spacing: 0.04em; opacity: 0.74; min-height: 40px; padding: 4px 8px; }
+      #begin .foot > button + button::before { content: '·'; margin-right: 12px; opacity: 0.7; }
+      #begin .settings { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+      #begin .settings[hidden] { display: none; }
+      #begin .row { display: flex; flex-direction: column; align-items: center; }
+      #begin .row .label { font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.7; }
+      #begin .row .opts { display: flex; flex-wrap: wrap; justify-content: center; }
+      #begin .row .opts button { font-size: 15px; opacity: 0.72; padding: 6px 10px; min-height: 40px; }
+      #begin .row .opts button + button::before { content: '·'; margin-right: 12px; opacity: 0.6; }
+      #begin .row .opts button.on { opacity: 1; text-decoration: underline; text-underline-offset: 6px; }
+      /* In the corner while it's played: back to the card. And, wandering, a way to fell the tree when you choose. */
+      #corner { position: fixed; top: calc(22px + env(safe-area-inset-top)); left: 20px; font: 12px "Newsreader", "Iowan Old Style", Georgia, serif; letter-spacing: 0.12em; color: #2e2118; background: none; border: none; opacity: 0.74; cursor: pointer; padding: 12px; min-width: 44px; min-height: 44px; transition: opacity 1.2s; }
+      #finish { position: fixed; top: calc(22px + env(safe-area-inset-top)); right: 20px; font: italic 12px "Newsreader", "Iowan Old Style", Georgia, serif; color: #2e2118; background: none; border: none; opacity: 0; pointer-events: none; transition: opacity 2s; cursor: pointer; padding: 12px 4px; min-height: 44px; }
+      #finish.shown { opacity: 0.74; pointer-events: auto; }
+      /* After the plate: keep it, plant again, or the wood library. */
+      #endlinks { position: fixed; bottom: calc(14px + env(safe-area-inset-bottom)); left: 0; right: 0; display: flex; justify-content: center; gap: 18px; pointer-events: none; }
+      #endlinks button { font: 13px "Newsreader", "Iowan Old Style", Georgia, serif; color: #2e2118; background: none; border: none; opacity: 0; pointer-events: none; transition: opacity 2s; cursor: pointer; padding: 8px 6px; min-height: 44px; }
+      #endlinks.shown button { opacity: 0.78; pointer-events: auto; }
+      /* The xylotheque: every slice kept, as plates to leaf through; one opened fills the page. */
+      #xylo { position: fixed; inset: 0; z-index: 35; display: none; overflow-y: auto; background: #ebdfc6; padding: calc(16px + env(safe-area-inset-top)) 16px calc(40px + env(safe-area-inset-bottom)); box-sizing: border-box; touch-action: pan-y; }
+      #xylo.open { display: block; }
+      #xylo .head { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; margin: 0 auto 6px; max-width: 900px; }
+      #xylo h2 { margin: 0; font-weight: normal; font-style: italic; font-size: 22px; letter-spacing: 0.04em; text-align: center; }
+      #xylo .close { justify-self: start; font: 16px "Newsreader", "Iowan Old Style", Georgia, serif; color: #2e2118; background: none; border: none; padding: 10px 4px; min-height: 44px; cursor: pointer; opacity: 0.85; }
+      #xylo .sub { text-align: center; font-style: italic; font-size: 14px; opacity: 0.7; margin: 0 0 18px; }
+      #xylo .pages { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 20px 14px; max-width: 900px; margin: 0 auto; }
+      #xylo figure { margin: 0; cursor: pointer; }
+      #xylo figure img { width: 100%; display: block; box-shadow: 0 1px 5px rgba(46, 33, 24, 0.25); }
+      #xylo figcaption { font-size: 13px; font-style: italic; text-align: center; margin-top: 6px; opacity: 0.85; }
+      #xylo figcaption small { display: block; font-size: 11px; font-style: normal; letter-spacing: 0.04em; opacity: 0.74; }
+      #xylo .empty { text-align: center; font-style: italic; opacity: 0.7; margin-top: 40px; }
+      #xylo .view { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: #ebdfc6; padding: 16px; cursor: pointer; }
+      #xylo.viewing .view { display: flex; }
+      #xylo .view img { max-width: 100%; max-height: 100%; box-shadow: 0 2px 10px rgba(46, 33, 24, 0.2); }
+    </style>
+  </head>
+  <body class="carding">
+    <canvas id="slice" role="img" aria-label="A cross-section of a tree's trunk, its rings drawn one a year"></canvas>
+    <canvas id="frame" aria-hidden="true"></canvas>
+    <div id="stage-name" class="engraved"></div>
+    <div id="goal" class="engraved" aria-live="polite"></div>
+    <div id="event" class="engraved" aria-live="polite"></div>
+    <div id="ghost" aria-hidden="true"><div class="mv"><i class="ring"></i><i class="dot"></i></div></div>
+    <button id="corner" aria-label="Back to the card"></button>
+    <button id="finish">fell the tree</button>
+    <div id="endlinks"><button data-end="keep">save picture</button><button data-end="again">plant another</button><button data-end="xylo">the xylotheque</button></div>
+    <div id="xylo" class="engraved"><div class="head"><button class="close">‹ back</button><h2>Xylotheque</h2><span></span></div><p class="sub">a library of wood: every slice kept</p><div class="pages"></div><div class="view"><img alt=""></div></div>
+    <div id="begin" class="engraved">
+      <p class="numeral"></p><h1 class="name"></h1><p class="latin"></p>
+      <div class="rule"></div>
+      <p class="mood"></p>
+      <p class="fact"></p>
+      <p class="todo"></p>
+      <p class="aims"><span class="first"></span><span class="second"></span></p>
+      <p class="best"></p>
+      <button class="touch"><span class="what">Begin</span><small></small></button>
+      <div class="foot"><button data-foot="wander"></button><button data-foot="xylo">the xylotheque</button><button data-foot="settings">settings</button></div>
+      <div class="settings" hidden>
+        <div class="row" data-row="ink"><span class="label">Ink</span><span class="opts" role="group" aria-label="Ink"><button data-v="ink">engraving</button><button data-v="water">watercolour</button></span></div>
+        <div class="row" data-row="tilt"><span class="label">Tipping</span><span class="opts" role="group" aria-label="Tipping"><button data-v="phone">tilt the phone</button><button data-v="finger">a finger only</button></span></div>
+        <div class="row" data-row="haptics"><span class="label">Vibration</span><span class="opts" role="group" aria-label="Vibration"><button data-v="on">on</button><button data-v="off">off</button></span></div>
+      </div>
+    </div>
+    <script type="module" src="/src/rings/main.ts"></script>
+  </body>
+</html>
