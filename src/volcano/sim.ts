@@ -316,6 +316,8 @@ export const VOLCANO = {
   life: true,
   reseed: 30,
   seedReach: 0.3,
+  /** Whether life begins only in the shallows near the vent, where it can live (as coral), rather than in any warm water. */
+  seedShallow: false,
   /**
    * How long living ground takes to grow up (seconds; twice as fast on ground rich with ash): first
    * moss, then grass and ferns, then what the ground will hold, a wood on the heights, as a new
@@ -2316,7 +2318,7 @@ export class Planet {
     let ring = [this.plumeVertex];
     const seen = new Set(ring);
     for (let step = 0; step < 40; step++) {
-      for (const v of ring) if (this.rock[v] < -0.005 && this.rock[v] > this.k.vents && this.lava[v] < this.k.thin) return v;
+      for (const v of ring) if (this.rock[v] < -0.005 && this.rock[v] > (this.k.seedShallow ? this.k.reefDeep : this.k.vents) && this.lava[v] < this.k.thin) return v;
       const out: number[] = [];
       for (const v of ring) for (let k = t.nbrOffsets[v]; k < t.nbrOffsets[v + 1]; k++) { const w = t.nbrList[k]; if (!seen.has(w)) { seen.add(w); out.push(w); } }
       ring = out;

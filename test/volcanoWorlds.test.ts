@@ -7,6 +7,7 @@ import { Chain, CHAIN } from '../src/volcano/chain';
 import { WORLDS, worldOf, nextWorld, CHAPTERS, chapterOf } from '../src/volcano/worlds';
 import { stage } from '../src/volcano/ecology';
 import { ageBefore, carried } from '../src/volcano/ages';
+import { aged, atollPlaces, atollState, defaultChain, tendCoral } from '../src/volcano/atolls';
 
 const topo = buildTopology(new THREE.IcosahedronGeometry(1, 24).attributes.position.array, null);
 const p = topo.basePositions;
@@ -19,7 +20,7 @@ const run = (pl: Planet, seconds: number) => { for (let t = 0; t < seconds; t +=
 
 describe('the worlds', () => {
   it('come one after another, and each has its own aim', () => {
-    expect(WORLDS.map((w) => w.id)).toEqual(['mars', 'moon', 'ice', 'asteroid', 'rogue', 'hollow', 'ocean', 'first', 'comets', 'young', 'archean', 'snowball', 'lengai', 'ijen', 'tonga', 'io', 'europa', 'enceladus', 'triton', 'tumble', 'mercury', 'magma', 'dust', 'deep', 'spin', 'venus', 'pluto', 'lamp', 'twofires']);
+    expect(WORLDS.map((w) => w.id)).toEqual(['mars', 'moon', 'ice', 'asteroid', 'rogue', 'hollow', 'first', 'comets', 'young', 'archean', 'snowball', 'ocean', 'atolls', 'lengai', 'ijen', 'tonga', 'io', 'europa', 'enceladus', 'triton', 'tumble', 'mercury', 'magma', 'dust', 'deep', 'spin', 'venus', 'pluto', 'lamp', 'twofires']);
     expect(worldOf('moon').goal).toBe('basins');
     expect(worldOf('nowhere').id).toBe('mars');
     expect(nextWorld(worldOf('mars'))!.id).toBe('moon');
@@ -27,13 +28,14 @@ describe('the worlds', () => {
     expect(nextWorld(worldOf('ice'))!.id).toBe('asteroid');
     expect(nextWorld(worldOf('asteroid'))!.id).toBe('rogue');
     expect(nextWorld(worldOf('rogue'))!.id).toBe('hollow');
-    expect(nextWorld(worldOf('hollow'))!.id).toBe('ocean');
-    expect(nextWorld(worldOf('ocean'))!.id).toBe('first');
+    expect(nextWorld(worldOf('hollow'))!.id).toBe('first');
     expect(nextWorld(worldOf('first'))!.id).toBe('comets');
     expect(nextWorld(worldOf('comets'))!.id).toBe('young');
     expect(nextWorld(worldOf('young'))!.id).toBe('archean');
     expect(nextWorld(worldOf('archean'))!.id).toBe('snowball');
-    expect(nextWorld(worldOf('snowball'))!.id).toBe('lengai');
+    expect(nextWorld(worldOf('snowball'))!.id).toBe('ocean');
+    expect(nextWorld(worldOf('ocean'))!.id).toBe('atolls');
+    expect(nextWorld(worldOf('atolls'))!.id).toBe('lengai');
     expect(nextWorld(worldOf('lengai'))!.id).toBe('ijen');
     expect(nextWorld(worldOf('ijen'))!.id).toBe('tonga');
     expect(nextWorld(worldOf('tonga'))!.id).toBe('io');
@@ -188,6 +190,45 @@ describe('atolls', () => {
     expect(mean(middle)).toBeLessThan(-0.01);
     expect(Math.max(...ring)).toBeGreaterThan(-0.002);
     expect(Math.max(...ring)).toBeGreaterThan(mean(middle) + 0.02);
+  });
+});
+
+describe('the Atolls', () => {
+  const floor = worldOf('atolls').rules.floor!, from = { x: 0, y: 0, z: 1 };
+  const young = defaultChain(topo, from, floor), places = atollPlaces(young, topo);
+  const peak = (rock: ArrayLike<number>, i: number) => Math.max(...places[i].core.map((v) => rock[v]));
+  it('begin on a chain of islands, a million years on: lower, the furthest from the volcano the lowest', () => {
+    expect(ageBefore('atolls')).toBe('ocean');
+    expect(places.length).toBeGreaterThanOrEqual(worldOf('atolls').atolls!);
+    const old = aged(young, topo, places, from, floor);
+    const byDistance = places.map((q, i) => ({ i, d: Math.acos(q.centre.z) })).sort((a, b) => b.d - a.d);
+    const heights = byDistance.map(({ i }) => peak(old, i));
+    for (let k = 1; k < heights.length; k++) expect(heights[k]).toBeGreaterThan(heights[k - 1]);
+    expect(heights[0]).toBeGreaterThan(0); // (all still islands, to begin with)
+    expect(heights[0]).toBeLessThan(peak(young, byDistance[0].i));
+  });
+  it('make an atoll only where the island has gone under inside a ring of living reef', () => {
+    const q = places[0], g = { rock: Float32Array.from(young), life: new Float32Array(topo.vertexCount) };
+    expect(atollState(g, q).made).toBe(false);
+    for (const v of q.core) g.rock[v] = -0.05; // gone under, with no reef: drowned
+    expect(atollState(g, q)).toMatchObject({ sunk: true, made: false });
+    for (const v of q.ring) { g.life[v] = 0.8; g.rock[v] = Math.max(g.rock[v], -0.01); }
+    expect(atollState(g, q).made).toBe(true);
+  });
+  it('start coral round an island once the volcano comes near it, and it rings the island by itself', () => {
+    const g = { rock: Float32Array.from(young), life: new Float32Array(topo.vertexCount), lava: new Float32Array(topo.vertexCount) };
+    const coral = new Float32Array(places.length), reefDeep = -0.07;
+    for (let t = 0; t < 40; t += 0.5) tendCoral(g, topo, places, coral, places[0].centre, 0.5, reefDeep);
+    const shallow = places[0].ring.filter((v) => g.rock[v] > reefDeep);
+    expect(shallow.length).toBeGreaterThan(0);
+    expect(shallow.every((v) => g.life[v] >= 0.8)).toBe(true); // (and the reef rule builds it up to the surface as the island sinks)
+    for (let i = 1; i < places.length; i++) expect(coral[i]).toBe(0); // (the others, out of its reach, have none)
+  });
+  it('left alone, the islands drown, and no atoll is made', () => {
+    const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('atolls').rules, aged(young, topo, places, from, floor));
+    run(pl, 240);
+    expect(places.every((q) => atollState(pl, q).sunk)).toBe(true);
+    expect(places.filter((q) => atollState(pl, q).made).length).toBeLessThan(worldOf('atolls').atolls!);
   });
 });
 
