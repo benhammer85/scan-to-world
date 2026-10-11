@@ -414,6 +414,8 @@ Each is ink on a transparent ground (`scripts/plates.py` fetches the scans, crop
 | how round | 52% | 82% | 91% | 85% |
 | still growing | 8 of 8 | 8 of 8 | 8 of 8 | 8 of 8 |
 
+**On Netlify:** `netlify.toml` publishes Well Rounded alone (the same one-page build as the iPhone app, `GAME=rings npm run build:app` into `dist-app`, the game as the site's home page). Connect the repository on netlify.com and set the branch to deploy.
+
 To try it: `npm run dev` and open `/rings.html`. `?grow=200` grows the tree 200 years first; `?seed=` gives the same weather again; `?ink=ink` starts in engraving; `?debug` exposes the tree for a headless browser to draw with. For the iPhone shell, `GAME=rings npm run build:app` builds this game instead of the volcano.
 
 Still to come (`trees.ts`): a redwood with fires, a bristlecone with drought, a mangrove with tides, an olive pruned by people, a birch fast and fragile; the long age, when a fallen tree becomes a nurse log and the next grows from it.
