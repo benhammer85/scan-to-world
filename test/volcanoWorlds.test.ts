@@ -68,7 +68,7 @@ describe('the ocean world', () => {
     expect(chain.where(pl.plume).off).toBeLessThan(0.02); // it keeps to the way
   });
 
-  it('a stretch is held by an island of its own: one island along the whole way holds only one', () => {
+  it('counts separate islands: one island along the whole way is only one', () => {
     const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('ocean').rules);
     const chain = new Chain(pl.plume, pl.driftDirection);
     expect(chain.update(pl, topo)).toBe(0);
@@ -80,9 +80,28 @@ describe('the ocean world', () => {
     for (let v = 0; v < topo.vertexCount; v++) { const w = at(v); if (w.off < 0.05 && w.round < CHAIN.arc) { const f = ((w.round / CHAIN.arc) * CHAIN.stretches) % 1; if (f < 0.25 || f > 0.75) pl.rock[v] = -0.1; } }
     expect(chain.update(pl, topo)).toBe(CHAIN.stretches);
     expect(chain.ringed).toBe(true);
-    // An island sinking later doesn't take its stretch back.
+    // An island sinking later is still counted.
     for (let v = 0; v < topo.vertexCount; v++) if (at(v).round < CHAIN.arc / CHAIN.stretches) pl.rock[v] = -0.1;
     expect(chain.update(pl, topo)).toBe(CHAIN.stretches);
+    // Taken up again, the count is kept, and the islands standing aren't counted twice.
+    const again = new Chain(chain.a, chain.b);
+    again.restore(chain.count, chain.spans);
+    expect(again.update(pl, topo)).toBe(CHAIN.stretches);
+  });
+
+  it('counts every separate island by the line: two close together count as two, and none beyond its end', () => {
+    const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('ocean').rules);
+    const chain = new Chain(pl.plume, pl.driftDirection);
+    const at = (v: number) => chain.where({ x: p[v * 3], y: p[v * 3 + 1], z: p[v * 3 + 2] });
+    const raise = (r0: number, r1: number) => { for (let v = 0; v < topo.vertexCount; v++) { const w = at(v); if (w.off < 0.08 && w.round > r0 && w.round < r1) pl.rock[v] = 0.05; } };
+    raise(0.01, 0.035); raise(0.055, 0.08); // (in what was once one stretch)
+    expect(chain.update(pl, topo)).toBe(2);
+    raise(0.25, 0.275); // (far along the line)
+    expect(chain.update(pl, topo)).toBe(3);
+    raise(0.6, 0.625); // (beyond the line's end: not on it)
+    expect(chain.update(pl, topo)).toBe(3);
+    raise(0.01, 0.08); // (the first two joined: both still counted)
+    expect(chain.update(pl, topo)).toBe(3);
   });
 });
 
