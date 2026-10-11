@@ -24,9 +24,9 @@ import { bandOf, brushAt, pointerAt, radiusAt, viewFor } from '../src/rings/hand
 //   npx vite-node scripts/playtest.ts oak table [seeds]    every bot on seeds 1 to 8 (or as many), as a table
 // bots: careless (hurried, a shaky hand, the line placed by eye and too near the bark), steady
 // (follows the card: traces the pencil circle at an unhurried pace, resting now and then), skilled
-// (traces it with a steadier hand, holding the line against the sun and the wind and the rain's bleed,
-// drawing inside the circle in a drought, thicker on the uphill side before a fire), slow (as steady,
-// but very slow and resting often: slowness must never be punished), idle (never draws).
+// (a steadier hand), slow (as steady, but very slow and resting often), idle (never draws). Nothing
+// can fail: the table says how long each takes to draw three hundred years, how round its rings came
+// out, and that every tree is still growing.
 if (TREES.some((t) => t.id === process.argv[2])) {
   if (process.argv[3] === 'table') paintTable(process.argv[2], Number(process.argv[4] ?? 8));
   else console.log(JSON.stringify(paintTree(process.argv[2], process.argv[3] ?? 'steady', Number(process.argv[4] ?? 5))));
@@ -398,7 +398,8 @@ export function paintTree(id: string, kind: string, seed: number) {
     // (Nothing is drawn, so nothing grows: the game waits for the pen, and the tree for its spring.)
     return { tree: id, bot: kind, seed, won: false, even: false, lived: 0, minutes: 0, cause: 'waits', evenness: 0, died: 0, rested: 0, fires: 0, firstFall: null, trace: '' };
   }
-  while (!tree.over && clock < 3600) {
+  // (Nothing can end it now but keeping it as a plate: each bot draws to the card's three hundred years.)
+  while (!tree.over && clock < 3600 && tree.year < T.years) {
     clock += beat() + hand.react;
     const v = viewFor(tree, W, H, px), band = bandOf(tree, v), gu = tree.guide(), k = tree.k;
     const w = tree.weatherNow, wind = tree.windOf(), fireNext = tree.fireBefore(tree.ring + 1);
@@ -471,21 +472,19 @@ function evenUpTo(tree: TreeSim, years: number): number {
 }
 
 function paintTable(id: string, seeds: number): void {
-  const T = treeOf(id), PAINTERS = painters();
-  console.log(`${T.name}: live ${T.years} years; even to ${EVEN_AIM}%.`);
-  console.log('seed | ' + PAINTERS.map((p) => p.padEnd(30)).join(' | '));
-  const tally: Record<string, { won: number; both: number }> = {};
+  const T = treeOf(id), PAINTERS = painters().filter((p) => p !== 'idle');
+  console.log(`${T.name}: drawn to ${T.years} years. Nothing can fail; how long it takes, and how round the rings came out.`);
+  console.log('seed | ' + PAINTERS.map((p) => p.padEnd(22)).join(' | '));
+  const sum: Record<string, { min: number; even: number; growing: number }> = {};
   for (let s = 1; s <= seeds; s++) {
     const cells = PAINTERS.map((p) => {
       const l = paintTree(id, p, s);
-      tally[p] ??= { won: 0, both: 0 };
-      if (l.won) tally[p].won++;
-      if (l.even) tally[p].both++;
-      const aims = l.even ? '★★' : l.won ? '★ ' : '  ';
-      return `${aims} ${String(l.lived).padStart(3)}y ${String(l.evenness).padStart(3)}% ${String(l.at ?? l.minutes).padStart(4)}m ${String(l.cause).padEnd(8)}`.padEnd(30);
+      sum[p] ??= { min: 0, even: 0, growing: 0 };
+      sum[p].min += l.at ?? l.minutes; sum[p].even += l.evenness; if (l.won && !l.cause) sum[p].growing++;
+      return `${String(l.lived).padStart(3)}y ${String(l.at ?? l.minutes).padStart(5)} min ${String(l.evenness).padStart(3)}% round`.padEnd(22);
     });
     console.log(`${String(s).padStart(4)} | ${cells.join(' | ')}`);
   }
-  console.log('     | ' + PAINTERS.map((p) => `lived ${T.years}: ${tally[p].won}/${seeds}, both aims: ${tally[p].both}/${seeds}`.padEnd(30)).join(' | '));
-  console.log('(★ lived its years, ★★ and even to the aim; minutes are when it reached its years, else when it fell)');
+  console.log('mean | ' + PAINTERS.map((p) => `${(sum[p].min / seeds).toFixed(1)} min, ${Math.round(sum[p].even / seeds)}% round`.padEnd(22)).join(' | '));
+  console.log('     | ' + PAINTERS.map((p) => `still growing ${sum[p].growing}/${seeds}`.padEnd(22)).join(' | '));
 }

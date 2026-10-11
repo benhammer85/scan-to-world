@@ -1,24 +1,55 @@
 /**
- * The hand: where the slice sits on the screen, and how a pointer there becomes the brush (an angle
- * round the pith, and an offset from the bark in band units). Shared by the game and its playtest bot,
- * so the bot paints with exactly a player's hand: a run of pointer positions over time.
+ * The hand: where the slice sits on the screen, and how a pointer there becomes the pen (an angle
+ * round the pith, and an offset from the bark in steady rings' widths). Shared by the game and its
+ * playtest bot, so the bot draws with exactly a player's hand: a run of pointer positions over time.
  *
- * The band is the steady ring's width on the screen: at least BAND CSS pixels, so a ring too thin to
- * see (an old tree's few millimetres) is still drawn with a line a finger can place; where the true
- * ring is wider than that (a sapling's), the band is the true ring and the line is the wood as drawn.
- * The wet line dries into the true ring when it closes.
- *
- * The camera keeps the ring being drawn large: the slice is scaled so its bark and the ring to come
- * fill the room, whatever its age, and the old rings get smaller within it.
+ * The camera keeps the ring being drawn large and comfortable, whatever the tree's age: the slice fills
+ * its room, and a gentle fisheye (the warp) widens its newest rings, so the ring under the finger is
+ * always a good width to trace and its colour lands where the line is drawn, while the old rings grow
+ * small toward the pith. A young tree's rings are wide already, and it isn't warped at all. Everything
+ * drawn on the live slice (and the watercolour paper itself) lies in this warped plane; the plate is
+ * drawn true.
  */
 import { K, type TreeSim } from './tree';
 
-/** The steady ring's width on the screen, CSS pixels at least. */
+/** The newest ring's width on the screen, CSS pixels at least (the warp sees to it). */
 export const BAND = 16;
 const TAU = Math.PI * 2;
 
-/** The slice on the screen: the pith (device px), device px a mm, the turn, device px a CSS px. */
-export interface View { cx: number; cy: number; s: number; turn: number; px: number }
+/** The fisheye: radius r (mm) is drawn at R·((1−beta)·x + beta·x^q), x = r/R. beta 0 is no warp. */
+export interface Warp { R: number; beta: number; q: number }
+/** The slice on the screen: the pith (device px), device px a (warped) mm, the turn, device px a CSS px, and the warp. */
+export interface View { cx: number; cy: number; s: number; turn: number; px: number; warp?: Warp }
+
+/** A radius (mm) in the warped plane. */
+export function warpR(w: Warp | undefined, r: number): number {
+  if (!w || w.beta <= 0) return r;
+  const x = Math.max(0, r / w.R);
+  return w.R * ((1 - w.beta) * x + w.beta * x ** w.q);
+}
+/** How much the warp widens things at radius r (its slope). */
+export function warpSlope(w: Warp | undefined, r: number): number {
+  if (!w || w.beta <= 0) return 1;
+  const x = Math.max(0, r / w.R);
+  return 1 - w.beta + w.beta * w.q * x ** (w.q - 1);
+}
+/** A warped radius back to mm (the warp only grows, so it's found by bisection). */
+export function unwarpR(w: Warp | undefined, rho: number): number {
+  if (!w || w.beta <= 0) return rho;
+  let lo = 0, hi = Math.max(w.R * 2, rho / (1 - w.beta) + 1);
+  for (let k = 0; k < 48; k++) { const m = (lo + hi) / 2; if (warpR(w, m) < rho) lo = m; else hi = m; }
+  return (lo + hi) / 2;
+}
+/** The warp a tree wants: its newest ring about `share` of the slice's radius wide, or none if it is already. */
+export function warpFor(tree: TreeSim, share = 0.085): Warp {
+  let top = tree.k.pith;
+  for (let i = 0; i < K; i += 4) top = Math.max(top, tree.inner(i));
+  const w = tree.wRef, R = top + 1.6 * w, q = 18, x0 = tree.radius / R;
+  const need = (share * R) / w;
+  if (need <= 1) return { R, beta: 0, q };
+  const beta = Math.max(0, Math.min(0.75, (need - 1) / (q * x0 ** (q - 1) - 1)));
+  return { R, beta, q };
+}
 
 /** A ring's radius at any angle: a smooth (Catmull-Rom) curve through its points, never a polygon. */
 export function radiusAt(r: Float32Array | ((i: number) => number), a: number): number {
@@ -37,35 +68,31 @@ export function roomOf(W: number, H: number, px: number, ending = false): { cx: 
   return { cx: W / 2, cy: top + (H - top - foot) / 2, room: Math.max(40 * px, Math.min((W - side * 2) / 2, (H - top - foot) / 2)) };
 }
 
-/**
- * The scale (device px a mm) the slice wants in its room: the bark and the ring to come (a wide one, as
- * a sapling's are, or the band's wet line outside an old one) fill it, at every age, so the ring being
- * drawn is always a large, comfortable circle and the old rings are what grow small.
- */
-export function scaleFor(tree: TreeSim, room: number, px: number): number {
-  let R = tree.k.pith;
-  for (let i = 0; i < K; i += 4) R = Math.max(R, tree.inner(i));
-  const next = R + 1.9 * tree.wRef;
-  return Math.max(0.01, Math.min((room - 2.2 * BAND * px) / R, room / next));
+/** The scale (device px a warped mm) that fills the room with the bark and the ring to come. */
+export function scaleFor(tree: TreeSim, room: number, _px: number, warp: Warp = warpFor(tree)): number {
+  return Math.max(0.01, room / warpR(warp, warp.R));
 }
 
 export function viewFor(tree: TreeSim, W: number, H: number, px: number, ending = false): View {
-  const { cx, cy, room } = roomOf(W, H, px, ending);
-  return { cx, cy, s: scaleFor(tree, room, px), turn: 0, px };
+  const { cx, cy, room } = roomOf(W, H, px, ending), warp = warpFor(tree);
+  return { cx, cy, s: scaleFor(tree, room, px, warp), turn: 0, px, warp };
 }
 
-/** The band (device px) for this ring, in this view. */
-export function bandOf(tree: TreeSim, v: View): number { return Math.max(BAND * v.px, tree.wRef * v.s); }
+/** One steady ring's width on the screen (device px), at the bark, in this view. */
+export function bandOf(tree: TreeSim, v: View): number {
+  const R = tree.radius;
+  return v.s * (warpR(v.warp, R + tree.wRef) - warpR(v.warp, R));
+}
 
-/** A pointer (device px) as the brush: its angle round the pith, and its offset from the bark in bands. */
-export function brushAt(tree: TreeSim, v: View, band: number, x: number, y: number): { a: number; u: number } {
+/** A pointer (device px) as the pen: its angle round the pith, and its offset from the bark in steady widths. */
+export function brushAt(tree: TreeSim, v: View, _band: number, x: number, y: number): { a: number; u: number } {
   const dx = x - v.cx, dy = -(y - v.cy), a = (((Math.atan2(dy, dx) - v.turn) % TAU) + TAU) % TAU;
-  const r = Math.hypot(dx, dy), bark = radiusAt((i) => tree.inner(i), a) * v.s;
-  return { a, u: (r - bark) / band };
+  const r = unwarpR(v.warp, Math.hypot(dx, dy) / v.s), bark = radiusAt((i) => tree.inner(i), a);
+  return { a, u: (r - bark) / tree.wRef };
 }
 
-/** Where on the screen (device px) the brush at angle a, offset u, is. */
-export function pointerAt(tree: TreeSim, v: View, band: number, a: number, u: number): { x: number; y: number } {
-  const r = radiusAt((i) => tree.inner(i), a) * v.s + u * band, t = a + v.turn;
+/** Where on the screen (device px) the pen at angle a, offset u, is. */
+export function pointerAt(tree: TreeSim, v: View, _band: number, a: number, u: number): { x: number; y: number } {
+  const r = v.s * warpR(v.warp, radiusAt((i) => tree.inner(i), a) + u * tree.wRef), t = a + v.turn;
   return { x: v.cx + r * Math.cos(t), y: v.cy - r * Math.sin(t) };
 }

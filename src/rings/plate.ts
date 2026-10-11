@@ -8,6 +8,7 @@
 import type { TreeSim } from './tree';
 import type { Tree } from './trees';
 import { drawBark, drawPaper, drawShadow, drawSlice, ink, PAPER, barkThickness, type View } from './draw';
+import { Paper } from './paint';
 import { drawHabit } from './habit';
 
 const SERIF = '"Newsreader", "Iowan Old Style", Georgia, serif';
@@ -19,20 +20,20 @@ const ORDINAL = (n: number) => { const s = n % 100 >= 11 && n % 100 <= 13 ? 'th'
 export function recordOf(tree: TreeSim, T: Tree): { subtitle: string; notes: string[]; fate: string } {
   const per = tree.k.yearsPerRing, fires = tree.scars.map((s) => s.ring * per), even = Math.round(100 * tree.evenness);
   const wounds = new Set(tree.wounds.map((w) => w.ring)).size;
+  const years = (kind: number) => tree.ringWeather.filter((w) => w === kind).length * per;
+  const wet = years(1), dry = years(2), bled = tree.bleeds.filter(Boolean).length;
+  void even; void wounds;
   const notes = [
     `${tree.rings.length} rings, each ${per} years’ wood`,
+    [wet ? `${wet} years of rain` : '', dry ? `${dry} of drought` : ''].filter(Boolean).join(', ') || 'calm years throughout',
     fires.length ? `fire in the ${fires.map(ORDINAL).join(' and ')} year${fires.length > 1 ? 's' : ''}` : 'no fire',
-    wounds ? `wood died in ${wounds} ring${wounds > 1 ? 's' : ''}` : 'no wood died',
-    tree.cracks.length + tree.gaps ? `${tree.cracks.length + tree.gaps} ring${tree.cracks.length + tree.gaps > 1 ? 's' : ''} left open` : 'every ring closed',
-    `even to ${even} parts in a hundred`,
+    bled ? `${bled} ring${bled > 1 ? 's' : ''} laid wet-in-wet` : 'every ring left to dry',
   ];
-  const fate = tree.k.endless && tree.cause === 'felled' ? `Felled in its ${ORDINAL(tree.year)} year.`
-    : tree.cause === 'felled' ? `Felled in its ${ORDINAL(tree.year)} year.`
+  const fate = tree.cause === 'felled' || tree.k.endless ? `Kept in its ${ORDINAL(tree.year)} year.`
     : tree.cause === 'old' ? `It fell of age, in its ${ORDINAL(tree.year)} year.`
     : tree.cause === 'withered' ? `Its wood dead round half its girth, it fell in its ${ORDINAL(tree.year)} year.`
     : `Starved, it fell in its ${ORDINAL(tree.year)} year.`;
-  const reached = tree.year >= T.years ? '' : ` (it was to live ${T.years})`;
-  return { subtitle: `${T.name}: a section of the trunk at ${tree.year} years${reached}`, notes, fate };
+  return { subtitle: `${T.name}: a section of the trunk at ${tree.year} years`, notes, fate };
 }
 
 export function drawPlate(tree: TreeSim, T: Tree, water: boolean): HTMLCanvasElement {
@@ -59,7 +60,10 @@ export function drawPlate(tree: TreeSim, T: Tree, water: boolean): HTMLCanvasEle
   const v: View = { cx, cy, s: 1, turn: 0, px: 1.5 };
   v.s = (box / 2) / (maxR + barkThickness(tree, { ...v, s: box / 2 / maxR }));
   drawShadow(g, tree, v);
-  drawSlice(g, tree, v, { water });
+  // (Watercolour: the whole tree painted again on a fresh sheet, true to scale, ring by ring.)
+  let wash: ((g: CanvasRenderingContext2D) => void) | undefined;
+  if (water) { const p = new Paper(560); p.fit(undefined, maxR * 1.02); p.bake(tree); wash = (h) => p.draw(h, v); }
+  drawSlice(g, tree, v, { water, wash });
   drawBark(g, tree, v);
 
   // Its number, and a scale in centimetres, as a plate's scale is ruled.

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { TreeSim, K, RAIN, DROUGHT, WIND, FROST, type Rules } from '../src/rings/tree';
-import { brushAt, pointerAt, bandOf, radiusAt, scaleFor, viewFor } from '../src/rings/hand';
+import { brushAt, pointerAt, bandOf, radiusAt, scaleFor, viewFor, warpFor, warpR, unwarpR } from '../src/rings/hand';
+import { Wash, type RGB } from '../src/rings/wash';
+import { pigmentOf, weatheringOf } from '../src/rings/paint';
 import { snapshotTree, treeFrom } from '../src/rings/save';
 
 const TAU = Math.PI * 2;
@@ -96,15 +98,16 @@ describe('a ring drawn in one line', () => {
     expect(widthAt(t, 1, -Math.PI / 2)).toBeLessThan(0.05 * widthAt(t, 1, 0));
   });
 
-  it('the wood is an area, not a time: drawn as slowly as you like it lasts; pushed far out everywhere, it trails off thin', () => {
-    const slow = new TreeSim(6, still);
+  it('drawn as slowly as you like, the ring is the same: nothing runs out, nothing presses', () => {
+    const slow = new TreeSim(6, still), wide = new TreeSim(6, still);
     paint(slow, { round: 60 });
     expect(slow.living).toBe(1);
     expect(slow.evenness).toBeGreaterThan(0.95);
-    const greedy = new TreeSim(6, still), gu = greedy.guide();
-    paint(greedy, { from: 0, u: (a) => radiusAt(gu, a) * 2 });
-    expect(widthAt(greedy, 0, 0.5)).toBeGreaterThan(widthAt(greedy, 0, TAU - 0.5) * 2.5);
-    expect(greedy.ringEven[0]).toBeLessThan(slow.ringEven[0] - 0.2);
+    const gu = wide.guide();
+    paint(wide, { from: 0, u: (a) => radiusAt(gu, a) * 2 });
+    // (Pushed out twice as far all round, the wood is twice as wide all round: no brush runs dry.)
+    expect(widthAt(wide, 0, TAU - 0.5) / widthAt(slow, 0, TAU - 0.5)).toBeGreaterThan(1.8);
+    expect(wide.ringEven[0]).toBeGreaterThan(0.95);
   });
 
   it('lifting rests the line; touching the drop again goes on with it, and the ring closes whole', () => {
@@ -152,80 +155,70 @@ describe('a ring drawn in one line', () => {
 });
 
 describe('forgiving', () => {
-  it('the first five rings cannot kill it, however thin; the rings after cover them', () => {
-    const t = new TreeSim(11, still);
-    for (let n = 0; n < 5; n++) paint(t, { u: () => 0.05 });
+  it('nothing can kill it: rings drawn right on the bark, ring after ring, and it grows on', () => {
+    const t = new TreeSim(11);
+    for (let n = 0; n < 80; n++) paint(t, { u: () => 0.03 });
     expect(t.over).toBe(false);
     expect(t.living).toBe(1);
-    for (let n = 0; n < 5; n++) paint(t);
+    expect(t.wounds.length).toBe(0);
+    expect(t.ring).toBe(80);
+  });
+
+  it('nor age: four hundred years on, still growing', () => {
+    const t = new TreeSim(18);
+    for (let n = 0; n < 90; n++) paint(t);
     expect(t.over).toBe(false);
-    expect(t.vigour).toBeGreaterThan(0.4);
+    expect(t.year).toBe(450);
   });
 
-  it('one thin stretch is a stress; thin there two rings running, and the wood there dies; then the living wood rolls over it', () => {
-    const t = new TreeSim(12, still);
-    for (let n = 0; n < 6; n++) paint(t);
-    const pinch = (x: TreeSim) => { const gu = x.guide(); return (a: number) => radiusAt(gu, a) * (Math.cos(a) > 0.95 ? 0 : 1); };
-    paint(t, { u: pinch(t) });
-    expect(t.living).toBe(1);
-    paint(t, { u: pinch(t) });
-    expect(t.living).toBeLessThan(1);
-    expect(t.wounds.length).toBeGreaterThan(0);
-    for (let n = 0; n < 8; n++) paint(t);
-    expect(t.living).toBe(1); // (rolled over)
-  });
-
-  it('only sustained neglect starves it: rings drawn too near the bark, ring after ring', () => {
-    const t = new TreeSim(13, still);
-    for (let n = 0; n < 60 && !t.over; n++) { const gu = t.guide(); paint(t, { u: (a) => radiusAt(gu, a) * 0.55 }); }
+  it('it ends only when it is kept as a plate', () => {
+    const t = new TreeSim(12);
+    for (let n = 0; n < 3; n++) paint(t);
+    t.fall('felled');
     expect(t.over).toBe(true);
-    expect(t.ring).toBeGreaterThan(8);
+    expect(t.cause).toBe('felled');
   });
 });
 
-describe('the weather, as forces on the line', () => {
-  const only = (kind: number, rules: Partial<Rules> = {}) => { const t = new TreeSim(14, { ...calm, ...rules }); t.weather.fill(0); t.weather[1] = kind; paint(t); paint(t); return t; };
-
-  it('the sun from the south draws the lit side outward a little', () => {
-    const t = new TreeSim(14, calm);
-    paint(t);
-    expect(widthAt(t, 0, t.k.sunAngle)).toBeGreaterThan(widthAt(t, 0, t.k.sunAngle + Math.PI) + 0.15 * t.laidW);
+describe('the weather, as colour and mood', () => {
+  it('never pushes the line: traced at the circle, every weather lays a true circle', () => {
+    for (const kind of [0, RAIN, DROUGHT, WIND, FROST]) {
+      const t = new TreeSim(14, { calmFirst: 1000, fires: [] });
+      t.weather.fill(0); t.weather[1] = kind;
+      paint(t); paint(t);
+      expect(t.ringEven[1]).toBeGreaterThan(0.95);
+    }
   });
 
-  it('rain wets the paper: more wood, and the line bleeds outward; drought dries the brush: less', () => {
-    const plain = only(0, { sun: 0 }), wet = only(RAIN, { sun: 0 }), dry = only(DROUGHT, { sun: 0 });
-    expect(meanWidth(wet, 1)).toBeGreaterThan(meanWidth(plain, 1) * 1.1);
-    expect(dry.ringEven[1]).toBeLessThan(plain.ringEven[1] - 0.05); // (traced at the circle, the brush runs out)
-    expect(meanWidth(dry, 1)).toBeLessThan(meanWidth(plain, 1) * 0.95);
+  it('it changes the paint: rain cooler and wetter, drought a thin ochre that dries fast, wind drifts it, frost a pale blue', () => {
+    const t = new TreeSim(14, { calmFirst: 1000, fires: [] });
+    t.weather.fill(0); t.weather[1] = RAIN; t.weather[2] = DROUGHT; t.weather[3] = WIND; t.weather[4] = FROST;
+    const calmW = weatheringOf(t, 0), rain = weatheringOf(t, 1), dry = weatheringOf(t, 2), wind = weatheringOf(t, 3);
+    expect(rain.wet).toBeGreaterThan(calmW.wet);
+    expect(dry.dry).toBeGreaterThan(calmW.dry);
+    expect(Math.hypot(...wind.drift)).toBeGreaterThan(0);
+    // (Absorbance: rain absorbs less blue than a calm summer gold does; drought less paint in all.)
+    const gold = pigmentOf(0, 0.25), blue = pigmentOf(RAIN, 0.25), ochre = pigmentOf(DROUGHT, 0.25), pale = pigmentOf(FROST, 0.25);
+    expect(blue[2] / blue[0]).toBeLessThan(gold[2] / gold[0]);
+    expect(ochre[0] + ochre[1] + ochre[2]).toBeLessThan(gold[0] + gold[1] + gold[2]);
+    expect(pale[0] + pale[1] + pale[2]).toBeLessThan(gold[0] + gold[1] + gold[2]);
   });
 
-  it('wind pushes the line: an eccentric ring unless the hand holds against it', () => {
-    const t = only(WIND, { sun: 0 }), down = t.windOf(1), w = widths(t, 1);
-    // (Widest downwind, thinnest upwind: an eccentric ring, as a wind-blown tree's.)
-    expect(Math.max(...w) / Math.min(...w)).toBeGreaterThan(1.5);
-    expect(widthAt(t, 1, down)).toBeGreaterThan(meanWidth(t, 1) * 1.15);
-    const held = new TreeSim(14, { ...calm, sun: 0 });
-    held.weather.fill(0); held.weather[1] = WIND;
-    paint(held);
-    const gu = held.guide();
-    paint(held, { u: (a) => radiusAt(gu, a) - held.k.wind * Math.cos(a - held.windOf(1)) });
-    expect(held.ringEven[1]).toBeGreaterThan(t.ringEven[1] + 0.1);
+  it('the seasons run round each ring, spring to spring, and a slow hand lays deeper colour', () => {
+    const spring = pigmentOf(0, 0), autumn = pigmentOf(0, 0.5), again = pigmentOf(0, 1);
+    expect(Math.abs(spring[1] - autumn[1])).toBeGreaterThan(0.1);
+    for (let c = 0; c < 3; c++) expect(again[c]).toBeCloseTo(spring[c], 3);
+    const quick = pigmentOf(0, 0.3, 0), slow = pigmentOf(0, 0.3, 1);
+    expect(slow[0]).toBeGreaterThan(quick[0] * 1.3);
   });
 
-  it('frost makes the hand tremble: gentle undulations, a less true circle than a calm one', () => {
-    expect(only(FROST).ringEven[1]).toBeLessThan(only(0).ringEven[1] - 0.03);
-  });
-
-  it('fire scorches a sector on the uphill side that takes no wood, and the rings roll over it', () => {
-    const t = new TreeSim(15, { ...calm, sun: 0, fires: [[6, 6]] });
-    for (let n = 0; n < 6; n++) paint(t);
+  it('fire is only colour: a bloom on the uphill side, and the wood grows on', () => {
+    const t = new TreeSim(15, { ...calm, fires: [[3, 3]] });
+    for (let n = 0; n < 4; n++) paint(t);
     expect(t.scars.length).toBe(1);
     expect(Math.cos(t.scars[0].angle - t.k.uphill)).toBeGreaterThan(0.9);
-    expect(K - t.alive.reduce((s, x) => s + x, 0)).toBeGreaterThan(10);
-    paint(t);
-    expect(widthAt(t, 6, t.scars[0].angle)).toBeLessThan(0.25 * t.laidW);
-    for (let n = 0; n < 12; n++) paint(t);
     expect(t.living).toBe(1);
+    expect(widthAt(t, 3, t.scars[0].angle)).toBeGreaterThan(0.8 * t.laidW);
   });
 
   it('weather is occasional and known ahead: mostly calm, a spell every several rings, never back to back', () => {
@@ -234,12 +227,91 @@ describe('the weather, as forces on the line', () => {
     const first = Array.from(a.weather.slice(0, 80));
     expect(first.slice(0, a.k.calmFirst).every((w) => w === 0)).toBe(true);
     expect(first.filter((w) => w === 0).length / first.length).toBeGreaterThan(0.6);
-    // (Between two spells, at least three calm rings: time to see the next one gathering.)
     let lastEnd = -10;
     for (let i = 1; i < first.length; i++) if (first[i] && !first[i - 1]) { expect(i - lastEnd).toBeGreaterThanOrEqual(3); }
     else if (!first[i] && first[i - 1]) lastEnd = i;
     expect([RAIN, DROUGHT, WIND, FROST].every((w) => a.weather.slice(0, 200).includes(w))).toBe(true);
     expect(a.fireRings.length).toBe(2);
+  });
+});
+
+describe('the watercolour paper', () => {
+  /** A disc of paint, laid at once. */
+  const disc = (w: Wash, r: number, ink: RGB, x = 0, y = 0) => { for (let c = 0; c < w.n * w.n; c++) { const [cx, cy] = w.centre(c); if (Math.hypot(cx - x, cy - y) <= r) w.lay(c, 0.9, ink); } };
+  const at = (w: Wash, x: number, y: number) => { const c = w.cell(x, y); return w.dep[c * 3] + w.dep[c * 3 + 1] + w.dep[c * 3 + 2] + w.sus[c * 3] + w.sus[c * 3 + 1] + w.sus[c * 3 + 2]; };
+
+  it('a wash dries in a few seconds, keeping its pigment; held wet, it waits', () => {
+    const w = new Wash(96, 20);
+    disc(w, 8, [0.3, 0.2, 0.1]);
+    const before = w.pigment;
+    w.weather = { wet: 1, dry: 0, drift: [0, 0] };
+    for (let k = 0; k < 600; k++) w.step(1 / 60);
+    expect(w.wet).toBe(true); // (ten seconds held, and still wet)
+    w.weather = { wet: 1, dry: 1, drift: [0, 0] };
+    let t = 0;
+    while (w.wet && t < 30) { w.step(1 / 60); t += 1 / 60; }
+    expect(w.wet).toBe(false);
+    expect(t).toBeGreaterThan(1.5);
+    expect(t).toBeLessThan(12);
+    expect(w.pigment).toBeCloseTo(before, 0);
+  });
+
+  it('as it dries, the pigment gathers at its edge: the coffee-ring effect, a dark rim', () => {
+    const w = new Wash(96, 20);
+    disc(w, 10, [0.3, 0.3, 0.3]);
+    while (w.wet) w.step(1 / 60);
+    expect(Math.max(at(w, 9.6, 0), at(w, 9.9, 0))).toBeGreaterThan(at(w, 0, 0) * 1.3);
+  });
+
+  it('wet-in-wet: laid against a damp wash, the colours run together; against a dry one, the edge stays', () => {
+    const run = (wait: number) => {
+      const w = new Wash(96, 20);
+      disc(w, 6, [0.4, 0, 0], -5, 0);
+      for (let k = 0; k < wait; k++) w.step(1 / 60);
+      disc(w, 6, [0, 0, 0.4], 7, 0);
+      while (w.wet) w.step(1 / 60);
+      const c = w.cell(0, 0); // (a millimetre inside the red)
+      return w.dep[c * 3 + 2] + w.sus[c * 3 + 2]; // (the blue found inside the red)
+    };
+    expect(run(20)).toBeGreaterThan(0.03);
+    expect(run(900)).toBeLessThan(0.002);
+  });
+
+  it('a ring laid point by point while held wet dries without a seam where it closed', () => {
+    const w = new Wash(160, 30), STEP = TAU / 240;
+    w.weather = { wet: 1, dry: 0, drift: [0, 0] };
+    for (let i = 0; i < 240; i++) { w.layArc(i * STEP, (i + 1) * STEP, () => 12, () => 22, 0.9, () => [0.2, 0.2, 0.2]); w.step(1 / 60); }
+    w.weather = { wet: 1, dry: 1, drift: [0, 0] };
+    while (w.wet) w.step(1 / 60);
+    const ring = (a: number) => { let s = 0; for (let r = 13; r <= 21; r += 0.5) s += at(w, r * Math.cos(a), r * Math.sin(a)); return s; };
+    const seam = ring(0.002), round = [1, 2, 3, 4, 5].map((k) => ring(k)).reduce((a, b) => a + b, 0) / 5;
+    expect(seam / round).toBeLessThan(1.25);
+    expect(seam / round).toBeGreaterThan(0.8);
+  });
+
+  it('resampled for a new warp, the paint is kept', () => {
+    const w = new Wash(96, 20);
+    disc(w, 8, [0.3, 0.2, 0.1]);
+    while (w.wet) w.step(1 / 60);
+    const before = w.pigment;
+    w.remap(20, (x, y) => [x, y]);
+    expect(w.pigment / before).toBeGreaterThan(0.97);
+    w.remap(40, (x, y) => [x / 2, y / 2]); // (the paper twice as wide, its paint drawn twice as large: the same cells)
+    expect(w.pigment / before).toBeGreaterThan(0.95);
+    expect(w.pigment / before).toBeLessThan(1.05);
+  });
+});
+
+describe('the warp', () => {
+  it('keeps the newest ring wide on an old trunk, leaves a young one true, and goes back exactly', () => {
+    const young = new TreeSim(30), old = new TreeSim(30);
+    paint(young);
+    for (let n = 0; n < 60; n++) paint(old);
+    expect(warpFor(young).beta).toBe(0);
+    const w = warpFor(old), R = old.radius;
+    expect(w.beta).toBeGreaterThan(0);
+    expect((warpR(w, R + old.wRef) - warpR(w, R)) / warpR(w, w.R)).toBeGreaterThan(0.07);
+    for (const r of [0, 10, 100, R, R + 5]) expect(unwarpR(w, warpR(w, r))).toBeCloseTo(r, 4);
   });
 });
 
@@ -254,14 +326,6 @@ describe('a life', () => {
     expect(t.year).toBe(300);
     expect(t.ring).toBe(60);
     expect(t.evenness).toBeGreaterThan(0.85);
-  });
-
-  it('it grows old: past three hundred years, even a careful hand cannot keep it for ever', () => {
-    const t = new TreeSim(18, { fires: [] });
-    for (let n = 0; n < 120 && !t.over; n++) paint(t);
-    expect(t.over).toBe(true);
-    expect(t.cause).toBe('old');
-    expect(t.year).toBeGreaterThan(330);
   });
 
   it('wandering, it never falls until it is felled', () => {

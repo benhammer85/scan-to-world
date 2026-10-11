@@ -90,8 +90,10 @@ export interface Rules {
   /** Vigour: each ring feeds it by how much wood was laid (band units, mean round) against the need. */
   need: number;
   feed: number;
-  /** Never falls (wander). */
+  /** Never falls (wander, and now always: the tree lives as long as it's drawn). */
   endless: boolean;
+  /** Whether a fire scorches wood that takes no more (else it's only colour: a bloom of vermilion). */
+  fireKills: boolean;
 }
 
 export const OAK: Rules = {
@@ -102,24 +104,24 @@ export const OAK: Rules = {
   oldFrom: 300,
   oldTo: 420,
   oldInk: 0.35,
-  ink: 1.35,
+  ink: 3,
   dryTrail: 0.5,
-  thin: 0.3,
+  thin: 0,
   grace: 5,
   smooth: (6.5 * Math.PI) / 180,
   roll: (10 * Math.PI) / 180,
   calmPace: 4.5,
   sunAngle: -Math.PI / 2,
-  sun: 0.12,
+  sun: 0,
   uphill: Math.PI,
   calmFirst: 5,
   every: [4, 7],
   odds: [0.32, 0.24, 0.26, 0.18],
   rainInk: 1.25,
-  rainBleed: 0.2,
+  rainBleed: 0,
   droughtInk: 0.64,
-  wind: 0.4,
-  frost: 0.2,
+  wind: 0,
+  frost: 0,
   frostInk: 0.95,
   fires: [[22, 36], [46, 56]],
   fireHalf: 0.3,
@@ -127,7 +129,8 @@ export const OAK: Rules = {
   deadFall: 0.5,
   need: 0.85,
   feed: 0.3,
-  endless: false,
+  endless: true,
+  fireKills: false,
 };
 
 export type News = { kind: 'ring' | 'died' | 'healed' | 'crack' | 'gap' | 'fire' | 'fell'; ring: number; angle?: number; count?: number };
@@ -502,7 +505,11 @@ export class TreeSim {
     this.news.push({ kind: 'ring', ring: n });
     // A fire before the next ring scorches a sector on the uphill side, which takes no wood.
     const next = this.rings.length;
-    if (this.fireBefore(next)) {
+    if (this.fireBefore(next) && !k.fireKills) {
+      // (Only colour now: the fire is a bloom on the paper, and the wood grows on.)
+      this.scars.push({ ring: next, angle: k.uphill + (hash(this.seed * 7 + next) - 0.5) * 0.6, half: 0 });
+      this.news.push({ kind: 'fire', ring: next, angle: this.scars[this.scars.length - 1].angle });
+    } else if (this.fireBefore(next)) {
       const half = k.fireHalf * (1.2 - 0.4 * Math.min(1, Math.max(0, this.vigour))), angle = k.uphill + (hash(this.seed * 7 + next) - 0.5) * 0.6;
       for (let i = 0; i < K; i++) if (Math.abs(angleDiff(i * STEP, angle)) <= half) { this.alive[i] = 0; this.burnt[i] = 1; }
       this.scars.push({ ring: next, angle, half });

@@ -18,11 +18,12 @@
  */
 import '../volcano/fonts.css';
 import { feel, keepImage, NATIVE, rumble, tap } from '../volcano/native';
-import { TreeSim, DROUGHT, RAIN, WIND, type News, type Weather } from './tree';
+import { K, TreeSim, DROUGHT, RAIN, WIND, type News, type Weather } from './tree';
 import { pen, setSound, soundOff, tick, wake, weather as weatherSound } from './sound';
-import { treeOf, EVEN_AIM } from './trees';
-import { bandOf, brushAt, pointerAt, roomOf, scaleFor, tall, type View } from './hand';
-import { ARCS, PAPER, drawBark, drawDamp, drawGuide, drawPaper, drawShadow, drawSlice, drawSun, drawTip, drawWet, inkArc, radiusAt } from './draw';
+import { treeOf } from './trees';
+import { bandOf, brushAt, pointerAt, roomOf, scaleFor, tall, warpFor, type View, type Warp } from './hand';
+import { Paper } from './paint';
+import { ARCS, PAPER, at, drawBark, drawGuide, drawMarks, drawPaper, drawShadow, drawSlice, drawSun, drawTip, drawWet, inkArc, radiusAt } from './draw';
 import { drawHabit, type Box, type Scene } from './habit';
 import { drawPlate, recordOf } from './plate';
 import { forgetTree, keepPlate, keepTree, plates, recallTree, snapshotTree, treeFrom, type KeptTree } from './save';
@@ -34,16 +35,26 @@ const T = treeOf(ASKED.get('tree'));
 /** Wander (?wander): the tree never dies; it's felled when you choose. */
 const WANDER = ASKED.has('wander');
 const wanted = Number(ASKED.get('seed'));
-const RULES = { ...T.rules, endless: WANDER };
+const RULES = { ...T.rules };
 function remembered(key: string): string | null { try { return localStorage.getItem(key); } catch { return null; } }
 function remember(key: string, value: string): void { try { localStorage.setItem(key, value); } catch { /* not remembered */ } }
 
 // ---------------------------------------------------------------- settings
 /** The ink: watercolour (the default, as in the volcano game) or engraving, ink only. */
 let WATER = (ASKED.get('ink') ?? remembered('annulus.ink') ?? 'water') === 'water';
-/** Seconds a ring laid stays damp: its dark wet ink drying into the wash; painted over before then, they bleed. */
-const DAMP = 3.6;
-let closedAt = -100;
+/**
+ * The watercolour paper the wood is painted on (paint.ts), and the warp it's laid out for: the gentle
+ * fisheye that keeps the newest rings wide (hand.ts), set again between rings.
+ */
+const paper = new Paper(320);
+let warpNow: Warp | null = null;
+function setWarp(): void { warpNow = warpFor(tree); paper.fit(warpNow, warpNow.R); dirty = true; }
+/**
+ * Disappearing ink: the line the hand draws, dark and wet, evaporating behind the pen over a few
+ * seconds (as water on a calligraphy board does), leaving the colour it bled into the paper.
+ */
+let trail: { a: number; r: number; t: number }[] = [];
+const EVAPORATE = 2.6;
 /** The pencil circle breathes, slowly (about six breaths a minute), as a suggestion of pace; or keeps still. */
 let BREATH = remembered('annulus.breath') !== 'off';
 
@@ -75,8 +86,9 @@ let scale = 0;
 
 function view(): View {
   const r = roomOf(W, H, px, !!ending);
-  if (!scale) scale = scaleFor(tree, r.room, px);
-  return { cx: r.cx, cy: r.cy, s: scale * zoom, turn: 0, px };
+  if (!warpNow) setWarp();
+  if (!scale) scale = scaleFor(tree, r.room, px, warpNow!);
+  return { cx: r.cx, cy: r.cy, s: scale * zoom, turn: 0, px, warp: warpNow! };
 }
 /** Where the habit drawing sits: under the slice on a tall screen, else in the lower right corner. */
 function habitBox(): Box {
@@ -149,7 +161,8 @@ function renderCache(v: View, upto = tree.rings.length): void {
   cg.clearRect(0, 0, W, H);
   // (The shadow first, then the slice laid over it on clean paper; the bark on its own.)
   drawShadow(cg, tree, v, upto);
-  drawSlice(cg, tree, v, { water: WATER }, ending ? undefined : fadeOf, upto);
+  // (In watercolour the slice is the paper's paint, drawn live over this; engraved, its lines are kept here.)
+  if (!WATER) drawSlice(cg, tree, v, { water: false }, ending ? undefined : fadeOf, upto);
   bg.setTransform(1, 0, 0, 1, 0, 0);
   bg.clearRect(0, 0, W, H);
   drawBark(bg, tree, v, upto);
@@ -191,7 +204,7 @@ canvas.addEventListener('pointerdown', (e) => {
   // Resting: a touch near the drop takes the line up again, where it stopped.
   if (phase === 'painting' && strokeView && tree.resting) {
     const b = brushAt(tree, strokeView, strokeBand, e.clientX * px, e.clientY * px);
-    if (b.u > -3 && b.u < 6 && tree.begin(now(e), b.a, b.u)) { painter = e.pointerId; feel(4); }
+    if (b.u > -3 && b.u < 6 && tree.begin(now(e), b.a, b.u)) { painter = e.pointerId; feel(4); trailAt(); }
     return;
   }
   if (phase !== 'ready') return;
@@ -200,9 +213,9 @@ canvas.addEventListener('pointerdown', (e) => {
   if (b.u < -2.5 || b.u > 5) return;
   strokeView = v; strokeBand = band;
   const sb = brushAt(tree, strokeView, strokeBand, e.clientX * px, e.clientY * px);
-  // (Begun while the last ring is still damp, the two washes bleed together, wet-in-wet.)
-  const damp = WATER && tree.ring > 0 && clock() - closedAt < DAMP;
-  if (tree.begin(now(e), sb.a, sb.u)) { painter = e.pointerId; enter('painting'); feel(6); if (damp) { tree.bleed(); dirty = true; } }
+  // (Begun while the last ring is still damp, the two run together, wet-in-wet.)
+  const damp = tree.ring > 0 && paper.wash.wet;
+  if (tree.begin(now(e), sb.a, sb.u)) { painter = e.pointerId; enter('painting'); feel(6); paper.begin(tree); if (damp) tree.bleed(); trailAt(); }
 });
 canvas.addEventListener('pointermove', (e) => {
   if (!pointers.has(e.pointerId)) return;
@@ -214,6 +227,7 @@ canvas.addEventListener('pointermove', (e) => {
   for (const c of evs.length ? evs : [e]) {
     const b = brushAt(tree, strokeView, strokeBand, c.clientX * px, c.clientY * px);
     tree.move(now(c), b.a, b.u);
+    trailAt();
   }
   hear();
 });
@@ -225,6 +239,33 @@ for (const type of ['pointerup', 'pointercancel'] as const) canvas.addEventListe
 });
 canvas.addEventListener('wheel', (e) => { e.preventDefault(); if (phase === 'painting') return; zoom = Math.max(1, Math.min(CLOSEST, zoom * Math.exp(-e.deltaY * 0.002))); zoomedAt = clock(); lastMoved = clock(); }, { passive: false });
 
+/** The ink trail, where the pen is now. */
+function trailAt(): void {
+  const tip = tree.tip;
+  if (!tip) return;
+  trail.push({ a: tip.a, r: radiusAt((i) => tree.inner(i), tip.a) + tip.u * tree.wRef, t: clock() });
+  if (trail.length > 4000) trail.splice(0, 1000);
+}
+/** The ink trail drawn: dark and wet at the pen, evaporating behind it. */
+function drawTrail(v: View): void {
+  const now = clock();
+  while (trail.length && now - trail[0].t > EVAPORATE * 3) trail.shift();
+  g.save();
+  g.lineCap = 'round'; g.lineJoin = 'round';
+  // (A smooth curve through the pen's points: from midpoint to midpoint, each point a control.)
+  const P = trail.map((p) => at(v, p.a, p.r));
+  for (let k = 1; k + 1 < trail.length; k++) {
+    const p = trail[k - 1], q = trail[k], r = trail[k + 1];
+    if (Math.abs(p.a - q.a) > 0.5 || Math.abs(q.a - r.a) > 0.5 || r.t - p.t > 0.6) continue;
+    const life = Math.exp(-(now - q.t) / EVAPORATE);
+    if (life < 0.02) continue;
+    const m0x = (P[k - 1][0] + P[k][0]) / 2, m0y = (P[k - 1][1] + P[k][1]) / 2, m1x = (P[k][0] + P[k + 1][0]) / 2, m1y = (P[k][1] + P[k + 1][1]) / 2;
+    g.strokeStyle = `rgba(46,32,26,${(0.82 * life).toFixed(3)})`; g.lineWidth = (1.1 + 1.3 * life) * v.px;
+    g.beginPath(); g.moveTo(m0x, m0y); g.quadraticCurveTo(P[k][0], P[k][1], m1x, m1y); g.stroke();
+  }
+  g.restore();
+}
+
 // ---------------------------------------------------------------- the first lines, one idea at a time
 /** A first line: when it's ready, what it says, when it's done; and whether the ghost finger shows it. */
 type Cue = { ready: () => boolean; say: string; done: (since: number) => boolean; hand?: boolean };
@@ -232,9 +273,9 @@ let cue = 0, cueShown = false, cueSince = 0, firstWound = -1, firstRest = -1;
 const COMPUTER = matchMedia('(hover: hover) and (pointer: fine)').matches;
 const CUES = (): Cue[] => [
   { ready: () => true, hand: true, say: `${COMPUTER ? 'Drag the mouse' : 'Draw with a finger'} round the slice, along the pencil circle, in one unhurried line`, done: () => tree.ring >= 1 },
-  { ready: () => tree.ring >= 1, say: 'Your line is the ring’s edge. Trace the circle as truly as you can; take all the time you like', done: () => tree.ring >= 3 },
+  { ready: () => tree.ring >= 1, say: 'Your line is the ring’s edge. The paper stays wet while you draw: take all the time you like', done: () => tree.ring >= 3 },
   { ready: () => firstRest >= 0, say: 'Rest whenever you like: touch the drop to go on', done: (s) => s > 6 && !tree.resting },
-  { ready: () => firstWound >= 0, say: 'Too close to the bark, and the wood there dies; the rings after it roll over the wound', done: (s) => s > 7 && phase === 'ready' },
+  { ready: () => tree.ring >= 4, say: 'Begin the next ring while the last is damp, and their colours run together; wait, and its edge dries crisp', done: (s) => s > 9 && phase === 'ready' },
 ];
 let cueList: Cue[] = [];
 function cues(): void {
@@ -281,7 +322,8 @@ function heard(n: News): void {
     seen[i] = new Float32Array(ARCS).fill(clock());
     dirty = true;
     enter('drying');
-    closedAt = clock();
+    // (The last of the ring laid on the paper, which begins to dry.)
+    paper.paint(tree); paper.close(tree);
     restAngle = tree.starts[i] + tree.dirs[i] * TAU;
     // A soft tick in the hand as a ring closes (on the iPhone's own engine; in a browser, nothing).
     if (clock() - lastTickAt > 0.3) { lastTickAt = clock(); tick(); if (NATIVE) tap({ strength: 0.24, sharpness: 0.7 }); }
@@ -291,12 +333,11 @@ function heard(n: News): void {
   }
   if (n.kind === 'died') { dirty = true; if (firstWound < 0) firstWound = tree.ring; }
   if (n.kind === 'healed' || n.kind === 'gap' || n.kind === 'crack') dirty = true;
-  if (n.kind === 'fire') { dirty = true; fireAt = clock(); feel([20, 60, 20]); }
+  if (n.kind === 'fire') { dirty = true; fireAt = clock(); feel([20, 60, 20]); if (n.angle !== undefined) paper.fire(tree, n.angle); }
 }
 
 // ---------------------------------------------------------------- the card
 let begun = false, kept: KeptTree | null = null;
-const best = (): { even: number; years: number; met: boolean } | null => { try { return JSON.parse(remembered(`annulus.best.${T.id}`) ?? 'null'); } catch { return null; } };
 function card(): void {
   const b = $('begin');
   (b.querySelector('.numeral') as HTMLElement).textContent = T.numeral;
@@ -305,10 +346,9 @@ function card(): void {
   (b.querySelector('.mood') as HTMLElement).textContent = T.mood;
   (b.querySelector('.fact') as HTMLElement).textContent = T.fact;
   (b.querySelector('.todo') as HTMLElement).textContent = T.todo;
-  (b.querySelector('.aims .first') as HTMLElement).textContent = WANDER ? 'Wander: the tree never dies.' : `Live ${T.years} years: never let a side starve.`;
-  (b.querySelector('.aims .second') as HTMLElement).textContent = WANDER ? 'Fell it when you choose.' : T.second;
-  const bb = best();
-  (b.querySelector('.best') as HTMLElement).textContent = !WANDER && bb ? `your best: ${bb.years} years${bb.met ? `, even to ${bb.even} in a hundred` : ''}` : '';
+  (b.querySelector('.aims .first') as HTMLElement).textContent = 'Nothing can go wrong: the oak grows on as long as you draw.';
+  (b.querySelector('.aims .second') as HTMLElement).textContent = T.second;
+  (b.querySelector('.best') as HTMLElement).textContent = '';
   const goingOn = begun ? tree : kept;
   (b.querySelector('.touch .what') as HTMLElement).textContent = goingOn ? 'Go on' : 'Begin';
   (b.querySelector('.touch small') as HTMLElement).textContent = goingOn ? `year ${begun ? tree.year : (kept!.sim.rings as unknown[]).length * tree.k.yearsPerRing}` : '';
@@ -316,7 +356,6 @@ function card(): void {
   again.hidden = !goingOn;
   again.classList.remove('asking');
   again.textContent = 'plant again';
-  (b.querySelector('[data-foot="wander"]') as HTMLElement).textContent = WANDER ? 'with an aim' : 'wander';
   for (const row of b.querySelectorAll<HTMLElement>('.row')) {
     const on = row.dataset.row === 'ink' ? (WATER ? 'water' : 'ink') : row.dataset.row === 'sound' ? (soundOff() ? 'off' : 'on') : row.dataset.row === 'breath' ? (BREATH ? 'on' : 'off') : (remembered('volcano.haptics') === 'off' ? 'off' : 'on');
     for (const o of row.querySelectorAll<HTMLElement>('button')) o.classList.toggle('on', o.dataset.v === on);
@@ -328,7 +367,7 @@ $('begin').querySelector('.touch')!.addEventListener('click', () => {
   wake();
   if (!begun && kept) {
     const t = treeFrom(kept, RULES);
-    if (t) { tree = t; seed = kept.seed; scale = 0; }
+    if (t) { tree = t; seed = kept.seed; scale = 0; setWarp(); paper.bake(tree); }
     seeAll();
   }
   if (!begun) {
@@ -362,7 +401,8 @@ function plantAgain(): void {
   kept = null;
   seed = 1 + Math.floor(Math.random() * 1e6);
   tree = new TreeSim(seed, RULES);
-  painter = null; strokeView = null; scale = 0; zoom = 1; fireAt = -100; restAngle = Math.PI / 2;
+  painter = null; strokeView = null; scale = 0; zoom = 1; fireAt = -100; restAngle = Math.PI / 2; trail = [];
+  paper.wash.clear(); setWarp();
   cue = 0; cueShown = false; ghostOn = false; firstWound = -1; firstRest = -1; hush();
   enter('ready');
   seeAll();
@@ -372,7 +412,6 @@ function plantAgain(): void {
 }
 $('begin').querySelector('.foot')!.addEventListener('click', (e) => {
   const to = (e.target as HTMLElement).closest('button')?.dataset.foot;
-  if (to === 'wander') { const q = new URLSearchParams(location.search); if (WANDER) q.delete('wander'); else q.set('wander', ''); q.delete('seed'); location.search = q.toString().replace(/wander=(&|$)/, 'wander$1'); }
   if (to === 'xylo') void openXylo();
   if (to === 'settings') { const s = $('begin').querySelector('.settings') as HTMLElement; s.hidden = !s.hidden; }
 });
@@ -389,8 +428,7 @@ let paused = true;
 $('corner').addEventListener('click', () => {
   if (!playing()) return;
   // (A ring part drawn is let go: it's drawn again, from the start, when the tree is taken up.)
-  if (tree.stroke) { tree.cancel(); painter = null; strokeView = null; enter('ready'); }
-  closedAt = -100;
+  if (tree.stroke) { tree.cancel(); painter = null; strokeView = null; enter('ready'); paper.bake(tree); trail = []; }
   pen(0); weatherSound(0, 0, 0); if (NATIVE) rumble(0);
   paused = true; save();
   card();
@@ -418,8 +456,6 @@ function end(): void {
   document.body.classList.add('ended');
   rumble(0); pen(0); weatherSound(0, 0, 0);
   feel([10, 80, 30]);
-  const met = tree.year >= T.years, even = Math.round(100 * tree.evenness), was = best();
-  if (!WANDER) remember(`annulus.best.${T.id}`, JSON.stringify({ years: Math.max(was?.years ?? 0, tree.year), met: met || !!was?.met, even: met ? Math.max(was?.met ? was.even : 0, even) : was?.even ?? 0 }));
   remember('annulus.learned', '1');
   void forgetTree();
   scale = 0; zoom = 1; dirty = true;
@@ -490,15 +526,17 @@ $('xylo').querySelector('.close')!.addEventListener('click', () => $('xylo').cla
 // ---------------------------------------------------------------- each frame
 function goal(): void {
   const even = Math.round(100 * tree.evenness);
-  $('goal').textContent = WANDER ? `Year ${tree.year} · wandering` : tree.year >= T.years ? `${tree.year} years: lived its ${T.years} · even ${even}%${even >= EVEN_AIM ? '' : ` of ${EVEN_AIM}`}` : `Year ${tree.year} of ${T.years} · even ${even}%`;
-  $('finish').classList.toggle('shown', WANDER && playing());
+  void even;
+  $('goal').textContent = `Year ${tree.year}`;
+  $('finish').classList.toggle('shown', playing() && tree.ring > 0);
 }
 let last = performance.now();
 function frameStep(t: number): void {
   const dt = Math.min(0.1, (t - last) / 1000);
   last = t;
   if (playing()) {
-    if (phase === 'drying' && clock() - phaseAt > DRYING) enter('beat');
+    if (phase === 'drying' && clock() - phaseAt > DRYING) { enter('beat'); setWarp(); }
+    if (phase === 'painting') paper.paint(tree);
     if (phase === 'beat' && clock() - phaseAt > BEAT) { enter('ready'); strokeView = null; }
     // The pen on the paper: heard, and on the iPhone felt as a fine texture in the hand while it moves.
     const tip = tree.tip, moving = phase === 'painting' && painter !== null && tip ? Math.min(1, (tip.w * tree.radius * scale) / (420 * px)) : 0;
@@ -518,7 +556,8 @@ function frameStep(t: number): void {
     drawEndFrame();
   }
   // The slice grows into its room between strokes; and a pinch springs back once it's let be.
-  if (phase !== 'painting' && phase !== 'drying') scale += (scaleFor(tree, roomOf(W, H, px, !!ending).room, px) - scale) * Math.min(1, dt * 3);
+  if (WATER) paper.step(dt);
+  if (phase !== 'painting' && phase !== 'drying' && warpNow) scale += (scaleFor(tree, roomOf(W, H, px, !!ending).room, px, warpNow) - scale) * Math.min(1, dt * 3);
   if (!pinch && zoom > 1 && clock() - zoomedAt > 4 && phase !== 'painting' && phase !== 'drying') { zoom = 1 + (zoom - 1) * Math.exp(-dt * 3); if (zoom < 1.003) zoom = 1; lastMoved = clock(); }
   draw(dt);
   requestAnimationFrame(frameStep);
@@ -568,11 +607,16 @@ function draw(dt: number): void {
     g.save();
     g.translate(sv.cx, sv.cy); g.scale(sv.s / cacheView.s, sv.s / cacheView.s); g.translate(-cacheView.cx, -cacheView.cy);
     g.drawImage(cache, 0, 0);
+    g.restore();
+  }
+  // The paper, and its paint (watercolour), then the marks and the bark over it.
+  if (WATER) { paper.draw(g, sv); drawMarks(g, tree, sv); }
+  if (cacheView) {
+    g.save();
+    g.translate(sv.cx, sv.cy); g.scale(sv.s / cacheView.s, sv.s / cacheView.s); g.translate(-cacheView.cx, -cacheView.cy);
     g.globalAlpha = bark; g.drawImage(barkCache, 0, 0);
     g.restore();
   }
-  // The ring just laid, still damp in watercolour: dark wet ink, drying over a few seconds into its wash.
-  if (WATER && playing() && tree.ring > 0 && phase !== 'drying') drawDamp(g, tree, sv, tree.ring - 1, 1 - smooth((clock() - closedAt) / DAMP));
   for (const f of fresh) inkArc(g, tree, sv, f.i, (f.c / ARCS) * TAU, ((f.c + 1) / ARCS) * TAU);
   if (inking) inkArc(g, tree, sv, inking.i, (inking.c / ARCS) * TAU, ((inking.c + Math.min(1, inking.t / inking.dur)) / ARCS) * TAU);
   const band = wet ? strokeBand : bandOf(tree, v);
@@ -581,8 +625,9 @@ function draw(dt: number): void {
     const breath = BREATH ? 0.72 + 0.28 * Math.cos((clock() * TAU) / BREATHE) : 1;
     const beat = phase === 'beat' ? smooth((clock() - phaseAt) / BEAT) : 0;
     drawGuide(g, tree, sv, band, (phase === 'ready' ? 1 : phase === 'painting' ? 0.6 : beat) * breath);
-    if (phase === 'painting') drawWet(g, tree, sv, band, WATER);
-    if (phase === 'drying') drawWet(g, tree, sv, band, WATER, { dry: smooth((clock() - phaseAt) / DRYING), from: tree.rings.length - 1 });
+    if (phase === 'painting' && !WATER) drawWet(g, tree, sv, band, false);
+    if (phase === 'drying' && !WATER) drawWet(g, tree, sv, band, false, { dry: smooth((clock() - phaseAt) / DRYING), from: tree.rings.length - 1 });
+    if (WATER) drawTrail(sv);
     const tip = tree.tip;
     if (phase === 'painting' && tip) {
       const p = pointerAt(tree, sv, band, tip.a, tip.u), rest = tree.resting ? 0.85 + 0.15 * Math.sin(clock() * 1.3) : 1;
@@ -600,6 +645,16 @@ function drawEnding(v: View): void {
   const t = lapsed(), n = tree.rings.length, f = Math.min(1, t / LAPSE), upto = Math.min(n, Math.ceil(f * n));
   if (!cacheView || cacheUpto !== upto || dirty || Math.abs(cacheView.s - v.s) > 1e-6) renderCache(v, upto);
   g.drawImage(cache, 0, 0);
+  if (WATER && upto > 0) {
+    // (The paint revealed ring by ring, as the little tree grows.)
+    g.save();
+    g.beginPath();
+    for (let j = 0; j <= K; j++) { const a = (j / K) * TAU, [x, y] = at(v, a, radiusAt(tree.rings[upto - 1], a)); if (j) g.lineTo(x, y); else g.moveTo(x, y); }
+    g.clip();
+    paper.draw(g, v);
+    g.restore();
+    drawMarks(g, tree, v, upto);
+  }
   g.drawImage(barkCache, 0, 0);
   if (!ending!.plate) drawHabit(g, habitBox(), sceneLapse(f, upto - 1));
   if (WATER) drawPaper(g, W, H);
@@ -631,7 +686,7 @@ fit();
 card();
 void (async () => {
   const grow = Number(ASKED.get('grow'));
-  if (grow > 0) growFirst(grow);
+  if (grow > 0) { growFirst(grow); setWarp(); paper.bake(tree); }
   else if (!wanted) {
     const k = await recallTree();
     if (k && k.tree === T.id && !!k.wander === WANDER && k.sim && Array.isArray(k.sim.ringEven)) { kept = k; card(); }
