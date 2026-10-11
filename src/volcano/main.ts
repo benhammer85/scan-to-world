@@ -40,6 +40,7 @@ import { AGES, ageBefore, ageKey, carried } from './ages';
 import { aged, atollPlaces, atollState, defaultChain, tendCoral, ATOLLS } from './atolls';
 import { dried, warpField, DRYING } from './drying';
 import { melted } from './giant';
+import { drawStory, storyOf } from './story';
 import { FineSurface } from './fine';
 import { Ecology, KINDS } from './ecology';
 import { Islands } from './islands';
@@ -3005,6 +3006,8 @@ function drawEnding(): void {
     if (NATIVE || window.self === window.top) $('keep').classList.add('shown');
     // (Play again, beside it: the tap goes on to the next world, and the menu is hidden on the plate, so this was the only way back.)
     $('replay').classList.add('shown');
+    // (The end of the world: your Earth, through all its ages.)
+    if (WORLD.goal === 'giant') $('earth').classList.add('shown');
   }
 }
 /**
@@ -3163,6 +3166,19 @@ $('replay').addEventListener('click', (e) => {
   document.body.classList.add('leaving');
   void forget().then(() => setTimeout(() => { location.search = `?world=${WORLD.id}${FREE ? '&free' : ''}`; }, 400));
 });
+// Your Earth (see story.ts): every age of Chapter II's one world, as you left it, oldest first.
+$('earth').addEventListener('pointerdown', (e) => e.stopPropagation());
+$('earth').addEventListener('click', (e) => {
+  e.stopPropagation();
+  const i = ending?.info, now = i ? { world: WORLD.id, numeral: WORLD.numeral, title: i.title, subtitle: i.subtitle, summary: i.summary, when: Date.now(), image: '', portrait: portrait || undefined } : undefined;
+  void pages().then((all) => {
+    drawStory($('story').querySelector('ol') as HTMLElement, storyOf(all, now), (id) => worldOf(id).title);
+    $('story').hidden = false;
+    requestAnimationFrame(() => $('story').classList.add('open'));
+  });
+});
+$('story').addEventListener('pointerdown', (e) => e.stopPropagation());
+$('story').querySelector('.close')!.addEventListener('click', () => { $('story').classList.remove('open'); setTimeout(() => { $('story').hidden = true; }, 800); });
 $('keep').addEventListener('click', () => {
   void keepImage(plate(), `warm-to-the-touch-${WORLD.id}-${seed}`);
 });

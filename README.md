@@ -736,3 +736,5 @@ Bursting in the night builds much faster than pouring. With the first aim (just 
 * Pouring without turning the world back loses.
 
 Hydra now has nine stars, one for each world in Chapter II.
+
+**Your Earth.** When the Red Giant is done, *your Earth* sits beside *play again* under its chart. It opens one quiet page (`story.ts`): Chapter II's one world through its ages, oldest at the top, joined by a dotted line. Each age shows the small round picture of the world kept with its chart, when it was ("4.6 billion years ago", "Today", "Five billion years from now"), its name, and the line of what you made there. An age not played yet is an empty dashed ring. The Red Giant now uses the Drying Seas' own colours, so before Begin its world is the one the Drying Seas left; the giant's red is its light, the molten day and the Sun, not a different paper.

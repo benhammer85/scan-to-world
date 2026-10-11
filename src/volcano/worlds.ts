@@ -460,9 +460,11 @@ export const WORLDS: World[] = [
       melt: 0.01, meltFloor: 0.01, nightShrink: -0.75, impactEvery: [0, 0],
     }, // (the vent stays where it is on the ground: the world is turned to keep it in the night)
     palette: {
-      paper: '#ecd2b4', basalt: '#8c6e5c', ash: '#c2a592', lava: '#c4532f', deepLava: '#933a24',
-      shallow: '#e3c9b0', deep: '#d4b49a',
-      landInk: '#5e3a26', landInkHigh: '#3f2416', pencil: '#c4a084', seaInk: '#8a5a44',
+      // (The drying seas' own colours, so the world before the ages under the giant is the world that was left: the
+      // giant's red is its light, the day glowing molten, not a different paper.)
+      paper: '#efdcb8', basalt: '#a08a70', ash: '#b9ad9c', lava: '#c4532f', deepLava: '#933a24',
+      shallow: '#d9e2d4', deep: '#aec3c6',
+      landInk: '#6e4a2a', landInkHigh: '#4a2f1c', pencil: '#bda684', seaInk: '#5a8592',
     },
     goal: 'giant',
     height: { target: 12, kmPerUnit: 40 },

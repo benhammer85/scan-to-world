@@ -193,7 +193,25 @@
       #finish.shown { opacity: 0.74; pointer-events: auto; }
       #endlinks { position: fixed; bottom: calc(18px + env(safe-area-inset-bottom)); left: 0; right: 0; display: flex; justify-content: center; gap: 22px; pointer-events: none; }
       #keep, #replay { font: 12px "Newsreader", "Iowan Old Style", Georgia, serif; color: #2e2118; background: none; border: none; opacity: 0; pointer-events: none; transition: opacity 2s; cursor: pointer; padding: 8px 6px; min-height: 44px; }
-      #keep.shown, #replay.shown { opacity: 0.76; pointer-events: auto; }
+      #keep.shown, #replay.shown, #earth.shown { opacity: 0.76; pointer-events: auto; }
+      #earth { font: 12px "Newsreader", "Iowan Old Style", Georgia, serif; color: #2e2118; background: none; border: none; opacity: 0; pointer-events: none; transition: opacity 2s; cursor: pointer; padding: 8px 6px; min-height: 44px; }
+      #story { position: fixed; inset: 0; z-index: 60; background: #f4efe4; overflow-y: auto; padding: calc(48px + env(safe-area-inset-top)) 24px calc(40px + env(safe-area-inset-bottom)); color: #2e2118; opacity: 0; transition: opacity 0.8s ease; }
+      #story.open { opacity: 1; }
+      #story header { text-align: center; margin-bottom: 30px; }
+      #story h2 { font: 400 28px "Newsreader", "Iowan Old Style", Georgia, serif; margin: 0 0 8px; letter-spacing: 0.01em; }
+      #story header p { font: italic 15px "Newsreader", "Iowan Old Style", Georgia, serif; opacity: 0.7; margin: 0; text-wrap: balance; }
+      #story ol { list-style: none; margin: 0 auto; padding: 0; max-width: 420px; display: flex; flex-direction: column; gap: 0; }
+      #story li { display: flex; align-items: center; gap: 18px; position: relative; padding: 10px 0; }
+      #story li + li::before { content: ''; position: absolute; left: 41px; top: -10px; height: 20px; border-left: 1px dotted rgba(46, 33, 24, 0.35); }
+      #story .pic { width: 84px; height: 84px; flex: none; border-radius: 50%; overflow: hidden; }
+      #story .pic img { width: 100%; height: 100%; display: block; }
+      #story .pic.empty { border: 1px dashed rgba(46, 33, 24, 0.35); box-sizing: border-box; }
+      #story .words { display: flex; flex-direction: column; gap: 3px; min-width: 0; font-family: "Newsreader", "Iowan Old Style", Georgia, serif; }
+      #story .when { font-size: 12px; letter-spacing: 0.06em; opacity: 0.6; font-variant-numeric: tabular-nums; }
+      #story .words b { font-weight: 400; font-size: 18px; }
+      #story .said { font-size: 14px; line-height: 1.4; opacity: 0.78; }
+      #story li.missing .words { opacity: 0.5; }
+      #story .close { display: block; margin: 30px auto 0; font: 14px "Newsreader", "Iowan Old Style", Georgia, serif; color: #2e2118; background: none; border: none; opacity: 0.76; padding: 10px 16px; min-height: 44px; cursor: pointer; }
       #retry { position: fixed; top: calc(140px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); font: 12px "Newsreader", "Iowan Old Style", Georgia, serif; color: #2e2118; background: none; border: none; border-bottom: 1px solid rgba(46,33,24,0.35); opacity: 0; pointer-events: none; transition: opacity 2s; cursor: pointer; padding: 4px 2px; white-space: nowrap; }
       #retry.shown { opacity: 0.75; pointer-events: auto; }
       /* The worlds, in a corner off the world: back to the card that lists them. */
@@ -214,7 +232,12 @@
     <div id="legend" class="engraved"></div>
     <div id="ghost" aria-hidden="true"><div class="mv"><i class="ring"></i><i class="dot"></i></div></div>
     <p id="again" class="engraved">tap to play again</p>
-    <div id="endlinks"><button id="replay">play again</button><button id="keep">save picture</button></div>
+    <div id="endlinks"><button id="replay">play again</button><button id="keep">save picture</button><button id="earth">your Earth</button></div>
+    <div id="story" hidden role="dialog" aria-label="Your Earth">
+      <header><h2>Your Earth</h2><p>One world, through four and a half billion years, as you left it</p></header>
+      <ol></ol>
+      <button class="close">close</button>
+    </div>
     <button id="retry">rewind 1 minute</button>
     <button id="finish">end game</button>
     <button id="worlds" aria-label="Menu"></button>
