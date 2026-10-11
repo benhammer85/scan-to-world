@@ -764,3 +764,33 @@ A frame now takes 0.9 ms. The bots win and lose the first world as before.
 * The tip says so, and the warning says "pour lava where it will land".
 
 Choosing whether a fall was icy afresh at each try at a landing place had also let stones win nearly every time, once comets' ring was narrower; it's now chosen once. Balance: the card's way and the skilled bot win every fire (4 to 6 minutes); aimless play made 3 or 4 of the 5 waters, and once all 5.
+
+**Every world, made plainer.** Each world was checked for three things: does it say plainly what to do, does something on screen show it working, and is a failure explained when it happens. What was fixed:
+* **The explanations are said.** In watercolour, the way the game is drawn by default, only a handful of lines were let through. Nearly every world's own word on what had just happened was kept quiet: a crack too late, a comet frozen, a burst not at high tide, the far side rising, a dome too close, the summit falling in. Those lines (`EXPLAIN`) are now said in every way of drawing.
+* **A false message gone.** "That lava ran outside the craters" was checked on every world without its own map marks, where every pour counted as spilt. It's now checked only on the Moon.
+* **The first world's gold.** A stone's circle turned gold by the ring's first size, not as it grows. It now uses the grown ring. A new line says the ring widens as lava is let out.
+* **The circle tells the truth.** On Hunga Tonga it closes only when the volcano's top is just under the sea, and on Snowball Earth only once the volcano stands open of the ice. On the Drying Seas, whose tip spoke of it, there was no circle at all; now there is.
+* **Warnings.** The Drying Seas say when the sea is nearly gone. The Red Giant says when the volcano is in daylight.
+* **Misses that point the right way.** A missed dark stone on the comets world no longer speaks of a gold ring it doesn't have. A dome or mound too close to another, and a streak too close to an earlier one, now say so.
+* **Words matching the rules:**
+  * The Moon: cover each crater's floor.
+  * The asteroid: fill the low ground.
+  * The tumbling moon: calm it, then keep it calm 30 seconds.
+  * Ocean world: the line runs out in about two and a half minutes.
+  * Io: start outside the dotted circles.
+  * Glass world: let blobs grow big.
+  * Deep ocean: the same way again and again, without long rests.
+  * Young Earth: wait past the circle closing.
+  * Rogue planet: life grows along your lava's edges.
+  * Snowball Earth: the warmth fades.
+  * Ol Doinyo Lengai: pour to the height, then stop.
+  * Kawah Ijen: long wide streams, lit 45 seconds.
+  * Hunga Tonga: each wave blows the top off.
+  * Mercury: wait past the circle for a bigger rise.
+  * Comets: turn the circle below the volcano and pour.
+  * Atolls: you needn't pour.
+  * Drying Seas: pouring into the sea turns it to land.
+  * Io's Two Lavas: keep the colours even.
+  * Pluto: two seconds at a time.
+  * Venus: outside the inked circles.
+  * Hollow world: rest when cracks ring the volcano.

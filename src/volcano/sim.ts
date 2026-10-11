@@ -1636,7 +1636,7 @@ export class Planet {
     this.reserve += this.k.impactHeat * (1 + (this.k.caught - 1) * caught);
     this.tally.stones++;
     if (caught > 0.5) { this.tally.caught++; this.tell('Stone caught: more heat'); }
-    else if (this.k.impactNear > 0) this.tell('Missed: catch stones inside the gold ring'); // (where catching them is the aim, a miss is said too)
+    else if (this.k.impactNear > 0) this.tell(this.k.icy > 0 ? 'Missed: turn the volcano under the next dark stone' : 'Missed: catch stones inside the gold ring'); // (where catching them is the aim, a miss is said too)
   }
 
   /** The share of the world that is land (above the sea). */
@@ -1882,7 +1882,7 @@ export class Planet {
     const q = this.plume, apart = Math.cos(this.k.plumesApart), quiet = this.seconds - this.domeTold < 20;
     if (this.plumes.some((o) => o.x * q.x + o.y * q.y + o.z * q.z > apart)) return; // (the one it's on, or too near one: said once, below)
     if (this.offRing > this.k.domeBand) { if (!quiet) { this.domeTold = this.seconds; this.tell('A mound, but not on the dotted circle'); } return; }
-    this.counted(this.k.plumesApart, this.domeCentre ? 'A mound on the dotted circle' : 'A lava dome', '');
+    this.counted(this.k.plumesApart, this.domeCentre ? 'A mound on the dotted circle' : 'A lava dome', this.domeCentre ? 'A mound, but too close to another: start the next further round' : 'A dome, but too close to another: move outside its circle');
   }
 
   /** Triton: a geyser's plume, blown downwind into a long dark streak. */
@@ -1901,7 +1901,7 @@ export class Planet {
     }
     if (!(sum > 0)) return;
     for (let v = 0; v < n; v++) if (w[v]) { const add = (volume * w[v]) / sum; this.rock[v] += add * 0.3; this.ash[v] = Math.min(0.8, this.ash[v] + add * 45); }
-    this.counted(len, 'A dark streak', 'A streak, but it crosses another: move further away');
+    this.counted(len, 'A dark streak', 'A streak, but too close to an earlier one: move further away');
   }
 
   private greatPlume(reach: number): void {
@@ -2450,7 +2450,7 @@ export class Planet {
       const d = Math.hypot(p[v * 3] - this.plume.x, p[v * 3 + 1] - this.plume.y, p[v * 3 + 2] - this.plume.z);
       if (d < 0.08) continue; // not on the vent itself
       // (An icy comet falls nearer the volcano than a stone may, where lava can be poured out to meet it.)
-      if (this.k.impactNear > 0) { const icy = icyNext; if (d > 0.2 && d < (icy ? this.k.iceNear : this.k.impactNear)) { this.impact = { vertex: v, in: this.k.impactWarning, icy }; this.tell(icy ? 'An icy comet is coming: pour lava where it will land' : 'A stone is coming'); return; } continue; }
+      if (this.k.impactNear > 0) { const icy = icyNext; if (d > 0.2 && d < (icy ? this.k.iceNear : this.k.impactNear)) { this.impact = { vertex: v, in: this.k.impactWarning, icy }; this.tell(icy ? 'An icy comet is coming: turn its circle to just below the volcano, and pour' : 'A stone is coming'); return; } continue; }
       if (this.rand() < 0.5 || d < 0.5) { this.impact = { vertex: v, in: this.k.impactWarning, icy: this.rand() < this.k.icy }; this.tell(this.impact.icy ? 'An icy comet is coming' : 'A stone is coming'); return; }
     }
   }
