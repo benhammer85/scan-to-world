@@ -1,5 +1,5 @@
 /**
- * The plate: the finished slice set out as a botanical engraver's plate. A double rule round it, the
+ * The plate (Well Rounded's keepsake): the finished slice set out as a botanical engraver's plate. A double rule round it, the
  * plate's number, the tree's Latin and common names, the slice itself as large as the plate allows
  * (Fig. 1, a transverse section of the trunk) with a scale, and beside what the wood records, the
  * whole tree on its hill as it stood (Fig. 2, its habit), as a plate sets a small drawing of the
@@ -45,7 +45,7 @@ export function drawPlate(tree: TreeSim, T: Tree, water: boolean): HTMLCanvasEle
   g.lineWidth = 1; g.strokeRect(48, 48, W - 96, H - 96);
   g.textAlign = 'center'; g.fillStyle = FAINT;
   g.font = `20px ${SERIF}`;
-  g.fillText(`PLATE ${T.numeral}.`.split('').join(String.fromCharCode(8202)), W / 2, 104);
+  g.fillText(`WELL ROUNDED.   PLATE ${T.numeral}.`.split('').join(String.fromCharCode(8202)), W / 2, 104);
   g.fillStyle = INK; g.font = `italic 56px ${SERIF}`;
   g.fillText(T.latin, W / 2, 172);
   const rec = recordOf(tree, T);

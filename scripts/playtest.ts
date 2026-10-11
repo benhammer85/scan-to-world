@@ -14,17 +14,19 @@ import { Planet } from '../src/volcano/sim';
 import { Ecology } from '../src/volcano/ecology';
 import { Chain, CHAIN } from '../src/volcano/chain';
 import { worldOf } from '../src/volcano/worlds';
-import { TreeSim, WIND, DROUGHT, RAIN, FROST } from '../src/rings/tree';
+import { TreeSim, WIND, DROUGHT, RAIN } from '../src/rings/tree';
 import { TREES, treeOf, EVEN_AIM } from '../src/rings/trees';
-import { bandOf, brushAt, pointerAt, viewFor } from '../src/rings/hand';
+import { bandOf, brushAt, pointerAt, radiusAt, viewFor } from '../src/rings/hand';
 
-// Annulus's trees are painted by their own bots (see paintTree, at the foot), stroke by stroke, with
+// Well Rounded's trees are drawn by their own bots (see paintTree, at the foot), stroke by stroke, with
 // pointer positions over time through the game's own hand (hand.ts):
 //   npx vite-node scripts/playtest.ts oak <bot> [seed]     one life, as JSON
 //   npx vite-node scripts/playtest.ts oak table [seeds]    every bot on seeds 1 to 8 (or as many), as a table
-// bots: careless (fast, wobbly, lifts before the circle closes), steady (follows the card: a steady
-// pace, round and closed), skilled (reads the thin side and slows there, holds the line against the
-// wind, leans on the sun's side, paints generously before a signalled dry spell), idle (never paints).
+// bots: careless (hurried, a shaky hand, the line placed by eye and too near the bark), steady
+// (follows the card: traces the pencil circle at an unhurried pace, resting now and then), skilled
+// (traces it with a steadier hand, holding the line against the sun and the wind and the rain's bleed,
+// drawing inside the circle in a drought, thicker on the uphill side before a fire), slow (as steady,
+// but very slow and resting often: slowness must never be punished), idle (never draws).
 if (TREES.some((t) => t.id === process.argv[2])) {
   if (process.argv[3] === 'table') paintTable(process.argv[2], Number(process.argv[4] ?? 8));
   else console.log(JSON.stringify(paintTree(process.argv[2], process.argv[3] ?? 'steady', Number(process.argv[4] ?? 5))));
@@ -359,95 +361,113 @@ const [d, of] = aim();
 longestStill = Math.max(longestStill, t - lastGain);
 console.log(JSON.stringify({ world: worldId, bot: botKind, seed, won: wonAt >= 0, at: Math.round(t), over: pl.over, done: Math.round((100 * d) / Math.max(1e-9, of)), heatLeft: Math.round(100 * pl.heatLeft), firstGain: Math.round(firstGain), longestStill: Math.round(longestStill), bursts: pl.tally.bursts, flows: pl.tally.flows, blewApart: pl.tally.calderas, trace: trace.join(' ') }));
 
-// ---------------------------------------------------------------- Annulus
+// ---------------------------------------------------------------- Well Rounded
 /**
- * A tree painted to its fall, ring by ring, with a player's hand on a phone's screen (390 × 844):
- * each stroke a run of pointer positions, 60 a second, through hand.ts as the game takes them, with
- * noise for how steady the hand is (a slow wander of the finger, in CSS pixels). Between strokes,
- * the game's beat and a moment to react, so the seconds are a player's. What a bot sees is what the
- * screen shows: the mark under its finger, the slice, and the habit drawing's coming weather.
+ * A tree drawn to its fall, ring by ring, with a player's hand on a phone's screen (390 × 844): each
+ * stroke a run of pointer positions at irregular intervals (8 to 33 ms, with now and then a longer
+ * hitch, as real pointer events come), through hand.ts as the game takes them, with noise for how
+ * steady the hand is (a slow wander of the finger, in CSS pixels, and a fine tremor). Between strokes,
+ * the game's calm beat and a moment to react, so the seconds are a player's. What a bot sees is what
+ * the screen shows: the pencil circle, its line, the drop, and the habit drawing's coming weather.
  */
-type Painter = 'careless' | 'steady' | 'skilled' | 'idle';
+type Painter = 'careless' | 'steady' | 'skilled' | 'slow' | 'idle';
 /** (Functions, not constants: this part runs before the module's constants are set, see the top.) */
-function painters(): Painter[] { return ['careless', 'steady', 'skilled', 'idle']; }
-/** The beat between strokes, as the game has it (seconds: the drying and the turn of the year). */
-function beat(): number { return 1.3; }
+function painters(): Painter[] { return ['careless', 'steady', 'skilled', 'slow', 'idle']; }
+/** The beat between strokes, as the game has it (seconds: the drying and the calm turn of the year). */
+function beat(): number { return 0.6 + 1.3; }
 
 export function paintTree(id: string, kind: string, seed: number) {
   const T = treeOf(id), tree = new TreeSim(seed, { ...T.rules, ...JSON.parse(process.env.RULES ?? '{}') });
-  const px = 3, W = 390 * px, H = 844 * px, TAU = Math.PI * 2, dt = 1 / 60;
+  const px = 3, W = 390 * px, H = 844 * px, TAU = Math.PI * 2;
   let r = (seed * 7919 + kind.length * 104729) % 233280;
   const rand = () => { r = (r * 9301 + 49297) % 233280; return r / 233280; };
   const gauss = () => Math.sqrt(-2 * Math.log(Math.max(1e-9, rand()))) * Math.cos(TAU * rand());
-  /** How far the finger wanders (CSS px) and how quickly; how long to react before each stroke. */
-  const hand = { careless: { wander: 9, react: 0.4 }, steady: { wander: 3.2, react: 0.8 }, skilled: { wander: 1.3, react: 1.2 }, idle: { wander: 0, react: 0 } }[kind as Painter] ?? { wander: 3.2, react: 0.8 };
-  let clock = 0, wonAt = -1, died = 0, gaps = 0;
+  /** How far the finger wanders (CSS px), seconds once round, how long to react, how often it rests mid-ring. */
+  const hands: Record<Painter, { wander: number; round: [number, number]; react: number; rests: number }> = {
+    careless: { wander: 6.5, round: [2.2, 3.4], react: 0.3, rests: 0 },
+    steady: { wander: 3, round: [3.4, 5], react: 0.8, rests: 0.12 },
+    skilled: { wander: 1.5, round: [3.8, 5.5], react: 1.1, rests: 0.08 },
+    slow: { wander: 3, round: [9, 14], react: 2, rests: 0.6 },
+    idle: { wander: 0, round: [1, 1], react: 0, rests: 0 },
+  };
+  const hand = hands[kind as Painter] ?? hands.steady;
+  let clock = 0, wonAt = -1, died = 0, rested = 0;
   const diedBy: Record<number, number> = {};
   const trace: string[] = [];
   if (kind === 'idle') {
-    // (Nothing is painted, so nothing grows: the game waits for the brush, and the tree for its spring.)
-    return { tree: id, bot: kind, seed, won: false, even: false, lived: 0, minutes: 0, cause: 'waits', evenness: 0, died: 0, gaps: 0, cracks: 0, fires: 0, trace: '' };
+    // (Nothing is drawn, so nothing grows: the game waits for the pen, and the tree for its spring.)
+    return { tree: id, bot: kind, seed, won: false, even: false, lived: 0, minutes: 0, cause: 'waits', evenness: 0, died: 0, rested: 0, fires: 0, firstFall: null, trace: '' };
   }
-  while (!tree.over && clock < 1800) {
+  while (!tree.over && clock < 3600) {
     clock += beat() + hand.react;
-    const v = viewFor(tree, W, H, px), band = bandOf(tree, v), steady = TAU / tree.strokeSeconds, sun = tree.k.sun;
-    const w = tree.weatherNow, wind = tree.windOf(), next = tree.weatherOf(tree.ring + 1);
-    const sunF = (a: number) => 1 + sun * Math.cos(a - tree.k.sunAngle);
-    let wob = 0, a = rand() * TAU, t = clock, swept = 0, seen = 1;
-    const dir = rand() < 0.5 ? 1 : -1;
-    const stopAt = kind === 'careless' ? TAU * (0.8 + 0.25 * rand()) : TAU * 1.4;
-    // Where the bot means the brush to be: on the bark; skilled, held against the wind it sees pushing.
-    const meant = (a: number, ts: number) => {
-      if (kind !== 'skilled' || w !== WIND) return 0;
-      const g = Math.min(1, ts / 0.7);
-      return -tree.k.wind * g * g * (3 - 2 * g) * Math.cos(a - wind);
+    const v = viewFor(tree, W, H, px), band = bandOf(tree, v), gu = tree.guide(), k = tree.k;
+    const w = tree.weatherNow, wind = tree.windOf(), fireNext = tree.fireBefore(tree.ring + 1);
+    const round = hand.round[0] + (hand.round[1] - hand.round[0]) * rand(), pace = TAU / round;
+    let mean = 0;
+    for (let i = 0; i < gu.length; i++) mean += gu[i] / gu.length;
+    // Where the bot means the line to be, at angle a.
+    const careless = 0.4 + 0.45 * rand();
+    const meant = (a: number) => {
+      const g = radiusAt(gu, a);
+      if (kind === 'careless') return g * careless; // (by eye, hurried: near the bark)
+      if (kind !== 'skilled') return g;
+      // Skilled: the circle, less the pushes it can see coming (the sun, the wind, the rain's bleed),
+      // inside it in a drought (as far as the wood allows, evenly), thicker uphill before a fire.
+      let u = g - k.sun * Math.cos(a - k.sunAngle);
+      if (w === WIND) u -= k.wind * Math.cos(a - wind);
+      if (w === RAIN) u -= k.rainBleed * 0.85;
+      if (w === DROUGHT || tree.capacity < mean) u *= Math.min(1, (tree.capacity * 0.97) / mean);
+      if (fireNext) u += 0.45 * Math.max(0, Math.cos(a - k.uphill)) ** 2;
+      return u;
     };
-    const touch = (a: number, ts: number) => {
-      const p = pointerAt(tree, v, band, a, meant(a, ts)), sigma = hand.wander * px;
-      wob += -wob * dt / 0.22 + sigma * Math.sqrt((2 * dt) / 0.22) * gauss();
-      return brushAt(tree, v, band, p.x + Math.cos(a) * wob, p.y - Math.sin(a) * wob);
+    let wob = 0, a = rand() * TAU, t = clock, swept = 0, restAt = rand() < hand.rests ? TAU * (0.2 + 0.6 * rand()) : -1;
+    const dir = rand() < 0.5 ? 1 : -1, slowWave = rand() * TAU;
+    const touch = (a: number, dt: number) => {
+      wob += -wob * dt / 0.3 + hand.wander * px * Math.sqrt((2 * dt) / 0.3) * gauss();
+      const p = pointerAt(tree, v, band, a, meant(a)), q = wob + 0.4 * px * gauss();
+      return brushAt(tree, v, band, p.x + Math.cos(a) * q, p.y - Math.sin(a) * q);
     };
-    const b0 = touch(a, 0);
+    const b0 = touch(a, 0.016);
     tree.begin(t, b0.a, b0.u);
     while (tree.stroke) {
-      let omega: number;
-      if (kind === 'careless') omega = steady * (1.7 + 0.6 * rand());
-      else if (kind === 'steady') {
-        // A steady pace; only when the brush's drop is plainly running low for the way left, quicker.
-        const left = tree.inkLeft * tree.capacity, rest = Math.max(0.05, 1 - swept / TAU);
-        omega = steady * 1.05 * Math.min(2.5, Math.max(1, 0.9 / (left / rest)));
-      }
-      else {
-        // The width the ink left can keep up all the way round, a little held back; never under the
-        // least the wood needs, if the ink allows. Before a dry spell, a fire or a frost, spend it all.
-        const left = tree.inkLeft * tree.capacity, rest = Math.max(0.05, 1 - swept / TAU);
-        const spend = next === DROUGHT || next === FROST || tree.fireBefore(tree.ring + 1) || w === RAIN ? 1 : 0.96;
-        const want = Math.max(Math.min(tree.uMin * 1.5, left / rest), (left / rest) * spend);
-        // Slow where the mark comes out thin (the shaded side, a dry streak), quick where it's wide.
-        omega = (steady * sunF(a) * seen) / want;
-      }
+      // Irregular pointer events, and now and then a hitch (the finger catching, the event loop busy).
+      const dt = rand() < 0.04 ? 0.06 + 0.1 * rand() : 0.008 + 0.025 * rand();
+      const omega = pace * (1 + 0.18 * Math.sin(swept * 1.7 + slowWave)) * (rand() < 0.04 ? 0 : 1);
       a += dir * omega * dt; swept += omega * dt; t += dt;
-      const b = touch(a, t - clock);
+      const b = touch(a, dt);
       tree.move(t, b.a, b.u);
-      // (What it sees: how the mark is coming out against what it meant, a moment late.)
-      const tip = tree.tip;
-      if (tip && kind === 'skilled') seen += (Math.max(0.4, Math.min(1.3, tip.h / ((steady * sunF(a)) / omega))) - seen) * 0.08;
-      if (swept >= stopAt) tree.lift();
+      if (restAt > 0 && swept >= restAt && tree.stroke) {
+        // A rest: the finger lifts, a breath or two, and comes back to the drop.
+        restAt = -1; rested++;
+        tree.lift();
+        t += 1 + 3 * rand();
+        const back = touch(a, 0.016);
+        tree.begin(t, back.a, back.u);
+      }
     }
     clock = t;
-    for (const n of tree.news) { if (n.kind === 'died') { died += n.count ?? 0; diedBy[w] = (diedBy[w] ?? 0) + (n.count ?? 0); } if (n.kind === 'gap') gaps++; }
+    for (const n of tree.news) if (n.kind === 'died') { died += n.count ?? 0; diedBy[w] = (diedBy[w] ?? 0) + (n.count ?? 0); }
     tree.news.length = 0;
     if (wonAt < 0 && tree.year >= T.years) wonAt = clock;
     if (tree.ring % 10 === 0) trace.push(`${Math.round(clock)}s:${tree.year}y:${Math.round(100 * tree.living)}l:${Math.round(100 * tree.vigour)}v:${Math.round(100 * tree.evenness)}e`);
   }
-  const evenness = Math.round(100 * tree.evenness);
+  const evenness = Math.round(100 * tree.evenness), yearsEven = Math.round(100 * evenUpTo(tree, T.years));
   // (WHY=1: how even each weather's rings came out, and how much wood died in each, to stderr.)
   if (process.env.WHY) {
     const by: Record<number, number[]> = {};
     tree.ringWeather.forEach((w, i) => (by[w] ??= []).push(tree.ringEven[i]));
     console.error(`died by weather ${JSON.stringify(diedBy)}; even by weather ${Object.entries(by).map(([w, e]) => `${w}:${(e.reduce((a, b) => a + b, 0) / e.length).toFixed(2)}×${e.length}`).join(' ')}`);
   }
-  return { tree: id, bot: kind, seed, won: wonAt >= 0, even: wonAt >= 0 && evenness >= EVEN_AIM, at: wonAt < 0 ? null : +(wonAt / 60).toFixed(1), lived: tree.year, minutes: +(clock / 60).toFixed(1), cause: tree.cause, evenness, died, gaps, cracks: tree.cracks.length, fires: tree.scars.length, trace: trace.join(' ') };
+  return { tree: id, bot: kind, seed, won: wonAt >= 0, even: wonAt >= 0 && yearsEven >= EVEN_AIM, at: wonAt < 0 ? null : +(wonAt / 60).toFixed(1), lived: tree.year, minutes: +(clock / 60).toFixed(1), cause: tree.cause, evenness: yearsEven, evenAll: evenness, died, rested, fires: tree.scars.length, trace: trace.join(' ') };
+}
+
+/** How even the slice was when it reached its years (the aim is judged there, as the card says). */
+function evenUpTo(tree: TreeSim, years: number): number {
+  const n = Math.min(tree.ringEven.length, Math.round(years / tree.k.yearsPerRing));
+  if (!n) return 1;
+  let s = 0;
+  for (let i = 0; i < n; i++) s += tree.ringEven[i];
+  return s / n;
 }
 
 function paintTable(id: string, seeds: number): void {

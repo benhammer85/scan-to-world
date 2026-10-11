@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#f4efe4" />
-    <title>Annulus</title>
+    <title>Well Rounded</title>
     <style>
       html, body { margin: 0; height: 100%; background: #f4efe4; overflow: hidden; touch-action: none; -webkit-user-select: none; user-select: none; }
       #slice { position: fixed; inset: 0; width: 100vw; height: 100dvh; display: block; opacity: 0; transition: opacity 1.2s ease; }
@@ -29,6 +29,7 @@
       #begin { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: calc(24px + env(safe-area-inset-top)) 0 calc(18px + env(safe-area-inset-bottom)); box-sizing: border-box; background: #f4efe4; transition: opacity 1.2s; overflow-y: auto; z-index: 10; }
       #begin.gone { opacity: 0; pointer-events: none; }
       #begin p { margin: 0; text-align: center; }
+      #begin .game { font-size: 13px; letter-spacing: 0.24em; text-transform: uppercase; opacity: 0.62; margin-bottom: 4px; }
       #begin .numeral { font-size: 13px; letter-spacing: 0.2em; opacity: 0.7; }
       #begin .name { font-size: 30px; font-weight: normal; margin: -6px 0 0; letter-spacing: 0.01em; text-align: center; }
       #begin .latin { font-size: 14px; font-style: italic; opacity: 0.66; margin-top: -8px; }
@@ -44,6 +45,11 @@
       #begin button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
       #begin .touch { font-size: 17px; letter-spacing: 0.06em; margin-top: 10px; padding: 12px 38px; border: 1px solid rgba(46, 33, 24, 0.35); border-radius: 999px; display: flex; flex-direction: column; align-items: center; gap: 2px; min-height: 44px; }
       #begin .touch small { font-size: 13px; font-style: italic; opacity: 0.74; }
+      #begin .go { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 6px 18px; margin-top: 10px; }
+      #begin .go .touch { margin-top: 0; }
+      #begin .again { font-size: 15px; font-style: italic; letter-spacing: 0.03em; opacity: 0.74; min-height: 44px; padding: 8px 6px; }
+      #begin .again[hidden] { display: none; }
+      #begin .again.asking { opacity: 1; text-decoration: underline; text-underline-offset: 6px; }
       #begin .touch small:empty { display: none; }
       #begin .foot { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; padding: 0 12px; }
       #begin .foot > button { font-size: 14px; letter-spacing: 0.04em; opacity: 0.74; min-height: 40px; padding: 4px 8px; }
@@ -83,7 +89,7 @@
     </style>
   </head>
   <body class="carding">
-    <canvas id="slice" role="img" aria-label="A cross-section of a tree's trunk: paint each ring round it in one stroke"></canvas>
+    <canvas id="slice" role="img" aria-label="Well Rounded: a cross-section of a tree's trunk; draw each ring round it in one line"></canvas>
     <canvas id="frame" aria-hidden="true"></canvas>
     <div id="stage-name" class="engraved"></div>
     <div id="goal" class="engraved" aria-live="polite"></div>
@@ -92,8 +98,9 @@
     <button id="corner" aria-label="Back to the card"></button>
     <button id="finish">fell the tree</button>
     <div id="endlinks"><button data-end="keep">save picture</button><button data-end="again">plant another</button><button data-end="xylo">the xylotheque</button></div>
-    <div id="xylo" class="engraved"><div class="head"><button class="close">‹ back</button><h2>Xylotheque</h2><span></span></div><p class="sub">a library of wood: every slice kept</p><div class="pages"></div><div class="view"><img alt=""></div></div>
+    <div id="xylo" class="engraved"><div class="head"><button class="close">‹ back</button><h2>Xylotheque</h2><span></span></div><p class="sub">Well Rounded: a library of wood, every slice kept</p><div class="pages"></div><div class="view"><img alt=""></div></div>
     <div id="begin" class="engraved">
+      <p class="game">Well Rounded</p>
       <p class="numeral"></p><h1 class="name"></h1><p class="latin"></p>
       <div class="rule"></div>
       <p class="mood"></p>
@@ -101,10 +108,12 @@
       <p class="todo"></p>
       <p class="aims"><span class="first"></span><span class="second"></span></p>
       <p class="best"></p>
-      <button class="touch"><span class="what">Begin</span><small></small></button>
+      <div class="go"><button class="touch"><span class="what">Begin</span><small></small></button><button class="again" hidden>plant again</button></div>
       <div class="foot"><button data-foot="wander"></button><button data-foot="xylo">the xylotheque</button><button data-foot="settings">settings</button></div>
       <div class="settings" hidden>
         <div class="row" data-row="ink"><span class="label">Ink</span><span class="opts" role="group" aria-label="Ink"><button data-v="ink">engraving</button><button data-v="water">watercolour</button></span></div>
+        <div class="row" data-row="sound"><span class="label">Sound</span><span class="opts" role="group" aria-label="Sound"><button data-v="on">on</button><button data-v="off">muted</button></span></div>
+        <div class="row" data-row="breath"><span class="label">Breathing circle</span><span class="opts" role="group" aria-label="Breathing circle"><button data-v="on">on</button><button data-v="off">still</button></span></div>
         <div class="row" data-row="haptics"><span class="label">Vibration</span><span class="opts" role="group" aria-label="Vibration"><button data-v="on">on</button><button data-v="off">off</button></span></div>
       </div>
     </div>

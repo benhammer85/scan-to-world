@@ -40,11 +40,11 @@ export const TREES: Tree[] = [
     name: 'Oak on a Hill',
     latin: 'Quercus robur',
     mood: 'Sun from the south, and the seasons keep their time.',
-    fact: 'Each ring is a year: pale wood laid down in spring, dark wood in late summer. Here each ring you paint is five.',
-    todo: 'Paint each year’s ring in one stroke: slow for wide wood, quick for thin.',
+    fact: 'Each ring is a year: pale wood laid down in spring, dark wood in late summer. Here each ring you draw is five.',
+    todo: 'Draw each ring’s edge in one unhurried line round the slice, tracing the pencil circle. Rest when you like.',
     years: 300,
     second: 'And paint the most even slice: a set of true circles.',
-    // (Steady seasons: rain, drought, wind and frost now and then, and two fires, which on a slope burn the uphill side.)
+    // (Steady seasons: calm mostly, rain, drought, wind or frost every several rings, and two fires, which on a slope burn the uphill side.)
     rules: {},
   },
 ];

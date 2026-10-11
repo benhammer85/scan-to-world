@@ -7,6 +7,7 @@
 import { restoreInto, snapshotOf } from '../volcano/save';
 import { TreeSim, type Rules } from './tree';
 
+// (The store keeps the game's first name, so trees and plates kept before it was Well Rounded still load.)
 const DB = 'annulus', STORE = 'kept', CURRENT = 'current', PLATES = 'plates';
 
 function open(): Promise<IDBDatabase> {
@@ -35,11 +36,13 @@ export interface KeptTree { tree: string; seed: number; wander: boolean; turn: n
  * and the stroke being painted (a stroke cut off is painted again).
  */
 export function snapshotTree(t: TreeSim): Record<string, unknown> {
-  const s = snapshotOf(t, ['k', 'seed', 'weather', 'winds', 'fireRings', 'news', 'stroke', 'lo', 'hi', 'at', 'inkAt', 'state']);
+  const s = snapshotOf(t, ['k', 'seed', 'weather', 'winds', 'fireRings', 'news', 'stroke', 'lo', 'hi', 'tone', 'at', 'inkAt', 'state']);
   // (Each ring copied, so a later change to the tree doesn't reach into what's kept.)
   s.rings = t.rings.map((r) => r.slice());
+  s.tones = t.tones.map((r) => r.slice());
   s.alive = t.alive.slice();
   s.burnt = t.burnt.slice();
+  s.stressed = t.stressed.slice();
   for (const k of ['starts', 'dirs', 'ringWeather', 'ringEven'] as const) s[k] = t[k].slice();
   s.scars = t.scars.map((x) => ({ ...x }));
   s.cracks = t.cracks.map((x) => ({ ...x }));

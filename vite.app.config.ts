@@ -5,7 +5,7 @@ import { renameSync } from 'node:fs';
 /**
  * The volcano game alone, built for the iPhone app (Capacitor serves `dist-app`, see
  * capacitor.config.ts): one page, everything bundled in, so it runs with no network at all.
- * (`GAME=rings` builds the tree-ring game, Annulus, into the same shell instead.)
+ * (`GAME=rings` builds the tree-ring game, Well Rounded, into the same shell instead.)
  */
 const GAME = process.env.GAME === 'rings' ? 'rings' : 'volcano';
 const asIndex: Plugin = {
