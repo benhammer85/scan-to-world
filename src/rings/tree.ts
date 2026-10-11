@@ -1,5 +1,5 @@
 /**
- * Annulus: you are one tree, and this is its trunk, seen in cross-section. Each ring is painted by
+ * Well Rounded: you are one tree, and this is its trunk, seen in cross-section. Each ring is painted by
  * hand, in one stroke round the last, as an ensō is painted.
  *
  * The finger is the brush. Its path is the ring's outer edge (smoothed only a little, so wobbles

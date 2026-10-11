@@ -372,9 +372,9 @@ Files: `sim.ts` (the planet), `ecology.ts` (kinds and wishes), `islands.ts` (fin
 
 Locally, run `npm run dev` and open `/volcano.html`. The simulation (`src/volcano/sim.ts`) has no drawing in it and is tested in `test/volcano.test.ts`.
 
-## Annulus (the tree-ring game, beside them)
+## Well Rounded (the tree-ring game, beside them)
 
-`rings.html` (`src/rings/`) is a third prototype; Atlas Minor and Warm to the Touch are untouched by it. You are one tree, and the screen shows a cross-section of its trunk. **You paint each ring by hand, in one stroke round the last, as an ensō is painted.** It's drawn to [RINGS-STYLE.md](RINGS-STYLE.md): STYLE.md, with the test *Would a botanical engraver of about 1820 have drawn it this way?*
+`rings.html` (`src/rings/`) is a third prototype, *Well Rounded* (its working title was Annulus; the files, folder and save keys keep the old name, so nothing kept is lost); Atlas Minor and Warm to the Touch are untouched by it. You are one tree, and the screen shows a cross-section of its trunk. **You paint each ring by hand, in one stroke round the last, as an ensō is painted.** It's drawn to [RINGS-STYLE.md](RINGS-STYLE.md): STYLE.md, with the test *Would a botanical engraver of about 1820 have drawn it this way?*
 
 **The brush** (`tree.ts`, `hand.ts`). The finger is the brush (the mouse, dragged, on a computer). Its path is the ring's outer edge, smoothed only a little, so wobbles stay in the wood. The mark has a width the hand controls, as a calligrapher's does: ink laid along the way is the flow over the speed, so slow lays wide wood and quick a thin line. The brush holds one ring's ink: at the steady pace it lasts exactly once round (2.8 s for a sapling, 5.4 s for an old trunk), so lingering on one side means hurrying on another, and the last tenth of the ink thins the mark as the brush runs dry. A drop of ink at the brush's tip shrinks as it's spent. A dotted pencil line one steady half-mark outside the bark shows where a steady ring reaches.
 * **Every ring needs a minimum width all the way round** (2 mm, judged five points at a time, so a pinch is only a pinch), or the cambium in that sector dies. Dead wood takes no ink and grows nothing: it reads as a wound, its dead surface in the heavy line, which later rings must roll over. Wide wood beside a wound heals it faster, from each edge.

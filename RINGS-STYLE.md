@@ -1,6 +1,6 @@
-# Annulus: the style rulebook
+# Well Rounded: the style rulebook
 
-Annulus is drawn by [STYLE.md](STYLE.md), Atlas Minor's rulebook, with one change: its test.
+Well Rounded (the tree-ring game; its working title was Annulus) is drawn by [STYLE.md](STYLE.md), Atlas Minor's rulebook, with one change: its test.
 
 ## The one test
 
