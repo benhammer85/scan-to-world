@@ -1,8 +1,9 @@
 /**
- * A prototype of the daily practice: a ring a day, kept, so the slice becomes a diary of your days, read
- * from the heart outward (touch a ring for its day). Each ring is one year of the tree's, traced with a brush, then settling into the paper by itself, as a
- * printing press presses without ink (karazuri, the Japanese "empty printing", or a blind embossing).
- * Nothing to learn and nothing said: silent.
+ * Well Rounded, the daily practice: the site's and the app's front page (the first game is rings.html,
+ * published as classic.html). A ring a day, kept, so the slice becomes a diary of your days, read from
+ * the heart outward (touch a ring for its day). Each ring is one year of the tree's, drawn with a brush,
+ * then settling into the paper by itself, as a printing press presses without ink (karazuri, the
+ * Japanese "empty printing", or a blind embossing). Nothing to learn and nothing said: silent.
  *
  *   trace     draw the year's ring at your own pace with a wet brush: its stroke is dark at the brush
  *             and evaporates behind it (disappearing ink), leaving the year's colour, spring to winter

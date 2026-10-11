@@ -21,3 +21,11 @@ The references are the plates of transverse sections in the botanical and forest
 - **Fading ink, as STYLE.md says:** rings out of view (when you come close) hold 25 s, fade over 45 s to pencil, never below, and are inked again when back in view.
 - **One motion at a time.** Only the pen moves for attention while a ring is drawn. The ink coming back to a faded ring has no nib.
 - **Out, always:** the same traps as STYLE.md. No bark texture photographs, no wood-grain gradients, no knots drawn for charm. Wobble only where a hand put it, gentled as a pen's line is: the stroke's path, low-passed, never jittered or blotted by the program.
+
+## The daily practice
+
+The front page is held to a second test as well: **would it let you breathe while you draw?** Anything that makes the hand careful, or the eye leave the slice, fails it.
+* Nothing to hit: no guide circle, no band to keep to. Where the circle goes is the year's edge.
+* Nothing to read while a finger is down, and nothing behind the slice: no print, no weather across the page, no sound.
+* Wood as wood is: the season runs across a ring (pale earlywood, a narrow dark latewood at its edge), never round it; the relief of the press a faint crease, never a bevel or a highlight on every ring (that read as plastic).
+* What's too fine to draw is drawn as its blend, never as shimmer.

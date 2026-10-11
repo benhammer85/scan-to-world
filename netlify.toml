@@ -1,5 +1,6 @@
-# Netlify publishes Well Rounded, the tree-ring game, on its own: the same one-page build the iPhone
-# app uses (vite.app.config.ts with GAME=rings), its page as the site's index.
+# Netlify publishes Well Rounded, the tree-ring game, on its own: the same build the iPhone app uses
+# (vite.app.config.ts with GAME=rings): the daily practice as the site's index, the first game at
+# classic.html.
 [build]
   command = "GAME=rings npm run build:app"
   publish = "dist-app"
@@ -8,6 +9,12 @@
   NODE_VERSION = "20"
 
 # The plates and the game's code are named by their content, so they can be kept for good.
+# (The daily practice was tried at press.html first: links to it still arrive.)
+[[redirects]]
+  from = "/press.html"
+  to = "/"
+  status = 301
+
 [[headers]]
   for = "/assets/*"
   [headers.values]

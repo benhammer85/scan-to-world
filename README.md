@@ -376,6 +376,17 @@ Locally, run `npm run dev` and open `/volcano.html`. The simulation (`src/volcan
 
 `rings.html` (`src/rings/`) is a third prototype; Atlas Minor and Warm to the Touch are untouched by it. You are one tree, and the screen shows a cross-section of its trunk. **You trace each ring in one calm line round the last, and it's painted in watercolour as you go.** Nothing can go wrong: there's no failure and no score, and the oak grows on as long as you draw. (It was called Annulus; its saves and settings keep the `annulus` names, so trees and plates kept before still load.)
 
+**The daily practice: a ring a day** (`press.html`, `src/rings/press.ts`; the front page of the site and the iPhone app). Like the Zen ensō, one circle drawn each day: the tree is kept between visits and each ring remembers its day, so the slice becomes a diary read from the heart outward. Touch inside the slice and the ring under the finger is lit, and its date shown.
+* **No line to keep to.** The circle can be drawn anywhere round the slice: where it's drawn is the year's edge, so a loose, wide circle is a wide year and a close one a narrow year (up to six steady widths). No guide, no ink to run out, no failure.
+* **Disappearing ink, as a brush.** The line is a brush stroke, wide and wet when unhurried, thin and dry when quick, tapering in; it evaporates over about five seconds, thinning and breaking into dry bristle-streaks. It follows a finger's tremor less than the finger does.
+* **Wood grown as wood is.** Each ring is laid across itself: pale earlywood, then a narrow band of darker latewood at its edge (the seasons run across a ring, not round it), the whole ring in the colour of its day's season by the calendar (spring green, summer gold, autumn rust, winter grey-violet; northern seasons), so over a year the seasons show as bands. A ring finer than the paper's grain is laid as its blend, so an old slice doesn't shimmer into moiré. Oak's rays run out from the heart. Each ring holds a fifth of the game's five-year wood, the crown is grown in a few rings, and the tree never grows old.
+* **Settling, not pressing.** As a ring closes it sinks into the paper by itself (a faint crease kept on the last few rings), and on the iPhone app a faint pressure in the hand. Nothing to hold, nothing to learn.
+* **Quiet.** No sound, no print behind the slice, and no words while a finger is down. One line when it opens ("Today's ring." or "Today's ring is drawn. Another, if you like."), and "Day N." once the day's first ring has settled. Draw as many as you like; a missed day is no matter.
+* **Still on a phone.** The page keeps the window's large height (`steady.ts`), so Safari's toolbar coming and going doesn't move the slice, and touches can't scroll, bounce or zoom it. Added to the Home Screen it runs full screen (its storage is then its own, apart from Safari's).
+* Kept in the same store as the game's tree under its own key (`diary`). `?fresh` begins another tree; `?demo` shows a year already drawn (not kept).
+
+The first game, below, is kept at `classic.html` on the site.
+
 **The line** (`tree.ts`, `hand.ts`). The finger is the pen (the mouse, dragged, on a computer). The line you draw is the ring's outer edge, low-passed over some fifteen degrees of arc so a shaky hand makes gentle undulations, never spikes. Your pace never changes the width, only how deep the colour is (slower, deeper). A faint pencil circle round the pith shows where an even ring would land, and can breathe slowly (about six breaths a minute) as a suggestion of pace. Lift your finger to rest; touch the drop to go on. Weather never pushes the line, nothing dies, nothing runs out, and old age doesn't come: the tree ends only when you choose *keep as a plate*.
 
 **The watercolour** (`wash.ts`, `paint.ts`): a small simulation of water and pigment on paper, and the wood's look is what the paint does.
@@ -414,9 +425,9 @@ Each is ink on a transparent ground (`scripts/plates.py` fetches the scans, crop
 | how round | 52% | 82% | 91% | 85% |
 | still growing | 8 of 8 | 8 of 8 | 8 of 8 | 8 of 8 |
 
-**On Netlify:** `netlify.toml` publishes Well Rounded alone (the same one-page build as the iPhone app, `GAME=rings npm run build:app` into `dist-app`, the game as the site's home page). Connect the repository on netlify.com and set the branch to deploy.
+**On Netlify:** `netlify.toml` publishes Well Rounded alone (the same build as the iPhone app, `GAME=rings npm run build:app` into `dist-app`: the daily practice as the site's home page, the first game at `classic.html`, and `/press.html`, where the practice was first tried, sent home). Connect the repository on netlify.com and set the branch to deploy.
 
-To try it: `npm run dev` and open `/rings.html`. `?grow=200` grows the tree 200 years first; `?seed=` gives the same weather again; `?ink=ink` starts in engraving; `?debug` exposes the tree for a headless browser to draw with. For the iPhone shell, `GAME=rings npm run build:app` builds this game instead of the volcano.
+To try it: `npm run dev` and open `/press.html` (the daily practice) or `/rings.html` (the first game). `?grow=200` grows the tree 200 years first; `?seed=` gives the same weather again; `?ink=ink` starts in engraving; `?debug` exposes the tree for a headless browser to draw with. For the iPhone shell, `GAME=rings npm run build:app` builds this game instead of the volcano.
 
 Still to come (`trees.ts`): a redwood with fires, a bristlecone with drought, a mangrove with tides, an olive pruned by people, a birch fast and fragile; the long age, when a fallen tree becomes a nurse log and the next grows from it.
 
