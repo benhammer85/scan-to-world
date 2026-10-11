@@ -230,6 +230,12 @@ export const VOLCANO = {
   craterDepth: 0.06,
   impactHeat: 5,
   caught: 4,
+  /**
+   * The first world: the glow a stone is caught in grows as the volcano is built, up to this much wider (a share
+   * of its first size) once `catchFull` of lava has been let out, by pouring or bursting. 0: it doesn't grow.
+   */
+  catchGrow: 0,
+  catchFull: 150,
 
   /**
    * What the world is like at the start: 'ocean', one sea over an even floor; or 'moon', airless
@@ -352,6 +358,8 @@ export const VOLCANO = {
    * stone of the rubble that falls melts this much of its crater again. 0: none.
    */
   magma: 0,
+  /** (Where the first world's magma lies deepest: a turn of its patches, so not every first world crusts alike.) */
+  magmaSeed: 1.3,
   impactMelt: 0,
   /** Stones fall within this far of the vent (radians; 0: half near it, the rest anywhere), so each can be reached in time. */
   impactNear: 0,
@@ -771,7 +779,21 @@ export class Planet {
     this.impactIn = this.between(this.k.impactEvery);
     if (ground && ground.length === n) this.rock.set(ground);
     if (this.k.terrain !== 'ocean') this.scar();
-    if (this.k.magma > 0) for (let v = 0; v < n; v++) { this.lava[v] = this.k.magma; this.age[v] = 0; }
+    // (Not evenly: deeper in the low ground and in broad patches, so it crusts over a piece at a time, the last of it
+    // lying molten in the hollows. Even all over, it all thinned to setting at the same moment, some twenty seconds in,
+    // and the whole world's running stopped at once.)
+    if (this.k.magma > 0) {
+      const p = this.topo.basePositions, R = this.rock;
+      let lo = Infinity, hi = -Infinity;
+      for (let v = 0; v < n; v++) { lo = Math.min(lo, R[v]); hi = Math.max(hi, R[v]); }
+      for (let v = 0; v < n; v++) {
+        const x = p[v * 3], y = p[v * 3 + 1], z = p[v * 3 + 2];
+        const patch = 0.5 + 0.25 * Math.sin(3.1 * x + 1.7 * y + this.k.magmaSeed) + 0.25 * Math.sin(2.3 * y - 2.9 * z + 2 * this.k.magmaSeed);
+        const low = 1 - (R[v] - lo) / Math.max(1e-6, hi - lo);
+        this.lava[v] = this.k.magma * (0.35 + 0.9 * patch + 0.75 * low * low);
+        this.age[v] = 0;
+      }
+    }
     if (this.k.antipode > 0) this.far = { x: -this.plume.x, y: -this.plume.y, z: -this.plume.z, r: 0.16 };
     if (this.k.stormEvery[1] > 0) this.stormIn = this.between(this.k.stormEvery);
     // The deep ocean's bank: a seamount whose top is just under the sea, some way from the heat.
@@ -1524,6 +1546,17 @@ export class Planet {
     return Math.exp(-((d / this.k.warmth) ** 2));
   }
 
+  /** How far round the vent a falling stone is caught (radians, as `warmth` is): wider as the volcano grows. */
+  get catchReach(): number {
+    return this.k.warmth * (1 + this.k.catchGrow * Math.min(1, this.drained / this.k.catchFull));
+  }
+  /** How surely a stone landing at a vertex is caught, 0 to 1 (more than a half, and it is). */
+  catchAt(v: number): number {
+    const p = this.topo.basePositions, q = this.plume;
+    const d = Math.hypot(p[v * 3] - q.x, p[v * 3 + 1] - q.y, p[v * 3 + 2] - q.z);
+    return Math.exp(-((d / this.catchReach) ** 2));
+  }
+
   /** The summit falls into the emptied chamber, and the blast kills all round. */
   /** On a hollow world, how much lava the chamber under it has given (see `hollow`). */
   drained = 0;
@@ -1595,8 +1628,8 @@ export class Planet {
       else this.tell('The ice froze on cold ground: pour lava where the next one lands');
       return;
     }
-    // Its heat joins yours, and far more of it if the plume is there to take it in.
-    const caught = this.warmthAt(at);
+    // Its heat joins yours, and far more of it if the plume is there to take it in (the bigger the volcano, the further round it).
+    const caught = this.catchAt(at);
     this.reserve += this.k.impactHeat * (1 + (this.k.caught - 1) * caught);
     this.tally.stones++;
     if (caught > 0.5) { this.tally.caught++; this.tell('Stone caught: more heat'); }

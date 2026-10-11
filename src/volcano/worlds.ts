@@ -294,7 +294,8 @@ export const WORLDS: World[] = [
       terrain: 'first', basins: 0, craters: 30, floor: 0.05, rough: 0.025,
       waves: 0, rain: 0, sink: 0, swell: 0, life: false,
       magma: 0.012, impactMelt: 0.02, // (molten at first, crusting over as it cools; each stone melts its crater again)
-      talus: 2.2, flow: 10, channel: 2, coolLand: 0.05,
+      catchGrow: 0.8, // (the gold ring a stone is caught in widens as the volcano is built: see sim.ts)
+      talus: 2.2, flow: 2.5, channel: 2, coolLand: 0.05, // (slow-running: the magma sheet crusts over a piece at a time through the first minute, not all at once)
       drift: 0, rises: 0.12, heat: 300, rising: 1.0, steady: true, // (the glow follows a turn quickly, so a catch is one turn, not a chase)
       impactEvery: [14, 18], impactWarning: 12, impactNear: 0.75, // (a breath between stones: one unhurried turn each, then a rest) impactHeat: 3, crater: 0.07, craterDepth: 0.04,
     },

@@ -667,6 +667,24 @@ describe('real terrain', () => {
 });
 
 describe('the first world', () => {
+  it('catches stones further round the volcano the more lava it has let out', () => {
+    const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('first').rules);
+    const first = pl.catchReach;
+    pl.drained = pl.k.catchFull;
+    expect(pl.catchReach).toBeCloseTo(first * (1 + worldOf('first').rules.catchGrow!), 5);
+  });
+  it('crusts over slowly, not all at once', () => {
+    // (On a planet of the detail the game plays at: on a coarse one the magma drains as fast either way.)
+    const fine = buildTopology(new THREE.IcosahedronGeometry(1, 40).attributes.position.array, null);
+    const molten = (rules: object) => {
+      const pl = new Planet(fine, 0, 3, { ...worldOf('first').rules, ...rules });
+      pl.gravity = { x: 0, y: -0.5, z: -0.86 };
+      run(pl, 10);
+      return pl.lava.filter((l: number) => l >= pl.k.thin).length / pl.lava.length;
+    };
+    // (As fast-running as it was, ten seconds in, most of it had already set; slow-running, much more is still molten.)
+    expect(molten({})).toBeGreaterThan(molten({ flow: 10 }) * 1.5);
+  });
   it('begins molten, and gathers a stone that falls on the glow', () => {
     const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('first').rules);
     expect(pl.lava[nearest(1, 0, 0)]).toBeGreaterThan(0);

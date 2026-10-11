@@ -752,3 +752,7 @@ The chapters after them move up a numeral (IV Unusual Volcanoes to VIII Extras).
 A frame now takes 0.9 ms. The bots win and lose the first world as before.
 
 **Portraits and your Earth.** The Atolls, the Drying Seas and the Red Giant have their portraits in the star map, as the game shows each after its time-lapse. Your Earth can also be opened from the worlds list at any time, under Earth's Future, to watch it fill in as the ages are played.
+
+**The first world, crusting and catching.** The first world's magma lay the same depth everywhere, so it all thinned to setting at once, about twenty seconds in. The whole world's running stopped together, which read as the globe stopping turning. It now lies deeper in the low ground and in broad patches, and runs more slowly (`flow` 2.5), so it crusts over a piece at a time through the first minute, the last of it lying molten in the hollows. The gold ring a stone is caught in also grows as the volcano is built: up to 80% wider once 150 of lava has been let out, by pouring or bursting (`catchGrow`, `catchFull`). The ring on the map widens with it, and the tip says so. The bots win and lose the first world as before.
+
+**Frame costs, every world.** Every world was played about two seconds at a phone's pace, resting and mid-eruption, with drawing set aside. Every world now averages 1 to 4 ms a frame. The one hitch left on most worlds was the surface's first two redraws after Begin: 60 to 100 ms each while the page was still learning the work, then 15. They're now worked through twice while the card is up.

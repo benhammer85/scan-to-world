@@ -374,7 +374,7 @@ material.onBeforeCompile = (shader) => {
   shader.uniforms.uHollow = hollowU;
   shader.uniforms.uCreepTo = { value: creepTo };
   shader.uniforms.uCreepOn = creepOn;
-  shader.uniforms.uCatchR = { value: WORLD.goal === 'gather' ? 2 * Math.asin(Math.min(1, planet.k.warmth * Math.sqrt(Math.LN2) / 2)) : 0 }; // (the glow a stone is caught in, ringed: where warmth is a half)
+  shader.uniforms.uCatchR = catchU; // (the glow a stone is caught in, ringed: where warmth is a half; wider as the volcano grows)
   shader.uniforms.uRings = { value: ringU };
   shader.uniforms.uRingInk = { value: new THREE.Color(SULPHUR ? '#a0791e' : ICE || WORLD.id === 'ijen' ? '#5f86a3' : '#3a2e25') };
   shader.uniforms.uBreath = breathU;
@@ -1387,6 +1387,9 @@ const tideWarm = { value: 0 };
 const SUN = WORLD.sun ? new THREE.Vector3(...WORLD.sun).normalize() : null, SUN_AT = new THREE.Vector3(0.85, 2.05, -4.6);
 const sky = { value: new THREE.Vector4(0, 0, 1, WORLD.id === 'rogue' || WORLD.id === 'ijen' ? 2 : SUN ? 1 : 0) }, iceLine = { value: planet.k.gas > 0 ? 0 : -1 }, haze = { value: planet.k.breathe > 0 ? 1 : 0 }, dustVeil = { value: 0 };
 let sunDisc: THREE.Group | null = null;
+/** The first world: the gold ring a stone is caught in, as an angle round the vent (it widens as the volcano is built). */
+const catchR = () => (WORLD.goal === 'gather' ? 2 * Math.asin(Math.min(1, planet.catchReach * Math.sqrt(Math.LN2) / 2)) : 0), catchU = { value: 0 };
+catchU.value = catchR();
 /** The red giant: how far its day has crept round into the night, and its day side glowing molten (see print.ts). */
 const nightShiftU = { value: 0 }, dayMeltU = { value: WORLD.goal === 'giant' ? 1 : 0 };
 /**
@@ -1785,7 +1788,7 @@ const TIP: Record<string, string> = {
   atolls: `Turn an island to the top to bring the volcano near it: coral starts round its shore. Then move on. ${HOLD} to pour out in the open sea, never on an island or its coral. As the island sinks, the coral keeps up, and a ring is left. The lowest islands go under first.`,
   sea: `The sea dries a little every second. An eruption's ash shades it and slows the drying for a while, so keep the sky full of ash. ${ERUPT} Pouring lava does nothing for the sea.`,
   giant: `The day side melts whatever stands in it, and the night shrinks as the Sun swells. The world turns slowly by itself: turn it back to keep the volcano in the dark, on the left. ${HOLD} to pour, or erupt, there.`,
-  gather: 'A dotted circle shows where each stone will land. Turn it to the top, so the gold ring round your volcano is under it.',
+  gather: 'A dotted circle shows where each stone will land. Turn it to the top, so the gold ring round your volcano is under it. The more lava you let out, the wider the ring grows.',
   oxygen: `${POUR} Pour into the sea until the lava nearly reaches the surface. Green life grows there and turns the sky blue. Then move on and do it again. Don't erupt: its gas uses up the oxygen.`,
   chaos: `When the circle round the volcano closes, ${COMPUTER ? 'click' : 'tap'} the world to erupt. Then it starts to empty: erupt before it's gone, or the eruption is too big and blasts a hole instead. Then turn to fresh ice.`,
   streaks: `Turn the volcano into the sunlight. ${ERUPT} Then move to a new spot.`,
@@ -3439,6 +3442,10 @@ void resume().then((back) => {
   cardReady();
   keptBack = back;
   lapseBefore();
+  // (The surface's first redraws took 60 to 100 ms each, the page still learning the work, and then 15: a hitch in a
+  // world's first seconds. Worked through twice while the card is up, where nothing moves, they're quick by Begin.)
+  setTimeout(() => { if (!begun) coarse(); }, 500);
+  setTimeout(() => { if (!begun) coarse(); }, 1100);
   titleWords();
   if (!back) return;
   ($('begin').querySelector('.first') as HTMLElement).textContent = 'Your saved world.';
@@ -3814,6 +3821,7 @@ const loop = (): void => {
     // (In the long age, four larger steps rather than fourteen small ones: it was 14 to 43 ms a frame.)
     const steps = speed > 1 ? 4 : 1;
     for (let k = 0; k < steps; k++) planet.step((dt * speed) / steps);
+    catchU.value = catchR();
     if (PLACES.length) tendCoral(planet, topo, PLACES, CORAL, planet.plume, dt * speed, planet.k.reefDeep);
     // The red giant: the world turns slowly by itself, carrying the ground from the night into the day; and the
     // night shrinks as the Sun swells (it grows in the sky with it).
