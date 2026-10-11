@@ -19,16 +19,20 @@ import { bandOf, brushAt, pointerAt, radiusAt, roomOf, scaleFor, warpFor, type V
 import { at, drawGuide, drawPaper } from './draw';
 import { Paper } from './paint';
 import { plateImage, preloadPlates, stageAt, type Stage } from './plates';
+import { holdStill, steadySize } from './steady';
 
 const TAU = Math.PI * 2, PAPER = '#f4efe4';
 const canvas = document.getElementById('press') as HTMLCanvasElement, g = canvas.getContext('2d')!;
 const words = document.getElementById('words')!;
 let W = 1, H = 1, px = 1;
 function fit(): void {
-  px = Math.min(3, window.devicePixelRatio || 1);
-  W = Math.round(innerWidth * px); H = Math.round(innerHeight * px);
-  canvas.width = W; canvas.height = H; view = null;
+  // (Laid out again only when the size really changes: not as Safari's toolbar comes and goes.)
+  const { w, h } = steadySize(), p = Math.min(3, window.devicePixelRatio || 1);
+  if (Math.round(w * p) === W && Math.round(h * p) === H) return;
+  px = p; W = Math.round(w * px); H = Math.round(h * px);
+  canvas.width = W; canvas.height = H; canvas.style.height = `${h}px`; view = null;
 }
+holdStill(canvas);
 addEventListener('resize', fit);
 const clock = () => performance.now() / 1000;
 const smooth = (x: number) => { const t = Math.max(0, Math.min(1, x)); return t * t * (3 - 2 * t); };
@@ -114,18 +118,20 @@ for (const type of ['pointerup', 'pointercancel'] as const) canvas.addEventListe
 function trailAt(): void {
   const tip = tree.tip;
   if (!tip || !strokeView) return;
-  const r = radiusAt((i) => tree.inner(i), tip.a) + tip.u * tree.wRef, t = clock(), last = trail[trail.length - 1];
+  const t = clock(), last = trail[trail.length - 1], joined = last && Math.abs(last.a - tip.a) < 0.5;
+  // (The ink follows the finger's tremor less than the finger does: a shaky hand still lays a calm line.)
+  const raw = radiusAt((i) => tree.inner(i), tip.a) + tip.u * tree.wRef, r = joined ? last.r + (raw - last.r) * 0.35 : raw;
   // Speed on the screen, in CSS px a second, eased so the width swells and thins smoothly.
   let fast = last ? last.fast : 0;
-  if (last && Math.abs(last.a - tip.a) < 0.5) {
+  if (joined) {
     const [x0, y0] = at(strokeView, last.a, last.r), [x1, y1] = at(strokeView, tip.a, r);
     const v = Math.hypot(x1 - x0, y1 - y0) / px / Math.max(0.008, t - last.t);
     fast += (Math.min(1, v / 600) - fast) * 0.25;
   }
   // A brush: full and wet when unhurried, thin and dry when quick, tapering in as it touches down.
-  const n = last && Math.abs(last.a - tip.a) < 0.5 ? trail.length : 0;
+  const n = joined ? trail.length : 0;
   const w = (3 + 5 * (1 - fast)) * Math.min(1, 0.3 + n / 8);
-  trail.push({ a: tip.a, r, t, w: last && n ? last.w + (w - last.w) * 0.35 : w * 0.4, fast });
+  trail.push({ a: tip.a, r, t, w: joined && n ? last.w + (w - last.w) * 0.35 : w * 0.4, fast });
 }
 function hear(): void {
   for (const n of tree.news) if (n.kind === 'ring') {

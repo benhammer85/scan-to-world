@@ -27,6 +27,7 @@ import { ARCS, PAPER, at, drawBark, drawGuide, drawMarks, drawPaper, drawShadow,
 import { type Box, type Scene } from './habit';
 import { OakPage, MILESTONES, drawFigure } from './oak';
 import { WINTER, preloadPlates } from './plates';
+import { holdStill, steadySize } from './steady';
 import { drawPlate, recordOf } from './plate';
 import { forgetTree, keepPlate, keepTree, plates, recallTree, snapshotTree, treeFrom, type KeptTree } from './save';
 
@@ -72,13 +73,17 @@ const cache = document.createElement('canvas'), cg = cache.getContext('2d')!;
 const barkCache = document.createElement('canvas'), bg = barkCache.getContext('2d')!;
 let W = 1, H = 1, px = 1;
 function fit(): void {
-  px = Math.min(3, window.devicePixelRatio || 1);
-  W = Math.max(1, Math.round(innerWidth * px)); H = Math.max(1, Math.round(innerHeight * px));
+  // (Laid out again only when the size really changes: not as Safari's toolbar comes and goes.)
+  const { w, h } = steadySize(), p = Math.min(3, window.devicePixelRatio || 1);
+  if (Math.max(1, Math.round(w * p)) === W && Math.max(1, Math.round(h * p)) === H) return;
+  px = p; W = Math.max(1, Math.round(w * px)); H = Math.max(1, Math.round(h * px));
   for (const c of [canvas, frame, cache, barkCache]) { c.width = W; c.height = H; }
+  canvas.style.height = frame.style.height = `${h}px`;
   dirty = true; scale = 0;
   if (ending) drawEndFrame();
 }
 addEventListener('resize', fit);
+holdStill(canvas, frame);
 
 /** How near (1 to CLOSEST), eased back to 1 a few seconds after a pinch. */
 let zoom = 1, zoomedAt = -10;
