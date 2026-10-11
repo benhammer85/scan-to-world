@@ -9,6 +9,7 @@ import { stage } from '../src/volcano/ecology';
 import { ageBefore, carried } from '../src/volcano/ages';
 import { aged, atollPlaces, atollState, defaultChain, tendCoral } from '../src/volcano/atolls';
 import { dried, seaShare } from '../src/volcano/drying';
+import { melted } from '../src/volcano/giant';
 
 const topo = buildTopology(new THREE.IcosahedronGeometry(1, 24).attributes.position.array, null);
 const p = topo.basePositions;
@@ -21,7 +22,7 @@ const run = (pl: Planet, seconds: number) => { for (let t = 0; t < seconds; t +=
 
 describe('the worlds', () => {
   it('come one after another, and each has its own aim', () => {
-    expect(WORLDS.map((w) => w.id)).toEqual(['mars', 'moon', 'ice', 'asteroid', 'rogue', 'hollow', 'first', 'comets', 'young', 'archean', 'snowball', 'ocean', 'atolls', 'drying', 'lengai', 'ijen', 'tonga', 'io', 'europa', 'enceladus', 'triton', 'tumble', 'mercury', 'magma', 'dust', 'deep', 'spin', 'venus', 'pluto', 'lamp', 'twofires']);
+    expect(WORLDS.map((w) => w.id)).toEqual(['mars', 'moon', 'ice', 'asteroid', 'rogue', 'hollow', 'first', 'comets', 'young', 'archean', 'snowball', 'ocean', 'atolls', 'drying', 'giant', 'lengai', 'ijen', 'tonga', 'io', 'europa', 'enceladus', 'triton', 'tumble', 'mercury', 'magma', 'dust', 'deep', 'spin', 'venus', 'pluto', 'lamp', 'twofires']);
     expect(worldOf('moon').goal).toBe('basins');
     expect(worldOf('nowhere').id).toBe('mars');
     expect(nextWorld(worldOf('mars'))!.id).toBe('moon');
@@ -37,7 +38,8 @@ describe('the worlds', () => {
     expect(nextWorld(worldOf('snowball'))!.id).toBe('ocean');
     expect(nextWorld(worldOf('ocean'))!.id).toBe('atolls');
     expect(nextWorld(worldOf('atolls'))!.id).toBe('drying');
-    expect(nextWorld(worldOf('drying'))!.id).toBe('lengai');
+    expect(nextWorld(worldOf('drying'))!.id).toBe('giant');
+    expect(nextWorld(worldOf('giant'))!.id).toBe('lengai');
     expect(nextWorld(worldOf('lengai'))!.id).toBe('ijen');
     expect(nextWorld(worldOf('ijen'))!.id).toBe('tonga');
     expect(nextWorld(worldOf('tonga'))!.id).toBe('io');
@@ -274,6 +276,27 @@ describe('the Drying Seas', () => {
     run(open, 10); run(shaded, 10);
     expect(open.seaShare).toBeLessThan(0.42);
     expect(shaded.dried).toBeLessThan(open.dried * 0.5);
+  });
+});
+
+describe('the Red Giant', () => {
+  const rules = worldOf('giant').rules;
+  it('begins on the drying seas\' world, melted low and dry', () => {
+    expect(ageBefore('giant')).toBe('drying');
+    const old = melted(dried(defaultChain(topo, { x: 0, y: 0, z: 1 }, -0.22), topo, 7, 0.42));
+    expect(seaShare(old)).toBe(0);
+    expect(Math.max(...old)).toBeLessThan(0.03);
+  });
+  it('melts whatever stands in its day, keeps what stands in the night, and the night shrinks as the fire burns', () => {
+    const pl = new Planet(topo, nearest(0, 0, 1), 3, rules, new Float32Array(topo.vertexCount).fill(0.2));
+    pl.star = { x: 1, y: 0, z: 0 };
+    const day = nearest(1, 0, 0), night = nearest(-1, 0, 0);
+    const night0 = pl.nightShare;
+    run(pl, 5);
+    expect(pl.rock[day]).toBeLessThan(0.2 - 0.03);
+    expect(pl.rock[night]).toBeCloseTo(0.2, 3);
+    pl.reserve = pl.k.heat * 0.2;
+    expect(pl.nightShare).toBeLessThan(night0 * 0.6);
   });
 });
 

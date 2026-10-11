@@ -24,7 +24,8 @@ export const MARK_AT: Record<WorldId, { heat: number; minutes: number }> = {
   comets: { heat: 20, minutes: 5 },
   ocean: { heat: 33, minutes: 4 },
   atolls: { heat: 20, minutes: 4 },
-  drying: { heat: 12, minutes: 16 }, // (the drying seas: the shares of the world still sea, for the second and third stars; see SEAS)
+  drying: { heat: 12, minutes: 16 },
+  giant: { heat: 16, minutes: 24 }, // (the red giant: the mountain's height kept, in km, for the second and third stars; see PEAKS) // (the drying seas: the shares of the world still sea, for the second and third stars; see SEAS)
   moon: { heat: 33, minutes: 3 },
   mars: { heat: 25, minutes: 4 },
   ice: { heat: 10, minutes: 6 },
@@ -61,6 +62,8 @@ const HOUSES: WorldId[] = []; // (Grindavík, the one world that was a town: tak
  * second and third stars are how much of the world is still sea at the end, as `heat` and `minutes` in hundredths.
  */
 const SEAS: WorldId[] = ['drying'];
+/** Likewise the red giant, whose fire must run out with the mountain still standing: its stars are the mountain's height, in km. */
+const PEAKS: WorldId[] = ['giant'];
 
 const SHARE: [number, string][] = [[50, 'half'], [33, 'a third'], [25, 'a quarter'], [20, 'a fifth'], [10, 'a tenth']];
 const shareWords = (heat: number) => { const w = SHARE.find(([h]) => h <= heat)?.[1] ?? 'some'; return w === 'half' ? 'keep half the heat' : `keep ${w} of the heat`; };
@@ -68,6 +71,7 @@ const shareWords = (heat: number) => { const w = SHARE.find(([h]) => h <= heat)?
 /** The three stars' names on a world, in order. */
 export function markNames(world: WorldId): [string, string, string] {
   const at = MARK_AT[world] ?? { heat: 10, minutes: 8 };
+  if (PEAKS.includes(world)) return ['reach the goal', `keep a mountain ${at.heat} km high`, `keep a mountain ${at.minutes} km high`];
   if (SEAS.includes(world)) return ['reach the goal', `keep ${at.heat}% of the world sea`, `keep ${at.minutes}% of the world sea`];
   return ['reach the goal', HOUSES.includes(world) ? 'keep every house standing' : shareWords(at.heat), `finish within ${at.minutes} minutes`];
 }
@@ -76,6 +80,7 @@ export function markNames(world: WorldId): [string, string, string] {
 export function earned(world: WorldId, heatLeft: number, seconds: number): Marks {
   const at = MARK_AT[world] ?? { heat: 10, minutes: 8 };
   if (SEAS.includes(world)) return [true, heatLeft * 100 >= at.heat - 1e-6, heatLeft * 100 >= at.minutes - 1e-6];
+  if (PEAKS.includes(world)) return [true, heatLeft >= at.heat - 1e-6, heatLeft >= at.minutes - 1e-6];
   return [true, HOUSES.includes(world) ? heatLeft >= 1 - 1e-6 : heatLeft * 100 >= at.heat - 1e-6, seconds <= at.minutes * 60];
 }
 

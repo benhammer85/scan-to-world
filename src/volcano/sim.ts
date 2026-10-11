@@ -504,6 +504,15 @@ export const VOLCANO = {
    */
   vapour: 0,
   dayCool: 1,
+  /**
+   * The red giant: the swollen Sun's light melts whatever stands in the day, this much height a second full on,
+   * down to `meltFloor`; and the night shrinks as the fire burns on (the Sun still swelling), the edge of day
+   * moving from facing it to `nightShrink` round towards the far side (as a cosine: 0, half the world in night;
+   * -0.75, about a sixth). 0: none.
+   */
+  melt: 0,
+  meltFloor: 0.01,
+  nightShrink: 0,
 };
 
 /** A world's rules as its gravity makes them: steeper, slower and further-thrown where it's weaker. */
@@ -2003,7 +2012,16 @@ export class Planet {
     const s = this.star, p = this.topo.basePositions;
     if (!s) return 0;
     const d = p[v * 3] * s.x + p[v * 3 + 1] * s.y + p[v * 3 + 2] * s.z;
-    return d <= 0.08 ? 0 : Math.min(1, (d - 0.08) / 0.5);
+    const edge = 0.08 + this.nightShift;
+    return d <= edge ? 0 : Math.min(1, (d - edge) / 0.5);
+  }
+  /** The red giant: how far the edge of day has moved round into the night (0 to `nightShrink`), as the fire burns on. */
+  get nightShift(): number {
+    return this.k.nightShrink ? -0.15 + (this.k.nightShrink + 0.15) * Math.min(1, Math.max(0, 1 - this.reserve / this.k.heat)) : 0;
+  }
+  /** The share of the world in the night. */
+  get nightShare(): number {
+    return Math.max(0, Math.min(1, (1 + 0.08 + this.nightShift) / 2));
   }
 
   /** Snowball Earth: whether the vent breathes into open air (from land above the sea, or open water). */
@@ -2146,6 +2164,11 @@ export class Planet {
       }
     }
     if (to === n) for (let v = 0; v < n; v++) r[v] += next[v];
+    // The red giant's day melts whatever stands in it.
+    if (to === n && this.k.melt > 0 && this.star) for (let v = 0; v < n; v++) {
+      const day = this.dayAt(v);
+      if (day > 0 && r[v] > this.k.meltFloor) r[v] = Math.max(this.k.meltFloor, r[v] - this.k.melt * day * dt);
+    }
     // The sea falls (and so the ground stands higher against it), more slowly under a burst's ash.
     if (to === n && this.k.dries > 0 && !this.over) {
       const d = this.k.dries * dt * (1 - 0.8 * Math.min(1, this.ashSky));

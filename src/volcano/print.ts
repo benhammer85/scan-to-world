@@ -39,6 +39,8 @@ export const PRINT_FUNCTIONS = /* glsl */ `
   uniform float uAshy; // (1: the veil is a great eruption's grey ash, not Mars's dust)
   uniform float uTide; // (Io: its ground flushed warm towards high tide, 0 to 1)
   uniform vec4 uSky; // (its star's direction, as seen, and w: 0 no star in it, 1 a star, 2 none at all, a rogue planet)
+  uniform float uNightShift; // (the red giant: how far the edge of day has moved round into the night, as a cosine)
+  uniform float uDayMelt; // (the red giant: its day side glowing, molten)
   #define uFeedingGlow (0.4 + 0.6 * uFeeding)
   // (Clocks that run faster while the vent feeds the flow, kept by the page: uTime times the feeding jumped the
   // whole pattern on by all the time played, every time a pour began or ended, which read as a stutter.)
@@ -290,10 +292,12 @@ export function printFragment(look: Look, sea: boolean): string {
       // and only the lava's own light (drawn after) bright.
       if (uSky.w > 0.5) {
         float sunUp = dot(normalize(vN), uSky.xyz);
-        float night = uSky.w > 1.5 ? 1.0 : smoothstep(0.1, -0.22, sunUp);
+        float night = uSky.w > 1.5 ? 1.0 : smoothstep(0.1 + uNightShift, -0.22 + uNightShift, sunUp);
         // (On a rogue planet, darker, but what lives there kept light: life's washes glow out of the dark.)
         float lives = uSky.w > 1.5 ? smoothstep(0.03, 0.1, ds) : 0.0;
         col = mix(col, col * (uSky.w > 1.5 ? vec3(0.34, 0.37, 0.48) : vec3(0.36, 0.39, 0.5)), night * 0.9 * (1.0 - 0.85 * lives));
+        // The red giant's day: the ground there molten, glowing, deepest where the light is fullest.
+        if (uDayMelt > 0.0) { float dayL = smoothstep(-0.02 + uNightShift, 0.4 + uNightShift, sunUp); col = mix(col, vec3(0.80, 0.37, 0.21), dayL * uDayMelt * 0.45); }
         col = mix(col, col * vec3(0.74, 0.9, 0.66), lives * 0.75); // (a soft moss green, in the dark)
       }
 
@@ -664,7 +668,7 @@ const WATER = /* glsl */ `
         col = mix(col, wc, a * smoothstep(0.6, 1.0, T) * 0.6);
         // In the dark (the night side of a world with a star, or none at all), lava is lit by its own heat, not
         // the sun: laid over the night's shade at its own brightness, and its glow reaching further round it.
-        float nightL = uSky.w > 1.5 ? 1.0 : uSky.w > 0.5 ? smoothstep(0.1, -0.22, dot(normalize(vN), uSky.xyz)) : 0.0;
+        float nightL = uSky.w > 1.5 ? 1.0 : uSky.w > 0.5 ? smoothstep(0.1 + uNightShift, -0.22 + uNightShift, dot(normalize(vN), uSky.xyz)) : 0.0;
         col = mix(col, wc * (1.05 + 0.25 * T), a * (0.35 + 0.55 * T) * nightL * (0.4 + 0.6 * wet));
         // The ground just beyond it warms in its glow.
         float near = smoothstep(0.08, 0.5, lv) * (1.0 - cov) * smoothstep(-0.5, 0.0, -wFar + 1.0);

@@ -39,6 +39,7 @@ import { Marble, MOVE_GROWS } from './marble';
 import { AGES, ageBefore, ageKey, carried } from './ages';
 import { aged, atollPlaces, atollState, defaultChain, tendCoral, ATOLLS } from './atolls';
 import { dried, warpField, DRYING } from './drying';
+import { melted } from './giant';
 import { FineSurface } from './fine';
 import { Ecology, KINDS } from './ecology';
 import { Islands } from './islands';
@@ -203,7 +204,9 @@ const CARRIED = AGE_GROUND && AGE_BEFORE ? carried(AGE_BEFORE, WORLD.id, AGE_GRO
 const FROM_OCEAN = WORLD.goal === 'atolls' && !!CARRIED && atollPlaces(CARRIED, topo).length >= (WORLD.atolls ?? 3);
 const START_AT = { x: base[START * 3], y: base[START * 3 + 1], z: base[START * 3 + 2] };
 /** The atolls' islands as they were a million years before (as the ocean world left them), and as they are now. */
-const YOUNG = WORLD.goal === 'atolls' ? (FROM_OCEAN ? CARRIED! : defaultChain(topo, START_AT, WORLD.rules.floor ?? VOLCANO.floor)) : WORLD.goal === 'sea' ? CARRIED ?? aged(defaultChain(topo, START_AT, -0.22), topo, atollPlaces(defaultChain(topo, START_AT, -0.22), topo), START_AT, -0.22) : null;
+/** The drying seas' own ground, a billion years on (as the red giant begins on, if the drying seas weren't played). */
+const oldDry = () => { const y = defaultChain(topo, START_AT, -0.22); return dried(aged(y, topo, atollPlaces(y, topo), START_AT, -0.22), topo, seed, 0.42); };
+const YOUNG = WORLD.goal === 'giant' ? CARRIED ?? oldDry() : WORLD.goal === 'atolls' ? (FROM_OCEAN ? CARRIED! : defaultChain(topo, START_AT, WORLD.rules.floor ?? VOLCANO.floor)) : WORLD.goal === 'sea' ? CARRIED ?? aged(defaultChain(topo, START_AT, -0.22), topo, atollPlaces(defaultChain(topo, START_AT, -0.22), topo), START_AT, -0.22) : null;
 /** The drying seas: begun on the world the atolls left, a billion years on (see drying.ts); or on old islands, if it wasn't played. */
 const FROM_ATOLLS = WORLD.goal === 'sea' && !!CARRIED;
 /** The atolls: each island as it was, where an atoll could be made (see atolls.ts); and those made, kept made. */
@@ -212,7 +215,7 @@ const PLACES = YOUNG && WORLD.goal === 'atolls' ? atollPlaces(YOUNG, topo) : [];
 const SEA_START = 0.42, SEA_KEEP = WORLD.sea ?? 0;
 /** The drying seas: the plates' basins and swells (see drying.ts). */
 const WARP = WORLD.goal === 'sea' ? warpField(topo, seed) : null;
-const OLD = !YOUNG ? null : WORLD.goal === 'sea' ? dried(YOUNG, topo, seed, SEA_START) : aged(YOUNG, topo, PLACES, START_AT, WORLD.rules.floor ?? VOLCANO.floor);
+const OLD = !YOUNG ? null : WORLD.goal === 'giant' ? melted(YOUNG) : WORLD.goal === 'sea' ? dried(YOUNG, topo, seed, SEA_START) : aged(YOUNG, topo, PLACES, START_AT, WORLD.rules.floor ?? VOLCANO.floor);
 const START_ROCK = OLD ?? CARRIED ?? GROUND?.rock;
 const planet = new Planet(topo, START, seed, WORLD.rules, START_ROCK ?? undefined);
 const atollMade = new Set<number>(), CORAL = new Float32Array(PLACES.length);
@@ -391,6 +394,8 @@ material.onBeforeCompile = (shader) => {
   shader.uniforms.uHaze = haze;
   shader.uniforms.uDust = dustVeil;
   shader.uniforms.uAshy = { value: WORLD.goal === 'sea' ? 1 : 0 };
+  shader.uniforms.uNightShift = nightShiftU;
+  shader.uniforms.uDayMelt = dayMeltU;
   shader.uniforms.uTide = tideWarm;
   // Each world's own basalt, as a tint on the dark lava (a multiplier: 1 is a plain black-brown).
   const CRUST: Record<string, [number, number, number]> = { rogue: [0.9, 0.95, 1.1], dust: [1.25, 0.95, 0.8], magma: [1.1, 0.96, 0.9], snowball: [0.9, 0.97, 1.08], mars: [1.35, 0.9, 0.75], io: [0.78, 0.84, 0.86], moon: [0.95, 0.98, 1.08], ocean: [0.88, 0.97, 1.08], deep: [0.85, 0.97, 1.12], spin: [0.9, 0.98, 1.12], asteroid: [1.05, 0.98, 0.92], young: [1.25, 0.92, 0.82], tumble: [1.0, 0.97, 0.95] };
@@ -1381,6 +1386,8 @@ const tideWarm = { value: 0 };
 const SUN = WORLD.sun ? new THREE.Vector3(...WORLD.sun).normalize() : null, SUN_AT = new THREE.Vector3(0.85, 2.05, -4.6);
 const sky = { value: new THREE.Vector4(0, 0, 1, WORLD.id === 'rogue' || WORLD.id === 'ijen' ? 2 : SUN ? 1 : 0) }, iceLine = { value: planet.k.gas > 0 ? 0 : -1 }, haze = { value: planet.k.breathe > 0 ? 1 : 0 }, dustVeil = { value: 0 };
 let sunDisc: THREE.Group | null = null;
+/** The red giant: how far its day has crept round into the night, and its day side glowing molten (see print.ts). */
+const nightShiftU = { value: 0 }, dayMeltU = { value: WORLD.goal === 'giant' ? 1 : 0 };
 /**
  * The star itself, worked out at every pixel as the world is, so it's as crisp as the world at any
  * size (a picture of one, drawn once small and stretched, looked like a sticker beside it): a disc
@@ -1618,6 +1625,8 @@ const MOUNDS = (WORLD.rules.domeRing ?? 0) > 0;
 let marbledAt = -1;
 /** The drying seas: the share of the world under the sea, as last reckoned. */
 let seaNow = SEA_START;
+/** The red giant: the mountain's height (km), as last reckoned. */
+let peakNow = 0;
 let aimDone = 0, aimOf = WORLD.goal === 'white' ? 100 : WORLD.goal === 'waves' ? RINGS : WORLD.goal === 'glow' ? 100 : WORLD.goal === 'antipode' ? FAR_KM : WORLD.goal === 'gather' ? GATHER : WORLD.goal === 'water' ? WATER : WORLD.goal === 'atolls' ? ATOLLS_N : WORLD.goal === 'chaos' || WORLD.goal === 'streaks' ? FIELDS : WORLD.goal === 'domes' ? DOMES : MARBLE ? 100 : WORLD.goal === 'oxygen' || WORLD.goal === 'thaw' || WORLD.goal === 'outbuild' || WORLD.goal === 'snow' ? 100 : WORLD.goal === 'ring' ? CHAIN.stretches : WORLD.goal === 'height' ? HEIGHT.target : WORLD.goal === 'cover' ? COVER : WORLD.goal === 'round' ? ROUND : WORLD.goal === 'ridge' ? Planet.RIDGE_STRETCHES : WORLD.goal === 'lamp' || WORLD.goal === 'bank' ? 100 : WORLD.goal === 'calm' ? CALM : WORLD.goal === 'plumes' ? PLUMES : WORLD.goal === 'orbit' || WORLD.goal === 'feed' ? 100 : planet.basins.length, lastAim = -10;
 /** Lengai: whether its peak has reached its height (kept, once it has). */
 let peakReached = false;
@@ -1625,6 +1634,12 @@ let peakReached = false;
 function reckonAim(): void {
   if (chain) { aimDone = chain.update(planet, topo); aimOf = CHAIN.stretches; }
   else if (WORLD.goal === 'height') { aimDone = Math.max(0, planet.summit * HEIGHT.kmPerUnit); aimOf = HEIGHT.target; }
+  else if (WORLD.goal === 'giant') {
+    // (The mountain must still stand when the fire is out: done then, if it's as high as asked; lost then if not.)
+    peakNow = Math.max(0, planet.summit * HEIGHT.kmPerUnit);
+    aimDone = planet.reserve < 0.01 && peakNow >= HEIGHT.target ? 100 : Math.min(99, 100 * (1 - planet.reserve / planet.k.heat)); aimOf = 100;
+    if (planet.reserve < 0.01 && peakNow < HEIGHT.target && !ending && begun && !lapsing()) { planet.pressure = 0; announce('The day has melted the mountain down'); }
+  }
   else if (WORLD.goal === 'cover') { aimDone = planet.coveredSheet * 100; aimOf = COVER; } // (one sheet: scattered patches don't add up)
   else if (WORLD.goal === 'plumes') { aimDone = planet.plumes.length; aimOf = PLUMES; }
   else if (WORLD.goal === 'round') { aimDone = planet.roundness * 100; aimOf = ROUND; }
@@ -1682,7 +1697,7 @@ const BAND: { kind: 'sky' | 'gradient' | 'count' | 'rise'; ink: string; from?: s
   const count: Partial<Record<typeof g, 'dome' | 'ring' | 'rafts' | 'streak' | 'wave' | 'dot'>> = { domes: 'dome', plumes: 'ring', chaos: 'rafts', streaks: 'streak', waves: 'wave', gather: 'dot', water: 'dot', atolls: 'ring' };
   if (count[g]) return { kind: 'count', ink: g === 'plumes' ? '#c4603a' : g === 'streaks' ? P.ash : g === 'chaos' || g === 'waves' ? '#5b82a3' : g === 'gather' ? P.landInkHigh : g === 'water' ? '#4f7fa3' : P.lava, shape: count[g] };
   // (A mountain's height, a ridge, a bank, the far side's rise: in the land's own ink, as a profile; a town by its houses kept; the rest in the lava's.)
-  const land = ['height', 'white', 'antipode', 'ridge', 'bank', 'round', 'town', 'calm'].includes(g);
+  const land = ['height', 'giant', 'white', 'antipode', 'ridge', 'bank', 'round', 'town', 'calm'].includes(g);
   return { kind: 'rise', ink: land ? P.landInk : g === 'feed' || g === 'orbit' ? '#8f9bb0' : g === 'snow' ? P.ash : P.lava };
 })();
 /** How long Kawah Ijen's night must be kept lit, in all, in seconds. */
@@ -1730,6 +1745,7 @@ const AIM: Record<string, string> = {
   water: `Melt ${WATER} icy comets into water.`,
   atolls: `Make ${ATOLLS_N} atolls: rings of coral left where islands sank.`,
   sea: `Keep some sea until the fire is out.`,
+  giant: `Keep a mountain ${HEIGHT.target} km high standing in the night until the fire is out.`,
   oxygen: 'Turn the orange sky blue.',
   chaos: `Crack the ice in ${FIELDS} places.`,
   streaks: `Make ${FIELDS} dark streaks on the ice.`,
@@ -1767,6 +1783,7 @@ const TIP: Record<string, string> = {
   water: 'Dark stones bring heat: turn the world so the volcano is under them. Pale blue comets bring water: pour lava where one will land, so it melts there, and keep the volcano away from them, as they cool it.',
   atolls: `Turn an island to the top to bring the volcano near it: coral starts round its shore. Then move on. ${HOLD} to pour out in the open sea, never on an island or its coral. As the island sinks, the coral keeps up, and a ring is left. The lowest islands go under first.`,
   sea: `The sea dries a little every second. An eruption's ash shades it and slows the drying for a while, so keep the sky full of ash. ${ERUPT} Pouring lava does nothing for the sea.`,
+  giant: `The day side melts whatever stands in it, and the night shrinks as the Sun swells. The world turns slowly by itself: turn it back to keep the volcano in the dark, on the left. ${HOLD} to pour, or erupt, there.`,
   gather: 'A dotted circle shows where each stone will land. Turn it to the top, so the gold ring round your volcano is under it.',
   oxygen: `${POUR} Pour into the sea until the lava nearly reaches the surface. Green life grows there and turns the sky blue. Then move on and do it again. Don't erupt: its gas uses up the oxygen.`,
   chaos: `When the circle round the volcano closes, ${COMPUTER ? 'click' : 'tap'} the world to erupt. Then it starts to empty: erupt before it's gone, or the eruption is too big and blasts a hole instead. Then turn to fresh ice.`,
@@ -1797,6 +1814,7 @@ function goalLine(): string {
     case 'ring': return `Separate islands · ${d} of ${of}`;
     case 'basins': return `Craters filled · ${d} of ${of}`;
     case 'height': return `Mountain · ${Math.min(d, of)} of ${of} km`;
+    case 'giant': return `Mountain · ${Math.round(peakNow)} km · keep ${HEIGHT.target} km to the end · night ${Math.round(planet.nightShare * 100)}%`;
     case 'cover': return `Ice sheet · ${Math.min(100, Math.round((100 * aimDone) / Math.max(1, of)))}%`; // (one number: how far to the goal)
     case 'plumes': return `Big eruptions · ${d} of ${of}`;
     case 'feed': return `The ring · ${pct}% full`;
@@ -1868,7 +1886,7 @@ let paceAt = -1, paceSaid = '', lostHeatAt = -1, lostTimeAt = -1;
 const SAY_BEFORE = 12;
 function paceLine(): string {
   const at = MARK_AT[WORLD.id], t = planet.seconds;
-  if (at && t < 7) return WORLD.goal === 'sea' ? `Stars: keep ${at.heat}% of the world sea · keep ${at.minutes}%` : `Stars: keep ${at.heat}% of the heat · finish by ${at.minutes}:00`;
+  if (at && t < 7) return WORLD.goal === 'giant' ? `Stars: keep ${at.heat} km · keep ${at.minutes} km` : WORLD.goal === 'sea' ? `Stars: keep ${at.heat}% of the world sea · keep ${at.minutes}%` : `Stars: keep ${at.heat}% of the heat · finish by ${at.minutes}:00`;
   if (at) {
     const heat = Math.round(100 * planet.heatLeft);
     if (lostHeatAt < 0 && heat < at.heat) lostHeatAt = t;
@@ -1997,7 +2015,7 @@ function drawAim(now: number): void {
 
     return;
   }
-  if (WORLD.goal === 'height' || WORLD.goal === 'cover' || WORLD.goal === 'round') {
+  if (WORLD.goal === 'height' || WORLD.goal === 'giant' || WORLD.goal === 'cover' || WORLD.goal === 'round') {
     // How far along is told at the foot, every two km (or every 5%, or 10%).
     const by = WORLD.goal === 'height' ? 2 : WORLD.goal === 'round' ? 10 : 5, step = Math.floor(aimDone / by) * by;
     void step; // (the goal line at the top shows how far it's come)
@@ -2017,8 +2035,8 @@ function drawAim(now: number): void {
       highHatch.set(hatch);
     }
     // And the ring round the heat, inked round as far as the aim is met.
-    const R = WORLD.goal === 'height' ? 0.32 : 0.3, around = Math.max(24, Math.round((Math.PI * 2 * Math.sin(R)) / 0.045));
-    const filled = Math.round(around * Math.min(1, aimDone / aimOf)), ink: number[] = [], pencil: number[] = [];
+    const R = WORLD.goal === 'height' || WORLD.goal === 'giant' ? 0.32 : 0.3, around = Math.max(24, Math.round((Math.PI * 2 * Math.sin(R)) / 0.045));
+    const filled = Math.round(around * Math.min(1, WORLD.goal === 'giant' ? peakNow / HEIGHT.target : aimDone / aimOf)), ink: number[] = [], pencil: number[] = [];
     const q = new THREE.Vector3();
     for (let i = 0; i < around; i++) {
       const a = Math.PI / 2 - (i / around) * Math.PI * 2;
@@ -2798,6 +2816,7 @@ const GOAL_WORDS: Record<typeof WORLD.goal, { age: (met: boolean) => string; don
   antipode: { age: () => 'Later: the planet keeps cooling and wrinkling', done: 'Goal reached: a mountain raised on the far side', title: ['Far side raised', 'Far side too low'], got: () => `the far side ${Math.round(aimDone)} of ${aimOf} km high` },
   atolls: { age: () => 'Later: the lagoons deepen', done: FROM_OCEAN ? 'Goal reached: atolls where your islands were' : 'Goal reached: atolls where the islands were', title: ['Atolls made', 'Not enough atolls'], got: () => `${aimDone} of ${aimOf} atolls` },
   sea: { age: () => 'Later: the last seas dry', done: 'Goal reached: a sea kept to the end of the fire', title: ['A sea kept', 'The seas dried'], got: () => `${Math.round(seaNow * 100)}% of the world still sea` },
+  giant: { age: () => 'Later: the night closes over it', done: 'Goal reached: a mountain standing in the night', title: ['A mountain in the night', 'The mountain melted'], got: () => `a mountain ${Math.round(peakNow)} km high` },
   water: { age: () => 'Later: the ponds join into the first sea', done: 'Goal reached: the first water, melted from comets', title: ['First water made', 'Not enough water'], got: () => `${aimDone} of ${aimOf} comets melted` },
   gather: { age: () => 'Later: the molten surface hardens', done: 'Goal reached: enough stones caught to form a planet', title: ['Planet formed', 'Not enough stones'], got: () => `${aimDone} of ${aimOf} stones caught` },
   oxygen: { age: (met) => (met ? 'Later: the sky keeps turning blue' : 'Later: the orange haze stays'), done: 'Goal reached: the sky turns blue', title: ['Blue sky made', 'Still an orange sky'], got: () => `${Math.min(100, Math.round(aimDone))}% of the oxygen` },
@@ -2834,6 +2853,7 @@ function tale(met: boolean): string {
     case 'antipode': return `The far side raised ${Math.round(aimDone)} km by shock waves through the planet.`;
     case 'atolls': return met ? `${aimDone} rings of coral where islands sank, as Darwin explained.` : `${aimDone} of ${aimOf} atolls. The other islands drowned.`;
     case 'sea': return met ? `${Math.round(seaNow * 100)}% of the world still sea when the fire went out, kept under the ash of its eruptions.` : 'The last of the sea dried before the fire went out.';
+    case 'giant': { const km = Math.round(peakNow); return met ? `A mountain ${km} km high, the last land standing under the red giant.` : `A mountain ${km} km high, melted back down by the day.`; }
     case 'water': return met ? `${aimDone} icy comets melted on warm lava: the first ponds of a sea.` : `${aimDone} of ${aimOf} comets melted.`;
     case 'gather': return met ? 'Enough stones caught to form a planet.' : `${aimDone} stones caught. Not enough for a planet.`;
     case 'oxygen': return met ? 'Life in the shallow seas made enough oxygen to turn the sky blue.' : `The sky ${pct}% of the way from orange to blue.`;
@@ -2857,7 +2877,7 @@ function keptStars(id: WorldId): Marks | null {
 }
 function markTheWin(): void {
   if (FREE) return; // (free play has no clock)
-  marksNow = earned(WORLD.id, WORLD.goal === 'sea' ? seaNow : planet.heatLeft, planet.seconds); // (the drying seas: the share still sea)
+  marksNow = earned(WORLD.id, WORLD.goal === 'sea' ? seaNow : WORLD.goal === 'giant' ? peakNow : planet.heatLeft, planet.seconds); // (the drying seas: the share still sea)
   if (toppedUp) marksNow[1] = false; // (heat was given back: none to spare of its own)
   const before = keptStars(WORLD.id) ?? readMarks(null);
   remember(MARKS_KEY(WORLD.id), writeMarks(mergeMarks(before, marksNow)));
@@ -3270,7 +3290,7 @@ let begun = false;
 ($('begin').querySelector('.chapter') as HTMLElement).textContent = '';
 ($('begin').querySelector('.name') as HTMLElement).textContent = WORLD.title;
 // (An age of Earth begun on the ground the age before left says so: it's the world you made, an age on.)
-($('begin').querySelector('.first') as HTMLElement).textContent = WORLD.goal === 'sea' ? (FROM_ATOLLS ? 'Your world, a billion years later.' : 'An old world, a billion years on.') : WORLD.goal === 'atolls' ? (FROM_OCEAN ? 'Your ocean world, a million years later.' : 'Old islands, a million years on.') : AGE_GROUND ? 'Your world, a long time later.' : '';
+($('begin').querySelector('.first') as HTMLElement).textContent = WORLD.goal === 'giant' ? (CARRIED ? 'Your world, four billion years later.' : 'An old world, four billion years on.') : WORLD.goal === 'sea' ? (FROM_ATOLLS ? 'Your world, a billion years later.' : 'An old world, a billion years on.') : WORLD.goal === 'atolls' ? (FROM_OCEAN ? 'Your ocean world, a million years later.' : 'Old islands, a million years on.') : AGE_GROUND ? 'Your world, a long time later.' : '';
 // (The card is only what's needed to begin: the name, the aim, the stars. How to play is shown in the game as it's
 // needed; why it plays so, the real science, is said at the end, beside what was made.)
 ($('begin').querySelector('.why') as HTMLElement).textContent = '';
@@ -3382,7 +3402,7 @@ $('begin').addEventListener('pointerdown', () => {
   if (begun) return;
   begun = true;
   begunAt = seconds;
-  if (YOUNG && !keptBack) { lapseAt = seconds; document.body.classList.add('lapsing'); announce(SEA_LAPSE ? 'A billion years go by' : 'A million years go by'); }
+  if (YOUNG && !keptBack) { lapseAt = seconds; document.body.classList.add('lapsing'); announce(GIANT_LAPSE ? 'Four billion years go by' : SEA_LAPSE ? 'A billion years go by' : 'A million years go by'); }
   remember('volcano.played', String(Number(remembered('volcano.played') ?? '0') + 1));
   document.body.classList.remove('carding');
   $('begin').classList.add('gone');
@@ -3494,9 +3514,13 @@ let begunAt = -100;
  * them, the colours of the whole world warming. Nothing can be done until the count stops. (Not for a kept world
  * taken up again; asked for less motion, the world doesn't turn and the camera holds still.)
  */
-const SEA_LAPSE = WORLD.goal === 'sea';
-const LAPSE = SEA_LAPSE ? 11 : 7.5, LAPSE_YEARS = SEA_LAPSE ? 1e9 : 1e6, LAPSE_TURNS = 3;
-const LAPSE_SAYS: [number, number, string][] = SEA_LAPSE
+const SEA_LAPSE = WORLD.goal === 'sea', GIANT_LAPSE = WORLD.goal === 'giant';
+const LAPSE = SEA_LAPSE || GIANT_LAPSE ? 11 : 7.5, LAPSE_YEARS = GIANT_LAPSE ? 4e9 : SEA_LAPSE ? 1e9 : 1e6, LAPSE_TURNS = 3;
+/** The red giant: the Sun's size in the sky once swollen (it was the drying seas' Sun, swelling further as the fire burns). */
+const GIANT_SUN = 2.4;
+const LAPSE_SAYS: [number, number, string][] = GIANT_LAPSE
+  ? [[0, 0.2, 'The Sun runs out of hydrogen at its heart'], [0.2, 0.44, 'It swells into a red giant'], [0.44, 0.64, 'The last of the seas boil away'], [0.64, 0.84, 'Its light melts the land'], [0.84, 1.01, 'Only the night is cool enough to build on']]
+  : SEA_LAPSE
   ? [[0, 0.2, 'The Sun grows brighter'], [0.2, 0.38, 'The plates fold the sea floor'], [0.38, 0.58, 'The seas begin to boil away'], [0.58, 0.76, 'Life follows the shore down'], [0.76, 1.01, 'The land dries, and life withers']]
   : [[0, 0.35, 'The islands wear down'], [0.3, 0.68, 'The sea floor carries them away from the hot spot'], [0.62, 1.01, 'They settle, and begin to sink']];
 let lapseAt = -100, lapseTurned = 0, lapseDrawn = 0, lapseLife = 0, lapseOver = false;
@@ -3506,14 +3530,28 @@ const lapseE = () => { const t = Math.min(1, Math.max(0, (seconds - lapseAt) / (
 const between = (e: number, a: number, b: number) => { const t = Math.min(1, Math.max(0, (e - a) / (b - a))); return t * t * (3 - 2 * t); };
 /** The drying seas: whether there's a world to change; and the colours, as they were and as they'll be. */
 const WARPED = SEA_LAPSE && !!YOUNG && !!OLD && !!WARP;
+/** The red giant: how far the ground stands up as the last seas go, so none of it is under them. */
+const GIANT_LIFT = GIANT_LAPSE && YOUNG ? Math.max(0, -Math.min(...Array.from(YOUNG))) + 0.01 : 0;
 /** How much of the world the sea covered as the age before left it. */
 const LAPSE_SEA0 = YOUNG && SEA_LAPSE ? Array.from(YOUNG).filter((h) => h < 0).length / YOUNG.length : 0;
 const WAS = { shallow: new THREE.Color('#d4e3ec'), deep: new THREE.Color('#b1c8d8'), paper: new THREE.Color('#ecdfc2') }, NOW = { shallow: SHALLOW.clone(), deep: DEEP.clone(), paper: PAPER.clone() };
+/** The red giant: the drying seas' colours, and its Sun's, as they were before the ages under the giant; and as they become. */
+const GIANT_WAS = { shallow: new THREE.Color('#d9e2d4'), deep: new THREE.Color('#aec3c6'), paper: new THREE.Color('#efdcb8') };
+const SUN_WAS = { paper: new THREE.Color('#fff6dc'), wash: new THREE.Color('#fcecc2'), wash2: new THREE.Color('#eeb455'), glow: new THREE.Color('#f5cf8a') };
+const SUN_RED = { paper: new THREE.Color('#ffd8b4'), wash: new THREE.Color('#f39a62'), wash2: new THREE.Color('#c9452a'), glow: new THREE.Color('#ec7f52') };
+/** The red giant's Sun, coloured part way from yellow (0) to red (1). */
+function sunRed(t: number): void {
+  if (!sunDisc) return;
+  const [bloom, ball] = sunDisc.children as THREE.Mesh[], bu = (ball.material as THREE.ShaderMaterial).uniforms, gu = (bloom.material as THREE.ShaderMaterial).uniforms;
+  bu.uPaper.value.lerpColors(SUN_WAS.paper, SUN_RED.paper, t); bu.uWash.value.lerpColors(SUN_WAS.wash, SUN_RED.wash, t); bu.uWash2.value.lerpColors(SUN_WAS.wash2, SUN_RED.wash2, t);
+  gu.uGlow.value.lerpColors(SUN_WAS.glow, SUN_RED.glow, t);
+}
 /** Before the count starts, the world as the age before left it (on the card too). */
 function lapseBefore(): void {
-  if (!YOUNG || keptBack) return;
+  if (!YOUNG || keptBack) { if (GIANT_LAPSE) { sunRed(1); sunDisc?.scale.setScalar(GIANT_SUN); } return; }
   planet.rock.set(YOUNG);
   if (SEA_LAPSE) { SHALLOW.copy(WAS.shallow); DEEP.copy(WAS.deep); PAPER.copy(WAS.paper); sunDisc?.scale.setScalar(0.62); }
+  if (GIANT_LAPSE) { SHALLOW.copy(GIANT_WAS.shallow); DEEP.copy(GIANT_WAS.deep); PAPER.copy(GIANT_WAS.paper); sunRed(0); sunDisc?.scale.setScalar(1); dayMeltU.value = 0; nightShiftU.value = 0; }
   draw();
 }
 function lapseStep(): void {
@@ -3522,6 +3560,7 @@ function lapseStep(): void {
     if (!lapseOver && lapseAt > -100) {
       lapseOver = true; planet.rock.set(OLD!); el.classList.remove('shown'); document.body.classList.remove('lapsing');
       if (SEA_LAPSE) { SHALLOW.copy(NOW.shallow); DEEP.copy(NOW.deep); PAPER.copy(NOW.paper); sunDisc?.scale.setScalar(1); lapseLifeAt(1); dustVeil.value = 0; }
+      if (GIANT_LAPSE) { SHALLOW.copy(NOW.shallow); DEEP.copy(NOW.deep); PAPER.copy(NOW.paper); sunDisc?.scale.setScalar(GIANT_SUN); sunRed(1); dayMeltU.value = 1; nightShiftU.value = planet.nightShift; dustVeil.value = 0; }
       draw(); lastLife = -10; redrawLife(seconds);
     }
     return;
@@ -3547,6 +3586,15 @@ function lapseStep(): void {
     SHALLOW.lerpColors(WAS.shallow, NOW.shallow, sun); DEEP.lerpColors(WAS.deep, NOW.deep, sun); PAPER.lerpColors(WAS.paper, NOW.paper, sun);
     dustVeil.value = 0.6 * between(e, 0.32, 0.45) * (1 - between(e, 0.62, 0.8)); // (steam, as the seas boil)
     if (seconds - lapseLife > 0.25) { lapseLife = seconds; lapseLifeAt(e); lastLife = -10; redrawLife(seconds); }
+  } else if (GIANT_LAPSE) {
+    // The Sun swells and reddens; the last seas boil off (the ground standing clear of where they were); then its
+    // light melts the old land down, the day side glowing; and the night is pushed back round the world.
+    const swell = between(e, 0.15, 0.55), dry = between(e, 0.44, 0.64), melt = between(e, 0.62, 0.95);
+    sunDisc?.scale.setScalar(1 + (GIANT_SUN - 1) * swell); sunRed(swell);
+    SHALLOW.lerpColors(GIANT_WAS.shallow, NOW.shallow, swell); DEEP.lerpColors(GIANT_WAS.deep, NOW.deep, swell); PAPER.lerpColors(GIANT_WAS.paper, NOW.paper, swell);
+    dustVeil.value = 0.5 * between(e, 0.44, 0.52) * (1 - between(e, 0.6, 0.7)); // (steam, the last of the seas)
+    dayMeltU.value = melt; nightShiftU.value = planet.nightShift * between(e, 0.7, 1);
+    for (let v = 0; v < N; v++) { const lifted = YOUNG![v] + GIANT_LIFT * dry; planet.rock[v] = lifted + (OLD![v] - lifted) * melt; }
   } else for (let v = 0; v < N; v++) planet.rock[v] = YOUNG![v] + (OLD![v] - YOUNG![v]) * e;
   if (seconds - lapseDrawn > 1 / 30) { lapseDrawn = seconds; draw(); }
   if (!STILL) { const turn = Math.PI * 2 * LAPSE_TURNS * e; rotate(turn - lapseTurned, 0); lapseTurned = turn; }
@@ -3566,7 +3614,7 @@ function lapseLifeAt(e: number): void {
 }
 /** Years, as a count read at a glance: 640,000; 350 million; 1 billion. */
 function yearsWords(n: number): string {
-  if (n >= 999.5e6) return '1 billion';
+  if (n >= 999.5e6) return `${Math.round(n / 1e8) / 10} billion`;
   if (n >= 999500) return `${Math.max(1, Math.round(n / 1e6)).toLocaleString('en')} million`;
   return (Math.round(n / 1000) * 1000).toLocaleString('en');
 }
@@ -3742,6 +3790,10 @@ const loop = (): void => {
     const steps = speed > 1 ? 4 : 1;
     for (let k = 0; k < steps; k++) planet.step((dt * speed) / steps);
     if (PLACES.length) tendCoral(planet, topo, PLACES, CORAL, planet.plume, dt * speed, planet.k.reefDeep);
+    // The red giant: the world turns slowly by itself, carrying the ground from the night into the day; and the
+    // night shrinks as the Sun swells (it grows in the sky with it).
+    if (WORLD.spin && !ending && !planet.over) { turn.setFromAxisAngle(axis.set(0, 1, 0), WORLD.spin * dt * speed); group.quaternion.premultiply(turn); }
+    if (WORLD.goal === 'giant' && !ending) { nightShiftU.value = planet.nightShift; sunDisc?.scale.setScalar(GIANT_SUN + 0.5 * (1 - planet.reserve / planet.k.heat)); }
     if (!ending) { keepReplayFrame(); keepLook(); }
     farLook();
     // A tumbling moon rolls of itself, about its spin's axis (in its own frame), as fast as it tumbles.
@@ -3803,7 +3855,7 @@ const loop = (): void => {
   // (Breathing on Lengai: once the peak is tall enough, it stops breathing out, so its summit can rest and whiten;
   // pouring on by itself, the top never cooled and the world never ended.)
   // (Breathing on the hollow world, which can't be held back by tipping: it rests by itself as the ground starts to sink, and breathes again once it has.)
-  if (WORLD.goal === 'height' || WORLD.goal === 'cover' || WORLD.goal === 'round' || WORLD.goal === 'calm') {
+  if (WORLD.goal === 'height' || WORLD.goal === 'giant' || WORLD.goal === 'cover' || WORLD.goal === 'round' || WORLD.goal === 'calm') {
     // The ring follows the heat, eased, so it glides as the heat creeps.
     gaugeAt.lerp(new THREE.Vector3(planet.plume.x, planet.plume.y, planet.plume.z), 1 - Math.exp(-dt / 1.5)).normalize();
     gauge.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), gaugeAt);

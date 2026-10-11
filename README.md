@@ -714,3 +714,25 @@ Then you play. The sea falls by itself (`dries` in `sim.ts`). Every burst's ash 
 * Doing nothing loses at 2¾ minutes.
 * Pouring, or holding and lifting, loses.
 * Aimless play won one fire in three.
+
+**The Red Giant (XV).** Chapter II ends with the red giant, about four billion years after the Drying Seas, five billion from now. It begins on the world the Drying Seas left (`giant.ts`). Begin plays four billion years in eleven seconds:
+* The Sun runs out of hydrogen at its heart.
+* It swells into a red giant: it grows, reddens and fills the sky.
+* The last of the seas boil away: a haze of steam, and the ground standing clear of where they were.
+* Its light melts the land: the old continents melt down to a low, scarred plain, and the day side starts to glow.
+* Only the night is cool enough to build on: the edge of day creeps round.
+
+Then you play:
+* The day side glows molten and melts whatever stands in it (`melt` in `sim.ts`, drawn by `uDayMelt` in `print.ts`).
+* The night shrinks as the fire burns, from almost half the world to about a sixth (`nightShrink`), and the Sun keeps growing in the sky with it.
+* The world turns slowly by itself (`spin` in `worlds.ts`), carrying the ground from night into day. The volcano stays where it is on the ground, so you turn the world back to keep it in the dark, on the left.
+* The aim is a mountain 12 km high still standing when the fire is out, so the ending is whatever survives. The stars are 16 km and 24 km.
+
+Bursting in the night builds much faster than pouring. With the first aim (just reach the height), skilled play was done in a minute, before the shrinking night mattered, so the aim became keeping the mountain to the end. Balance:
+* A bot that keeps the volcano in the night and pours ends with about 20 km.
+* One that erupts there ends with about 50 km.
+* Aimless play (five fires) loses.
+* Keeping the volcano in the middle of the screen loses: by the end the middle is day.
+* Pouring without turning the world back loses.
+
+Hydra now has nine stars, one for each world in Chapter II.

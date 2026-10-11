@@ -9,6 +9,7 @@ describe('marks', () => {
       expect(markNames(w.id)[0]).toBe('reach the goal');
       // (The drying seas' fire runs its course whatever you do: their stars are the share of the world still sea.)
       if (w.goal === 'sea') { expect(markNames(w.id)[1]).toMatch(/^keep \d+% of the world sea$/); continue; }
+      if (w.goal === 'giant') { expect(markNames(w.id)[1]).toMatch(/^keep a mountain \d+ km high$/); continue; }
       expect([10, 20, 25, 33, 50]).toContain(MARK_AT[w.id].heat);
       expect(markNames(w.id)[1]).toMatch(w.goal === 'town' ? /every house/ : /^keep .*heat$/);
     }
