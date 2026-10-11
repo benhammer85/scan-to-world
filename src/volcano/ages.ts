@@ -4,13 +4,13 @@
  * rubble you gathered is what the young Earth's Moon was thrown from; between the young Earth and
  * the orange Earth, the oceans fill, so the mountains you raised are its first islands; Snowball
  * Earth freezes those islands over; the ocean world is them thawed, greening and sinking; and the atolls are the
- * ocean world's own chain, a million years on.
+ * ocean world's own chain, a million years on; and the drying seas are that world a billion years further on.
  * Played out of order (or the age before never finished), an age begins on fresh ground, as any
  * world does.
  */
 import type { WorldId } from './worlds';
 
-export const AGES: WorldId[] = ['first', 'young', 'archean', 'snowball', 'ocean', 'atolls'];
+export const AGES: WorldId[] = ['first', 'young', 'archean', 'snowball', 'ocean', 'atolls', 'drying'];
 
 /** The age before this one, if it's an age of Earth and not the first. */
 export function ageBefore(id: WorldId): WorldId | null {
@@ -22,7 +22,7 @@ export function ageBefore(id: WorldId): WorldId | null {
 export const ageKey = (id: WorldId): string => `earth:${id}`;
 
 /** Whether a world's ground is under a sea (the ages from the orange Earth on). */
-const SEA_AGES: WorldId[] = ['archean', 'snowball', 'ocean', 'atolls'];
+const SEA_AGES: WorldId[] = ['archean', 'snowball', 'ocean', 'atolls', 'drying'];
 
 /**
  * The ground the age before left, as this age begins on it. Dry to wet, the oceans fill: the ground

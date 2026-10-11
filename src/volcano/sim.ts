@@ -316,6 +316,16 @@ export const VOLCANO = {
   life: true,
   reseed: 30,
   seedReach: 0.3,
+  /**
+   * The drying seas, a billion years on, the sun brighter: the sea falls this much a second (all the ground rises
+   * against it, as it were); a burst's ash in the sky shades it, and it falls by only a fifth as fast while the sky
+   * is full of ash. A burst of `shadeFull` fills the sky (smaller ones much less: by the square of their size, as
+   * only great eruptions reach high enough to cool a world), and the ash thins away over `shadeLasts` seconds. (The
+   * sky holds only so much, so bursts that keep it full do more than a few great ones with clear sky between.)
+   */
+  dries: 0,
+  shadeFull: 12,
+  shadeLasts: 14,
   /** Whether life begins only in the shallows near the vent, where it can live (as coral), rather than in any warm water. */
   seedShallow: false,
   /**
@@ -657,6 +667,9 @@ export class Planet {
   }
   /** The orange Earth: the oxygen life has breathed into the sky so far, less what eruptions' gas has used up (below 0, a debt). */
   oxygen = 0;
+  /** The drying seas: how full the sky is of a burst's ash (0 to 1), and how far the sea has fallen in all. */
+  ashSky = 0;
+  dried = 0;
   /** Rock boiled away by the star, and rock snow fallen on the night side, so far (in the volume heat is reckoned in). */
   lost = 0;
   snow = 0;
@@ -1087,6 +1100,7 @@ export class Planet {
     this.pressure = 0;
     this.drained += volume; // (a hollow world's chamber gives it, flow or burst alike)
     this.breathe(volume, volume >= this.k.explosive);
+    if (this.k.dries > 0 && volume >= this.k.explosive) this.ashSky = Math.min(1, this.ashSky + (volume / this.k.shadeFull) ** 2);
     // (The orange Earth: the gas of an eruption takes oxygen out of the sky, as volcanic gases did then.)
     if (this.k.gasEats > 0 && !blast) { this.oxygen -= volume * this.k.gasEats; // (below none, a debt the life must breathe off first)
       this.tell('The eruption\'s gas uses up oxygen'); }
@@ -2132,6 +2146,19 @@ export class Planet {
       }
     }
     if (to === n) for (let v = 0; v < n; v++) r[v] += next[v];
+    // The sea falls (and so the ground stands higher against it), more slowly under a burst's ash.
+    if (to === n && this.k.dries > 0 && !this.over) {
+      const d = this.k.dries * dt * (1 - 0.8 * Math.min(1, this.ashSky));
+      for (let v = 0; v < n; v++) r[v] += d;
+      this.dried += d;
+      this.ashSky = Math.max(0, this.ashSky - dt / this.k.shadeLasts);
+    }
+  }
+  /** The share of the world under the sea. */
+  get seaShare(): number {
+    let wet = 0;
+    for (let v = 0; v < this.rock.length; v++) if (this.rock[v] < 0) wet++;
+    return wet / this.rock.length;
   }
 
   /**

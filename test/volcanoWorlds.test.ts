@@ -8,6 +8,7 @@ import { WORLDS, worldOf, nextWorld, CHAPTERS, chapterOf } from '../src/volcano/
 import { stage } from '../src/volcano/ecology';
 import { ageBefore, carried } from '../src/volcano/ages';
 import { aged, atollPlaces, atollState, defaultChain, tendCoral } from '../src/volcano/atolls';
+import { dried, seaShare } from '../src/volcano/drying';
 
 const topo = buildTopology(new THREE.IcosahedronGeometry(1, 24).attributes.position.array, null);
 const p = topo.basePositions;
@@ -20,7 +21,7 @@ const run = (pl: Planet, seconds: number) => { for (let t = 0; t < seconds; t +=
 
 describe('the worlds', () => {
   it('come one after another, and each has its own aim', () => {
-    expect(WORLDS.map((w) => w.id)).toEqual(['mars', 'moon', 'ice', 'asteroid', 'rogue', 'hollow', 'first', 'comets', 'young', 'archean', 'snowball', 'ocean', 'atolls', 'lengai', 'ijen', 'tonga', 'io', 'europa', 'enceladus', 'triton', 'tumble', 'mercury', 'magma', 'dust', 'deep', 'spin', 'venus', 'pluto', 'lamp', 'twofires']);
+    expect(WORLDS.map((w) => w.id)).toEqual(['mars', 'moon', 'ice', 'asteroid', 'rogue', 'hollow', 'first', 'comets', 'young', 'archean', 'snowball', 'ocean', 'atolls', 'drying', 'lengai', 'ijen', 'tonga', 'io', 'europa', 'enceladus', 'triton', 'tumble', 'mercury', 'magma', 'dust', 'deep', 'spin', 'venus', 'pluto', 'lamp', 'twofires']);
     expect(worldOf('moon').goal).toBe('basins');
     expect(worldOf('nowhere').id).toBe('mars');
     expect(nextWorld(worldOf('mars'))!.id).toBe('moon');
@@ -35,7 +36,8 @@ describe('the worlds', () => {
     expect(nextWorld(worldOf('archean'))!.id).toBe('snowball');
     expect(nextWorld(worldOf('snowball'))!.id).toBe('ocean');
     expect(nextWorld(worldOf('ocean'))!.id).toBe('atolls');
-    expect(nextWorld(worldOf('atolls'))!.id).toBe('lengai');
+    expect(nextWorld(worldOf('atolls'))!.id).toBe('drying');
+    expect(nextWorld(worldOf('drying'))!.id).toBe('lengai');
     expect(nextWorld(worldOf('lengai'))!.id).toBe('ijen');
     expect(nextWorld(worldOf('ijen'))!.id).toBe('tonga');
     expect(nextWorld(worldOf('tonga'))!.id).toBe('io');
@@ -248,6 +250,26 @@ describe('the Atolls', () => {
     run(pl, 240);
     expect(places.every((q) => atollState(pl, q).sunk)).toBe(true);
     expect(places.filter((q) => atollState(pl, q).made).length).toBeLessThan(worldOf('atolls').atolls!);
+  });
+});
+
+describe('the Drying Seas', () => {
+  const floor = -0.22, from = { x: 0, y: 0, z: 1 }, young = defaultChain(topo, from, floor);
+  it('begin on the world the atolls left, a billion years on, with the sea fallen into the basins', () => {
+    expect(ageBefore('drying')).toBe('atolls');
+    const old = dried(young, topo, 7, 0.42);
+    expect(seaShare(young)).toBeGreaterThan(0.8);
+    expect(seaShare(old)).toBeCloseTo(0.42, 1);
+    expect(dried(young, topo, 7, 0.42)).toEqual(old); // (the same world each time it's played)
+  });
+  it('dry by themselves, and more slowly under the ash of a great eruption', () => {
+    const rules = worldOf('drying').rules, ground = dried(young, topo, 7, 0.42);
+    const open = new Planet(topo, nearest(0, 0, 1), 3, rules, ground), shaded = new Planet(topo, nearest(0, 0, 1), 3, rules, ground);
+    shaded.pressure = shaded.k.shadeFull; shaded.erupt();
+    expect(shaded.ashSky).toBeGreaterThan(0.9);
+    run(open, 10); run(shaded, 10);
+    expect(open.seaShare).toBeLessThan(0.42);
+    expect(shaded.dried).toBeLessThan(open.dried * 0.5);
   });
 });
 
