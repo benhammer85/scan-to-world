@@ -1,12 +1,13 @@
 /**
- * A prototype: trace a ring, then press it into the paper, as a printing press presses without ink
- * (karazuri, the Japanese "empty printing", or a blind embossing). Pressing is breathing in, letting go
- * breathing out; nothing says how long, and a longer, stiller press only goes deeper.
+ * A prototype: trace a ring with a brush, then press it into the paper, as a printing press presses
+ * without ink (karazuri, the Japanese "empty printing", or a blind embossing). The press is a quiet
+ * pause between rings: nothing says how long, and a longer, stiller press only goes deeper. Silent.
  *
- *   trace     draw the ring at your own pace (the paint and the disappearing ink, as in the game)
- *   press     hold anywhere: the platen comes down, the ring sinks into the paper, a low hush deepens
- *             (and on the iPhone app, a growing pressure in the hand)
- *   let go    the paper lifts with a soft thump; the ring's relief stays, caught by raking light
+ *   trace     draw the ring at your own pace with a wet brush: its stroke is dark at the brush and
+ *             evaporates behind it (disappearing ink), leaving only the paint's colour
+ *   press     hold anywhere: the platen comes down and the ring sinks into the paper (and on the
+ *             iPhone app, a growing pressure in the hand)
+ *   let go    the paper lifts; the ring's relief stays, caught by raking light
  *
  * The tree is in the paper too, never inked: the real print of its age as a blind embossing, seen only
  * as relief in the light.
@@ -18,7 +19,6 @@ import { bandOf, brushAt, pointerAt, radiusAt, roomOf, scaleFor, warpFor, type V
 import { at, drawGuide, drawPaper } from './draw';
 import { Paper } from './paint';
 import { plateImage, preloadPlates, stageAt, type Stage } from './plates';
-import { lift as liftSound, pen, press as pressSound, tick, wake } from './sound';
 
 const TAU = Math.PI * 2, PAPER = '#f4efe4';
 const canvas = document.getElementById('press') as HTMLCanvasElement, g = canvas.getContext('2d')!;
@@ -65,7 +65,8 @@ function viewNow(): View {
 type Phase = 'trace' | 'press' | 'pressing' | 'lifting';
 let phase: Phase = 'trace', since = 0, depth = 0, pressedOnce = 0;
 function enter(p: Phase): void { phase = p; since = clock(); }
-let trail: { a: number; r: number; t: number }[] = [];
+/** The brush's track: where, when, how wide it laid (slow is wide), and how fast. */
+let trail: { a: number; r: number; t: number; w: number; fast: number }[] = [];
 let strokeView: View | null = null, painter: number | null = null, mustLift = false;
 
 function say(text: string, fade = 10): void {
@@ -76,12 +77,10 @@ let sayT = 0;
 
 canvas.addEventListener('pointerdown', (e) => {
   canvas.setPointerCapture(e.pointerId);
-  wake();
   if (painter !== null) return;
   const x = e.clientX * px, y = e.clientY * px;
   if (phase === 'press' && !mustLift) {
     painter = e.pointerId; depth = 0; enter('pressing');
-    if (pressedOnce < 2) say('Press, and breathe in. Let go when you’re ready.', 8);
     return;
   }
   if (phase !== 'trace') return;
@@ -112,11 +111,10 @@ for (const type of ['pointerup', 'pointercancel'] as const) canvas.addEventListe
   if (painter === null) { mustLift = false; return; }
   if (e.pointerId !== painter) return;
   painter = null; mustLift = false;
-  if (phase === 'trace') { tree.lift(); pen(0); }
+  if (phase === 'trace') tree.lift();
   if (phase === 'pressing') {
     // Let go: the paper lifts, and the ring's relief stays.
     depths[tree.rings.length - 1] = Math.max(depths[tree.rings.length - 1] ?? 0, depth);
-    liftSound(depth); pressSound(0);
     if (NATIVE) { rumble(0); tap({ strength: 0.25 + 0.5 * depth, sharpness: 0.25 }); }
     pressedOnce++;
     enter('lifting');
@@ -125,16 +123,28 @@ for (const type of ['pointerup', 'pointercancel'] as const) canvas.addEventListe
 
 function trailAt(): void {
   const tip = tree.tip;
-  if (tip) trail.push({ a: tip.a, r: radiusAt((i) => tree.inner(i), tip.a) + tip.u * tree.wRef, t: clock() });
+  if (!tip || !strokeView) return;
+  const r = radiusAt((i) => tree.inner(i), tip.a) + tip.u * tree.wRef, t = clock(), last = trail[trail.length - 1];
+  // Speed on the screen, in CSS px a second, eased so the width swells and thins smoothly.
+  let fast = last ? last.fast : 0;
+  if (last && Math.abs(last.a - tip.a) < 0.5) {
+    const [x0, y0] = at(strokeView, last.a, last.r), [x1, y1] = at(strokeView, tip.a, r);
+    const v = Math.hypot(x1 - x0, y1 - y0) / px / Math.max(0.008, t - last.t);
+    fast += (Math.min(1, v / 600) - fast) * 0.25;
+  }
+  // A brush: full and wet when unhurried, thin and dry when quick, tapering in as it touches down.
+  const n = last && Math.abs(last.a - tip.a) < 0.5 ? trail.length : 0;
+  const w = (3 + 5 * (1 - fast)) * Math.min(1, 0.3 + n / 8);
+  trail.push({ a: tip.a, r, t, w: last && n ? last.w + (w - last.w) * 0.35 : w * 0.4, fast });
 }
 function hear(): void {
   for (const n of tree.news) if (n.kind === 'ring') {
-    paper.paint(tree); paper.close(tree); tick(); pen(0);
+    paper.paint(tree); paper.close(tree);
     depths.push(0);
     // (The finger may still be down from the stroke: the press waits for it to lift and come again.)
     mustLift = painter !== null; painter = null;
     enter('press');
-    say(pressedOnce < 2 ? 'Now press the ring into the paper: hold anywhere.' : '', 9);
+    if (pressedOnce < 1) say('Hold anywhere to press the ring into the paper.', 8);
   }
   tree.news.length = 0;
 }
@@ -174,12 +184,53 @@ function drawRelief(v: View, i: number, d: number): void {
   g.strokeStyle = `rgba(255,252,244,${(0.75 * d).toFixed(3)})`; path(-o * 0.8, -o * 0.8); g.stroke();
 }
 
+/** A fast, steady little hash, 0 to 1: which bristles have run dry where. */
+function hash(x: number): number { const h = Math.sin(x * 127.1) * 43758.5453; return h - Math.floor(h); }
+
+/** The brush's line on the page: a wet body that thins and fades, and seven bristles that break up as it dries.
+ *  Each piece is drawn edge to edge with the next (sharing its ends), so the translucent ink never doubles. */
+function drawBrush(g: CanvasRenderingContext2D, sv: View, t: number): void {
+  const n = trail.length;
+  if (n < 2) return;
+  const pts = trail.map((q) => { const [x, y] = at(sv, q.a, q.r); return { x, y, life: Math.exp(-(t - q.t) / 3), q, nx: 0, ny: 0, hw: 0 }; });
+  const lap = (i: number) => Math.abs(trail[i].a - trail[i - 1].a) > 0.5;
+  for (let i = 0; i < n; i++) {
+    const a = pts[i > 0 && !lap(i) ? i - 1 : i], b = pts[i + 1 < n && !lap(i + 1) ? i + 1 : i];
+    const dx = b.x - a.x, dy = b.y - a.y, l = Math.hypot(dx, dy) || 1, p = pts[i];
+    p.nx = -dy / l; p.ny = dx / l; p.hw = 0.5 * p.q.w * (0.45 + 0.55 * p.life) * px;
+  }
+  g.lineCap = 'butt';
+  for (let i = 1; i < n; i++) {
+    const p = pts[i - 1], q = pts[i], life = q.life;
+    if (life < 0.02 || lap(i)) continue;
+    // The wet body, with a faint bleed into the paper at its edges: both fade first.
+    const band = (k: number, alpha: number) => {
+      const bp = k * p.hw, bq = k * q.hw;
+      g.fillStyle = `rgba(30,24,20,${alpha.toFixed(3)})`;
+      g.beginPath();
+      g.moveTo(p.x + p.nx * bp, p.y + p.ny * bp); g.lineTo(q.x + q.nx * bq, q.y + q.ny * bq);
+      g.lineTo(q.x - q.nx * bq, q.y - q.ny * bq); g.lineTo(p.x - p.nx * bp, p.y - p.ny * bp);
+      g.closePath(); g.fill();
+    };
+    band(1.35, 0.07 * life * life);
+    band(0.7, 0.62 * life * life);
+    // The bristles: fine lines across the brush, each running dry in streaks as the stroke dries.
+    const dry = Math.min(0.85, 0.75 * (1 - life) + 0.35 * q.q.fast);
+    g.lineWidth = Math.max(0.6 * px, 0.2 * (p.hw + q.hw));
+    for (let j = 0; j < 7; j++) {
+      if (hash(j * 13.7 + Math.floor(i / 5) * 0.917) < dry) continue;
+      const o = (j / 6 - 0.5) * 1.8;
+      g.strokeStyle = `rgba(30,24,20,${(0.5 * life * (0.5 + 0.5 * hash(j + 0.5))).toFixed(3)})`;
+      g.beginPath(); g.moveTo(p.x + p.nx * o * p.hw, p.y + p.ny * o * p.hw); g.lineTo(q.x + q.nx * o * q.hw, q.y + q.ny * o * q.hw); g.stroke();
+    }
+  }
+}
+
 function frame(): void {
   const t = clock(), dt = 1 / 60, v = viewNow();
   if (phase === 'pressing') {
     // Deeper the longer it's held: most of the way in five seconds, never quite all.
     depth = 1 - Math.exp(-(t - since) / 2.2);
-    pressSound(depth);
     if (NATIVE) rumble(0.08 + 0.45 * depth, 0.15);
   }
   if (phase === 'lifting' && t - since > 1.4) {
@@ -188,7 +239,6 @@ function frame(): void {
     enter('trace');
   }
   const tip = tree.tip;
-  pen(phase === 'trace' && painter !== null && tip ? Math.min(1, tip.w / 2.5) : 0);
   paper.step(dt);
 
   g.setTransform(1, 0, 0, 1, 0, 0);
@@ -223,17 +273,10 @@ function frame(): void {
   }
   if (phase === 'trace') {
     drawGuide(g, tree, strokeView ?? v, bandOf(tree, v), 0.75 + 0.25 * Math.cos(t * TAU / 10));
-    // The ink, evaporating behind the pen.
+    // The ink: a brush's line, wet at first, then drying into bristle-streaks and evaporating.
     const sv = strokeView ?? v;
-    g.lineCap = 'round';
-    for (let k = 1; k < trail.length; k++) {
-      const p = trail[k - 1], q = trail[k], life = Math.exp(-(t - q.t) / 2.6);
-      if (life < 0.02 || Math.abs(p.a - q.a) > 0.5) continue;
-      const [x0, y0] = at(sv, p.a, p.r), [x1, y1] = at(sv, q.a, q.r);
-      g.strokeStyle = `rgba(46,32,26,${(0.82 * life).toFixed(3)})`; g.lineWidth = (1.1 + 1.3 * life) * px;
-      g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke();
-    }
-    if (tip) { const p = pointerAt(tree, sv, 0, tip.a, tip.u); g.fillStyle = 'rgba(46,32,26,0.85)'; g.beginPath(); g.arc(p.x, p.y, 5 * px, 0, TAU); g.fill(); }
+    drawBrush(g, sv, t);
+    if (tip && tree.resting) { const p = pointerAt(tree, sv, 0, tip.a, tip.u); g.strokeStyle = 'rgba(30,24,20,0.35)'; g.lineWidth = 1 * px; g.beginPath(); g.arc(p.x, p.y, 5 * px, 0, TAU); g.stroke(); }
   }
   // The platen coming down: the page's edges darken softly as it presses, and lift as it rises.
   const platen = phase === 'pressing' ? depth : phase === 'lifting' ? (1 - smooth((t - since) / 0.9)) * depths[n - 1] : phase === 'press' ? 0.06 * (0.5 + 0.5 * Math.sin(t * TAU / 4)) : 0;
