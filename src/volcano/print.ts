@@ -36,6 +36,7 @@ export const PRINT_FUNCTIONS = /* glsl */ `
   uniform float uIceLine; // (Snowball Earth: the ice from this latitude's sine to the poles; below 0, no ice)
   uniform float uHaze; // (the orange Earth: its orange haze, 1 at first, gone once the sky is blue)
   uniform float uDust; // (Mars: a dust storm's veil, 0 clear, 1 at its height)
+  uniform float uAshy; // (1: the veil is a great eruption's grey ash, not Mars's dust)
   uniform float uTide; // (Io: its ground flushed warm towards high tide, 0 to 1)
   uniform vec4 uSky; // (its star's direction, as seen, and w: 0 no star in it, 1 a star, 2 none at all, a rogue planet)
   #define uFeedingGlow (0.4 + 0.6 * uFeeding)
@@ -305,7 +306,7 @@ export function printFragment(look: Look, sea: boolean): string {
       if (uDust > 0.0) {
         float band = noise3(vec3(vDir.x * 1.5, vDir.y * 11.0, vDir.z * 1.5)), fine = noise3(vec3(vDir.x * 4.0, vDir.y * 40.0, vDir.z * 4.0));
         float streaks = smoothstep(0.25, 0.75, band * 0.75 + fine * 0.25);
-        vec3 dust = mix(vec3(0.80, 0.58, 0.40), vec3(0.90, 0.74, 0.56), streaks);
+        vec3 dust = mix(mix(vec3(0.80, 0.58, 0.40), vec3(0.90, 0.74, 0.56), streaks), mix(vec3(0.56, 0.55, 0.54), vec3(0.70, 0.69, 0.67), streaks), uAshy);
         col = mix(col, dust, uDust * (0.45 + 0.25 * streaks));
       }
 

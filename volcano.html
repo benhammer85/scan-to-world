@@ -32,6 +32,9 @@
       #lapse b { display: block; font-size: 44px; font-weight: 400; letter-spacing: 0.02em; }
       #lapse span { font-size: 15px; letter-spacing: 0.06em; opacity: 0.74; }
       #lapse.shown { opacity: 1; }
+      #lapse i { display: block; margin-top: 14px; font-size: 16px; font-style: italic; opacity: 0; transition: opacity 0.6s ease; }
+      #lapse i.shown { opacity: 0.8; }
+      body.lapsing #goal, body.lapsing #event, body.lapsing #pace, body.lapsing #legend { opacity: 0 !important; transition: opacity 0.6s ease; }
       #event, #stage-name, #goal { text-shadow: 0 0 2px #f4efe4, 0 0 6px #f4efe4, 0 0 12px #f4efe4, 0 0 18px #f4efe4; }
       /* The world comes in from the paper, and goes back to it, never cut. */
       #stage { opacity: 0; transition: opacity 1.2s ease; }
@@ -206,7 +209,7 @@
     <div id="stage-name" class="engraved"></div>
     <div id="goal" class="engraved" aria-live="polite"></div>
     <div id="pace" class="engraved"></div>
-    <div id="lapse" class="engraved" aria-hidden="true"><b>0</b><span>years later</span></div>
+    <div id="lapse" class="engraved" aria-hidden="true"><b>0</b><span>years later</span><i></i></div>
     <div id="event" class="engraved" aria-live="polite"></div>
     <div id="legend" class="engraved"></div>
     <div id="ghost" aria-hidden="true"><div class="mv"><i class="ring"></i><i class="dot"></i></div></div>

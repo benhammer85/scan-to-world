@@ -24,6 +24,7 @@ export const MARK_AT: Record<WorldId, { heat: number; minutes: number }> = {
   comets: { heat: 20, minutes: 5 },
   ocean: { heat: 33, minutes: 4 },
   atolls: { heat: 20, minutes: 4 },
+  drying: { heat: 12, minutes: 16 }, // (the drying seas: the shares of the world still sea, for the second and third stars; see SEAS)
   moon: { heat: 33, minutes: 3 },
   mars: { heat: 25, minutes: 4 },
   ice: { heat: 10, minutes: 6 },
@@ -55,18 +56,26 @@ export const MARK_AT: Record<WorldId, { heat: number; minutes: number }> = {
 /** Worlds whose first mark is every house standing, not heat left (the fire there runs its course whatever you do). */
 const HOUSES: WorldId[] = []; // (Grindavík, the one world that was a town: taken out, as the game never shows Earth itself)
 
+/**
+ * Worlds where the fire runs its course whatever you do (the drying seas), so heat left and time mean nothing: their
+ * second and third stars are how much of the world is still sea at the end, as `heat` and `minutes` in hundredths.
+ */
+const SEAS: WorldId[] = ['drying'];
+
 const SHARE: [number, string][] = [[50, 'half'], [33, 'a third'], [25, 'a quarter'], [20, 'a fifth'], [10, 'a tenth']];
 const shareWords = (heat: number) => { const w = SHARE.find(([h]) => h <= heat)?.[1] ?? 'some'; return w === 'half' ? 'keep half the heat' : `keep ${w} of the heat`; };
 
 /** The three stars' names on a world, in order. */
 export function markNames(world: WorldId): [string, string, string] {
   const at = MARK_AT[world] ?? { heat: 10, minutes: 8 };
+  if (SEAS.includes(world)) return ['reach the goal', `keep ${at.heat}% of the world sea`, `keep ${at.minutes}% of the world sea`];
   return ['reach the goal', HOUSES.includes(world) ? 'keep every house standing' : shareWords(at.heat), `finish within ${at.minutes} minutes`];
 }
 
-/** What a won game earned: the goal (always, as it was won), heat left (0 to 1; at Grindavík, the share of the town standing), and its length in seconds. */
+/** What a won game earned: the goal (always, as it was won), heat left (0 to 1; at Grindavík, the share of the town standing; on the drying seas, the share of the world still sea), and its length in seconds. */
 export function earned(world: WorldId, heatLeft: number, seconds: number): Marks {
   const at = MARK_AT[world] ?? { heat: 10, minutes: 8 };
+  if (SEAS.includes(world)) return [true, heatLeft * 100 >= at.heat - 1e-6, heatLeft * 100 >= at.minutes - 1e-6];
   return [true, HOUSES.includes(world) ? heatLeft >= 1 - 1e-6 : heatLeft * 100 >= at.heat - 1e-6, seconds <= at.minutes * 60];
 }
 

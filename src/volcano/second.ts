@@ -91,6 +91,7 @@ export function secondWords(goal: World['goal'], value: number): string {
     case 'town': return `${value} ${value === 1 ? 'tap' : 'taps'} of earth to spare`;
     case 'water': return `${value}% of the heat to spare`;
     case 'atolls': return `${value}% of the heat to spare`;
+    case 'sea': return `${value}% of the world still sea`;
   }
 }
 
@@ -167,6 +168,8 @@ export function measureSecond(world: World, pl: Planet, topo: Topology, islands:
   } else if (world.goal === 'antipode') {
     // (The near mountain: the second aim is to keep it low, every burst sent through rather than heaped here.)
     value = Math.round(Math.max(0, pl.summit) * (world.height?.kmPerUnit ?? 40));
+  } else if (world.goal === 'sea') {
+    value = Math.round(100 * pl.seaShare);
   } else if (world.goal === 'water' || world.goal === 'atolls') {
     value = Math.round(100 * pl.heatLeft);
   } else if (world.goal === 'gather') {
