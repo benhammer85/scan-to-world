@@ -3070,6 +3070,12 @@ function openList(): void {
       row.addEventListener('click', () => { remember('volcano.world', id); document.body.classList.add('leaving'); setTimeout(() => { location.search = `?world=${id}`; }, 400); });
       sec.append(row);
     }
+    // (Under Earth's future: your Earth, through all its ages, as far as they've been played.)
+    if (c.worlds.includes('giant')) {
+      const story = document.createElement('button'); story.className = 'earthlink'; story.textContent = 'Your Earth, through all its ages';
+      story.addEventListener('click', () => openStory());
+      sec.append(story);
+    }
     box.append(sec);
   }
   $('list').hidden = false;
@@ -3168,15 +3174,16 @@ $('replay').addEventListener('click', (e) => {
 });
 // Your Earth (see story.ts): every age of Chapter II's one world, as you left it, oldest first.
 $('earth').addEventListener('pointerdown', (e) => e.stopPropagation());
-$('earth').addEventListener('click', (e) => {
-  e.stopPropagation();
-  const i = ending?.info, now = i ? { world: WORLD.id, numeral: WORLD.numeral, title: i.title, subtitle: i.subtitle, summary: i.summary, when: Date.now(), image: '', portrait: portrait || undefined } : undefined;
+$('earth').addEventListener('click', (e) => { e.stopPropagation(); openStory(); });
+/** Your Earth: from the red giant's chart, or from the worlds list any time, to watch it fill in as the ages are played. */
+function openStory(): void {
+  const i = ending?.info && WORLD.goal === 'giant' ? ending.info : null, now = i ? { world: WORLD.id, numeral: WORLD.numeral, title: i.title, subtitle: i.subtitle, summary: i.summary, when: Date.now(), image: '', portrait: portrait || undefined } : undefined;
   void Promise.all([pages(), storyPages()]).then(([all, kept]) => {
     drawStory($('story').querySelector('ol') as HTMLElement, storyOf([...all, ...kept].sort((a, b) => a.when - b.when), now), (id) => worldOf(id).title);
     $('story').hidden = false;
     requestAnimationFrame(() => $('story').classList.add('open'));
   });
-});
+}
 $('story').addEventListener('pointerdown', (e) => e.stopPropagation());
 $('story').querySelector('.close')!.addEventListener('click', () => { $('story').classList.remove('open'); setTimeout(() => { $('story').hidden = true; }, 800); });
 $('keep').addEventListener('click', () => {
@@ -3834,7 +3841,8 @@ const loop = (): void => {
   // where nothing changes; with nothing running, every second and a half, and not while the world is being
   // turned, so a turn is never caught on one. It was twice a second always, and the world's slow turn above
   // the card, and every turn by hand, went in steps.)
-  const every = flowing || speed !== 1 ? 1 / 20 : !begun ? Infinity : seconds - turnedAt < 0.6 ? Infinity : 1.5;
+  // (A world still molten all over, with no eruption running: ten times a second, eased between, is smooth enough for the magma's slow running.)
+  const every = flowing && planet.k.magma > 0 && !planet.erupting ? 1 / 10 : flowing || speed !== 1 ? 1 / 20 : !begun ? Infinity : seconds - turnedAt < 0.6 ? Infinity : 1.5;
   if (!replaying && seconds - lastDraw >= every) { lastDraw = seconds; draw(); heavy = true; }
   if (LIFE && begun && seconds - lastEcology >= 1) { ecology.update((seconds - lastEcology) * speed); lastEcology = seconds; }
   if (LIFE && begun && seconds - lastIslands >= 2) {

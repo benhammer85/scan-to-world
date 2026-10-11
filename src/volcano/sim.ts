@@ -1410,7 +1410,10 @@ export class Planet {
     this.movePlume(dt);
     this.pour(dt);
     this.chamber(dt);
-    this.flow(dt);
+    // (On a world still molten all over, with no eruption running, the magma's slow running is worked out ten
+    // times a second, not every frame: over the whole sheet of it, every frame, the first world stuttered on a phone.)
+    if (this.k.magma > 0 && !this.erupting) { this.flowDue += dt; if (this.flowDue >= 0.1) { this.flow(this.flowDue); this.flowDue = 0; } }
+    else { this.flow(dt + this.flowDue); this.flowDue = 0; }
     this.cool(dt);
     this.skies(dt);
     this.farSide();
@@ -1919,36 +1922,54 @@ export class Planet {
     this.eruptions = this.eruptions.filter((e) => e.left > 1e-6);
   }
 
+  /** Each neighbour's drop and pull, for the vertex `flow` is working on (no vertex has more than a dozen neighbours). */
+  /** How much lava is running, a second (as on a planet of the drawn detail): a still sheet of magma, however wide, runs hardly at all. */
+  moved = 0;
+  private flowDue = 0;
+  private readonly dropBuf = new Float64Array(16);
+  private readonly pullBuf = new Float64Array(16);
+
   /** Lava runs downhill, mostly by the steepest way, and downhill is as the world is held. */
   private flow(dt: number): void {
     this.moltenKnown = false;
     const t = this.topo, n = this.rock.length, next = this.next, p = t.basePositions;
     const G = this.downward, R = this.k.relief;
     next.set(this.lava);
-    for (let v = 0; v < n; v++) {
-      const l = this.lava[v];
-      if (l < this.k.thin) continue;
-      const s = this.rock[v] + l, a = t.nbrOffsets[v], b = t.nbrOffsets[v + 1];
-      const own = (w: number) => s - (this.rock[w] + this.lava[w]), selfG = this.k.selfGravity;
-      const held = G
+    const rock = this.rock, lava = this.lava, selfG = this.k.selfGravity, spin = this.k.spin, grain = this.grainOf, chan = this.k.channel, pull = this.k.grainPull;
+    // How far the neighbour `w` lies below `v` (whose surface stands at `s`), as the world is held.
+    // (Worked out once per step, not as fresh functions for every vertex: on a world under a sheet of magma,
+    // that was some sixty thousand small functions a frame, and the first world stuttered on a phone.)
+    const dropTo = (v: number, s: number, w: number): number => {
+      const own = s - (rock[w] + lava[w]);
+      let d = own;
+      if (G) {
         // Held like a globe: how far down the neighbour is along gravity, the ground raised as it
         // is drawn, counted back into the ground's own heights. Near the top the relief is all of
         // it; further round, the curve of the world pulls the lava down its side.
         // (The ground's own heights count as they would facing up, at least in part, however the ground
         // faces: on the world's underside, "down" points out of the ground, and a pile of lava counted as
         // lower than its neighbours, drew in more, and grew into a needle tens of times the tallest mountain.)
-        ? (w: number) => {
-          const sw = this.rock[w] + this.lava[w], up = -(p[w * 3] * G.x + p[w * 3 + 1] * G.y + p[w * 3 + 2] * G.z);
-          const round = ((p[w * 3] - p[v * 3]) * G.x + (p[w * 3 + 1] - p[v * 3 + 1]) * G.y + (p[w * 3 + 2] - p[v * 3 + 2]) * G.z) * (1 + R * s) / R;
-          return round + Math.max(0.3, up) * (s - sw);
-        }
-        : own;
-      const base = selfG > 0 && G ? (w: number) => selfG * own(w) + (1 - selfG) * held(w) : held, spin = this.k.spin;
+        const up = -(p[w * 3] * G.x + p[w * 3 + 1] * G.y + p[w * 3 + 2] * G.z);
+        const round = ((p[w * 3] - p[v * 3]) * G.x + (p[w * 3 + 1] - p[v * 3 + 1]) * G.y + (p[w * 3 + 2] - p[v * 3 + 2]) * G.z) * (1 + R * s) / R;
+        const held = round + Math.max(0.3, up) * own;
+        d = selfG > 0 ? selfG * own + (1 - selfG) * held : held;
+      }
       // Spun fast, lava is flung outwards from the axis: towards the equator, as much as down.
-      const drop = spin > 0 ? (w: number) => base(w) + spin * (p[v * 3 + 1] ** 2 - p[w * 3 + 1] ** 2) : base;
+      if (spin > 0) d += spin * (p[v * 3 + 1] ** 2 - p[w * 3 + 1] ** 2);
+      return d;
+    };
+    const drops = this.dropBuf, pulls = this.pullBuf;
+    let moved = 0;
+    for (let v = 0; v < n; v++) {
+      const l = lava[v];
+      if (l < this.k.thin) continue;
+      const s = rock[v] + l, a = t.nbrOffsets[v], b = t.nbrOffsets[v + 1];
       let sum = 0, weights = 0;
-      const grain = this.grainOf, along = (w: number, d: number) => Math.pow(d, this.k.channel) * (0.35 + this.k.grainPull * grain[w]);
-      for (let q = a; q < b; q++) { const w = t.nbrList[q], d = drop(w); if (d > 0) { sum += d; weights += along(w, d); } }
+      for (let q = a; q < b; q++) {
+        const w = t.nbrList[q], d = dropTo(v, s, w);
+        drops[q - a] = d;
+        if (d > 0) { const wt = Math.pow(d, chan) * (0.35 + pull * grain[w]); pulls[q - a] = wt; sum += d; weights += wt; }
+      }
       if (sum <= 0) continue;
       // Viscous, as lava is: it runs fast where it lies deep and hardly at all where it's thin (its
       // flux rising as its depth to the power two and a half, nearly as a Bingham fluid's does down a slope), so a
@@ -1964,12 +1985,11 @@ export class Planet {
       }
       const out = l * (1 - Math.exp(-rate * LAVA_PACE * dt));
       next[v] -= out;
-      for (let q = a; q < b; q++) {
-        const w = t.nbrList[q], d = drop(w);
-        if (d > 0) next[w] += (out * along(w, d)) / weights;
-      }
+      moved += out;
+      for (let q = a; q < b; q++) if (drops[q - a] > 0) next[t.nbrList[q]] += (out * pulls[q - a]) / weights;
     }
     this.lava.set(next);
+    this.moved = moved / Math.max(1e-6, dt) / this.scale; // (as a rate, and as on a planet of the drawn detail)
   }
 
   /** Lava cools into rock: slowly on land, fast where it meets the sea. A real covering clears the ground. */

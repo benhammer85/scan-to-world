@@ -744,3 +744,11 @@ Hydra now has nine stars, one for each world in Chapter II.
 * **III · Earth's Future** (the Atolls, the Drying Seas, the Red Giant), on Argo Navis, the ship sailing on, promoted from the sky's background figures, its stars along the oars to the bow.
 
 The chapters after them move up a numeral (IV Unusual Volcanoes to VIII Extras). The world numerals don't change. The comets stay in Earth's Past: they don't carry the ground on, but they are Earth's history, and in order (its first water). Your Earth's pictures are now also kept apart from the atlas, one per age (`keepStoryPage` in `save.ts`), so the story never loses an age however many worlds are played after (the atlas keeps only its last sixty).
+
+**The first world's stutter.** The first world starts molten all over (`magma`), so its lava ran over all of its sixteen thousand vertices every frame. The flow built four small functions for every vertex as it went, about sixty thousand a frame. And because the sheet always counted as running, the whole surface was redrawn twenty times a second all game. Measured with drawing set aside, a frame took 9 ms, against 0.4 ms on Mars and the ocean world. Now:
+* The flow works out each neighbour's drop with one function per step, which halves its cost on every world.
+* On a world still molten all over, with no eruption running, the magma's slow running is worked out ten times a second, and the surface redrawn ten times a second, eased between.
+
+A frame now takes 0.9 ms. The bots win and lose the first world as before.
+
+**Portraits and your Earth.** The Atolls, the Drying Seas and the Red Giant have their portraits in the star map, as the game shows each after its time-lapse. Your Earth can also be opened from the worlds list at any time, under Earth's Future, to watch it fill in as the ages are played.
