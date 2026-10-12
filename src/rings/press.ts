@@ -36,6 +36,11 @@ const TAU = Math.PI * 2, PAPER = '#f4efe4';
  * `?ink=water` shows the watercolour instead.
  */
 const PRINT = new URLSearchParams(location.search).get('ink') !== 'water';
+/**
+ * The blind emboss (`?ink=blind`): the same print, pressed into the paper with no ink at all, seen only by
+ * the light raking across it. (The print itself keeps a faint impression of the press under its ink.)
+ */
+const BLIND = new URLSearchParams(location.search).get('ink') === 'blind';
 const canvas = document.getElementById('press') as HTMLCanvasElement;
 // (The drawing goes to the page, or for a moment to a picture of the slice: see `picture`.)
 let g = canvas.getContext('2d')!;
@@ -370,8 +375,9 @@ let sayT = 0;
 const nav = document.getElementById('nav');
 // (On the dev server the practice is press.html; published, it's the index.)
 if (import.meta.env.DEV) nav?.querySelector<HTMLAnchorElement>('a[data-page="practice"]')?.setAttribute('href', './press.html');
-// (In the watercolour, the other page opens in the watercolour too.)
-if (!PRINT) nav?.querySelectorAll<HTMLAnchorElement>('a[data-page]').forEach((a) => { a.href += `${a.href.includes('?') ? '&' : '?'}ink=water`; });
+// (In the watercolour or the emboss, the other page opens in it too.)
+const inkParam = !PRINT ? 'water' : BLIND ? 'blind' : '';
+if (inkParam) nav?.querySelectorAll<HTMLAnchorElement>('a[data-page]').forEach((a) => { a.href += `${a.href.includes('?') ? '&' : '?'}ink=${inkParam}`; });
 let navT = 0;
 function navAway(away: boolean): void {
   clearTimeout(navT);
@@ -957,6 +963,57 @@ function drawBirchBark(v: View, pt: (a: number, r: number, dr?: number) => [numb
   g.stroke();
 }
 
+/** A height field softened by a box blur of radius r (run twice: near enough a gaussian). */
+function soften(h: Float32Array, w: number, ht: number, r: number): Float32Array {
+  const tmp = new Float32Array(h.length), out = new Float32Array(h.length), n = 2 * r + 1;
+  for (let y = 0; y < ht; y++) {
+    let acc = 0; const row = y * w;
+    for (let x = -r; x <= r; x++) acc += h[row + Math.min(w - 1, Math.max(0, x))];
+    for (let x = 0; x < w; x++) {
+      tmp[row + x] = acc / n;
+      acc += h[row + Math.min(w - 1, x + r + 1)] - h[row + Math.max(0, x - r)];
+    }
+  }
+  for (let x = 0; x < w; x++) {
+    let acc = 0;
+    for (let y = -r; y <= r; y++) acc += tmp[Math.min(ht - 1, Math.max(0, y)) * w + x];
+    for (let y = 0; y < ht; y++) {
+      out[y * w + x] = acc / n;
+      acc += tmp[Math.min(ht - 1, y + r + 1) * w + x] - tmp[Math.max(0, y - r) * w + x];
+    }
+  }
+  return out;
+}
+
+/**
+ * The impression a print leaves: the block's raised wood (where the ink is dark) pressed down into the
+ * paper, the paper softly stretched over its edges, lit from the upper left. Returns light and shadow
+ * alone, at half the size of `src` (it's soft), to lay over it: `depth` how deep it's pressed.
+ */
+function impression(src: HTMLCanvasElement, depth: number, soft: number): HTMLCanvasElement {
+  const w = Math.max(3, Math.round(src.width / 2)), h = Math.max(3, Math.round(src.height / 2));
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const x = c.getContext('2d', { willReadFrequently: true })!;
+  x.drawImage(src, 0, 0, w, h);
+  const d = x.getImageData(0, 0, w, h).data;
+  let H: Float32Array = new Float32Array(w * h);
+  // (Height by darkness, so the paper's own specks and splits within the ink stay unpressed.)
+  for (let i = 0; i < w * h; i++) H[i] = (d[i * 4 + 3] / 255) * (1 - (0.3 * d[i * 4] + 0.59 * d[i * 4 + 1] + 0.11 * d[i * 4 + 2]) / 255);
+  H = soften(soften(H, w, h, soft), w, h, soft);
+  const out = x.createImageData(w, h), o = out.data;
+  const Lx = -0.55, Ly = -0.55, Lz = 0.63;
+  for (let y = 1; y < h - 1; y++) for (let xx = 1; xx < w - 1; xx++) {
+    const i = y * w + xx, gx = H[i + 1] - H[i - 1], gy = H[i + w] - H[i - w];
+    // (The paper's surface goes down where the block pressed: its normal tilts with the slope.)
+    const nx = depth * gx * 0.5, ny = depth * gy * 0.5, lit = (nx * Lx + ny * Ly + Lz) / Math.sqrt(nx * nx + ny * ny + 1) - Lz;
+    const k = i * 4;
+    if (lit > 0) { o[k] = 255; o[k + 1] = 253; o[k + 2] = 246; o[k + 3] = Math.min(255, lit * 700); }
+    else { o[k] = 72; o[k + 1] = 56; o[k + 2] = 40; o[k + 3] = Math.min(255, -lit * 520); }
+  }
+  x.putImageData(out, 0, 0);
+  return c;
+}
+
 /** The print, kept as a picture between changes; while the slice moves, the picture moves with it. */
 const printCaches: Record<string, { c: HTMLCanvasElement; key: string; v: View }> = {};
 function drawPrintCached(v: View, moving: boolean, slot = 'drawing', alpha = 1): void {
@@ -968,7 +1025,15 @@ function drawPrintCached(v: View, moving: boolean, slot = 'drawing', alpha = 1):
     const c = pc?.c.width === W && pc.c.height === H ? pc.c : document.createElement('canvas');
     c.width = W; c.height = H;
     const was = g; g = c.getContext('2d')!;
-    try { drawPrint(v); } finally { g = was; }
+    try {
+      drawPrint(v);
+      // The press's impression: under the ink, faint; in the blind emboss, all there is.
+      // (Under the ink it's faint and soft, so only the larger shapes feel pressed: every pore bevelled read as plastic.)
+      const imp = impression(c, BLIND ? 7 : 1.4, BLIND ? 2 : 3);
+      if (BLIND) g.clearRect(0, 0, W, H);
+      g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+      g.globalAlpha = BLIND ? 1 : 0.3; g.drawImage(imp, 0, 0, W, H); g.globalAlpha = 1;
+    } finally { g = was; }
     pc = printCaches[slot] = { c, key, v: { ...v } };
   }
   const k = v.s / pc.v.s;
