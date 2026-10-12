@@ -342,7 +342,8 @@ const RUN = 10, TOUCH = 30;
  */
 let run = { score: 0, rings: 0, over: false, gapSum: 0, gapN: 0, began: 0, touches: 0, inside: false, out: false };
 /** Where the brush has touched an edge this run (a tree angle and radius, so they stay on the slice). */
-let marks: { a: number; r: number; at: number }[] = [];
+/** (And the ring being drawn when it touched.) */
+let marks: { a: number; r: number; at: number; ring: number }[] = [];
 /** When the run ended. */
 let endedAt = 0;
 const bestOf = () => { try { return Number(localStorage.getItem('annulus.challenge')) || 0; } catch { return 0; } };
@@ -364,7 +365,7 @@ function ringPoints(): number {
 /** The brush went over the last ring's edge: it costs, and leaves a knot there. */
 function touchEdge(a: number): void {
   run.touches++;
-  marks.push({ a, r: radiusAt((i) => tree.inner(i), a), at: clock() });
+  marks.push({ a, r: radiusAt((i) => tree.inner(i), a), at: clock(), ring: tree.rings.length });
   if (NATIVE) tap({ strength: 0.6, sharpness: 0.5 });
 }
 /**
@@ -805,21 +806,48 @@ function drawBrush(g: CanvasRenderingContext2D, v: View, t: number): void {
   }
 }
 
-/** Where the brush has touched an edge this run: a small knot in the wood, kept on the slice. */
+/**
+ * Where the brush touched the edge, printed: a split in the wood. It opens at the bark where the touch
+ * was, then over some nine seconds creeps in toward the heart and widens, wandering with the grain; and
+ * every ring grown after splits too, as a split tree's new wood does, so a run's touches stay with the
+ * slice as the cracks through it. (Watercolour: a knot.)
+ */
+function drawSplits(v: View, t: number): void {
+  const n = tree.rings.length, bark = n ? barkOf(n - 1) : null;
+  if (!bark) return;
+  const T = barkCss(v) * px, main = g.canvas === canvas;
+  for (const m of marks) {
+    const q = m.at * 0.731 + m.a * 3.7, grow = smooth((t - m.at) / 9), since = Math.max(0, n - m.ring);
+    const deep = Math.min(0.8, 0.08 + 0.42 * grow + 0.05 * since + 0.1 * h1(q));
+    const wide = Math.min(6 * px, (0.5 + 2.6 * grow + 0.35 * since) * px * (0.7 + 0.6 * h1(q + 1.1)));
+    const rIn = m.r * (1 - deep), steps = 30;
+    const left: [number, number][] = [], right: [number, number][] = [];
+    let a = m.a;
+    for (let j = 0; j <= steps; j++) {
+      const f = j / steps, rOut = bark(a), rr = rOut + (rIn - rOut) * f, out = j === 0 ? T + 2 * px : 0;
+      const R = Math.max(1, v.s * warpR(v.warp, rr) + out), hw = (wide * (1 - f) ** 1.4 + 0.3 * px) * (0.75 + 0.5 * h1(q * 3 + j * 0.71));
+      const t0 = a + v.turn, da = hw / R;
+      left.push([v.cx + R * Math.cos(t0 + da), v.cy - R * Math.sin(t0 + da)]);
+      right.push([v.cx + R * Math.cos(t0 - da * (0.6 + 0.8 * h1(q + j * 1.37))), v.cy - R * Math.sin(t0 - da * (0.6 + 0.8 * h1(q + j * 1.37)))]);
+      a += (noise(q * 9 + f * 3) - 0.5) * 0.05 + (h1(q * 5 + j) > 0.86 ? (h1(q * 7 + j) - 0.5) * 0.06 : 0);
+    }
+    g.save();
+    g.beginPath(); g.moveTo(...left[0]);
+    for (const p of left) g.lineTo(...p);
+    for (let j = right.length - 1; j >= 0; j--) g.lineTo(...right[j]);
+    g.closePath(); g.clip();
+    // (The bare sheet shows through it.)
+    if (main) g.drawImage(groundOf(), 0, 0); else { g.fillStyle = PAPER; g.fillRect(0, 0, g.canvas.width, g.canvas.height); }
+    g.restore();
+  }
+}
+/** Where the brush has touched an edge this run, in the watercolour: a small knot in the wood, kept on the slice. */
 function drawKnots(v: View, t: number): void {
+  if (PRINT) { drawSplits(v, t); return; }
   for (const m of marks) {
     const [mx, my] = at(v, m.a, m.r), k = smooth((t - m.at) / 0.8), tang = -(m.a + v.turn) + Math.PI / 2;
     g.save();
     g.translate(mx, my); g.rotate(tang); g.scale(1, 0.5);
-    if (PRINT) {
-      // A knot as a print shows one: a dark eye, the grain parting and swirling round it in rings.
-      const r = (2.2 + 1.8 * k) * px;
-      for (const [f, fill] of [[3.1, ink(0.85 * k)], [2.5, 'rgba(244,239,228,1)'], [1.9, ink(0.8 * k)], [1.35, 'rgba(244,239,228,1)'], [0.95, ink(0.95 * k)]] as [number, string][]) {
-        g.fillStyle = fill; g.beginPath(); g.ellipse(0, 0, r * f, r * f * 0.82, 0, 0, TAU); g.fill();
-      }
-      g.restore();
-      continue;
-    }
     const r = (2.5 + 2.5 * k) * px;
     const bloom = g.createRadialGradient(0, 0, r * 0.8, 0, 0, r * 1.9);
     bloom.addColorStop(0, 'rgba(250,244,230,0)'); bloom.addColorStop(0.6, `rgba(250,244,230,${(0.14 * k).toFixed(3)})`); bloom.addColorStop(1, 'rgba(250,244,230,0)');
