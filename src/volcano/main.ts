@@ -7,7 +7,7 @@
  * ash are engraved strokes, not light.
  *
  * It is played by nothing but how you hold it, as a globe in the hands. Tilt
- * the phone, or turn the world with a finger (or the arrow keys): held level,
+ * the phone, or turn the planet with a finger (or the arrow keys): held level,
  * the heat gathers beneath whatever is uppermost; tipped, it pours down the
  * world as gravity would take it; tipped when it's full, it bursts. Level is
  * however you were holding the phone when you began.
@@ -237,7 +237,7 @@ planet.stonesFall = WORLD.goal === 'gather' || WORLD.goal === 'water'; // not un
  */
 const COMPUTER = (navigator.maxTouchPoints || 0) === 0 && matchMedia('(pointer: fine)').matches;
 /**
- * One hand, the same on every world it's tried on: drag to turn the world (lava runs down the screen), hold to pour
+ * One hand, the same on every world it's tried on: drag to turn the planet (lava runs down the screen), hold to pour
  * (the longer, the faster), tap to erupt (biggest once the circle round the volcano has closed). Nothing pours by
  * itself and nothing bursts by accident, so every eruption is chosen. Every world but Io's two lavas, with hands of
  * its own (hold in the pool to pour, drag through it to swirl). On the glass world, a tap lets the blob go.
@@ -1776,11 +1776,11 @@ const won = () => aimOf > 0 && aimDone >= aimOf && (WORLD.goal !== 'calm' || cal
 // chaos field, a stretch), and no colours to learn: where timing matters, the circle round the volcano shows it,
 // drawing itself in as the heat builds and closing when it's time to let go (see readyRing).
 const AIM: Record<string, string> = {
-  ring: `Build ${CHAIN.stretches} separate islands along the volcano's path (the dotted line).`,
-  basins: 'Cover the floor of each dotted crater with lava.',
+  ring: `Build ${CHAIN.stretches} separate islands along the dotted line.`,
+  basins: 'Fill every dotted crater with lava.',
   height: `Build a mountain ${HEIGHT.target} km tall.`,
   cover: `Cover ${COVER >= 64 && COVER <= 70 ? 'two thirds' : COVER >= 48 && COVER <= 52 ? 'half' : `${COVER}%`} of the moon in one sheet of new white ice.`,
-  plumes: `Make ${PLUMES} big eruptions, each in a new place.`,
+  plumes: `Make ${PLUMES} big eruptions, each in a different place.`,
   feed: "Fill Saturn's ring with ice.",
   round: 'Fill the low ground to even the surface.',
   ridge: 'Build a ridge all the way round the dotted line.',
@@ -1788,79 +1788,79 @@ const AIM: Record<string, string> = {
   calm: `Calm the tumbling, then keep it calm for ${CALM_HOLD} seconds.`,
   bank: 'Build an island on the undersea mountain.',
   orbit: 'Throw enough rock into the sky to make a moon.',
-  hearth: 'Keep a big patch of life alive.',
+  hearth: 'Keep a large area of life alive: fill the bar at the top to 100%.',
   thaw: 'Melt the ice.',
   outbuild: 'Build new land faster than the star burns it away.',
   white: `Build a mountain ${HEIGHT.target} km tall, then let it turn white.`,
   glow: 'Keep the blue fire burning for two minutes.',
   waves: `Make ${RINGS} giant waves.`,
-  antipode: `Raise the dotted circle on the far side ${FAR_KM} km.`,
-  gather: ACCRETE ? 'Grow the world by catching stones, then catch Theia.' : `Catch ${GATHER} falling stones.`,
+  antipode: `Raise the ground inside the dotted circle, on the far side of the planet, ${FAR_KM} km high.`,
+  gather: ACCRETE ? 'Catch falling stones to make your planet bigger. When it is fully grown, catch the planet Theia.' : `Catch ${GATHER} falling stones.`,
   water: `Melt ${WATER} icy comets into water.`,
   atolls: `Make ${ATOLLS_N} atolls: rings of coral left where islands sank.`,
-  sea: `Keep some sea until the fire is out.`,
-  nests: `Grow an island where ${NESTS} seabirds nest at once.`,
-  giant: `Keep a mountain ${HEIGHT.target} km high standing in the night until the fire is out.`,
-  oxygen: 'Turn the orange sky blue.',
-  chaos: `Crack the ice in ${FIELDS} places: erupt while the circle round the volcano is closed.`,
+  sea: `Keep at least ${Math.round(SEA_KEEP * 100)}% of the planet covered by sea until the volcano runs out of heat.`,
+  nests: `Build an island where ${NESTS} seabirds are nesting at the same time.`,
+  giant: `Keep a mountain at least ${HEIGHT.target} km tall on the dark side until the volcano runs out of heat.`,
+  oxygen: 'Make enough oxygen to turn the orange sky blue.',
+  chaos: `Crack the ice in ${FIELDS} different places.`,
   streaks: `Make ${FIELDS} dark streaks on the ice.`,
   town: 'Save the town from the lava.',
-  marble: 'Swirl the lava and the blue together in the circle.',
-  domes: MOUNDS ? `Build ${DOMES} mounds on the dotted circle.` : `Build ${DOMES} lava domes, each in a new place.`,
+  marble: 'Swirl the orange lava and the blue lava together inside the circle.',
+  domes: MOUNDS ? `Build ${DOMES} mounds on the dotted circle.` : `Build ${DOMES} lava domes, each in a different place.`,
   snow: 'Fill the dotted line with rock snow.',
 };
 /** How to erupt, wherever the aim asks for an eruption rather than a pour: the circle round the volcano shows when. */
-const ERUPT = `Wait for the circle round the volcano to close, then ${COMPUTER ? 'click' : 'tap'} the world to erupt.`;
+const ERUPT = `Wait for the circle around the volcano to fill, then ${COMPUTER ? 'click' : 'tap'} the planet to erupt.`;
 const HOLD = COMPUTER ? 'Hold the mouse button down on the world' : 'Hold a finger on the world';
 /** The touches already learned (each the first time its line was done), so they're not taught again on every world. */
 const LEARNED = { hold: remembered('volcano.learned.hold') === '1', drag: remembered('volcano.learned.drag') === '1' };
 const POUR = LEARNED.hold ? '' : `${HOLD} to pour lava.`;
 const TIP: Record<string, string> = {
-  ring: `${POUR} The sea floor slides over the hot spot, so the volcano moves along the dotted line, as Hawaii's did. Pour, then stop and let some sea pass, then pour again: each island must stand apart from the last. The volcano leaves the dotted line in about two and a half minutes.`,
-  basins: `The craters still to fill are dotted in pencil. Turn one to just below the volcano. ${HOLD} to pour into it. Keep off the hatched high ground: lava there runs off and is lost.`,
-  height: `${HOLD} to pour. Lava runs down the screen: turn the world between pours, so the mountain grows on every side.`,
-  cover: `${POUR} The water freezes into new white ice. Only your biggest single sheet counts, so grow it outward from its edge: turn the world so the edge is just below the volcano.`,
-  plumes: `The circle round the volcano closes only at high tide. Then ${COMPUTER ? 'click' : 'tap'} the world to erupt, and turn the world to start the next one outside the dotted circles.`,
+  ring: `${POUR} The volcano slowly moves along the dotted line. Pour to build an island, then stop and let the volcano move on before you start the next one, so the islands stay separate. The volcano reaches the end of the line after about two and a half minutes.`,
+  basins: `Turn the planet so a dotted crater is just below the volcano. ${HOLD} to pour lava into it. Avoid the striped high ground: lava poured there runs off and is wasted.`,
+  height: `${HOLD} to pour lava. Lava flows down the screen, so turn the planet between pours to build up every side.`,
+  cover: `${POUR} The water freezes into new white ice. Only your biggest single sheet counts, so grow it outward from its edge: turn the planet so the edge is just below the volcano.`,
+  plumes: `Big eruptions only work at high tide: that is when the circle around the volcano fills. Then ${COMPUTER ? 'click' : 'tap'} the planet to erupt. Turn the planet so each new eruption is outside the dotted circles of the earlier ones.`,
   feed: `Saturn is the big ringed planet at the top left. Turn the volcano towards it. ${ERUPT} Ice from a burst facing Saturn reaches its ring; facing anywhere else, it falls back. The ring fades, so keep going.`,
   round: `Fill the dotted hollows. Turn one to just below the volcano, and ${HOLD.toLowerCase()} to pour into it. Keep off the hatched high ground: lava there makes the surface more uneven.`,
   ridge: 'Lava runs to the dotted line by itself. Turn a bare part of the line to the top.',
-  lamp: `Blobs float to the top of the world. Turn the dotted shore to the top. A blob grows at the volcano: let it grow big, as big blobs stay warm long enough to reach the shore, then ${COMPUTER ? 'click' : 'tap'} to let it go before the circle round it closes: then it bursts.`,
+  lamp: `Hot blobs float to the top of the planet. Turn the planet so the dotted shore is at the top. A blob grows at the volcano: let it grow big, because big blobs stay warm long enough to reach the shore. Then ${COMPUTER ? 'click' : 'tap'} to let it go, before the circle around it fills, or it bursts.`,
   calm: `The dotted line is where the ground sweeps past fastest. Turn it to the top, under the volcano. ${ERUPT}`,
-  bank: `The undersea mountain's top is dotted in pencil. Turn the world so it's just below the volcano, and ${HOLD.toLowerCase()} to pour there, the same way again and again, without long rests: each flow runs further over the last.`,
-  orbit: `Pour first, to build the volcano tall: a taller one holds more. When the circle round it closes, wait a little longer, then ${COMPUTER ? 'click' : 'tap'} the world to erupt: the longer you wait, the more rock flies up.`,
-  hearth: `${POUR} Life grows along the edges of your lava, on ground it has warmed, and dies under it. Keep pouring beside the green, never on it: green with no fresh lava beside it fades within a minute.`,
+  bank: `The undersea mountain's top is dotted in pencil. Turn the planet so it's just below the volcano, and ${HOLD.toLowerCase()} to pour there, the same way again and again, without long rests: each flow runs further over the last.`,
+  orbit: `Pour first, to build the volcano tall: a taller one holds more. When the circle round it closes, wait a little longer, then ${COMPUTER ? 'click' : 'tap'} the planet to erupt: the longer you wait, the more rock flies up.`,
+  hearth: `${POUR} Green life grows along the edges of fresh lava, and dies under it. Pour next to the green, never on top of it. Green with no fresh lava next to it fades away within a minute.`,
   thaw: `Pour until the volcano stands up through the ice. Then: ${ERUPT[0].toLowerCase()}${ERUPT.slice(1)} Each eruption warms the sky, and the warmth fades, so keep erupting.`,
   outbuild: 'The star burns away new land on its side. Turn the volcano to the dark side, and pour there.',
   white: `${HOLD} to pour until the peak is ${HEIGHT.target} km tall. Then stop: the black lava turns white as it sits.`,
   glow: `${POUR} Pour in long, wide streams. Lava stays lit for 45 seconds after it stops, so keep plenty of it lit at once.`,
-  waves: `Build the volcano until its top is just under the sea. Then: ${ERUPT[0].toLowerCase()}${ERUPT.slice(1)} Each wave blows the top off: build it back up.`,
-  antipode: `${ERUPT} Wait a little past the circle closing for a bigger rise. Turn the world over to watch the far side.`,
-  water: `Pale blue comets bring water, but only if they land on warm lava. When one is coming, turn the world so its blue circle is just below the volcano, and ${HOLD.toLowerCase()}: the lava runs down to it, and the circle turns orange once it will melt. Keep the volcano itself out from under them, as they cool it. Dark stones bring heat: turn the volcano under them.`,
+  waves: `${HOLD} to pour lava until the top of the volcano is just under the sea. Then wait for the circle around the volcano to fill, and ${COMPUTER ? 'click' : 'tap'} the planet to erupt: that makes a wave. Each wave blows the top off the volcano, so build it back up and do it again.`,
+  antipode: `Wait for the circle around the volcano to fill, then ${COMPUTER ? 'click' : 'tap'} the planet to erupt. The longer you wait, the bigger the rise. About 6 seconds later the ground on the far side rises, and the planet turns to show you.`,
+  water: `Icy comets have blue circles. A comet only turns into water if it lands on warm lava. When one is coming, turn the planet so its circle is just below the volcano, and ${HOLD.toLowerCase()} to pour lava onto that spot. The circle turns orange when it is ready. Keep comets off the volcano itself: they cool it. Dark stones bring heat: let those land on the volcano.`,
   atolls: `Turn an island to the top to bring the volcano near it: coral starts round its shore. Then move on. You don't need to pour; if you do, pour out in the open sea, never on an island or its coral. As the island sinks, the coral keeps up, and a ring is left. The lowest islands go under first.`,
-  nests: `While the sea still reaches the volcano, wait for the circle round it to close, then ${COMPUTER ? 'click' : 'tap'} the world to erupt. The sea turns it all to ash, and the island rises, but the waves wash ash away. Once the island stands clear, ${HOLD.toLowerCase()} to pour lava instead: it covers the ash and makes it hard. Birds nest on cooled lava, stippled in pencil. Turn the world so each new flow runs onto bare ground, not over their nests.`,
-  sea: `The sea dries a little every second. An eruption's ash shades it and slows the drying for a while, so keep the sky full of ash. ${ERUPT} Don't pour into the sea: lava there turns sea into land.`,
-  giant: `The day side melts whatever stands in it, and the night shrinks as the Sun swells. The world turns slowly by itself: turn it back to keep the volcano in the dark, on the left. ${HOLD} to pour, or erupt, there.`,
-  gather: ACCRETE ? 'A dotted circle shows where each stone will land. Turn it to the top, so the gold ring round your volcano is under it: each stone caught makes the world bigger, and the ring wider. A stone ringed in dark red is too big to hold: turn the gold ring away from it, or it breaks a piece off. Grown, a world as big as Mars comes. Catch it.' : 'A dotted circle shows where each stone will land. Turn it to the top, so the gold ring round your volcano is under it. The more lava you let out, the wider the ring grows.',
-  oxygen: `${POUR} Pour into the sea until the lava nearly reaches the surface. Green life grows there and turns the sky blue. Then move on and do it again. Don't erupt: its gas uses up the oxygen.`,
-  chaos: `When the circle round the volcano closes, ${COMPUTER ? 'click' : 'tap'} the world to erupt. Then it starts to empty: erupt before it's gone, or the eruption is too big and blasts a hole instead. Then turn to fresh ice.`,
+  nests: `First, while the volcano is still under the sea: wait for the circle around it to fill, then ${COMPUTER ? 'click' : 'tap'} the planet to erupt. This builds an island of ash, but the waves wash ash away. Once the island is above the sea, ${HOLD.toLowerCase()} to pour lava instead: lava turns the ground hard. Birds nest on cooled lava, shown with small dots. Turn the planet so new lava flows onto empty ground, not onto the nests.`,
+  sea: `The sea dries up a little every second. Ash from eruptions shades the sea and slows the drying for a while. Wait for the circle around the volcano to fill, then ${COMPUTER ? 'click' : 'tap'} the planet to erupt, and keep doing it. Don't pour lava into the sea: it turns sea into land.`,
+  giant: `The planet slowly turns by itself, and anything on the sunny side melts. Keep turning the planet back so the volcano stays on the dark side, on the left. ${HOLD} to pour lava there, or ${COMPUTER ? 'click' : 'tap'} to erupt.`,
+  gather: ACCRETE ? 'A dotted circle shows where each stone will land. Turn the planet so that circle is inside the gold ring around your volcano. Each stone you catch makes your planet bigger, and the gold ring wider. Stones circled in dark red are too big: keep them outside the gold ring, or they break a piece off your planet. When your planet is fully grown, the planet Theia comes: catch it too.' : 'A dotted circle shows where each stone will land. Turn the planet so that circle is inside the gold ring around your volcano.',
+  oxygen: `${POUR} Pour lava into the sea until it almost reaches the surface. Life grows in these shallow areas and makes oxygen. Then turn the planet and do the same somewhere else. Don't ${COMPUTER ? 'click' : 'tap'} to erupt: eruptions use up oxygen.`,
+  chaos: `Wait for the circle around the volcano to fill, then ${COMPUTER ? 'click' : 'tap'} the planet to erupt. Don't wait too long: once the circle starts to empty, an eruption blasts a hole instead of cracking the ice. After each crack, turn the planet to fresh ice.`,
   streaks: `Turn the volcano into the sunlight. ${ERUPT} Then move to a new spot.`,
   snow: 'Turn the volcano under the star and pour. The lava boils away and falls as snow on the dotted line.',
   marble: `${COMPUTER ? 'Hold the mouse' : 'Hold a finger'} in the circle to pour glowing lava. Blue wells up by itself. Drag through the colours to swirl them into patterns. Keep about as much glowing lava as blue: too much of either and the swirl stops counting. The circle's edge fills in as the pattern grows.`,
   town: `Lava runs down from the crack towards the town. ${COMPUTER ? 'Click' : 'Tap'} the ground to build a wall; ${COMPUTER ? 'click' : 'tap'} again nearby to make it longer. You have ${WORLD.rules.walls ?? 0} taps.`,
-  domes: MOUNDS ? `${POUR} The slush freezes fast: pour two seconds at a time, then let go a moment, or the mound slumps. When the small circle round the volcano fills, turn the world to start the next mound, further round the big dotted ring.` : `${POUR} Pour in one spot, two seconds at a time, letting each set, until a dotted circle round the volcano fills: poured on too long, the dome slumps. Then turn the world so the volcano moves outside the inked circles, and start the next.`,
+  domes: MOUNDS ? `${POUR} Pour for about two seconds at a time, then let go: pouring too long makes the mound sag. When the small circle around the volcano fills, turn the planet and start the next mound further along the big dotted circle.` : `${POUR} Pour for about two seconds at a time, then let go: pouring too long makes the dome sag. Keep pouring in one spot until the small circle around the volcano fills. Then turn the planet so the volcano is outside the inked circles, and start the next dome.`
 };
 /** A world's own tip, where its aim is shared with others but the way to it isn't. */
 const OWN_TIP: Partial<Record<WorldId, string>> = {
-  mars: `${HOLD} to pour. Lava runs down the screen, so turn the world between pours. A mountain stands only so tall for its width: the dotted ring shows how wide it must be to grow higher. Where a side is still pencil, pour down that side. Built too tall for its narrowest side, that side gives way. Before each dust storm, pour on the hatched side facing it: fresh lava doesn't wear away.`,
-  hollow: `${HOLD} to pour a little, then rest. When cracks ring the volcano, stop until they fade, or the top falls in. Don't ${COMPUTER ? 'click' : 'tap'} to erupt: a big eruption empties it at once.`,
+  mars: `${HOLD} to pour lava. It flows down the screen, so turn the planet between pours. The dotted ring shows how wide the base must be before the mountain can grow taller: pour down any side where the ring is still faint. If the mountain gets too tall for its narrowest side, that side collapses. Before a dust storm, pour fresh lava on the striped side: storms wear away old rock, but not fresh lava.`,
+  hollow: `${HOLD} to pour a little lava, then stop for a while. If cracks appear around the volcano, stop until they fade, or the top collapses. Don't ${COMPUTER ? 'click' : 'tap'} to erupt: a big eruption empties the ground underneath all at once.`,
 };
 if (SURVEY) { AIM[WORLD.goal] = SURVEY.aim; OWN_TIP[WORLD.id] = SURVEY.tip; }
 /** How the hands do it, for the way it's being played: tipping a phone, breathing, or a computer's mouse. */
 const HANDS: string[] = LAMP
   ? ['Drag · turn the planet', `${COMPUTER ? 'Click' : 'Tap'} · let a blob go`]
   : MARBLE
-  ? [COMPUTER ? 'Hold the mouse in the circle · pour lava' : 'Hold a finger in the circle · pour lava', 'Drag through the circle · swirl', 'Drag outside it · turn the world']
-  : ['Drag · turn the world', COMPUTER ? 'Hold the mouse · pour lava' : 'Hold · pour lava', `${COMPUTER ? 'Click' : 'Tap'} · erupt`];
+  ? [COMPUTER ? 'Hold the mouse in the circle · pour lava' : 'Hold a finger in the circle · pour lava', 'Drag through the circle · swirl', 'Drag outside it · turn the planet']
+  : ['Drag · turn the planet', COMPUTER ? 'Hold the mouse · pour lava' : 'Hold · pour lava', `${COMPUTER ? 'Click' : 'Tap'} · erupt`];
 renderer.domElement.setAttribute('aria-label', `${WORLD.title}. ${HANDS.map((h) => h.replace(' · ', ' to ')).join('. ')}.`);
 /** Whether the hands are still new: the first two worlds played here, and the glass world, where they work the other way round. */
 const NEWCOMER = LAMP || MARBLE || HAND || Number(remembered('volcano.played') ?? '0') < 2;
@@ -1918,7 +1918,7 @@ function nextLine(): string {
   const stone = planet.stoneDue;
   if (stone !== null && stone <= SAY_BEFORE) out.push(planet.impact ? `A stone lands in ${Math.ceil(stone)} s` : 'A stone is coming');
   const storm = planet.stormDue;
-  if (storm !== null && storm <= SAY_BEFORE) out.push(storm <= 0 ? 'Dust storm: old rock wears down, fresh lava holds' : `A dust storm in ${Math.ceil(storm)} s: pour now`);
+  if (storm !== null && storm <= SAY_BEFORE) out.push(planet.k.stormSide > 0 ? (storm <= 0 ? 'Dust storm: it wears down the striped side. Fresh lava there survives it' : `Dust storm in ${Math.ceil(storm)} s: pour fresh lava on the striped side to protect it`) : storm <= 0 ? 'Dust storm: it wears down old rock, but not fresh lava' : `Dust storm in ${Math.ceil(storm)} s: pour now, fresh lava survives it`);
   if (planet.k.tide > 0) {
     const p = planet.k.tidePeriod, phase = ((planet.seconds / p) % 1 + 1) % 1, until = ((0.25 - phase + 1) % 1) * p;
     if (planet.tideNow > 0.8) out.push('High tide'); else if (until <= SAY_BEFORE) out.push(`High tide in ${Math.ceil(until)} s`);
@@ -2306,7 +2306,7 @@ const gestures = new GestureRecognizer(
     spin(dx, dy) { spin.set(0, 0); rotate(dx * 0.006, dy * 0.006); },
     fling(vx, vy) { spin.set(vx * 0.006, vy * 0.006); },
     zoom(f) { dist /= f; look(); zoomedAt = seconds; },
-    // Two fingers turning turn the world about the line of sight, so it can be spun any way at all.
+    // Two fingers turning turn the planet about the line of sight, so it can be spun any way at all.
     twist(a) { turn.setFromAxisAngle(axis.set(0, 0, 1), -a); group.quaternion.premultiply(turn); },
     // A finger resting on the world holds the vent shut: the pressure builds, however the world is
     // tipped, and the world can still be turned by dragging, to aim. Lifted, it lets it all out.
@@ -2404,21 +2404,21 @@ const HAND_CUES: Cue[] = LAMP ? [
   { ready: () => true, hand: 'drag', at: () => planet.marbleAt, say: 'Drag through the circle to swirl the colours', done: (s) => s > 12 },
 ] : [
   ...(LEARNED.hold ? [] : [{ ready: () => true, hand: 'hold' as const, say: `${HOLD} to pour lava`, done: () => planet.tally.flows > 0 }]),
-  ...(LEARNED.drag ? [] : [{ ready: () => !planet.pouring, hand: 'drag' as const, at: () => null, say: 'Drag to turn the world: lava runs down the screen', done: (s: number) => (turnedAt > lessonSince && s > 3) || s > 14 }]),
+  ...(LEARNED.drag ? [] : [{ ready: () => !planet.pouring, hand: 'drag' as const, at: () => null, say: 'Drag to turn the planet: lava flows down the screen', done: (s: number) => (turnedAt > lessonSince && s > 3) || s > 14 }]),
 ]; // (each taught until it's been done once, on whatever world that was; not again on every world after)
 /** Then what's this world's own, each when it matters. */
 const CUES: Cue[] = [
   ...HAND_CUES,
   // (What to do on this world, said once the hands are known: it was on the card, and the card is only the aim now.)
   ...(FREE ? [] : [{ ready: () => true, get say() { return words$((OWN_TIP[WORLD.id] ?? TIP[WORLD.goal] ?? '').trim()); }, done: (s: number) => s > 16 }]), // (said when it's reached, by then every word table is made)
-  ...(WORLD.rules.rises ? [{ ready: () => true, say: 'The volcano moves to whatever is at the top: turn the world to move it', done: (s: number) => s > 20 }] : []),
+  ...(WORLD.rules.rises ? [{ ready: () => true, say: 'The volcano moves to whichever part of the planet is at the top: turn the planet to move it', done: (s: number) => s > 20 }] : []),
   // (Mars: a storm wears old rock but not fresh lava, so the first one coming is the moment to say so.)
-  ...(planet.k.stormFresh > 0 ? [{ ready: () => planet.stormComing !== null, hand: 'hold' as const, say: planet.k.stormSide > 0 ? 'A dust storm is coming: pour on the hatched side, facing it. Fresh lava doesn\'t wear away' : 'A dust storm is coming: pour now. Fresh lava doesn\'t wear away', done: (s: number) => s > 12 }] : []),
+  ...(planet.k.stormFresh > 0 ? [{ ready: () => planet.stormComing !== null, hand: 'hold' as const, say: planet.k.stormSide > 0 ? 'A dust storm is coming. The stripes show which side it will wear down: pour fresh lava there. Fresh lava doesn\'t wear away' : 'A dust storm is coming: pour now. Fresh lava doesn\'t wear away', done: (s: number) => s > 12 }] : []),
   ...(WORLD.goal === 'ridge' ? [{ ready: () => planet.tally.flows + planet.tally.bursts > 0, say: 'The spin carries the lava to the dotted line', done: (s: number) => s > 25 }] : []),
   // (Only where a burst is the way: on the worlds that want pouring, or a release short of a burst, or none
   // at all, it pointed the wrong way, and on the hollow world it emptied the ground.)
   // (When the circle says so: on Io only at high tide, on Europa before it empties again.)
-  { hand: 'tap', ready: () => { const r = readyShare(); return !LAMP && BURST_WORLDS.has(WORLD.goal) && r !== null && r >= 1 && r < 2 && !planet.pouring; }, say: WORLD.goal === 'feed' ? `The circle round the volcano has closed: turn the volcano towards the big planet, and ${TAP.toLowerCase()} the world` : WORLD.goal === 'chaos' ? `The circle round the volcano has closed: ${TAP.toLowerCase()} the world now, before it empties` : `The circle round the volcano has closed: ${TAP.toLowerCase()} the world to erupt`, done: (s) => planet.tally.bursts > 0 || s > 40 },
+  { hand: 'tap', ready: () => { const r = readyShare(); return !LAMP && BURST_WORLDS.has(WORLD.goal) && r !== null && r >= 1 && r < 2 && !planet.pouring; }, say: WORLD.goal === 'feed' ? `The circle around the volcano is full: turn the volcano towards the big planet, and ${TAP.toLowerCase()} the world` : WORLD.goal === 'chaos' ? `The circle around the volcano is full: ${TAP.toLowerCase()} the world now, before it empties` : `The circle around the volcano is full: ${TAP.toLowerCase()} the planet to erupt`, done: (s) => planet.tally.bursts > 0 || s > 40 },
     ...(WORLD.goal === 'orbit' ? [
     { ready: () => planet.tally.bursts > 0, say: 'The taller the volcano, the more rock an eruption throws up', done: (s: number) => s > 25 },
   ] : []),
@@ -2432,11 +2432,11 @@ const CUES: Cue[] = [
   ] : []),
   ...(WORLD.goal === 'water' ? [
     // (Earth's first water: the two kinds said apart, each the first time one comes.)
-    { ready: () => planet.impact !== null && !planet.impact.icy, hand: 'drag' as const, at: stoneSpot, say: 'A dark stone is coming: turn the world so the volcano is under it, and its heat is yours', done: (s: number) => s > 14 },
+    { ready: () => planet.impact !== null && !planet.impact.icy, hand: 'drag' as const, at: stoneSpot, say: 'A dark stone is coming: turn the planet so it lands on the volcano, for more heat', done: (s: number) => s > 14 },
     { ready: () => planet.impact !== null && !!planet.impact.icy, hand: 'hold' as const, at: stoneSpot, say: 'A pale comet is coming: pour lava where it will land, away from the volcano', done: (s: number) => s > 14 },
   ] : WORLD.rules.impactEvery?.[1] === 0 ? [] : [
     { ready: () => true, begin: () => { planet.stonesFall = true; }, done: () => planet.impact !== null || planet.tally.stones > 0 },
-    { ready: () => planet.impact !== null, hand: 'drag' as const, at: stoneSpot, say: 'A stone is coming: turn its dotted circle to the top, under the volcano, and its heat is yours', done: (s: number) => s > 20 },
+    { ready: () => planet.impact !== null, hand: 'drag' as const, at: stoneSpot, say: 'A stone is coming: turn the planet so it lands on the volcano, for more heat', done: (s: number) => s > 20 },
   ]),
 ];
 let vapourIn = 0; let dustIn = 0;
@@ -2445,10 +2445,10 @@ let stuckSaid = false;
 // (On the first world, where catching stones is the aim and pouring isn't, its own few lines, about the stones and
 // the glow: the lessons about pressure and pouring sent players looking for the wrong thing.)
 if (WORLD.goal === 'gather') CUES.splice(0, CUES.length,
-  { ready: () => true, say: 'A stone that lands inside the gold ring round your volcano is caught', done: (s: number) => s > 10 },
-  { ready: () => planet.impact !== null, hand: 'drag' as const, at: stoneSpot, say: 'A stone is coming: turn its dotted circle to the top, and the gold ring follows', done: (s: number) => planet.impact === null || s > 14 },
-  { ready: () => planet.tally.stones > 0, say: 'The gold ring moves to whatever is at the top', done: (s: number) => s > 12 },
-  ...(ACCRETE ? [{ ready: () => !!planet.impact?.size && planet.tooBig(planet.impact.size) && !planet.impact.theia, hand: 'drag' as const, at: stoneSpot, say: 'A stone ringed in dark red is too big to hold: turn the gold ring away from it', done: (s: number) => s > 12 }] : [{ ready: () => planet.drained > 20, say: 'The more lava you let out, the wider the gold ring grows', done: (s: number) => s > 12 }]),
+  { ready: () => true, say: 'Catch stones by turning the planet so they land inside the gold ring around your volcano', done: (s: number) => s > 10 },
+  { ready: () => planet.impact !== null, hand: 'drag' as const, at: stoneSpot, say: 'A stone is coming: turn the planet so its dotted circle is inside the gold ring', done: (s: number) => planet.impact === null || s > 14 },
+  { ready: () => planet.tally.stones > 0, say: 'The volcano and its gold ring move to whichever part of the planet is at the top', done: (s: number) => s > 12 },
+  ...(ACCRETE ? [{ ready: () => !!planet.impact?.size && planet.tooBig(planet.impact.size) && !planet.impact.theia, hand: 'drag' as const, at: stoneSpot, say: 'A stone circled in dark red is too big: keep it outside the gold ring', done: (s: number) => s > 12 }] : [{ ready: () => planet.drained > 20, say: 'The more lava you pour, the wider the gold ring gets', done: (s: number) => s > 12 }]),
 );
 else if (!NEWCOMER) CUES.splice(0, HAND_CUES.length, { ready: () => true, done: (s: number) => {
   const tried = planet.tally.flows + planet.tally.bursts > 0;
@@ -2518,7 +2518,7 @@ for (const t of ['pointerup', 'pointercancel'] as const) addEventListener(t, () 
 
 // ---------------------------------------------------------------- words, and the key
 /** What's worth saying: the turns in the world's story, not every happening in it. */
-const QUIET_WORDS = /^(An icy comet|Ice melted|The ice froze|Ice reaches the ring|A big eruption, but too close|Wanted where|A stone is coming|Land breaks|Life begins in|The first|Moss grows|[A-Z][a-z]+( [a-z]+)? took hold|Held too long|Stone caught|The ice cracks, but too close|A streak, but it crosses|Missed: catch stones|The fire is out|The heat is nearly|A dust storm|The storm passes|The ground is sinking|The ground gives way)/;
+const QUIET_WORDS = /^(An icy comet|Ice melted|The ice froze|Ice reached Saturn|The volcano is out of heat|A big eruption, but too close|Wanted where|A stone is coming|Land breaks|Life begins in|The first|Moss grows|[A-Z][a-z]+( [a-z]+)? took hold|Held too long|Stone caught|The ice cracks, but too close|A streak, but it crosses|Missed: catch stones|The fire is out|The heat is nearly|A dust storm|The storm passes|The ground is sinking|The ground gives way)/;
 const ERAS: Record<Era, string> = { young: 'A young fire', burning: 'Burning strong', cooling: 'Cooling', embers: 'Last embers', out: 'The fire is out' };
 // (In free play the heat never runs low, so the title says what kind of play it is.)
 if (FREE) ERAS.young = 'Free play';
@@ -2559,7 +2559,7 @@ const ACTION_WORDS = /^(A stone is coming|The ground is sinking|The heat is near
  * above were said, and nearly every world's own word on what had just happened, a crack too late, a comet frozen, a
  * burst not at high tide, the far side rising, was kept quiet.)
  */
-const EXPLAIN = /^(It's tumbling again|The shock|Too late|Too early|Too small|Too near|A big eruption|A giant wave|The island is blown|The far side|A dark streak|A streak, but|The ice cracks|A mound|A lava dome|A dome, but|The mound slumps|The dome slumps|A blob reaches|Ice reaches the ring|An icy comet|Ice melted|The ice froze|Stone caught|Caught in the glow|The eruption's gas|The ground gives way|The last of the sea|The sea is nearly gone|The day has melted|The volcano is in daylight|That lava|A seabird|A nest|Found:|The island stands|Too tall for its width|A dust storm is coming|Theia|Too big to hold|The big stone|A stone too big|The burst missed|In the dark|Chilled)/;
+const EXPLAIN = /^(It's tumbling again|You poured too fast|No wave|Not high tide|That stone was too big|Too tall|Theia|The shock|Too late|Too early|Too small|Too near|A big eruption|A giant wave|The island is blown|The far side|A dark streak|A streak, but|The ice cracks|A mound|A lava dome|A dome, but|The mound slumps|The dome slumps|A blob reaches|Ice reaches the ring|An icy comet|Ice melted|The ice froze|Stone caught|Caught in the glow|The eruption's gas|The ground gives way|The last of the sea|The sea is nearly gone|The day has melted|The volcano is in daylight|That lava|A seabird|A nest|Found:|The island stands|Too tall for its width|A dust storm is coming|Theia|Too big to hold|The big stone|A stone too big|The burst missed|In the dark|Chilled)/;
 function announce(text: string, lesson = false): void {
   text = words$(text);
   if (BARE && !ending) return;
@@ -2593,11 +2593,11 @@ function words(): void {
   for (const text of planet.news.splice(0)) {
     // Only the few things worth a word are said, quietly, at the foot of the page.
     if (!ending && (QUIET_WORDS.test(text) || EXPLAIN.test(text))) announce(WORLD.goal === 'gather' ? text.replace(/^A stone is coming$/, 'A stone is coming: turn its dotted circle to the top').replace(/^Stone caught: more heat$/, `Caught in the glow: ${planet.tally.caught} of ${GATHER}`) : text);
-    if (/Theia and the world/.test(text)) feel([60, 120, 90]);
+    if (/^Theia caught/.test(text)) feel([60, 120, 90]);
     if (/^The far side breaks open/.test(text) && planet.far) farBreaks();
     if (/wish kept|takes in|Land breaks/.test(text)) feel(12);
-    else if (/The ground gives way/.test(text)) feel([30, 80, 60]);
-    else if (/The stone falls/.test(text)) feel(30);
+    else if (/^You poured too fast/.test(text)) feel([30, 80, 60]);
+    else if (/^The stone lands/.test(text)) feel(30);
   }
   const living = new Set(ecology.living);
   KINDS.forEach((k, i) => { kindEls[i].style.opacity = living.has(k.kind) ? '1' : '0.3'; });
@@ -3082,7 +3082,7 @@ const SHORT: [RegExp, (m: RegExpMatchArray) => string][] = [
   [/Wish met/, () => 'a wish met'],
   [/blew apart/, () => 'a caldera'],
   [/Stone caught/, () => 'a stone caught'],
-  [/The stone falls/, () => 'a stone falls'],
+  [/The stone lands/, () => 'a stone lands'],
 ];
 function chartInfo(): ChartInfo {
   const living = new Set(ecology.living), seen = new Set<string>(), events: { t: number; text: string }[] = [];

@@ -1220,8 +1220,8 @@ export class Planet {
     if (volume < this.k.explosive) {
       this.tally.flows++;
       if (!blast) this.lavaKind(volume);
-      if (this.k.chaos > 0 && !blast && volume < this.k.chaos) { this.tell('Too early: wait for the circle to close'); this.find('lenticulae', 'lenticulae. Warm ice rose under the crust but didn\'t break through, leaving freckles of domes and pits'); }
-      if (this.k.antipode > 0 && !blast) this.tell('Too small to reach the far side: wait for the circle to close');
+      if (this.k.chaos > 0 && !blast && volume < this.k.chaos) { this.tell('Too early: wait for the circle around the volcano to fill'); this.find('lenticulae', 'lenticulae. Warm ice rose under the crust but didn\'t break through, leaving freckles of domes and pits'); }
+      if (this.k.antipode > 0 && !blast) this.tell('Too small to reach the far side: wait for the circle around the volcano to fill');
       if (this.k.chaos > 0 && !blast && volume >= this.k.chaos) this.counted(Math.sqrt(volume / this.k.explosive) * 0.16, 'The ice cracks', 'The ice cracks, but too close to an earlier crack: move further away');
       // (It lasts by its size, so lava comes out at much the same pace whatever the eruption: it
       // lasted the same whatever its size, so a small one dribbled and a big one gushed.)
@@ -1242,7 +1242,7 @@ export class Planet {
       const fed = volume * this.k.ringShare;
       this.orbit += fed;
       left -= fed;
-      this.tell('Ice reaches the ring');
+      this.tell("Ice reached Saturn's ring");
     } else if (!blast && this.k.ringShare > 0) this.tell("The burst missed Saturn's ring: turn the volcano towards Saturn first");
     if (!blast && this.k.orbitShare > 0 && volume > this.k.explosive) {
       // (Any burst throws some: counted from a little under the burst point, so a burst when the smoke
@@ -1263,7 +1263,7 @@ export class Planet {
         this.waves.push({ x: p[v * 3], y: p[v * 3 + 1], z: p[v * 3 + 2], at: this.seconds });
         this.tell(`A giant wave: ${this.waves.length}`);
         this.find('tuff', 'a tuff ring. The burst through shallow water blew the cone open, and left a low ring of ash round a flooded crater');
-      } else this.tell('The island is blown apart, but in the open air the shock dies away');
+      } else this.tell('No wave: the top of the volcano was above the sea. Keep the top just under the sea');
     } else if (!blast && this.k.wave > 0 && this.rock[v] <= -this.k.wave) this.find('pumice', 'a pumice raft. Bursting deep under the sea, the lava frothed into stone light enough to float');
     // (On Triton, a burst in sunlight is a geyser: all its plume blown downwind into a streak.)
     const geysering = !blast && this.k.streak > 0 && !!this.star && this.dayAt(this.plumeVertex) > 0.2;
@@ -1279,7 +1279,7 @@ export class Planet {
     if (!blast && this.k.antipode > 0 && volume >= this.capNow * 0.95) this.find('faculae', 'a pyroclastic vent. A great burst left a bright halo of ash round a pit, as on Mercury');
     if (!blast && this.k.antipode > 0) { this.echoes.push({ at: this.seconds + this.k.antipodeDelay, volume: volume * this.k.antipode * Math.min(2.5, (volume / this.k.explosive) ** 2) }); this.tell(`The shock is on its way to the far side: it rises in ${Math.round(this.k.antipodeDelay)} seconds`); }
     if (!blast && this.k.great > 0 && strength >= this.k.great) {
-      if (this.tideNow < this.k.greatTide) { this.tell('A big eruption, but not at high tide: it falls short'); this.find('frost', 'sulphur frost. A plume that fell short froze round the vent in a white rime'); }
+      if (this.tideNow < this.k.greatTide) { this.tell('Not high tide, so the eruption was too weak: wait for the circle around the volcano to fill'); this.find('frost', 'sulphur frost. A plume that fell short froze round the vent in a white rime'); }
       else { this.greatPlume(this.k.ashReach * this.k.ashRing * far); this.find('pele', 'a Pele ring. A great plume\'s sulphur fell in a red ring hundreds of km across, as round Io\'s volcano Pele'); }
     }
     const lava = left * (1 - ashShare) * s;
@@ -1505,7 +1505,7 @@ export class Planet {
       this.tell(this.k.lamp ? 'Held too long: the blob burst apart' : 'Held too long: the mountain blew apart');
     }
     // The store is spent: whatever pressure is left comes out by itself, the last of the fire.
-    if (this.reserve < 0.01 && this.pressure >= this.k.least && !this.erupting) { this.erupt(); this.tell('The last of the heat escapes'); }
+    if (this.reserve < 0.01 && this.pressure >= this.k.least && !this.erupting) { this.erupt(); this.tell('The volcano is out of heat: one last eruption'); }
     if (this.reserve < 0.01 && this.pressure < this.k.least) this.pressure = 0;
     if (this.gravity && !this.marble) this.tipped(dt); // (Io's two fires: lava is poured with a finger, not by tipping)
     if (this.pouring || this.erupting) { if (this.seconds - this.pouredAt > 20) this.flowsPoured++; this.pouredAt = this.seconds; }
@@ -1589,7 +1589,7 @@ export class Planet {
       this.stormComing = this.stormIn;
       // (Where storms have a side: a new one each time, round the mountain.)
       if (this.k.stormSide > 0) { const q = this.plume, t1 = unit(cross(q, Math.abs(q.y) < 0.9 ? { x: 0, y: 1, z: 0 } : { x: 1, y: 0, z: 0 })), t2 = cross(q, t1), a = this.rand() * Math.PI * 2; this.stormFrom = { x: t1.x * Math.cos(a) + t2.x * Math.sin(a), y: t1.y * Math.cos(a) + t2.y * Math.sin(a), z: t1.z * Math.cos(a) + t2.z * Math.sin(a) }; }
-      this.tell(this.k.stormSide > 0 ? 'A dust storm is coming: pour fresh lava on the hatched side, facing it' : 'A dust storm is coming');
+      this.tell(this.k.stormSide > 0 ? 'A dust storm is coming. The stripes show which side it will wear down: pour fresh lava there' : 'A dust storm is coming');
     }
     if (this.stormComing !== null) this.stormComing = Math.max(0, this.stormIn);
     if (this.stormIn <= 0) { this.storm = true; this.stormComing = null; this.stormLeft = this.k.stormLasts; }
@@ -1669,7 +1669,7 @@ export class Planet {
     this.slides++;
     this.slidWay = s;
     this.find('aureole', 'an aureole. A side that gave way, spread far out in ridges, as round Olympus Mons');
-    this.tell('Too tall for its width: a side gave way. Widen the mountain where the ring is still dotted');
+    this.tell('Too tall for its base: a side collapsed. Pour down the sides where the dotted ring is faint, to widen it');
   }
   /** Mars: how high the ground under the mountain stood before it, as first reckoned. */
   summitBefore: number | null = null;
@@ -1817,7 +1817,7 @@ export class Planet {
       this.drained = this.k.hollow * 0.3;
       this.tally.calderas++;
       this.lavaChanged();
-      this.tell('The ground gives way: the summit falls in');
+      this.tell('You poured too fast: the top of the volcano collapsed');
       this.find('caldera', 'a caldera. The emptied chamber gave way and the summit fell in, as at Crater Lake');
     }
     // (Built back higher than it fell from: the chamber refilled under it, lifting it again.)
@@ -1871,16 +1871,16 @@ export class Planet {
     // A growing world: a stone caught is part of it, a little bigger; one too big breaks a piece off; Theia, caught, is the giant impact.
     if (size && this.k.accrete > 0) {
       if (theia) {
-        if (caught > 0.5) { this.theiaStruck = true; this.tally.caught++; this.tell('The giant impact: Theia and the world melt together, and the debris thrown up will gather into the Moon'); }
-        else this.tell('Theia passes by: it will come round again. Keep the gold ring under it');
+        if (caught > 0.5) { this.theiaStruck = true; this.tally.caught++; this.tell('Theia caught: the crash throws up rock that will form the Moon'); }
+        else this.tell('Theia missed. It will come back: get its circle inside the gold ring');
         return;
       }
-      if (caught > 0.5 && this.tooBig(size)) { this.mass = Math.max(1, this.mass * 0.65); this.chunks++; this.tell('Too big to hold: it broke a piece off the world. Keep the gold ring away from big stones'); return; }
-      if (caught > 0.5) { this.mass += size; this.tally.caught++; this.tell('Stone caught: the world grows'); return; }
+      if (caught > 0.5 && this.tooBig(size)) { this.mass = Math.max(1, this.mass * 0.65); this.chunks++; this.tell('That stone was too big: it broke a piece off your planet. Keep dark red stones outside the gold ring'); return; }
+      if (caught > 0.5) { this.mass += size; this.tally.caught++; this.tell('Stone caught: your planet grows'); return; }
       this.tell(this.tooBig(size) ? 'The big stone fell outside the gold ring: well let past' : 'Missed: catch stones inside the gold ring');
       return;
     }
-    if (caught > 0.5) { this.tally.caught++; this.tell('Stone caught: more heat'); }
+    if (caught > 0.5) { this.tally.caught++; this.tell('Stone caught: your volcano gets more heat'); }
     else if (this.k.impactNear > 0) this.tell(this.k.icy > 0 ? 'Missed: turn the volcano under the next dark stone' : 'Missed: catch stones inside the gold ring'); // (where catching them is the aim, a miss is said too)
   }
 
@@ -2385,7 +2385,7 @@ export class Planet {
     }
     this.moltenKnown = false;
     this.chilled++;
-    if (this.chilled === 1) this.tell('Chilled: the lava sets where you touched it, and the flow runs on another way');
+    if (this.chilled === 1) this.tell('Chilled: the lava hardened where you touched it, and the flow goes another way');
     return true;
   }
   /** The field book: a formation made, the first time, on a world that keeps them. */
@@ -2785,7 +2785,7 @@ export class Planet {
   private stones(dt: number): void {
     if (this.impact) {
       this.impact.in -= dt;
-      if (this.impact.in <= 0) { const icy = !!this.impact.icy, size = this.impact.size, theia = this.impact.theia; this.strike(this.impact.vertex, icy, size, theia); this.impact = null; if (!icy && !theia) this.tell('The stone falls'); }
+      if (this.impact.in <= 0) { const icy = !!this.impact.icy, size = this.impact.size, theia = this.impact.theia; this.strike(this.impact.vertex, icy, size, theia); this.impact = null; if (!icy && !theia) this.tell('The stone lands'); }
       return;
     }
     if (this.over || !this.stonesFall || this.k.impactEvery[1] <= 0) return;

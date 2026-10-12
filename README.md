@@ -862,3 +862,5 @@ Choosing whether a fall was icy afresh at each try at a landing place had also l
 * **Hunga Tonga:** a tuff ring (the first wave) and a pumice raft (bursting too deep for a wave).
 * **Mercury:** weird terrain (the far side's first rise) and a pyroclastic vent (a burst let go nearly full).
 * **Io:** a Pele ring (the first great plume) and sulphur frost (a big eruption at low tide).
+
+**Plain words.** Every goal on the card and every how-to tip on the 16 worlds rewritten as plain steps: what to touch, when, what to avoid, and what happens if you don't. No more "the night shrinks as the Sun swells" or "a mountain stands only so tall for its width". The in-game messages likewise: "You poured too fast: the top of the volcano collapsed", "The volcano is out of heat", "That stone was too big: it broke a piece off your planet". The eruption circle "fills" (it used to "close"), the player turns "the planet" (not "the world"), and Mars's storm line says what the stripes mean: "Dust storm: it wears down the striped side. Fresh lava there survives it".
