@@ -175,21 +175,24 @@ export class Paper {
     const ink = pigmentOf(wx, f, tone), water = wx === RAIN ? 1 : 0.9, gran = granulation(wx), dries = woodOf(this.wood, wx);
     const W = (r: (a: number) => number) => (a: number) => warpR(this.warp, r(a));
     if (!this.across) { this.wash.layArc(a0, a1, W(rIn), W(rOut), water, () => ink, gran, dries, this.turn); return; }
-    // Earlywood, thin paint, most of the year; latewood, the season's colour deepened toward the
-    // heartwood's, dense at the ring's outer edge (its drying edge darkens it further, as latewood is).
-    const heart = absorb(this.wood.heart), mid = (a: number) => rIn(a) + 0.86 * (rOut(a) - rIn(a));
-    const early: RGB = [ink[0] * 0.6, ink[1] * 0.6, ink[2] * 0.6];
-    const late: RGB = [0.62 * ink[0] + 0.2 * heart[0], 0.62 * ink[1] + 0.2 * heart[1], 0.62 * ink[2] + 0.2 * heart[2]];
+    // Painted to look like wood: the wood's own straw and honey, the season only a tint in it (a third).
+    // Earlywood, thin paint, most of the year; latewood, deepened toward the heartwood's umber, at the
+    // ring's outer edge (its drying edge darkens it further, as latewood is), and never granulated, so its
+    // line runs unbroken.
+    const heart = absorb(this.wood.heart), sap = absorb(this.wood.sap), mid = (a: number) => rIn(a) + 0.86 * (rOut(a) - rIn(a));
+    const base: RGB = [0.62 * 0.55 * sap[0] + 0.38 * ink[0], 0.62 * 0.55 * sap[1] + 0.38 * ink[1], 0.62 * 0.55 * sap[2] + 0.38 * ink[2]];
+    const early: RGB = [base[0] * 0.8, base[1] * 0.8, base[2] * 0.8];
+    const late: RGB = [0.8 * base[0] + 0.22 * heart[0], 0.8 * base[1] + 0.22 * heart[1], 0.8 * base[2] + 0.22 * heart[2]];
     // (A ring finer than the paper's grain can't show its two woods, only their blend, as wood seen from
     // across a room: laid so, it never shimmers into moiré.)
     const am = (a0 + a1) / 2;
     if (W(rOut)(am) - W(rIn)(am) < 3 * this.wash.h) {
       const blend: RGB = [0.86 * early[0] + 0.14 * late[0], 0.86 * early[1] + 0.14 * late[1], 0.86 * early[2] + 0.14 * late[2]];
-      this.wash.layArc(a0, a1, W(rIn), W(rOut), water, () => blend, gran, dries, this.turn);
+      this.wash.layArc(a0, a1, W(rIn), W(rOut), water, () => blend, gran * 0.5, dries, this.turn);
       return;
     }
-    this.wash.layArc(a0, a1, W(rIn), W(mid), water, () => early, gran, dries, this.turn);
-    this.wash.layArc(a0, a1, W(mid), W(rOut), water * 0.8, () => late, gran, heart, this.turn);
+    this.wash.layArc(a0, a1, W(rIn), W(mid), water, () => early, gran * 0.5, dries, this.turn);
+    this.wash.layArc(a0, a1, W(mid), W(rOut), water * 0.8, () => late, 0, heart, this.turn);
   }
 
   private fireOn(tree: TreeSim, n: number, angle: number): void {

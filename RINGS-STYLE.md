@@ -27,5 +27,6 @@ The references are the plates of transverse sections in the botanical and forest
 The front page is held to a second test as well: **would it let you breathe while you draw?** Anything that makes the hand careful, or the eye leave the slice, fails it.
 * Nothing to hit: no guide circle, no band to keep to. Where the circle goes is the year's edge.
 * Nothing to read while a finger is down, and nothing behind the slice: no print, no weather across the page, no sound.
-* Wood as wood is: the season runs across a ring (pale earlywood, a narrow dark latewood at its edge), never round it; the relief of the press a faint crease, never a bevel or a highlight on every ring (that read as plastic).
+* A painting made to look like wood, never a wooden object: watercolour on paper, no relief, bevels or highlights (they read as plastic), no shadows of its own. The season runs across a ring (pale earlywood, a fine umber latewood line at its edge), never round it, and is only a tint in oak's straw and honey.
+* Nothing that reads as a scratch: no rays on a young slice, no stray marks left on the page.
 * What's too fine to draw is drawn as its blend, never as shimmer.

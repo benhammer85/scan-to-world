@@ -6,13 +6,17 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="theme-color" content="#f4efe4" />
+    <meta name="apple-mobile-web-app-title" content="Well Rounded" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <link rel="apple-touch-icon" href="/src/rings/icon/icon-180.png" />
+    <link rel="icon" type="image/png" href="/src/rings/icon/icon-180.png" />
     <title>Well Rounded</title>
     <style>
       body { position: fixed; inset: 0; }
       html, body { margin: 0; height: 100%; background: #f4efe4; overflow: hidden; overscroll-behavior: none; touch-action: none; -webkit-user-select: none; user-select: none; }
       #press { position: fixed; inset: 0; width: 100vw; height: 100dvh; display: block; }
-      #words { position: fixed; top: calc(70px + env(safe-area-inset-top)); left: 24px; right: 24px; text-align: center; font: italic 16px "Newsreader", "Iowan Old Style", Georgia, serif; color: #2e2118; opacity: 0; transition: opacity 2s; pointer-events: none; text-wrap: balance; }
-      #words.shown { opacity: 0.6; }
+      #words { position: fixed; top: calc(70px + env(safe-area-inset-top)); left: 24px; right: 24px; text-align: center; font: italic 15px "Newsreader", "Iowan Old Style", Georgia, serif; color: #2e2118; opacity: 0; transition: opacity 2s; pointer-events: none; text-wrap: balance; }
+      #words.shown { opacity: 0.5; }
     </style>
   </head>
   <body>
