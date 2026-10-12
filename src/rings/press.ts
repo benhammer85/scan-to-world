@@ -765,6 +765,7 @@ function keepCopy(): void {
   a.href = URL.createObjectURL(blob); a.download = `${child.name.replace(/[^\p{L}\p{N}]+/gu, '-')}-tree-${dayOf()}.json`;
   document.body.append(a); a.click(); a.remove();
   window.setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  try { localStorage.setItem('annulus.child.copied', String(thisYear().days.length + years.reduce((n, y) => n + y.days.length, 0))); } catch { /* not noted */ }
   say('A copy is kept, as a file. Keep it somewhere safe.', 4);
 }
 /** A copy kept before, taken back (only if it's whole: a child's tree that loads). */
@@ -778,6 +779,19 @@ async function restoreCopy(file: File | undefined): Promise<void> {
   } catch { say('That file isn’t a copy of a child’s tree.', 4); }
 }
 document.getElementById('keep-copy')?.addEventListener('click', (e) => { e.preventDefault(); keepCopy(); });
+/**
+ * Keeping it safe: the browser asked to keep this site's storage rather than clear it when space is short
+ * (Safari also clears a site's storage after some seven days unvisited, unless it's on the Home Screen).
+ * And, quietly, once a month or so of days drawn since the last copy, a reminder to keep one.
+ */
+function guardKept(): void {
+  void navigator.storage?.persist?.().catch(() => false);
+  let last = 0;
+  try { last = Number(localStorage.getItem('annulus.child.copied')) || 0; } catch { /* none kept */ }
+  const drawn = thisYear().days.length + years.reduce((n, y) => n + y.days.length, 0);
+  const home = matchMedia('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone;
+  if (drawn >= 7 && drawn - last >= 30) window.setTimeout(() => say(home ? 'It’s been a while: keep a copy, somewhere safe.' : 'Add this page to your Home Screen to keep it safe, and keep a copy now and then.', 6), 12000);
+}
 
 /** The seed, planted: a small inked blot, uneven, pressed in as it lands. */
 function drawSeed(v: View, t: number): void {
@@ -1493,6 +1507,7 @@ function printYears(v: View, oak: Years): void {
   // across each year of their life, the days after a birthday print lighter, those before the next darker
   // and denser, so each birthday closes a ring. The run of rays is the year's.)
   const spans = CHILD ? yearSpans() : null, share = (i: number) => (spans?.[i].whole ? 1 / 365 : 1);
+  const monthStart = spans ? days.map((d, i) => !spans[i]?.whole && i > 0 && !!days[i - 1] && d.slice(0, 7) !== days[i - 1].slice(0, 7)) : [];
   const W0 = oak.levels[0].w, runOf = (i: number) => (spans ? spans[i].y : Math.floor(Math.log2(Math.max(1, meanR(i) / 3))));
   // (On the screen, as the fisheye widens a ring without lengthening it.)
   // (Each run's scale is set by its first year, so a year added never changes the years before it.)
@@ -1546,10 +1561,14 @@ function printYears(v: View, oak: Years): void {
       const day = sp ? (sp.whole ? Math.floor(across * cyc) : i) : 0, yy = sp ? ((sp.y * 5) % oak.n + oak.n) % oak.n : year;
       let ink = sample(L, (((a / TAU) * reps[i] * W0 + off[i] + wob * reps[i] * 0.15 + day * 37.3) * L.w) / W0, yy * rows + inDay * rows, yy * rows, rows) * tone(i);
       if (sp) {
-        // (Where in their year: lighter after the birthday, darker and denser toward the next.)
-        const f = sp.whole ? across : sp.f0 + across * (sp.f1 - sp.f0);
-        ink = ink * (0.7 + 0.3 * smooth((f - 0.04) / 0.5));
-        ink += (1 - ink) * 0.55 * smooth((f - 0.72) / 0.26);
+        // (Where in their year: lighter after the birthday, darker and denser toward the next; strongly in
+        // their life's tree, where it's what marks a birthday, gently in a year's own, so the year reads.)
+        const f = sp.whole ? across : sp.f0 + across * (sp.f1 - sp.f0), strong = sp.whole;
+        ink = ink * (strong ? 0.7 + 0.3 * smooth((f - 0.04) / 0.5) : 0.86 + 0.1 * smooth(f / 0.8));
+        if (strong) ink += (1 - ink) * 0.55 * smooth((f - 0.72) / 0.26);
+        // (A month begun: its first day's springwood opens wide and pale, so a year's tree reads as its
+        // twelve months, the days fine within them.)
+        else if (monthStart[i] && inDay < 0.42) ink *= 0.22 + 0.78 * smooth((inDay - 0.28) / 0.14);
       }
       const k = (y * w + x) * 4;
       d[k] = INK[0]; d[k + 1] = INK[1]; d[k + 2] = INK[2]; d[k + 3] = Math.round(255 * Math.min(1, ink));
@@ -1868,6 +1887,7 @@ void (async () => {
   else if (CHILD) {
     // (Recalled above, so read afresh here.)
     const c = child as { name: string; birth: string } | null;
+    if (c) guardKept();
     if (!c) { openSetup(); views?.classList.add('hidden'); }
     else if (newYear) {
       // (A birthday since: last year's tree finished and kept, a new seed planted; their height asked.)
