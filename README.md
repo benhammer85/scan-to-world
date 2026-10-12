@@ -826,3 +826,8 @@ Choosing whether a fall was icy afresh at each try at a landing place had also l
 * Stones come in every size, from a crumb to nearly the world's own. The biggest that still fit grow it most. Past six tenths of the world's size a stone is too big to hold: its ring is dark red, and caught, it breaks a third of the world off. So you choose what to catch and what to turn the ring away from.
 * Grown eightfold, **Theia** comes: a world as big as Mars, as really struck the young Earth. Caught, it is the giant impact, and the debris will gather into the Moon, which is where Young Earth begins.
 * Bots: catching only what fits wins in about 2.4 minutes; catching everything averages nearly 3, sometimes 4; random play doesn't grow. The time star is now 3 minutes.
+
+**Surveys: a world played backwards** (`surveys.ts`). Once a world is done, its card offers a survey of a real place made the same way: the place's outline is pencilled round the volcano, and the aim is to make it again. The outline inks in where what's made reaches it. It's judged once the fire is out, or when you choose "survey it now": the share of the outline and of what was made that lie on each other, as one map laid over another. No stars: a survey is for its own sake.
+* **Surtsey, 1967.** Its craters were in the north of the island and the lava ran south, so the outline lies south of the vent, with a spit to the north. Only hard land counts, not loose ash, so a fresh ash cone can't pass for the island. 70% alike will do.
+* **Olympus Mons.** Long north to south, narrow east to west: pour most to the north and south. 62% alike will do.
+* Bots: played as meant, both are made in one to four minutes. Played carelessly or at random, neither is.

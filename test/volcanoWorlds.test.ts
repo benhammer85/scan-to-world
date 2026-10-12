@@ -10,6 +10,7 @@ import { ageBefore, carried } from '../src/volcano/ages';
 import { aged, atollPlaces, atollState, defaultChain, tendCoral } from '../src/volcano/atolls';
 import { dried, seaShare } from '../src/volcano/drying';
 import { melted } from '../src/volcano/giant';
+import { SURVEYS, surveyMask, surveyMatch } from '../src/volcano/surveys';
 
 const topo = buildTopology(new THREE.IcosahedronGeometry(1, 24).attributes.position.array, null);
 const p = topo.basePositions;
@@ -134,6 +135,20 @@ describe('the Moon', () => {
       if (Math.round(t * 20) % 50 === 0) pl.erupt();
     }
     expect(pl.flooded(b)).toBeGreaterThan(0.5);
+  });
+});
+
+describe('surveys', () => {
+  it('lay a real outline round the vent, and match what is made against it', () => {
+    const s = SURVEYS.surtsey!, pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('surtsey').rules), mask = surveyMask(topo, pl.plume, s);
+    const inside = mask.reduce((a, b) => a + b, 0);
+    expect(inside).toBeGreaterThan(20);
+    expect(surveyMatch(pl, mask, s)).toBe(0);
+    // (Hard land exactly where the outline is: alike; loose ash there instead: not.)
+    for (let v = 0; v < mask.length; v++) if (mask[v]) { pl.rock[v] = 0.02; pl.ash[v] = 1; }
+    expect(surveyMatch(pl, mask, s)).toBe(0);
+    for (let v = 0; v < mask.length; v++) if (mask[v]) pl.ash[v] = 0;
+    expect(surveyMatch(pl, mask, s)).toBe(1);
   });
 });
 

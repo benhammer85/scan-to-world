@@ -59,6 +59,7 @@ import { Chain, CHAIN } from './chain';
 import { measureSecond, type Second } from './second';
 import { feel, keepImage, NATIVE, rumble, rumbles, tap } from './native';
 import { bookLine, keepFound } from './fieldbook';
+import { madeAt, SURVEYS, surveyLine, surveyMask, surveyMatch } from './surveys';
 import { SmokeSign } from './smokeSign';
 import { skyBody, starBloom } from './skyBody';
 import { MARK_AT, earned, fromOldMarks, markNames, mergeMarks, readMarks, starsOf, writeMarks, type Marks } from './marks';
@@ -142,6 +143,8 @@ const BARE = ASKED.has('bare');
 const FREE = ASKED.has('free');
 const CHOSEN = worldOf(ASKED.get('world') ?? remembered('volcano.world'));
 const WORLD = FREE ? { ...CHOSEN, rules: { ...CHOSEN.rules, endless: true } } : CHOSEN;
+/** A survey of a real place, played on this world: its outline to make again (see surveys.ts). */
+const SURVEY = ASKED.has('survey') ? SURVEYS[WORLD.id] ?? null : null;
 remember('volcano.world', WORLD.id);
 /** Io's two fires: a finger held in the pool pours lava there, drawn through it swirls the colours. */
 const MARBLE = WORLD.goal === 'marble';
@@ -1667,6 +1670,8 @@ let peakReached = false;
 function reckonAim(): void {
   // (The field book: what the rock has made so far, kept for good the moment it's made.)
   for (; foundSeen < planet.found.length; foundSeen++) if (keepFound(planet.found[foundSeen])) feel(20);
+  // (Judged as it stands once the fire is out, as a surveyor would map it: ash heaped and washed away again doesn't count.)
+  if (SURVEY) { surveyMaskNow ??= surveyMask(topo, planet.plume, SURVEY); surveyNow = Math.round(100 * surveyMatch(planet, surveyMaskNow, SURVEY)); aimOf = Math.round(100 * SURVEY.need); aimDone = planet.reserve < 0.01 && planet.pressure < planet.k.least ? surveyNow : Math.min(surveyNow, aimOf - 1); return; }
   if (chain) { aimDone = chain.update(planet, topo); aimOf = CHAIN.stretches; }
   else if (WORLD.goal === 'height') { aimDone = Math.max(0, planet.summit * HEIGHT.kmPerUnit); aimOf = HEIGHT.target; }
   else if (WORLD.goal === 'giant') {
@@ -1726,6 +1731,8 @@ function reckonAim(): void {
   else { aimDone = planet.basins.filter((b) => planet.flooded(b) >= FLOODED_ENOUGH).length; aimOf = planet.basins.length; }
 }
 let calmHeld = 0, calmAt = 0, litFor = 0, litAt = 0, clearOfSea = false, foundSeen = 0;
+/** The survey's outline, laid round the vent as the world began. */
+let surveyMaskNow: Uint8Array | null = null, surveyNow = 0;
 const story: { t: number; v: number; sky: number; n: number }[] = [];
 /**
  * How each world's story is drawn along its plate's timeline (see chart.ts): where the aim changes the
@@ -1845,6 +1852,7 @@ const OWN_TIP: Partial<Record<WorldId, string>> = {
   mars: `${HOLD} to pour. Lava runs down the screen, so turn the world between pours. A mountain stands only so tall for its width: the dotted ring shows how wide it must be to grow higher. Where a side is still pencil, pour down that side. Built too tall for its narrowest side, that side gives way. Before each dust storm, pour on the hatched side facing it: fresh lava doesn't wear away.`,
   hollow: `${HOLD} to pour a little, then rest. When cracks ring the volcano, stop until they fade, or the top falls in. Don't ${COMPUTER ? 'click' : 'tap'} to erupt: a big eruption empties it at once.`,
 };
+if (SURVEY) { AIM[WORLD.goal] = SURVEY.aim; OWN_TIP[WORLD.id] = SURVEY.tip; }
 /** How the hands do it, for the way it's being played: tipping a phone, breathing, or a computer's mouse. */
 const HANDS: string[] = LAMP
   ? ['Drag · turn the planet', `${COMPUTER ? 'Click' : 'Tap'} · let a blob go`]
@@ -1858,6 +1866,7 @@ const NEWCOMER = LAMP || MARBLE || HAND || Number(remembered('volcano.played') ?
 /** The aim and how far it's come, in a few words for the top of the screen, always there while it's played. */
 function goalLine(): string {
   const d = Math.round(aimDone), of = aimOf, pct = Math.min(100, d);
+  if (SURVEY) return `${SURVEY.title} · ${surveyNow}% alike · ${of}% will do, once the fire is out`;
   switch (WORLD.goal) {
     case 'ring': return `Separate islands · ${d} of ${of}`;
     case 'basins': return `Craters filled · ${d} of ${of}`;
@@ -1964,6 +1973,8 @@ function tellAim(): void {
   if (planet.over || ending) return;
   $('goal').textContent = FREE ? '' : goalLine();
 }
+/** A survey: whether what's made reaches a point of its outline. */
+const madeNear = (v: number) => madeAt(planet, v, SURVEY!);
 /** Points round a circle on the world (on the unit sphere): about `c`, `r` radians out, about every 0.045. */
 function circleAt(c0: { x: number; y: number; z: number }, r: number): THREE.Vector3[] {
   const c = new THREE.Vector3(c0.x, c0.y, c0.z).normalize();
@@ -1996,6 +2007,12 @@ function drawAim(now: number): void {
   }
   if (begun) tellAim();
   const inked: number[] = [], pencilled: number[] = [], next: number[] = [];
+  // A survey: the place's outline, in pencil, inked where what's made reaches it.
+  if (SURVEY) {
+    for (const q of surveyLine(planet.plume, SURVEY)) { const v = nearestAbove(new THREE.Vector3(q.x, q.y, q.z)), r = groundOver(v); (madeNear(v) ? inked : pencilled).push(q.x * r, q.y * r, q.z * r); }
+    aimInk.set(inked); aimPencil.set(pencilled); aimNext.set(next);
+    return;
+  }
   if (WORLD.goal === 'orbit') {
     // The moon to be: its ring of dots round the world, inked as the rock reaches it (see `orbiting`).
     const step = Math.floor(aimDone / 10) * 10;
@@ -2929,9 +2946,11 @@ const GOAL_WORDS: Record<typeof WORLD.goal, { age: (met: boolean) => string; don
   domes: { age: () => (MOUNDS ? 'Later: frost settles in the hollow' : 'Later: the domes crack as they cool'), done: MOUNDS ? 'Goal reached: a ring of mounds round the hollow' : 'Goal reached: a field of lava domes', title: MOUNDS ? ['Mounds built', 'Not enough mounds'] : ['Domes built', 'Not enough domes'], got: () => `${aimDone} of ${aimOf} ${MOUNDS ? 'mounds' : 'domes'}` },
   snow: { age: () => 'Later: the last vapour falls as snow', done: 'Goal reached: rock snow all along the line', title: ['Rock snow done', 'Not enough rock snow'], got: () => `${Math.min(100, Math.round(aimDone))}% of the rock snow` },
 };
+if (SURVEY) GOAL_WORDS[WORLD.goal] = { age: () => 'Later: the surveyors come, and draw it', done: `Goal reached: ${SURVEY.title}, made again`, title: [`${SURVEY.title}, made again`, `${SURVEY.title}, not yet`], got: () => `${surveyNow}% alike` };
 const AGE_WORDS = (met: boolean) => GOAL_WORDS[WORLD.goal].age(met);
 /** What was made, in a sentence for the chart: what it is, not a score. */
 function tale(met: boolean): string {
+  if (SURVEY) return `${SURVEY.title} made again, ${surveyNow}% alike.${met ? '' : ' Not near enough yet.'} ${SURVEY.why}`;
   const pct = Math.min(100, Math.round(aimDone));
   switch (WORLD.goal) {
     case 'ring': return met ? 'A chain of separate islands along the volcano\'s path. The oldest are already sinking.' : `${aimDone} of ${aimOf} separate islands along the line.`;
@@ -2979,7 +2998,7 @@ function keptStars(id: WorldId): Marks | null {
   return old === null ? null : fromOldMarks(old);
 }
 function markTheWin(): void {
-  if (FREE) return; // (free play has no clock)
+  if (FREE || SURVEY) return; // (a survey's stars are the world's own, earned already) // (free play has no clock)
   marksNow = earned(WORLD.id, WORLD.goal === 'sea' ? seaNow : WORLD.goal === 'giant' ? peakNow : planet.heatLeft, planet.seconds); // (the drying seas: the share still sea)
   if (toppedUp) marksNow[1] = false; // (heat was given back: none to spare of its own)
   const before = keptStars(WORLD.id) ?? readMarks(null);
@@ -3070,7 +3089,7 @@ function chartInfo(): ChartInfo {
     kinds: LIFE && KIND_NAMES ? KINDS.map((k) => ({ name: k.name, ink: PIGMENT[k.kind] ?? k.ink, sign: k.sign, living: living.has(k.kind) })) : [],
     // The first aim, how far it got; and the second, as the fire left it.
     // (And the world's own true story, last, as a reward: it was on the card, where it read as homework before play.)
-    summary: tale(met) + ` · ${WORLD.why}`, // (Mars's true height is in its story already: said twice, it was)
+    summary: SURVEY ? tale(met) : tale(met) + ` · ${WORLD.why}`, // (Mars's true height is in its story already: said twice, it was)
     marks: marksNow ? markNames(WORLD.id).map((name, i) => ({ name, got: marksNow![i] })) : undefined,
     length,
     eras,
@@ -3343,6 +3362,7 @@ interface Kept {
   run?: string;
   /** Whether it was being played free, with no clock. */
   free?: boolean;
+  survey?: boolean;
   way: { a: { x: number; y: number; z: number }; b: { x: number; y: number; z: number }; held?: boolean[]; count?: number; spans?: { from: number; to: number }[] } | null;
   seed: number;
   planet: Record<string, unknown>;
@@ -3354,6 +3374,7 @@ function world(): Kept {
   return {
     world: WORLD.id,
     free: FREE,
+    survey: !!SURVEY,
     way: chain ? { a: chain.a, b: chain.b, count: chain.count, spans: [...chain.earlier, ...chain.spans].map((s) => ({ ...s })) } : null, // (and the islands counted: once counted, kept, though they have sunk since)
     seed,
     // (Not its rules, nor what's worked out from the ground: those come fresh from this version of the game.)
@@ -3376,7 +3397,7 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 async function resume(): Promise<boolean> {
   if (wanted) return false;
   const w = await recall<Kept>();
-  if (!w || !w.planet || (w.world ?? 'ocean') !== WORLD.id || !!w.run || !!w.free !== FREE) return false;
+  if (!w || !w.planet || (w.world ?? 'ocean') !== WORLD.id || !!w.run || !!w.free !== FREE || !!w.survey !== !!SURVEY) return false;
   return takeUp(w);
 }
 /** Put a kept world back: the planet, its life and islands, and where the page had got to. */
@@ -3415,9 +3436,9 @@ let begun = false;
 // (As little as can be: its number and name, what to do, and begin. Its chapter, its mood and the
 // list of worlds went to the atlas, which is where worlds are picked now.)
 ($('begin').querySelector('.chapter') as HTMLElement).textContent = '';
-($('begin').querySelector('.name') as HTMLElement).textContent = WORLD.title;
+($('begin').querySelector('.name') as HTMLElement).textContent = SURVEY ? SURVEY.title : WORLD.title;
 // (An age of Earth begun on the ground the age before left says so: it's the world you made, an age on.)
-($('begin').querySelector('.first') as HTMLElement).textContent = WORLD.goal === 'giant' ? (CARRIED ? 'Your world, four billion years later.' : 'An old world, four billion years on.') : WORLD.goal === 'sea' ? (FROM_ATOLLS ? 'Your world, a billion years later.' : 'An old world, a billion years on.') : WORLD.goal === 'atolls' ? (FROM_OCEAN ? 'Your ocean world, a million years later.' : 'Old islands, a million years on.') : AGE_GROUND ? 'Your world, a long time later.' : '';
+($('begin').querySelector('.first') as HTMLElement).textContent = SURVEY ? `A survey, on ${WORLD.title}.` : WORLD.goal === 'giant' ? (CARRIED ? 'Your world, four billion years later.' : 'An old world, four billion years on.') : WORLD.goal === 'sea' ? (FROM_ATOLLS ? 'Your world, a billion years later.' : 'An old world, a billion years on.') : WORLD.goal === 'atolls' ? (FROM_OCEAN ? 'Your ocean world, a million years later.' : 'Old islands, a million years on.') : AGE_GROUND ? 'Your world, a long time later.' : '';
 // (The card is only what's needed to begin: the name, the aim, the stars. How to play is shown in the game as it's
 // needed; why it plays so, the real science, is said at the end, beside what was made.)
 ($('begin').querySelector('.why') as HTMLElement).textContent = '';
@@ -3455,6 +3476,9 @@ const footLink = (text: string, act: () => void): HTMLElement => {
   $('begin').querySelector('.worlds')!.appendChild(b);
   return b;
 };
+// A survey, once the world is done: a real place to make again on it (see surveys.ts); and back from one.
+if (SURVEY) footLink('back to the world', () => { const q = new URLSearchParams(location.search); q.delete('survey'); q.delete('seed'); location.search = q.toString(); });
+else if (!FREE && SURVEYS[WORLD.id] && keptStars(WORLD.id) !== null) footLink(`survey: ${SURVEYS[WORLD.id]!.title}`, () => { location.search = `?world=${WORLD.id}&survey`; });
 footLink(FREE ? 'play with a goal' : 'free play', () => {
   const q = new URLSearchParams(location.search);
   q.delete('seed');
@@ -3535,6 +3559,7 @@ $('begin').addEventListener('pointerdown', () => {
   document.body.classList.remove('carding');
   $('begin').classList.add('gone');
   if (FREE) $('finish').classList.add('shown');
+  if (SURVEY) { $('finish').textContent = 'survey it now'; $('finish').classList.add('shown'); }
 });
 // The card shows once its words are in (a kept world's included), so it never flashes half-made.
 const cardReady = () => requestAnimationFrame(() => { cardView(); $('begin').classList.remove('loading'); });
