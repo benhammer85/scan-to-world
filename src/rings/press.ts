@@ -59,7 +59,9 @@ const smooth = (x: number) => { const t = Math.max(0, Math.min(1, x)); return t 
 // year's edge (a loose, wide circle a wide year; a close one, a narrow year).
 /** The challenge (challenge.html) rather than the daily practice. */
 const CHALLENGE = document.body.dataset.mode === 'challenge';
-const DAILY = { yearsPerRing: 1, crown: OAK.crown / 5, crownYears: 6, oldFrom: 1e6, oldTo: 2e6, ink: 1e6 };
+// The tree starts from a small heart (2 mm: a 6 mm one was a third of a young slice), and each ring's edge is
+// smoothed over a wider arc (12°), so a hand's wobble becomes a gentle swell, as real rings are.
+const DAILY = { yearsPerRing: 1, crown: OAK.crown / 5, crownYears: 6, oldFrom: 1e6, oldTo: 2e6, ink: 1e6, pith: 2, smooth: (12 * Math.PI) / 180 };
 /** The widest year (steady widths): a circle drawn at the screen's edge stops at this. */
 const WIDEST = 6;
 /**
@@ -73,7 +75,7 @@ function brushPoint(v: View, x: number, y: number): [number, number] {
   return [v.cx + dx * k, v.cy + dy * k];
 }
 /** How far each ring is eased toward round (a tree evens out its lumps over the years). */
-const ROUND = CHALLENGE ? 0 : 0.15;
+const ROUND = CHALLENGE ? 0 : 0.3;
 /** Where the finger puts the line (steady widths from the bark), eased a little toward round. */
 function rounded(a: number, u: number): number {
   return Math.min(WIDEST, u) + ROUND * (tree.radius - radiusAt((i) => tree.inner(i), a)) / tree.wRef;
@@ -674,11 +676,9 @@ function drawPrint(v: View): void {
   // (A point at angle a, radius r (mm), and dr device px further out: roughness is on the screen, so the
   // fisheye never magnifies it into spikes.)
   const pt = (a: number, r: number, dr = 0): [number, number] => { const R = scr(r) + dr, t = a + v.turn; return [v.cx + R * Math.cos(t), v.cy - R * Math.sin(t)]; };
-  // The pith: a faint tone, the seedling's first growth printed in a few fine rings, a dark dot at its heart.
-  g.fillStyle = ink(0.1); ringPath(v, barkOf(-1)); g.fill();
-  g.strokeStyle = ink(0.32); g.lineWidth = 0.7 * px;
-  for (let q = 1; q <= 5; q++) { const f = (q / 6) ** 1.3; ringPath(v, (a) => barkOf(-1)(a) * f); g.stroke(); }
-  g.fillStyle = ink(0.75); g.beginPath(); g.arc(v.cx, v.cy, 1.6 * px, 0, TAU); g.fill();
+  // The pith: the heart, printed dark (as a print's heart is), a small dot when the tree is grown.
+  g.fillStyle = ink(0.85); ringPath(v, barkOf(-1)); g.fill();
+  g.beginPath(); g.arc(v.cx, v.cy, 1.6 * px, 0, TAU); g.fill();
   if (!n) {
     // (Before the first ring: the heart, ringed, to draw round.)
     g.strokeStyle = ink(0.7); g.lineWidth = 1.2 * px; ringPath(v, barkOf(-1)); g.stroke();
@@ -693,9 +693,8 @@ function drawPrint(v: View): void {
   let first = 0;
   while (first < n - 1 && wPx(first) < 1.6) first++;
   if (first > 0) {
-    // (Its rings still there, as fine lines, as many as the screen can part: every one, or every other...)
-    g.fillStyle = ink(0.14); ringPath(v, barkOf(first - 1)); g.fill();
-    g.strokeStyle = ink(0.62); g.lineWidth = 0.8 * px;
+    // (Its rings still there, as fine dark lines on the paper, as many as the screen can part.)
+    g.strokeStyle = ink(0.8); g.lineWidth = 0.8 * px;
     let lastR = -1e9;
     for (let i = 0; i < first; i++) {
       const R = scr(meanR(i));
@@ -705,8 +704,8 @@ function drawPrint(v: View): void {
   }
   for (let i = first; i < n; i++) {
     const outer = barkOf(i), inner = barkOf(i - 1), last = i === n - 1;
-    // How much of the year takes the ink: about half, more on the bark; never under a pixel.
-    const w = wPx(i), share = last ? 0.85 : Math.min(0.75, Math.max(0.45, 1.1 / Math.max(1, w) + 0.45));
+    // How much of the year takes the ink: about half; never under a pixel.
+    const w = wPx(i), share = Math.min(0.75, Math.max(0.45, 1.1 / Math.max(1, w) + 0.45));
     const bandIn = (a: number) => outer(a) - share * (outer(a) - inner(a));
     // The rays crossing this ring, never two closer than 5 px round it (they'd make a wide gap).
     const R = scr(meanR(i)), gap = (last ? 0.6 : 0.9) * px / Math.max(1, R), least = (5 * px) / Math.max(1, R);
@@ -730,7 +729,8 @@ function drawPrint(v: View): void {
       // (The ink a little starved now and then.)
       g.fillStyle = ink(0.8 + 0.2 * h1(seed * 0.37)); g.fill();
     };
-    if (live.length < 3) { brick(0, TAU, i * 101); continue; }
+    // (Rays only where rings are fine enough for them to read as grain; across a wide band they read as cracks.)
+    if (live.length < 3 || w >= 6) { brick(0, TAU, i * 101); continue; }
     for (let j = 0; j < live.length; j++) {
       // (A ray wavers a little from ring to ring, as the grain does.)
       const wav = (r: typeof rays[0]) => r.a + ((h1(r.k * 13.1 + i * 0.7) - 0.5) * 0.8 * px) / Math.max(1, R);
