@@ -192,7 +192,7 @@ export const WORLDS: World[] = [
     first: 'Small and hot, wrinkled as it cooled.',
     why: 'When a huge rock hit Mercury, the shock went right through the planet and broke up the ground on the opposite side.',
     second: 'Burst here, and a moment later the far side breaks open.',
-    rules: {
+    rules: { formations: ['weird', 'faculae'],
       g: 0.38, // (Mercury's gravity, Earth's being 1)
       terrain: 'moon', basins: 0, craters: 45, floor: 0.22, rough: 0.02,
       waves: 0, rain: 0, sink: 0, swell: 0, life: false,
@@ -217,7 +217,7 @@ export const WORLDS: World[] = [
     first: 'A yellow moon with hundreds of volcanoes.',
     why: "Jupiter's pull squeezes Io harder at some points of its orbit than others, so its heat rises and falls. It is the most volcanic place in the solar system.",
     second: 'Erupt at high tide, and a great plume rises.',
-    rules: {
+    rules: { formations: ['pele', 'frost'],
       g: 0.18, // (Io's gravity, Earth's being 1)
       terrain: 'io', basins: 0, craters: 0, floor: 0.05, rough: 0.02,
       waves: 0, rain: 0, sink: 0, swell: 0, life: false,
@@ -322,7 +322,7 @@ export const WORLDS: World[] = [
     first: 'A young Earth, with rocky stones and icy comets falling.',
     why: 'Comets and icy asteroids probably brought much of Earth\'s water, melting as they struck the young, hot planet.',
     second: 'Catch rocky stones on the volcano, and icy comets on warm lava away from it.',
-    rules: {
+    rules: { formations: ['phreatic', 'tektites'],
       terrain: 'young', basins: 0, craters: 25, floor: 0.06, rough: 0.02,
       waves: 0, rain: 0, sink: 0, swell: 0, life: false,
       talus: 2.2, flow: 10, channel: 2, coolLand: 0.2,
@@ -346,7 +346,7 @@ export const WORLDS: World[] = [
     first: 'Early Earth: shallow green seas under an orange sky.',
     why: "For about two billion years Earth's air had almost no oxygen, until tiny life in shallow seas made it.",
     second: 'Pour a shallow shelf, then turn and pour the next, and leave each to life.',
-    rules: {
+    rules: { formations: ['stromatolite', 'banded'], bandedAt: 240,
       drift: 0, rises: 0.03, heat: 350, rising: 1.3, steady: true, sink: 0,
       breathe: 0.06, arrives: 1, hearth: 1.2, // (mats drift in and settle on any shallows near the fire)
       gasEats: 8, // (an eruption's gas uses oxygen up: pour, don't erupt)
@@ -367,7 +367,7 @@ export const WORLDS: World[] = [
     first: 'All ocean, with a volcano on the sea floor.',
     why: 'The sea floor slowly slides over a hot spot, so the volcano leaves a line of islands behind it, like Hawaii.',
     second: 'Pour as the volcano moves, and islands rise along the line.',
-    rules: { drift: 0.0125, rises: 0, heat: 600, rising: 1.4, steady: true, reseed: 15, floor: -0.22, sink: 0.0001, impactEvery: [0, 0], atolls: true }, // (no stones: the path is the lesson, and a stone's trail of dots read as a second one) // (islands sinking slowly, so the chain is built steadily, not raced)
+    rules: { formations: ['blacksand', 'guyot'], drift: 0.0125, rises: 0, heat: 600, rising: 1.4, steady: true, reseed: 15, floor: -0.22, sink: 0.0001, impactEvery: [0, 0], atolls: true }, // (no stones: the path is the lesson, and a stone's trail of dots read as a second one) // (islands sinking slowly, so the chain is built steadily, not raced)
     palette: {
       paper: '#ecdfc2', basalt: '#9a8a76', ash: '#b3ada2', lava: '#b8563c', deepLava: '#8f3b28',
       shallow: '#d4e3ec', deep: '#b1c8d8',
@@ -403,7 +403,7 @@ export const WORLDS: World[] = [
     why: 'In about five billion years the Sun will run out of hydrogen at its centre and swell into a red giant, a hundred times wider than it is now. Its light will melt the face of the Earth, if it doesn\'t swallow it whole.',
     second: 'Keep it higher.',
     sun: [0.9, 0.2, -0.3], // (to the right and a little behind the world: day on the right, night on the left)
-    rules: {
+    rules: { formations: ['sunglass', 'lavalake'],
       terrain: 'young', craters: 0, basins: 0, floor: 0, life: false, waves: 0, rain: 0, sink: 0, swell: 0, reef: 0,
       drift: 0, rises: 0, heat: 330, rising: 1.2, steady: true, dayCool: 0.04,
       melt: 0.01, meltFloor: 0.01, nightShrink: -0.75, impactEvery: [0, 0],
@@ -451,9 +451,9 @@ export const WORLDS: World[] = [
     first: 'An undersea volcano in the South Pacific.',
     why: 'In 2022 Hunga Tonga erupted just under the sea, and its pressure wave went round the whole Earth several times.',
     second: 'Build the cone almost to the surface, then burst.',
-    rules: {
+    rules: { formations: ['tuff', 'pumice'], wave: 0.04, waveDig: 0.35,
       drift: 0, rises: 0, heat: 420, rising: 1.3, steady: true, sink: 0,
-      wave: 0.08, waveDig: 0.3, ashShare: 0.3,
+      ashShare: 0.3, // (its wave depth and dig: see above, narrowed so a burst has to be timed)
     },
     palette: {
       paper: '#e8dfcc', basalt: '#8d8478', ash: '#b0a99d', lava: '#b8563c', deepLava: '#8f3b28',

@@ -853,3 +853,12 @@ Choosing whether a fall was icy afresh at each try at a landing place had also l
 * **The Moon** has the asteroid's hatching: the high ground near the volcano, where lava runs off and is lost.
 * **Venus** has Pluto's rhythm: poured on more than three seconds at once, the dome slumps. Pour in short bursts and let each set.
 * Bots: careful play still wins all of these; tapping in one spot and random play lose.
+
+**The last seven worlds: every world now has its finds.** Bots showed Earth's First Water, the Orange Earth, the Ocean World, the Red Giant, Mercury and Io already reward careful play (it wins; tapping in one spot and random play lose). Hunga Tonga didn't: random bursts made enough waves. Its window is narrower now (`wave` 0.04, `waveDig` 0.35), and random play loses every time while careful play wins in about three and a half minutes.
+* **Earth's First Water:** a steam-blast crater (an icy comet strikes the volcano) and tektites (a stone strikes molten lava).
+* **Orange Earth:** stromatolites (life spreads in the shallows) and banded iron (the oxygen reaches half the way, `bandedAt`).
+* **Ocean World:** a black sand beach (waves grind new lava) and a guyot (an island sinks below the sea after standing above it).
+* **Red Giant:** sun-melted glass (lava laid in the day) and a lava lake (erupting in full daylight).
+* **Hunga Tonga:** a tuff ring (the first wave) and a pumice raft (bursting too deep for a wave).
+* **Mercury:** weird terrain (the far side's first rise) and a pyroclastic vent (a burst let go nearly full).
+* **Io:** a Pele ring (the first great plume) and sulphur frost (a big eruption at low tide).

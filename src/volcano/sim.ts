@@ -439,6 +439,8 @@ export const VOLCANO = {
   collapseTakes: 0.8,
   /** ...counting as its base only ground built up this thick. */
   baseThick: 0.04,
+  /** The orange Earth: the oxygen at which the sea's iron rusts out in bands, for the field book (0: never). */
+  bandedAt: 0,
   /** Mars: patches of ice under the ground, this many, `iceR` across, round the mountain; lava over them blasts small steam cones. */
   groundIce: 0,
   iceR: 0.05,
@@ -742,6 +744,8 @@ export class Planet {
   readonly laid: Float32Array;
   /** Seconds since lava last ran at or beside each vertex (see `warmNear`). */
   readonly nearLaid: Float32Array;
+  /** Where the ground has ever stood clear of the sea. */
+  readonly wasLand: Uint8Array;
   /** Mars: where there's ice under the ground (1), not yet reached by lava. */
   readonly frozen: Uint8Array;
   /** A new island: how long the ground at each vertex has stood dry, out of the sea and clear of lava (seconds). */
@@ -872,6 +876,7 @@ export class Planet {
     this.laid = new Float32Array(n).fill(1e6);
     this.nearLaid = new Float32Array(n).fill(1e6);
     this.dryFor = new Float32Array(n);
+    this.wasLand = new Uint8Array(n);
     this.breakPhase = new Float32Array(n);
     for (let v = 0; v < n; v++) { const x = Math.sin(v * 12.9898 + 78.233) * 43758.5453; this.breakPhase[v] = (x - Math.floor(x)) * Math.PI * 2; }
     // Wright Mons's hollow: a great pit, the heat beginning on the ring round it.
@@ -1257,8 +1262,9 @@ export class Planet {
       if (shallow) {
         this.waves.push({ x: p[v * 3], y: p[v * 3 + 1], z: p[v * 3 + 2], at: this.seconds });
         this.tell(`A giant wave: ${this.waves.length}`);
+        this.find('tuff', 'a tuff ring. The burst through shallow water blew the cone open, and left a low ring of ash round a flooded crater');
       } else this.tell('The island is blown apart, but in the open air the shock dies away');
-    }
+    } else if (!blast && this.k.wave > 0 && this.rock[v] <= -this.k.wave) this.find('pumice', 'a pumice raft. Bursting deep under the sea, the lava frothed into stone light enough to float');
     // (On Triton, a burst in sunlight is a geyser: all its plume blown downwind into a streak.)
     const geysering = !blast && this.k.streak > 0 && !!this.star && this.dayAt(this.plumeVertex) > 0.2;
     // (Where the sea still reaches the vent, the water shatters all of it to ash: no lava wells out after, as at Surtsey.)
@@ -1270,10 +1276,11 @@ export class Planet {
     else this.fallOfAsh(v, left * ashShare * s, (blast ? 3 : 1) * far);
     if (!blast) this.tally.bursts++;
     // (Its shock on its way through the world: the bigger the burst, the more of it reaches the far side.)
+    if (!blast && this.k.antipode > 0 && volume >= this.capNow * 0.95) this.find('faculae', 'a pyroclastic vent. A great burst left a bright halo of ash round a pit, as on Mercury');
     if (!blast && this.k.antipode > 0) { this.echoes.push({ at: this.seconds + this.k.antipodeDelay, volume: volume * this.k.antipode * Math.min(2.5, (volume / this.k.explosive) ** 2) }); this.tell(`The shock is on its way to the far side: it rises in ${Math.round(this.k.antipodeDelay)} seconds`); }
     if (!blast && this.k.great > 0 && strength >= this.k.great) {
-      if (this.tideNow < this.k.greatTide) this.tell('A big eruption, but not at high tide: it falls short');
-      else this.greatPlume(this.k.ashReach * this.k.ashRing * far);
+      if (this.tideNow < this.k.greatTide) { this.tell('A big eruption, but not at high tide: it falls short'); this.find('frost', 'sulphur frost. A plume that fell short froze round the vent in a white rime'); }
+      else { this.greatPlume(this.k.ashReach * this.k.ashRing * far); this.find('pele', 'a Pele ring. A great plume\'s sulphur fell in a red ring hundreds of km across, as round Io\'s volcano Pele'); }
     }
     const lava = left * (1 - ashShare) * s;
     if (lava > 0) this.eruptions.push({ vertex: v, flank: v, left: lava, rate: lava / this.k.pour, total: lava, t: 0, dur: this.k.pour * 1.5 });
@@ -1537,6 +1544,7 @@ export class Planet {
     else if (this.livingDue) { this.livingDue = false; this.living(0.25); }
     else if (this.slowIn <= 0) { this.slow(0.25, 0, half); this.slowIn = 0.25; this.slowHalf = true; }
     if (this.k.dome > 0 && (this.domeIn -= dt) <= 0) { this.domeIn = 0.5; this.domed(); }
+    if (this.k.melt > 0 && this.erupting && this.dayAt(this.plumeVertex) > 0.3) this.find('lavalake', 'a lava lake. Erupting in full daylight, the lava never cooled, and pooled in a lake of fire');
     if (this.k.taper > 0 && (this.collapseIn -= dt) <= 0) { this.collapseIn = 1; this.collapses(); }
     if (this.k.nests > 0) { this.nestTick += dt; if (this.nestTick >= 0.5) { this.nesting(this.nestTick); this.nestTick = 0; } }
     if (this.marble && !this.over) this.lampOfIo(dt);
@@ -1850,11 +1858,12 @@ export class Planet {
     }
     if (icy) {
       this.tally.stones++;
-      if (this.warmthAt(at) > 0.5) { const cool = Math.min(this.reserve, this.k.iceCool); this.reserve -= cool; this.tell('An icy comet hit the volcano and cooled it'); }
+      if (this.warmthAt(at) > 0.5) { const cool = Math.min(this.reserve, this.k.iceCool); this.reserve -= cool; this.tell('An icy comet hit the volcano and cooled it'); this.find('phreatic', 'a steam-blast crater. Ice struck hot rock and flashed to steam, blowing out a crater'); }
       else if (warm) { this.water++; this.tell(`Ice melted on warm lava: water ${this.water}`); }
       else this.tell('The ice froze on cold ground: pour lava where the next one lands');
       return;
     }
+    if (this.lava[at] > this.k.thin) this.find('tektites', 'tektites. A stone struck molten lava and splashed it into the sky, where it froze into beads of glass');
     // Its heat joins yours, and far more of it if the plume is there to take it in (the bigger the volcano, the further round it).
     const caught = this.catchAt(at);
     this.reserve += this.k.impactHeat * (1 + (this.k.caught - 1) * caught);
@@ -2394,6 +2403,7 @@ export class Planet {
     const e = this.echoes.shift()!, v = this.vertexAt(this.far), a = e.volume * this.scale;
     this.eruptions.push({ vertex: v, flank: v, left: a, rate: a / this.k.pour, total: a, t: 0, dur: this.k.pour * 1.5 });
     this.echoed++;
+    this.find('weird', 'weird terrain. The shock came through the planet and broke the far side into jumbled hills, as opposite Mercury\'s Caloris basin');
     this.tell(`The far side breaks open, and rises: ${Math.round(this.farRaised * 40)} km so far`);
   }
 
@@ -2437,6 +2447,8 @@ export class Planet {
       let mats = 0;
       for (let v = 0; v < this.rock.length; v++) if (this.rock[v] < 0 && this.rock[v] > this.k.reefDeep) mats += this.life[v];
       this.oxygen += (mats / this.scale) * this.k.breathe * dt;
+      if (mats / this.scale > 20) this.find('stromatolite', 'stromatolites. Mats of life in the shallows built up in layers, the oldest fossils there are');
+      if (this.k.bandedAt > 0 && this.oxygen >= this.k.bandedAt) this.find('banded', 'banded iron. The first oxygen met iron in the sea and rusted it out in red stripes, as in rocks 2.5 billion years old');
     }
     if (this.k.gas > 0) {
       this.greenhouse -= this.greenhouse * this.k.drawdown * dt;
@@ -2513,6 +2525,7 @@ export class Planet {
       next[v] += this.k.swell * dt * warm;
       this.sunk[v] = Math.max(0, this.sunk[v] - this.k.swell * dt * warm);
       if (this.sunk[v] < sinks) { const s = sink * dt * (1 - warm); next[v] -= s; this.sunk[v] += s; }
+      if (r[v] > 0.01) this.wasLand[v] = 1; else if (this.wasLand[v] && r[v] < -0.015 && this.k.formations.includes('guyot')) this.find('guyot', 'a guyot. An island worn flat by the waves sank below the sea, keeping its flat top');
       if (this.lava[v] > this.k.thin) continue;
       const wear = (1 + (this.k.softer - 1) * this.ash[v]) * (1 - this.k.holds * this.life[v]);
       // (Coral islets in the long age are held by their reef: the waves don't take them.)
@@ -2523,6 +2536,7 @@ export class Planet {
         const worn = sea ? Math.min(r[v] - this.k.shallows, this.k.waves * dt * (sea / (b - a)) * 2 * wear) : 0;
         next[v] -= worn;
         this.wear[v] = worn / dt;
+        if (worn > 0 && this.laid[v] < 1e5 && r[v] > 0) this.find('blacksand', 'a black sand beach. The waves ground new lava down into black sand');
       } else this.wear[v] = 0;
       if (r[v] > 0) next[v] -= this.k.rain * dt * r[v] * wear;
       // A dust storm scours whatever stands high, and soft ash most of all.
@@ -2557,7 +2571,7 @@ export class Planet {
     // The red giant's day melts whatever stands in it.
     if (to === n && this.k.melt > 0 && this.star) for (let v = 0; v < n; v++) {
       const day = this.dayAt(v);
-      if (day > 0 && r[v] > this.k.meltFloor) r[v] = Math.max(this.k.meltFloor, r[v] - this.k.melt * day * dt);
+      if (day > 0 && r[v] > this.k.meltFloor) { r[v] = Math.max(this.k.meltFloor, r[v] - this.k.melt * day * dt); if (day > 0.5 && this.laid[v] < 1e5) this.find('sunglass', 'sun-melted glass. Lava laid in the day melted again under the swollen Sun, and set as glass'); }
     }
     // The sea falls (and so the ground stands higher against it), more slowly under a burst's ash.
     if (to === n && this.k.dries > 0 && !this.over) {

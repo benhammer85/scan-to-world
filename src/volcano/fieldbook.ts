@@ -18,6 +18,20 @@ export const FORMATIONS: Record<string, { name: string; how: string }> = {
   salt: { name: 'Salt flats', how: 'A sea that dries away leaves its salt behind in a white plain.' },
   lenticulae: { name: 'Lenticulae', how: 'Warm ice rises under the crust without breaking through: freckles of domes and pits.' },
   plume: { name: 'A water plume', how: 'Ocean water blasted up through the ice into space.' },
+  phreatic: { name: 'A steam-blast crater', how: 'Ice strikes hot rock and flashes to steam, blowing out a crater.' },
+  tektites: { name: 'Tektites', how: 'A stone strikes molten lava and splashes it into the sky, where it freezes into beads of glass.' },
+  stromatolite: { name: 'Stromatolites', how: 'Mats of life in the shallows build up in layers: the oldest fossils there are.' },
+  banded: { name: 'Banded iron', how: 'The first oxygen meets iron in the sea and rusts it out in red stripes.' },
+  blacksand: { name: 'A black sand beach', how: 'The waves grind new lava down into black sand.' },
+  guyot: { name: 'A guyot', how: 'An island worn flat by the waves sinks below the sea, keeping its flat top.' },
+  sunglass: { name: 'Sun-melted glass', how: 'Lava laid in the day melts again under the swollen Sun, and sets as glass.' },
+  lavalake: { name: 'A lava lake', how: 'Lava erupted in full daylight never cools, and pools in a lake of fire.' },
+  tuff: { name: 'A tuff ring', how: 'A burst through shallow water blows the cone open, leaving a low ring of ash round a flooded crater.' },
+  pumice: { name: 'A pumice raft', how: 'Bursting deep under the sea, lava froths into stone light enough to float.' },
+  weird: { name: 'Weird terrain', how: 'A shock through the planet breaks the far side into jumbled hills.' },
+  faculae: { name: 'A pyroclastic vent', how: 'A great burst leaves a bright halo of ash round a pit.' },
+  pele: { name: 'A Pele ring', how: "A great plume's sulphur falls in a red ring hundreds of km across." },
+  frost: { name: 'Sulphur frost', how: 'A plume that falls short freezes round the vent in a white rime.' },
 };
 
 /** Which formations a world hides: its own rules say (see `formations` in sim.ts). */
