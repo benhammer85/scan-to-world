@@ -35,7 +35,7 @@
       #setup .check input { margin-top: 4px; width: 18px; height: 18px; flex: none; }
       #views { position: fixed; bottom: calc(52px + env(safe-area-inset-bottom)); left: 0; right: 0; text-align: center; font: italic 14px "Newsreader", "Iowan Old Style", Georgia, serif; color: #2e2118; opacity: 0.42; transition: opacity 0.8s; pointer-events: none; }
       #views a { pointer-events: auto; color: inherit; text-decoration: none; padding: 10px 8px; display: inline-block; }
-      #views a[aria-current] { opacity: 0.5; }
+      #views a[hidden] { display: none; }
       #views.away { opacity: 0; }
       #views.away a { pointer-events: none; }
       #views.hidden { display: none; }
@@ -50,16 +50,16 @@
     <canvas id="press" aria-label="A child’s tree: a ring for each year of their life, a fine line for each day; touch the wood to read its day"></canvas>
     <p id="words"></p>
     <form id="setup" hidden>
-      <p>A tree for your child. Each day, a loop you draw for them; each year, a tree of those days, finished on their birthday; and their whole life, a tree of their years.</p>
+      <p>A tree for your child: each day, a loop you draw for them; each year, a print of those days, finished on their birthday.</p>
       <label>Their name <input name="name" autocomplete="off" maxlength="40" required /></label>
       <label>Their birthday <input name="birth" type="date" required /></label>
-      <label>How tall they are now, if you know (cm) <input name="height" type="number" inputmode="decimal" min="30" max="220" step="0.5" /></label>
-      <label class="check"><input name="listen" type="checkbox" checked /> Let the sound of the moment shape each day’s ring as you draw it. Nothing is recorded or kept: only the shape it leaves.</label>
+      <label>Their height now, if you know (cm, optional) <input name="height" type="number" inputmode="decimal" min="30" max="220" step="0.5" /></label>
+      <label class="check"><input name="listen" type="checkbox" /> Also let the sound around you shape each day’s ring as you draw (optional; nothing is recorded or kept).</label>
       <button type="submit">Plant their tree</button>
       <label class="restore">Or restore a copy you kept <input name="file" type="file" accept="application/json,.json" /></label>
     </form>
     <form id="note" autocomplete="off"><input name="text" maxlength="140" placeholder="A few words, if you like" /><button type="submit">keep</button></form>
-    <nav id="views"><a href="#year" data-view="year" aria-current="page">this year</a> · <a href="#life" data-view="life">every year</a> · <a href="#print" id="print-year">print</a> · <a href="#copy" id="keep-copy">keep a copy</a></nav>
+    <nav id="views"><a href="#year" data-view="year" hidden>this year</a><a href="#life" data-view="life">every year</a> · <a href="#print" id="print-year">print</a> · <a href="#copy" id="keep-copy">keep a copy</a></nav>
     <nav id="nav"><a href="./" data-page="practice">practice</a> · <span aria-current="page">child</span> · <a href="./challenge.html" data-page="challenge">challenge</a></nav>
     <script type="module" src="/src/rings/press.ts"></script>
   </body>

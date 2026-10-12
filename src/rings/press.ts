@@ -749,11 +749,12 @@ function openSetup(): void {
     if (!name || !birth.value || birth.value > dayOf()) return;
     const tall = Number((setupEl.elements.namedItem('height') as HTMLInputElement).value);
     child = { name, birth: birth.value, listen: (setupEl.elements.namedItem('listen') as HTMLInputElement).checked }; kind = 'oak';
+    // (The question and the seed: that's all, at first.)
     age0 = ageOn(dayOf()).years;
     if (tall > 30) heights[age0] = tall;
     setupEl.hidden = true; nav?.classList.remove('away'); views?.classList.remove('hidden');
     keep();
-    say(`Tap anywhere to plant ${name}’s seed.`, 1e5);
+    say(`Tap where ${name}’s tree should grow.`, 1e5);
   };
   (setupEl.elements.namedItem('file') as HTMLInputElement).onchange = (e) => void restoreCopy((e.target as HTMLInputElement).files?.[0]);
 }
@@ -797,7 +798,7 @@ let plantedAt = 0;
 function plant(x: number, y: number): void {
   seedAt = [x / W, y / H]; view = null; plantedAt = clock();
   keep();
-  say(CHILD && child ? `${question()} Draw a loop around the seed: loose for an easy day, close for a hard one.` : 'Now draw a loop around it. One ring a day.', 10);
+  say(CHILD && child ? `${question()} Draw a loop around the seed: loose for an easy day, close for a hard one.` : 'Now draw a loop around it. One ring a day.', 9);
 }
 
 // ---------------------------------------------------------------- a child's tree: the day's question, its words, its years
@@ -850,8 +851,9 @@ function lookAt(to: typeof looking): void {
   warp = warpNow(); view = null; ease = null; lookBack = null; look = { k: 1, ox: 0, oy: 0 }; growing = null; trail = []; inward = null;
   for (const k in printCaches) delete printCaches[k];
   openedAt = clock(); idleSince = openedAt + OPEN; hideNote();
-  views?.querySelectorAll('a[data-view]').forEach((a) => a.toggleAttribute('aria-current', (a as HTMLElement).dataset.view === (to === 'life' ? 'life' : 'year')));
-  if (to === 'life') say(`${child.name}’s years. Touch one; touch it again to open it.`, 4);
+  // (Only where one isn't: every year from this year, this year from anywhere else.)
+  views?.querySelectorAll('a[data-view]').forEach((a) => a.toggleAttribute('hidden', (a as HTMLElement).dataset.view === (to === 'year' ? 'year' : 'life')));
+  if (to === 'life') say(`Every year of ${child.name}’s, a ring each. Touch one to open it.`, 4);
   else if (typeof to === 'number') say(`${child.name}’s year at ${years[to].age}.`, 3);
 }
 views?.querySelectorAll<HTMLAnchorElement>('a[data-view]').forEach((a) => a.addEventListener('click', (e) => { e.preventDefault(); lookAt(a.dataset.view === 'life' ? 'life' : 'year'); }));
@@ -934,7 +936,7 @@ document.getElementById('print-year')?.addEventListener('click', (e) => {
 const thisYear = () => stash ?? { tree, days, notes };
 
 /** A touch inside the slice: the ring under it, lit for a moment, and the day it was drawn. */
-let lit = -1, litAt = 0, lifeTap = { ring: -1, at: 0 };
+let lit = -1, litAt = 0;
 function readDay(v: View, x: number, y: number): void {
   const dx = x - v.cx, dy = v.cy - y, a = (((Math.atan2(dy, dx) - v.turn) % TAU) + TAU) % TAU;
   const r = unwarpR(v.warp, Math.hypot(dx, dy) / v.s);
@@ -943,12 +945,10 @@ function readDay(v: View, x: number, y: number): void {
   const [yy, mm, dd] = days[i].split('-').map(Number), when = new Date(yy, mm - 1, dd);
   if (CHILD && child) {
     if (looking === 'life' && life) {
-      // (Every year: that year of their life, how much they grew; touched again, opened.)
-      const open = years.findIndex((y) => y.age === i), here = i === age0, again = lifeTap.ring === i && clock() - lifeTap.at < 4;
-      if (again && (open >= 0 || here)) { lifeTap.ring = -1; lookAt(here ? 'year' : open); return; }
-      lifeTap = { ring: i, at: clock() };
-      const grew = life.grew[i], span = `${when.getFullYear()}–${String(when.getFullYear() + 1).slice(2)}`;
-      say(`${i === 0 ? `${child.name}’s first year` : `${child.name} at ${i}`}, ${span} · grew ${grew.toFixed(grew < 10 ? 1 : 0)} cm${open >= 0 || here ? ' · touch again to open it' : ''}`, 4);
+      // (Every year: touched, that year opens, and how much they grew in it is said.)
+      const open = years.findIndex((y) => y.age === i), here = i === age0, grew = life.grew[i];
+      const words = `${i === 0 ? `${child.name}’s first year` : `${child.name} at ${i}`}, ${when.getFullYear()}–${String(when.getFullYear() + 1).slice(2)} · grew ${grew.toFixed(grew < 10 ? 1 : 0)} cm`;
+      if (open >= 0 || here) { lookAt(here ? 'year' : open); say(words, 4); } else say(`${words} · before the tree was planted`, 4);
     } else {
       const note = notes[i];
       say(`${when.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} · ${ageWords(days[i])}${note ? ` · “${note}”` : ''}`, note ? 5 : 3);
@@ -980,7 +980,7 @@ function hear(): void {
     // The day's ring, kept; the first of the day is counted, quietly, once it has settled.
     const today = dayOf(), first = !days.includes(today);
     days.push(today);
-    if (CHILD) { notes.push(null); ear.stop(); window.setTimeout(() => { if (painter === null) askNote({ kind: 'words', ring: tree.rings.length - 1 }, `A few words for ${child?.name}’s day, if you like`); }, 2600); }
+    if (CHILD) { notes.push(null); ear.stop(); window.setTimeout(() => { if (painter === null) askNote({ kind: 'words', ring: tree.rings.length - 1 }, 'A few words, if you like'); }, 2600); }
     keep();
     if (CHALLENGE) {
       const pts = ringPoints(), touches = run.touches;
@@ -1873,7 +1873,7 @@ void (async () => {
       // (A birthday since: last year's tree finished and kept, a new seed planted; their height asked.)
       say(`${c.name} is ${age0} today. Last year’s tree is finished, in every year; this one begins.`, 10);
       askNote({ kind: 'height', age: age0 }, `How tall is ${c.name} now? (cm)`);
-    } else if (!tree.rings.length && !seedAt) say(`Tap anywhere to plant ${c.name}’s seed.`, 1e5);
+    } else if (!tree.rings.length && !seedAt) say(`Tap where ${c.name}’s tree should grow.`, 1e5);
     else say(days.includes(today) ? `${c.name}’s day is drawn. Draw another if you like.` : question(), 10);
   }
   else if (GROWN && !tree.rings.length) say(seedAt ? 'Draw a loop around the seed. One ring a day.' : 'Tap anywhere to plant a seed.', 1e5);
