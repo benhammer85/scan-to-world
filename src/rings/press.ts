@@ -222,9 +222,21 @@ function say(text: string, fade = 10): void {
 }
 let sayT = 0;
 
+// Between the practice and the challenge: a line of two words at the foot, away while drawing.
+const nav = document.getElementById('nav');
+// (On the dev server the practice is press.html; published, it's the index.)
+if (import.meta.env.DEV) nav?.querySelector<HTMLAnchorElement>('a[data-page="practice"]')?.setAttribute('href', './press.html');
+let navT = 0;
+function navAway(away: boolean): void {
+  clearTimeout(navT);
+  if (away) nav?.classList.add('away');
+  else navT = window.setTimeout(() => nav?.classList.remove('away'), 1500);
+}
+
 canvas.addEventListener('pointerdown', (e) => {
   canvas.setPointerCapture(e.pointerId);
   if (painter !== null) return;
+  navAway(true);
   // (After a touch on the edge, a moment to see the score before a touch begins again.)
   if (run.over) { if (touched && clock() - touched.at > 0.8) restart(); return; }
   words.classList.remove('shown');
@@ -273,6 +285,7 @@ canvas.addEventListener('pointermove', (e) => {
   hear();
 });
 for (const type of ['pointerup', 'pointercancel'] as const) canvas.addEventListener(type, (e) => {
+  navAway(false);
   if (e.pointerId !== painter) return;
   painter = null;
   // Let go most of the way round, the ring is closed for you; earlier, the line rests, to be taken up.
