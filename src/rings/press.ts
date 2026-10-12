@@ -118,6 +118,8 @@ function enter(p: Phase): void { phase = p; since = clock(); }
 /** The brush's track: where, when, how wide it laid (slow is wide), and how fast. */
 let trail: { a: number; r: number; t: number; w: number; fast: number }[] = [];
 let strokeView: View | null = null, painter: number | null = null;
+/** The finger's own path this stroke (CSS px): where it began, how far it has gone, and where it is. */
+let loop = { x0: 0, y0: 0, x: 0, y: 0, len: 0, closed: false };
 
 function say(text: string, fade = 10): void {
   // (Nothing to read while the hand is drawing.)
@@ -144,7 +146,10 @@ canvas.addEventListener('pointerdown', (e) => {
   // Inside the slice, a ring's day is read; anywhere outside it, the circle begins.
   if (b.u < 0) { readDay(v, x, y); return; }
   strokeView = v;
-  if (tree.begin(e.timeStamp / 1000, b.a, Math.min(WIDEST, b.u))) { painter = e.pointerId; paper.begin(tree); trailAt(); }
+  if (tree.begin(e.timeStamp / 1000, b.a, Math.min(WIDEST, b.u))) {
+    painter = e.pointerId; paper.begin(tree); trailAt();
+    loop = { x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, len: 0, closed: false };
+  }
 });
 canvas.addEventListener('pointermove', (e) => {
   if (e.pointerId !== painter || phase !== 'trace' || !strokeView) return;
@@ -154,6 +159,12 @@ canvas.addEventListener('pointermove', (e) => {
     tree.move(c.timeStamp / 1000, b.a, Math.min(WIDEST, b.u));
     trailAt();
     if (!tree.stroke) break;
+    // The finger come back round to where it began: the circle is drawn, whatever the angle says.
+    loop.len += Math.hypot(c.clientX - loop.x, c.clientY - loop.y); loop.x = c.clientX; loop.y = c.clientY;
+    if (loop.len > 160 && Math.hypot(loop.x - loop.x0, loop.y - loop.y0) < Math.max(28, loop.len / 16)) {
+      loop.closed = true;
+      if (tree.finish(0.5)) break;
+    }
   }
   hear();
 });
@@ -161,7 +172,12 @@ for (const type of ['pointerup', 'pointercancel'] as const) canvas.addEventListe
   if (e.pointerId !== painter) return;
   painter = null;
   // Let go most of the way round, the ring is closed for you; earlier, the line rests, to be taken up.
-  if (phase === 'trace') { if (tree.finish()) hear(); else tree.lift(); }
+  if (phase === 'trace') {
+    if (tree.finish()) hear();
+    // (A whole loop drawn, but not round the slice: let go, and said where, once the hand is off.)
+    else if (loop.closed && tree.stroke) { tree.cancel(); say('Draw the circle round the slice.', 4); }
+    else tree.lift();
+  }
 });
 
 /** A touch inside the slice: the ring under it, lit for a moment, and the day it was drawn. */
@@ -319,12 +335,13 @@ function frame(): void {
     for (let j = 0; j <= K * 2; j++) { const a = (j / (K * 2)) * TAU, [x, y] = at(v, a, radiusAt(r, a)); if (j) g.lineTo(x, y); else g.moveTo(x, y); }
     g.stroke();
   }
-  // The bark: one fine line.
-  if (n > 0) {
-    const r = tree.rings[n - 1];
-    g.strokeStyle = 'rgba(46,33,24,0.7)'; g.lineWidth = 1.1 * px; g.beginPath();
-    for (let j = 0; j <= K * 2; j++) { const a = (j / (K * 2)) * TAU, [x, y] = at(v, a, radiusAt(r, a)); if (j) g.lineTo(x, y); else g.moveTo(x, y); }
-    g.stroke();
+  // The bark: one fine line. (Before the first ring, the heart of the seedling: something to draw round.)
+  {
+    const r = n > 0 ? tree.rings[n - 1] : null, rad = (a: number) => (r ? radiusAt(r, a) : tree.k.pith);
+    g.beginPath();
+    for (let j = 0; j <= K * 2; j++) { const a = (j / (K * 2)) * TAU, [x, y] = at(v, a, rad(a)); if (j) g.lineTo(x, y); else g.moveTo(x, y); }
+    if (!r) { g.fillStyle = 'rgba(214,182,140,0.45)'; g.fill(); }
+    g.strokeStyle = 'rgba(46,33,24,0.7)'; g.lineWidth = 1.1 * px; g.stroke();
   }
   if (phase === 'trace') {
     // The ink: a brush's line, wet at first, then drying into bristle-streaks and evaporating.
