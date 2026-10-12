@@ -81,7 +81,17 @@ function brushPoint(v: View, x: number, y: number): [number, number] {
 const ROUND = CHALLENGE ? 0 : 0.3;
 /** Where the finger puts the line (steady widths from the bark), eased a little toward round. */
 function rounded(a: number, u: number): number {
-  return Math.min(WIDEST, u) + ROUND * (tree.radius - radiusAt((i) => tree.inner(i), a)) / tree.wRef;
+  return Math.min(WIDEST, u) * lean(a) + ROUND * (tree.radius - radiusAt((i) => tree.inner(i), a)) / tree.wRef;
+}
+/**
+ * A tree grows a little more on one side (toward the light, or downhill), year after year, so its heart
+ * comes to sit off the middle: each ring a sixth wider on that side and as much narrower on the other.
+ * The side is the tree's own (from its seed). Not in the challenge, where the line is exactly yours.
+ */
+const ECCENTRIC = CHALLENGE ? 0 : 0.16;
+function lean(a: number): number {
+  const side = (Math.sin(tree.seed * 12.9898) * 43758.5453) % 1 * TAU;
+  return 1 + ECCENTRIC * Math.cos(a - side);
 }
 const DIARY = 'diary', params = new URLSearchParams(location.search);
 let tree = new TreeSim(Number(params.get('seed')) || 1 + Math.floor(Math.random() * 1e6), DAILY);
@@ -115,7 +125,7 @@ function demoYear(): void {
     const day = new Date(start); day.setDate(start.getDate() + n);
     const width = 0.6 + 1.6 * r() ** 1.5, wob = 0.15 + 0.5 * r(), ph = r() * TAU;
     // (A person draws a round circle about the slice, at the day's distance, not the bark's shape again.)
-    const R = tree.radius + width * tree.wRef, u = (b: number) => Math.max(0.1, (R - radiusAt((i) => tree.inner(i), b)) / tree.wRef + wob * Math.sin(2 * b + ph));
+    const R = (b: number) => tree.radius + width * tree.wRef * lean(b), u = (b: number) => Math.max(0.1, (R(b) - radiusAt((i) => tree.inner(i), b)) / tree.wRef + wob * Math.sin(2 * b + ph));
     let a = r() * TAU;
     tree.begin(time, a, u(a));
     while (tree.stroke) { a += TAU / 5 / 60; time += 1 / 60; tree.move(time, a % TAU, u(a % TAU)); }
@@ -842,6 +852,22 @@ function drawPrint(v: View): void {
     g.stroke();
   }
   g.strokeStyle = ink(0.95); g.lineWidth = 1 * px; ringPath(v, bark, 0, K * 2); g.stroke();
+  // The press: a hand-pulled print is never evenly pressed. The ink is a little paler toward one side
+  // (where the press bore down less), and in a few broad, soft patches; only the ink is lightened.
+  {
+    const side = h1(tree.seed * 0.731) * TAU, Rs = scr(Rb) + T * 2, ox = Math.cos(side + v.turn), oy = -Math.sin(side + v.turn);
+    g.save(); g.globalCompositeOperation = 'source-atop';
+    const lin = g.createLinearGradient(v.cx - ox * Rs, v.cy - oy * Rs, v.cx + ox * Rs, v.cy + oy * Rs);
+    lin.addColorStop(0, 'rgba(244,239,228,0)'); lin.addColorStop(0.55, 'rgba(244,239,228,0.04)'); lin.addColorStop(1, 'rgba(244,239,228,0.26)');
+    g.fillStyle = lin; g.fillRect(v.cx - Rs, v.cy - Rs, 2 * Rs, 2 * Rs);
+    for (let q = 0; q < 5; q++) {
+      const a = h1(tree.seed + q * 3.3) * TAU, d = Rs * (0.2 + 0.6 * h1(q * 7.1 + tree.seed)), rr = Rs * (0.25 + 0.3 * h1(q * 2.9));
+      const x = v.cx + d * Math.cos(a), y = v.cy - d * Math.sin(a), rad = g.createRadialGradient(x, y, 0, x, y, rr);
+      rad.addColorStop(0, `rgba(244,239,228,${(0.08 + 0.08 * h1(q * 5.5)).toFixed(3)})`); rad.addColorStop(1, 'rgba(244,239,228,0)');
+      g.fillStyle = rad; g.fillRect(x - rr, y - rr, 2 * rr, 2 * rr);
+    }
+    g.restore();
+  }
 }
 
 /** The print, kept as a picture between changes; while the slice moves, the picture moves with it. */
