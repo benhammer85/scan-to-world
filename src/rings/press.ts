@@ -9,7 +9,8 @@
  *             and evaporates behind it (disappearing ink), leaving the year's colour, spring to winter
  *             round the ring, settling only partly into the wood
  *   settle    as the ring closes, it sinks softly into the paper (and on the iPhone app, a faint
- *             pressure in the hand); its relief stays, caught by raking light
+ *             pressure in the hand), its relief caught by raking light, while the slice draws back
+ *             slowly to make room; the next ring can be begun at once
  *
  * Nothing else on the page while you draw: no print behind the slice, no words, no line to keep to.
  * `?demo` shows a year already drawn (not kept), to see what a year of days looks like.
@@ -17,7 +18,7 @@
 import '../volcano/fonts.css';
 import { NATIVE, rumble, tap } from '../volcano/native';
 import { K, OAK, TreeSim } from './tree';
-import { brushAt, pointerAt, radiusAt, roomOf, scaleFor, unwarpR, warpFor, type View, type Warp } from './hand';
+import { brushAt, pointerAt, radiusAt, roomOf, scaleFor, unwarpR, warpFor, warpR, type View, type Warp } from './hand';
 import { at, drawPaper } from './draw';
 import { Paper } from './paint';
 import { holdStill, steadySize } from './steady';
@@ -103,18 +104,43 @@ function keep(): void {
   void keepTree({ tree: 'oak', seed: tree.seed, wander: false, turn: 0, sim: snapshotTree(tree), days: days.slice() }, DIARY);
 }
 
-function viewNow(): View {
+/**
+ * The slice on the screen. After each ring it draws back slowly to make room for the next (`ease`, over a
+ * few seconds, from where the new bark was drawn to where it fits), never in a jump; a touch while it's
+ * drawing back stops it where it is.
+ */
+let ease: { from: number; at: number } | null = null;
+const EASE = 3;
+function viewNow(t = clock()): View {
   if (!view) {
     const r = roomOf(W, H, px);
     view = { cx: r.cx, cy: r.cy, s: scaleFor(tree, r.room, px, warp), turn: 0, px, warp };
+    ease = null;
   }
-  return view;
+  if (!ease) return view;
+  const k = smooth((t - ease.at) / EASE);
+  if (k >= 1) { ease = null; return view; }
+  return { ...view, s: ease.from + (view.s - ease.from) * k };
+}
+/** The ring closed: the slice laid out for the tree as it is now, eased to from where it was. */
+function makeRoom(): void {
+  const was = viewNow(), old = warp, bark = tree.radius;
+  warp = warpFor(tree); paper.fit(warp, warp.R); view = null;
+  const v = viewNow();
+  // (Where the new bark was drawn, it stays at first: the slice then draws back from there.)
+  const from = was.s * warpR(old, bark) / Math.max(1e-6, warpR(warp, bark));
+  ease = { from: Math.min(from, 3 * v.s), at: clock() };
+}
+/** A touch: the slice stops drawing back, where it is. */
+function holdView(): void {
+  if (!ease) return;
+  view = viewNow(); ease = null;
 }
 
 // ---------------------------------------------------------------- the turn of a ring
-type Phase = 'trace' | 'settling' | 'lifting';
-let phase: Phase = 'trace', since = 0, depth = 0;
-function enter(p: Phase): void { phase = p; since = clock(); }
+/** The ring settling into the paper (a look only: the next can be begun at once). */
+let settle = { ring: -1, at: 0 };
+const settleDepth = (t: number) => 0.6 * smooth((t - settle.at) / 1.6);
 /** The brush's track: where, when, how wide it laid (slow is wide), and how fast. */
 let trail: { a: number; r: number; t: number; w: number; fast: number }[] = [];
 let strokeView: View | null = null, painter: number | null = null;
@@ -134,7 +160,7 @@ canvas.addEventListener('pointerdown', (e) => {
   if (painter !== null) return;
   words.classList.remove('shown');
   const x = e.clientX * px, y = e.clientY * px;
-  if (phase !== 'trace') return;
+  holdView();
   const v = viewNow();
   if (tree.stroke && tree.resting) {
     // Taken up where it rested; or, touched anywhere else, the circle begins again from there.
@@ -152,7 +178,7 @@ canvas.addEventListener('pointerdown', (e) => {
   }
 });
 canvas.addEventListener('pointermove', (e) => {
-  if (e.pointerId !== painter || phase !== 'trace' || !strokeView) return;
+  if (e.pointerId !== painter || !strokeView) return;
   const evs = typeof e.getCoalescedEvents === 'function' ? e.getCoalescedEvents() : [];
   for (const c of evs.length ? evs : [e]) {
     const b = brushAt(tree, strokeView, 0, c.clientX * px, c.clientY * px);
@@ -172,12 +198,10 @@ for (const type of ['pointerup', 'pointercancel'] as const) canvas.addEventListe
   if (e.pointerId !== painter) return;
   painter = null;
   // Let go most of the way round, the ring is closed for you; earlier, the line rests, to be taken up.
-  if (phase === 'trace') {
-    if (tree.finish()) hear();
-    // (A whole loop drawn, but not round the slice: let go, and said where, once the hand is off.)
-    else if (loop.closed && tree.stroke) { tree.cancel(); say('Draw the circle round the slice.', 4); }
-    else tree.lift();
-  }
+  if (tree.finish()) hear();
+  // (A whole loop drawn, but not round the slice: let go, and said where, once the hand is off.)
+  else if (loop.closed && tree.stroke) { tree.cancel(); say('Draw the circle round the slice.', 4); }
+  else tree.lift();
 });
 
 /** A touch inside the slice: the ring under it, lit for a moment, and the day it was drawn. */
@@ -218,9 +242,12 @@ function hear(): void {
     const today = dayOf(), first = !days.includes(today);
     days.push(today); keep();
     if (first) window.setTimeout(() => say(daysDrawn() === 1 ? 'Your first day.' : `Day ${daysDrawn()}.`, 5), 2400);
-    // (The ring is done: the finger, still down or not, rests while it settles.)
-    painter = null; depth = 0;
-    enter('settling');
+    // (The ring is done: it settles into the paper and the slice draws back to make room, while the
+    // next can be begun as soon as the finger comes down again.)
+    painter = null;
+    if (settle.ring >= 0) depths[settle.ring] = 0.6;
+    settle = { ring: tree.rings.length - 1, at: clock() };
+    makeRoom();
   }
   tree.news.length = 0;
 }
@@ -298,21 +325,15 @@ function drawBrush(g: CanvasRenderingContext2D, sv: View, t: number): void {
 }
 
 function frame(): void {
-  const t = clock(), dt = 1 / 60, v = viewNow();
-  if (phase === 'settling') {
-    // The ring sinks softly into the paper, by itself, then the paper lifts.
-    depth = 0.6 * smooth((t - since) / 1.6);
-    if (NATIVE) rumble(0.05 + 0.2 * depth, 0.15);
-    if (t - since > 1.9) {
-      depths[tree.rings.length - 1] = depth;
-      if (NATIVE) { rumble(0); tap({ strength: 0.3, sharpness: 0.2 }); }
-      enter('lifting');
+  const t = clock(), dt = 1 / 60, v = viewNow(t);
+  // The ring sinks softly into the paper, by itself.
+  const depth = settle.ring >= 0 ? settleDepth(t) : 0;
+  if (settle.ring >= 0) {
+    if (NATIVE && painter === null) rumble(0.05 + 0.2 * depth, 0.15);
+    if (t - settle.at > 1.9) {
+      depths[settle.ring] = 0.6; settle.ring = -1;
+      if (NATIVE && painter === null) { rumble(0); tap({ strength: 0.3, sharpness: 0.2 }); }
     }
-  }
-  if (phase === 'lifting' && t - since > 1.2) {
-    // The next ring: the slice settles to its new size.
-    warp = warpFor(tree); paper.fit(warp, warp.R); view = null; trail = [];
-    enter('trace');
   }
   const tip = tree.tip;
   paper.step(dt);
@@ -323,7 +344,7 @@ function frame(): void {
   paper.draw(g, v); drawRays(v);
   const n = tree.rings.length;
   for (let i = 0; i < n; i++) {
-    const live = i === n - 1 && phase === 'settling';
+    const live = i === settle.ring;
     // (Older years' relief softens into the slice, as the press's edges wear: the last few stand out.)
     drawRelief(v, i, (live ? depth : depths[i] ?? 0) * Math.exp(-(n - 1 - i) / 3));
   }
@@ -343,14 +364,12 @@ function frame(): void {
     if (!r) { g.fillStyle = 'rgba(214,182,140,0.45)'; g.fill(); }
     g.strokeStyle = 'rgba(46,33,24,0.7)'; g.lineWidth = 1.1 * px; g.stroke();
   }
-  if (phase === 'trace') {
-    // The ink: a brush's line, wet at first, then drying into bristle-streaks and evaporating.
-    const sv = strokeView ?? v;
-    drawBrush(g, sv, t);
-    if (tip && tree.resting) { const p = pointerAt(tree, sv, 0, tip.a, tip.u); g.strokeStyle = 'rgba(30,24,20,0.35)'; g.lineWidth = 1 * px; g.beginPath(); g.arc(p.x, p.y, 5 * px, 0, TAU); g.stroke(); }
-  }
-  // The platen coming down: the page's edges darken a little as the ring settles, and lift as it rises.
-  const platen = phase === 'settling' ? depth : phase === 'lifting' ? (1 - smooth((t - since) / 0.9)) * depths[n - 1] : 0;
+  // The ink: a brush's line, wet at first, then drying into bristle-streaks and evaporating. (It's on the
+  // slice, so it draws back with it.)
+  drawBrush(g, v, t);
+  if (tip && tree.resting) { const p = pointerAt(tree, v, 0, tip.a, tip.u); g.strokeStyle = 'rgba(30,24,20,0.35)'; g.lineWidth = 1 * px; g.beginPath(); g.arc(p.x, p.y, 5 * px, 0, TAU); g.stroke(); }
+  // The platen coming down: the page's edges darken a little as the ring settles, and lift again.
+  const platen = settle.ring >= 0 ? depth * (1 - smooth((t - settle.at - 1.2) / 0.7)) : 0;
   if (platen > 0.005) {
     const grd = g.createRadialGradient(W / 2, v.cy, Math.min(W, H) * 0.35, W / 2, v.cy, Math.max(W, H) * 0.75);
     grd.addColorStop(0, 'rgba(60,44,30,0)'); grd.addColorStop(1, `rgba(60,44,30,${(0.2 * platen).toFixed(3)})`);
@@ -367,6 +386,6 @@ void (async () => {
   fit(); view = null;
   const today = dayOf();
   say(!tree.rings.length ? 'Draw a circle round the slice, as wide or close as you like: a ring a day.' : days.includes(today) ? 'Today’s ring is drawn. Another, if you like.' : 'Today’s ring.', 8);
-  Object.assign(window, { press: { get tree() { return tree; }, get phase() { return phase; }, get view() { return viewNow(); }, get days() { return days; } } });
+  Object.assign(window, { press: { get tree() { return tree; }, get phase() { return settle.ring >= 0 ? 'settling' : 'trace'; }, get easing() { return !!ease; }, get view() { return viewNow(); }, get days() { return days; } } });
   requestAnimationFrame(frame);
 })();
