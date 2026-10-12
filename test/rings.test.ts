@@ -130,6 +130,32 @@ describe('a ring drawn in one line', () => {
     expect(t.evenness).toBeGreaterThan(0.95);
   });
 
+  it('let go most of the way round, the ring is closed for it: the gap eased shut, the ring whole and round', () => {
+    const t = new TreeSim(7, still), gu = t.guide();
+    let a = 1;
+    t.begin(clock, a, radiusAt(gu, a));
+    for (; a < 1 + 0.9 * TAU; a += 0.02) { clock += 1 / 60; t.move(clock, a % TAU, radiusAt(gu, a)); }
+    expect(t.ring).toBe(0);
+    expect(t.finish()).toBe(true);
+    expect(t.stroke).toBe(null);
+    expect(t.ring).toBe(1);
+    expect(t.news.some((n) => n.kind === 'ring')).toBe(true);
+    expect(t.living).toBe(1);
+    expect(t.evenness).toBeGreaterThan(0.95);
+    clock += 2;
+  });
+
+  it('let go under most of the way round, it is not closed: the line rests, to be taken up', () => {
+    const t = new TreeSim(7, still), gu = t.guide();
+    let a = 1;
+    t.begin(clock, a, radiusAt(gu, a));
+    for (; a < 1 + 0.5 * TAU; a += 0.02) { clock += 1 / 60; t.move(clock, a % TAU, radiusAt(gu, a)); }
+    expect(t.finish()).toBe(false);
+    expect(t.ring).toBe(0);
+    expect(t.stroke).not.toBe(null);
+    t.cancel(); clock += 2;
+  });
+
   it('either way round draws the same, its season running the way it went', () => {
     const t = new TreeSim(8, still);
     paint(t, { dir: -1 });

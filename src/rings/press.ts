@@ -135,9 +135,10 @@ canvas.addEventListener('pointerdown', (e) => {
   if (phase !== 'trace') return;
   const v = viewNow();
   if (tree.stroke && tree.resting) {
+    // Taken up where it rested; or, touched anywhere else, the circle begins again from there.
     const b = brushAt(tree, strokeView ?? v, 0, x, y);
-    if (tree.begin(e.timeStamp / 1000, b.a, Math.min(WIDEST, b.u))) painter = e.pointerId;
-    return;
+    if (tree.begin(e.timeStamp / 1000, b.a, Math.min(WIDEST, b.u))) { painter = e.pointerId; return; }
+    tree.cancel(); trail = [];
   }
   const b = brushAt(tree, v, 0, x, y);
   // Inside the slice, a ring's day is read; anywhere outside it, the circle begins.
@@ -159,7 +160,8 @@ canvas.addEventListener('pointermove', (e) => {
 for (const type of ['pointerup', 'pointercancel'] as const) canvas.addEventListener(type, (e) => {
   if (e.pointerId !== painter) return;
   painter = null;
-  if (phase === 'trace') tree.lift();
+  // Let go most of the way round, the ring is closed for you; earlier, the line rests, to be taken up.
+  if (phase === 'trace') { if (tree.finish()) hear(); else tree.lift(); }
 });
 
 /** A touch inside the slice: the ring under it, lit for a moment, and the day it was drawn. */

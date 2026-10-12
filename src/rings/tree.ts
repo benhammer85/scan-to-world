@@ -387,6 +387,25 @@ export class TreeSim {
     if (s.done >= TAU - STEP * 0.5) this.close();
   }
 
+  /**
+   * The line let go most of the way round (`least`, a share of the circle): the gap between where it
+   * stopped and where it began is closed, the line eased from the one to the other, and the ring laid.
+   * Whether it was.
+   */
+  finish(least = 0.8): boolean {
+    const s = this.stroke;
+    if (!s || this.over || !s.dir || s.done < least * TAU) return false;
+    const i0 = Math.round(s.start / STEP), at = (j: number) => (((i0 + s.dir * j) % K) + K) % K;
+    const u0 = this.hi[at(0)], span = TAU - s.done;
+    for (let j = Math.max(0, Math.floor(s.done / STEP + 1e-9) + 1); j < K; j++) {
+      const f = span > 0 ? Math.max(0, Math.min(1, (j * STEP - s.done) / span)) : 1;
+      this.paint(at(j), s.u + (u0 - s.u) * f, s.pt, (j * STEP) / TAU);
+    }
+    s.done = TAU;
+    this.close();
+    return true;
+  }
+
   /** The finger lifts: the line rests where it is, to be taken up again. */
   lift(): void { if (this.stroke && !this.over) this.stroke.resting = true; }
 
