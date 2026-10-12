@@ -29,6 +29,8 @@ import { brushAt, radiusAt, scaleFor, unwarpR, warpFor, warpR, type View, type W
 import { at, drawPaper } from './draw';
 import { Paper } from './paint';
 import { Ear } from './ear';
+import { TYPICAL, ageOn as ageOf, ageWords as ageSaid, dayDate, dayOf, grewIn as grewOf, question as askOf, yearSpans as spansOf } from './child';
+import { growth as growthOf, season } from './growing';
 import { holdStill, steadySize } from './steady';
 import { keepRun, keepTree, recallTree, runs, snapshotTree, treeFrom, type KeptTree, type Run } from './save';
 
@@ -105,22 +107,8 @@ function rounded(a: number, u: number): number {
  * how far short, of the whole radius: never so strong that the swells below can't build a lobe).
  */
 const evenUp = (a: number) => (0.8 * (tree.radius - radiusAt((i) => tree.inner(i), a))) / Math.max(1e-3, tree.radius);
-/**
- * How the tree itself grows round its girth, besides the hand: never a fixed pattern, but a few broad
- * swells (a lean toward the light, a lobe, a flat side) each slowly waxing, waning and turning, year on
- * year, so the rings deform and recover as a trunk's do and every slice tells its own story.
- */
-function growth(a: number, n = tree.rings.length): number {
-  let e = 0;
-  for (let m = 1; m <= 4; m++) {
-    const s = tree.seed * 0.0137 + m * 17.3, amp = [0, 0.32, 0.2, 0.12, 0.07][m];
-    // (Each swell's strength wanders over a season or two of days; its heading drifts slower still, over
-    // months, so a lobe builds and the slice's outline comes to carry it.)
-    const k = amp * (noise(s + n / (20 + 10 * m)) * 1.6 - 0.3), ph = 1.6 * TAU * noise(s + 50 + n / (m === 1 ? 320 : 110 + 40 * m));
-    e += k * Math.cos(m * a - ph);
-  }
-  return Math.exp(e);
-}
+/** How the tree itself grows round its girth, besides the hand (see `growing.ts`). */
+const growth = (a: number, n = tree.rings.length) => growthOf(tree.seed, a, n);
 /**
  * A tree grows a little more on one side (toward the light, or downhill), year after year, so its heart
  * comes to sit off the middle: each ring a sixth wider on that side and as much narrower on the other.
@@ -148,46 +136,12 @@ let child: { name: string; birth: string; listen: boolean } | null = null, whole
 let heights: Record<number, number> = {}, years: YearKept[] = [], age0 = 0, notes: (string | null)[] = [];
 /** What's looked at: this year's tree, every year (the life tree), or a year finished (its index). */
 let looking: 'year' | 'life' | number = 'year';
-const dayDate = (s: string) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
-/** The child's age on a day: whole years, the day of that year (0 on the birthday), and that year's length. */
-function ageOn(day: string): { years: number; day: number; len: number } {
-  const b = dayDate(child!.birth), t = dayDate(day);
-  let years = t.getFullYear() - b.getFullYear();
-  const at = (n: number) => new Date(b.getFullYear() + n, b.getMonth(), b.getDate());
-  if (t < at(years)) years--;
-  years = Math.max(0, years);
-  const from = at(years), to = at(years + 1);
-  return { years, day: Math.round((t.getTime() - from.getTime()) / 864e5), len: Math.round((to.getTime() - from.getTime()) / 864e5) };
-}
-/** Their age, as it's said: "3 weeks", "7 months", "2 years, 4 months". */
-function ageWords(day: string): string {
-  const a = ageOn(day), months = Math.floor((a.day / a.len) * 12 + 1e-6);
-  if (a.years === 0 && months === 0) return a.day < 7 ? `${a.day} ${a.day === 1 ? 'day' : 'days'}` : `${Math.floor(a.day / 7)} weeks`;
-  if (a.years === 0) return `${months} ${months === 1 ? 'month' : 'months'}`;
-  return `${a.years} ${a.years === 1 ? 'year' : 'years'}${months ? `, ${months} ${months === 1 ? 'month' : 'months'}` : ''}`;
-}
-/**
- * Where in its year of their life ring i lies: the year (their age), and the share of that year from where
- * it begins to where it ends (a whole year 0 to 1; a day, its own day's share; days drawn more than once
- * share their day between them).
- */
-function yearSpans(): { y: number; f0: number; f1: number; whole: boolean }[] {
-  const out: { y: number; f0: number; f1: number; whole: boolean }[] = [], count = new Map<string, number>(), seen = new Map<string, number>();
-  for (let i = whole; i < days.length; i++) count.set(days[i], (count.get(days[i]) ?? 0) + 1);
-  for (let i = 0; i < tree.rings.length; i++) {
-    if (i < whole || !days[i]) { out.push({ y: i, f0: 0, f1: 1, whole: true }); continue; }
-    const a = ageOn(days[i]), k = count.get(days[i]) ?? 1, j = seen.get(days[i]) ?? 0;
-    seen.set(days[i], j + 1);
-    out.push({ y: a.years, f0: (a.day + j / k) / a.len, f1: (a.day + (j + 1) / k) / a.len, whole: false });
-  }
-  return out;
-}
-/** How much they grew in a year of their life (cm): measured, if both birthdays' heights are known; else as children do. */
-const TYPICAL = [25, 12, 9, 7, 6.5, 6, 6, 5.5, 5.5, 5.5, 6, 6.5, 7, 6.5, 5, 3, 1.5, 1];
-function grewIn(age: number): number {
-  const a = heights[age], b = heights[age + 1];
-  return a && b && b > a ? b - a : TYPICAL[Math.min(age, TYPICAL.length - 1)];
-}
+/** (The reckoning of a child's tree, for the child planted for: see `child.ts`.) */
+const ageOn = (day: string) => ageOf(child!.birth, day), ageWords = (day: string) => ageSaid(child!.birth, day);
+/** Where in its year of their life each ring of the tree shown lies. */
+const yearSpans = () => spansOf(child!.birth, days, tree.rings.length, whole);
+/** How much they grew in a year of their life (cm). */
+const grewIn = (age: number) => grewOf(heights, age);
 /**
  * Their life as a tree: a ring for each year of it, the year in progress as far as it's come. Each ring's
  * shape is that year's own tree's outline (its bark, carrying the year's swells and lean), where one was
@@ -246,7 +200,6 @@ let kind: Kind = asKind(params.get('tree')) ?? 'oak';
 let tree = new TreeSim(Number(params.get('seed')) || 1 + Math.floor(Math.random() * 1e6), DAILY);
 /** The day each ring was drawn (local, as 2026-10-11). */
 let days: string[] = [];
-const dayOf = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const daysDrawn = () => new Set(days).size;
 
 const paper = new Paper(512);
@@ -576,8 +529,6 @@ let inward: { ring: number; at: number } | null = null;
  */
 let growing: { ring: number; at: number; was: { c: HTMLCanvasElement; v: View } } | null = null;
 const SEASON = 7;
-/** How far through its growth a season is, t of 1: early growth quick, easing to a stop. */
-const season = (t: number) => { const x = Math.max(0, Math.min(1, t)); return 1 - (1 - x) ** 2.6 * (1 + 1.6 * x); };
 /** The brush's track: where, when, how wide it laid (slow is wide), and how fast. */
 let trail: { a: number; r: number; t: number; w: number; fast: number }[] = [];
 let strokeView: View | null = null, painter: number | null = null;
@@ -816,14 +767,8 @@ function plant(x: number, y: number): void {
 }
 
 // ---------------------------------------------------------------- a child's tree: the day's question, its words, its years
-/** One gentle question a day, answered by the loop drawn (and a few words, if they come). */
-const ASK = ['How was today with {n}?', 'What did {n} notice today?', 'How did {n} sleep?', 'What made {n} laugh today?', 'What was hard today?',
-  'Where did you go with {n} today?', 'What did {n} try for the first time?', 'How was bedtime?', 'What was {n} curious about?',
-  'What will you remember about today?', 'How did {n} seem today?', 'What did {n} love today?', 'What did {n} say today?', 'How were you, with {n}, today?'];
-function question(): string {
-  const n = Math.round((dayDate(dayOf()).getTime() - dayDate(child!.birth).getTime()) / 864e5);
-  return ASK[((n % ASK.length) + ASK.length) % ASK.length].replace('{n}', child!.name);
-}
+/** The day's question (see `child.ts`). */
+const question = () => askOf(child!.name, child!.birth, dayOf());
 /** The few words a day's ring may keep, asked for once it's drawn; or, on a birthday, their height. */
 const noteEl = document.getElementById('note') as HTMLFormElement | null;
 const views = document.getElementById('views');

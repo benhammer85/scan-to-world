@@ -1,0 +1,25 @@
+const { chromium } = require(process.env.PLAYWRIGHT || 'playwright');
+const fs = require('fs');
+const BASE = process.env.BASE || 'http://localhost:5199';
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const out = process.argv[2];
+(async () => {
+  const b = await chromium.launch({ executablePath: process.env.CHROME || undefined });
+  const p = await b.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
+  const bad = []; p.on('pageerror', (e) => bad.push(e.message));
+  const d = new Date(); d.setFullYear(d.getFullYear() - 2); d.setDate(d.getDate() - 125);
+  await p.goto(`${BASE}/child.html?name=Ada&birth=${d.toISOString().slice(0, 10)}&demo`); await sleep(7000);
+  console.log('this year:', await p.evaluate(() => window.press.tree.rings.length), '|', await p.evaluate(() => document.getElementById('words').textContent));
+  await p.screenshot({ path: out + '/y-year.png' });
+  await p.evaluate(() => window.press.look('life')); await sleep(5000);
+  await p.screenshot({ path: out + '/y-life.png' });
+  const v = await p.evaluate(() => ({ cx: window.press.view.cx / 2, cy: window.press.view.cy / 2, R: window.press.view.s * window.press.tree.radius / 2, n: window.press.tree.rings.length }));
+  console.log('life rings', v.n);
+  await p.mouse.click(v.cx + v.R * 0.55, v.cy); await sleep(500); console.log('tap:', await p.evaluate(() => document.getElementById('words').textContent));
+  await p.mouse.click(v.cx + v.R * 0.55, v.cy); await sleep(5000); console.log('again:', await p.evaluate(() => document.getElementById('words').textContent), 'rings', await p.evaluate(() => window.press.tree.rings.length));
+  await p.screenshot({ path: out + '/y-past.png' });
+  const url = await p.evaluate(() => window.press.print());
+  fs.writeFileSync(out + '/y-print.png', Buffer.from(url.split(',')[1], 'base64'));
+  const wd = await p.evaluate(() => window.press.words()); fs.writeFileSync(out + '/y-words.png', Buffer.from(wd.split(',')[1], 'base64'));
+  console.log('errors', bad.length ? bad : 'none'); await b.close();
+})();
