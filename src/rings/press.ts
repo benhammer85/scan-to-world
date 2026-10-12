@@ -31,6 +31,8 @@ import { holdStill, steadySize } from './steady';
 import { keepRun, keepTree, recallTree, runs, snapshotTree, treeFrom, type Run } from './save';
 
 const TAU = Math.PI * 2, PAPER = '#f4efe4';
+/** The relief print (`?ink=print`), after tree-ring prints: the wood inked and pressed. */
+const PRINT = new URLSearchParams(location.search).get('ink') === 'print';
 const canvas = document.getElementById('press') as HTMLCanvasElement;
 // (The drawing goes to the page, or for a moment to a picture of the slice: see `picture`.)
 let g = canvas.getContext('2d')!;
@@ -281,7 +283,8 @@ function picture(n = 640): string {
   g = c; px = 2;
   try {
     c.fillStyle = PAPER; c.fillRect(0, 0, n, n);
-    paper.draw(c, v); drawLatewood(v); drawBark(v); drawKnots(v, Infinity); drawPaper(c, n, n);
+    if (PRINT) drawPrint(v); else { paper.draw(c, v); drawLatewood(v); drawBark(v); }
+    drawKnots(v, Infinity); drawPaper(c, n, n);
   } finally { g = was.g; px = was.px; }
   return off.toDataURL('image/jpeg', 0.86);
 }
@@ -338,6 +341,8 @@ let sayT = 0;
 const nav = document.getElementById('nav');
 // (On the dev server the practice is press.html; published, it's the index.)
 if (import.meta.env.DEV) nav?.querySelector<HTMLAnchorElement>('a[data-page="practice"]')?.setAttribute('href', './press.html');
+// (In the print, the other page opens in the print too.)
+if (PRINT) nav?.querySelectorAll<HTMLAnchorElement>('a[data-page]').forEach((a) => { a.href += `${a.href.includes('?') ? '&' : '?'}ink=print`; });
 let navT = 0;
 function navAway(away: boolean): void {
   clearTimeout(navT);
@@ -622,8 +627,8 @@ function drawBrush(g: CanvasRenderingContext2D, v: View, t: number): void {
     // its length, as a loaded brush lays it; a faint bleed beyond while it's wet.
     const tone = 0.85 + 0.15 * Math.sin(i * 0.37 + q.q.a * 3);
     g.fillStyle = `rgba(140,96,62,${(0.1 * wet).toFixed(3)})`; quad(p, q, 1, 1.4); quad(p, q, -1.4, -1);
-    g.fillStyle = `rgba(112,70,42,${(0.3 * life * tone).toFixed(3)})`; quad(p, q, -1, 1);
-    g.fillStyle = `rgba(92,56,32,${(0.3 * life * tone + 0.2 * wet).toFixed(3)})`; quad(p, q, -0.5, 0.5);
+    g.fillStyle = PRINT ? ink(0.32 * life * tone) : `rgba(112,70,42,${(0.3 * life * tone).toFixed(3)})`; quad(p, q, -1, 1);
+    g.fillStyle = PRINT ? ink(0.4 * life * tone + 0.25 * wet) : `rgba(92,56,32,${(0.3 * life * tone + 0.2 * wet).toFixed(3)})`; quad(p, q, -0.5, 0.5);
   }
 }
 
@@ -644,6 +649,120 @@ function drawKnots(v: View, t: number): void {
   }
 }
 
+// ---------------------------------------------------------------- the relief print (?ink=print)
+/**
+ * The slice as a relief print, as a slice of oak inked and pressed prints itself: each year's latewood
+ * takes the ink (a band at the ring's outer edge), its springwood stays the paper; oak's rays cut every
+ * band into short bricks, their white gaps running out from the heart; the bands' edges are ragged and
+ * the ink a little starved here and there; the dense heart prints near solid; the bark is a heavy,
+ * broken border. All of it drawn as shapes, so looking closer finds more, never blur.
+ */
+const INK = [36, 28, 23];
+const ink = (a: number) => `rgba(${INK[0]},${INK[1]},${INK[2]},${a.toFixed(3)})`;
+/** A steady hash, 0 to 1. */
+const h1 = (x: number) => { const v = Math.sin(x * 127.1 + 311.7) * 43758.5453; return v - Math.floor(v); };
+/** Oak's rays: each at its own angle, beginning at its own radius (mm) and running some way out. */
+const PRINT_RAYS = Array.from({ length: 2400 }, (_, k) => {
+  const from = 700 * h1(k * 1.7 + 9.1);
+  return { a: h1(k + 0.5) * TAU, from, to: from + 15 + 260 * h1(k * 2.3 + 4.4) ** 2, k };
+});
+
+function drawPrint(v: View): void {
+  const n = tree.rings.length;
+  const wPx = (i: number) => (v.s * (warpR(v.warp, meanR(i)) - warpR(v.warp, meanR(i - 1)))) / px;
+  const scr = (r: number) => v.s * warpR(v.warp, r);
+  // (A point at angle a, radius r (mm), and dr device px further out: roughness is on the screen, so the
+  // fisheye never magnifies it into spikes.)
+  const pt = (a: number, r: number, dr = 0): [number, number] => { const R = scr(r) + dr, t = a + v.turn; return [v.cx + R * Math.cos(t), v.cy - R * Math.sin(t)]; };
+  // The pith: a faint tone, the seedling's first growth printed in a few fine rings, a dark dot at its heart.
+  g.fillStyle = ink(0.1); ringPath(v, barkOf(-1)); g.fill();
+  g.strokeStyle = ink(0.32); g.lineWidth = 0.7 * px;
+  for (let q = 1; q <= 5; q++) { const f = (q / 6) ** 1.3; ringPath(v, (a) => barkOf(-1)(a) * f); g.stroke(); }
+  g.fillStyle = ink(0.75); g.beginPath(); g.arc(v.cx, v.cy, 1.6 * px, 0, TAU); g.fill();
+  if (!n) {
+    // (Before the first ring: the heart, ringed, to draw round.)
+    g.strokeStyle = ink(0.7); g.lineWidth = 1.2 * px; ringPath(v, barkOf(-1)); g.stroke();
+    return;
+  }
+  // The rays in play: the ones begun inside the bark, as many as fit the screen (one about every 9 px
+  // round the bark), the same ones from ring to ring.
+  const Rb = meanR(n - 1), around = (TAU * scr(Rb)) / px;
+  const begun = PRINT_RAYS.filter((r) => r.from < Rb && r.to > meanR(0));
+  const rays = begun.slice(0, Math.max(6, Math.min(begun.length, Math.round(around / 4)))).sort((x, y) => x.a - y.a);
+  // The dense heart: rings too fine to print apart print as a near-solid core.
+  let first = 0;
+  while (first < n - 1 && wPx(first) < 1.6) first++;
+  if (first > 0) {
+    // (Its rings still there, as fine lines, as many as the screen can part: every one, or every other...)
+    g.fillStyle = ink(0.14); ringPath(v, barkOf(first - 1)); g.fill();
+    g.strokeStyle = ink(0.62); g.lineWidth = 0.8 * px;
+    let lastR = -1e9;
+    for (let i = 0; i < first; i++) {
+      const R = scr(meanR(i));
+      if (R - lastR < 1.9 * px) continue;
+      lastR = R; ringPath(v, barkOf(i)); g.stroke();
+    }
+  }
+  for (let i = first; i < n; i++) {
+    const outer = barkOf(i), inner = barkOf(i - 1), last = i === n - 1;
+    // How much of the year takes the ink: about half, more on the bark; never under a pixel.
+    const w = wPx(i), share = last ? 0.85 : Math.min(0.75, Math.max(0.45, 1.1 / Math.max(1, w) + 0.45));
+    const bandIn = (a: number) => outer(a) - share * (outer(a) - inner(a));
+    // The rays crossing this ring, never two closer than 5 px round it (they'd make a wide gap).
+    const R = scr(meanR(i)), gap = (last ? 0.6 : 0.9) * px / Math.max(1, R), least = (5 * px) / Math.max(1, R);
+    const live: typeof rays = [];
+    const mr = meanR(i);
+    for (const r of rays) if (r.from < mr && r.to > mr && (!live.length || r.a - live[live.length - 1].a > least)) live.push(r);
+    if (live.length > 1 && live[0].a + TAU - live[live.length - 1].a < least) live.pop();
+    const rough = (last ? 1.1 : 0.28) * px;
+    const brick = (a0: number, a1: number, seed: number) => {
+      const steps = Math.max(2, Math.ceil(((a1 - a0) * R) / (4 * px)));
+      g.beginPath();
+      for (let j = 0; j <= steps; j++) {
+        const a = a0 + ((a1 - a0) * j) / steps, jit = (h1(seed + j * 3.1) - 0.5) * rough * 2;
+        const [x, y] = pt(a, outer(a), jit); if (j) g.lineTo(x, y); else g.moveTo(x, y);
+      }
+      for (let j = steps; j >= 0; j--) {
+        const a = a0 + ((a1 - a0) * j) / steps, jit = (h1(seed + j * 5.3 + 1.7) - 0.5) * rough * 2;
+        const [x, y] = pt(a, bandIn(a), jit); g.lineTo(x, y);
+      }
+      g.closePath();
+      // (The ink a little starved now and then.)
+      g.fillStyle = ink(0.8 + 0.2 * h1(seed * 0.37)); g.fill();
+    };
+    if (live.length < 3) { brick(0, TAU, i * 101); continue; }
+    for (let j = 0; j < live.length; j++) {
+      // (A ray wavers a little from ring to ring, as the grain does.)
+      const wav = (r: typeof rays[0]) => r.a + ((h1(r.k * 13.1 + i * 0.7) - 0.5) * 0.8 * px) / Math.max(1, R);
+      const a0 = wav(live[j]) + gap, a1 = (j + 1 < live.length ? wav(live[j + 1]) : wav(live[0]) + TAU) - gap;
+      if (a1 > a0) brick(a0, a1, i * 1013 + live[j].k * 7);
+    }
+  }
+  // The bark: a heavy, broken border round it all.
+  const bark = barkOf(n - 1);
+  g.lineJoin = 'round';
+  // (Its unevenness a noise round it, not a wave: a ruled wobble read as a bottle cap.)
+  const torn = (a: number) => { const u = (a / TAU) * 180, i0 = Math.floor(u), f = u - i0, s2 = f * f * (3 - 2 * f); return 1.2 + 1.1 * ((1 - s2) * h1(i0 % 180) + s2 * h1((i0 + 1) % 180) - 0.5); };
+  g.strokeStyle = ink(0.9); g.lineWidth = 2.6 * px; ringPath(v, bark, torn, K * 3); g.stroke();
+}
+
+/** The print, kept as a picture between changes; while the slice moves, the picture moves with it. */
+let printCache: { c: HTMLCanvasElement; key: string; v: View } | null = null;
+function drawPrintCached(v: View, moving: boolean): void {
+  const key = `${tree.rings.length}|${warp.R}|${warp.beta}|${W}x${H}`;
+  const same = printCache && printCache.key === key;
+  const exact = same && printCache!.v.s === v.s && printCache!.v.cx === v.cx && printCache!.v.cy === v.cy;
+  if (!same || (!moving && !exact)) {
+    const c = printCache?.c.width === W && printCache.c.height === H ? printCache.c : document.createElement('canvas');
+    c.width = W; c.height = H;
+    const was = g; g = c.getContext('2d')!;
+    try { drawPrint(v); } finally { g = was; }
+    printCache = { c, key, v: { ...v } };
+  }
+  const pc = printCache!, k = v.s / pc.v.s;
+  g.drawImage(pc.c, v.cx - pc.v.cx * k, v.cy - pc.v.cy * k, W * k, H * k);
+}
+
 /** When the page opened: the slice paints itself in from the heart. */
 let openedAt = 0;
 // (`?slow=5` plays the opening and the bloom five times slower, to look at them.)
@@ -662,13 +781,13 @@ function frame(): void {
 
   g.setTransform(1, 0, 0, 1, 0, 0);
   g.drawImage(groundOf(), 0, 0);
-  paper.draw(g, v);
-  drawLatewood(v);
+  if (PRINT) drawPrintCached(v, !!ease || !!lookBack || fingers.size >= 2);
+  else { paper.draw(g, v); drawLatewood(v); }
   const n = tree.rings.length;
   // A ring touched: lit softly along its edge for a moment, as its day is read.
   const glow = lit >= 0 && lit < n ? 1 - smooth((t - litAt - 2) / 1.2) : 0;
   if (glow > 0.01) { g.strokeStyle = `rgba(255,251,240,${(0.85 * glow).toFixed(3)})`; g.lineWidth = 2 * px; ringPath(v, barkOf(lit)); g.stroke(); }
-  drawBark(v);
+  if (!PRINT) drawBark(v);
   // The newest ring's colour spreads from the line drawn in toward the last ring, its front soft.
   if (settle.ring >= 0 && settle.ring < n) {
     const p = smooth((t - settle.at) / BLOOM), inner = barkOf(settle.ring - 1), outer = barkOf(settle.ring);
