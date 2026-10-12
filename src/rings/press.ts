@@ -22,7 +22,7 @@
  * way a tree evens out), so the slice stays organic, never a lump. `?demo` shows a year already drawn.
  */
 import '../volcano/fonts.css';
-import { wood, sample, loadWood, type Years } from './wood';
+import { wood, sample, tile, loadWood, type Years } from './wood';
 import { NATIVE, tap } from '../volcano/native';
 import { K, OAK, TreeSim, noise } from './tree';
 import { brushAt, radiusAt, scaleFor, unwarpR, warpFor, warpR, type View, type Warp } from './hand';
@@ -1090,12 +1090,12 @@ function drawPrint(v: View): void {
     const side = h1(tree.seed * 0.731) * TAU, Rs = scr(Rb) + barkCss(v) * px * 2, ox = Math.cos(side + v.turn), oy = -Math.sin(side + v.turn);
     g.save(); g.globalCompositeOperation = 'source-atop';
     const lin = g.createLinearGradient(v.cx - ox * Rs, v.cy - oy * Rs, v.cx + ox * Rs, v.cy + oy * Rs);
-    lin.addColorStop(0, 'rgba(244,239,228,0)'); lin.addColorStop(0.55, 'rgba(244,239,228,0.04)'); lin.addColorStop(1, 'rgba(244,239,228,0.26)');
+    lin.addColorStop(0, 'rgba(244,239,228,0)'); lin.addColorStop(0.55, 'rgba(244,239,228,0.02)'); lin.addColorStop(1, 'rgba(244,239,228,0.1)');
     g.fillStyle = lin; g.fillRect(v.cx - Rs, v.cy - Rs, 2 * Rs, 2 * Rs);
     for (let q = 0; q < 5; q++) {
       const a = h1(tree.seed + q * 3.3) * TAU, d = Rs * (0.2 + 0.6 * h1(q * 7.1 + tree.seed)), rr = Rs * (0.25 + 0.3 * h1(q * 2.9));
       const x = v.cx + d * Math.cos(a), y = v.cy - d * Math.sin(a), rad = g.createRadialGradient(x, y, 0, x, y, rr);
-      rad.addColorStop(0, `rgba(244,239,228,${(0.08 + 0.08 * h1(q * 5.5)).toFixed(3)})`); rad.addColorStop(1, 'rgba(244,239,228,0)');
+      rad.addColorStop(0, `rgba(244,239,228,${(0.03 + 0.03 * h1(q * 5.5)).toFixed(3)})`); rad.addColorStop(1, 'rgba(244,239,228,0)');
       g.fillStyle = rad; g.fillRect(x - rr, y - rr, 2 * rr, 2 * rr);
     }
     g.restore();
@@ -1218,6 +1218,11 @@ function inkGrain(c: HTMLCanvasElement, v: View): void {
   // The press: the paper's tooth (some 0.12 mm, never finer than a pixel), the pressure wandering
   // across the block, and the saw's marks, faint arcs from a far-off blade (seen only looking close).
   const tooth = 1 / Math.max((0.9 * px) / v.s, 0.12), low = 2.6 / rmax, SAW = 1.8;
+  // (How the ink took, from a real print: Munch's, 1898, about a quarter mm to a texel, never finer than a
+  // pixel; his sea's mottle and sparse specks, his field's grain and streaks over it, the two at their own
+  // scales and turned to each other, so neither repeats in step.)
+  const sea = wood.sea, field = wood.field, perTex = 1 / Math.max(px / v.s, 0.24);
+  const fc = Math.cos(0.5 + h1(tree.seed * 0.29)), fs = Math.sin(0.5 + h1(tree.seed * 0.29));
   const sawK = 0.07 * Math.max(0, Math.min(1, (SAW * v.s - 3 * px) / (4 * px))), sa = h1(tree.seed * 0.61) * TAU;
   const sx = 3.2 * rmax * Math.cos(sa), sy = 3.2 * rmax * Math.sin(sa);
   for (let y = 0; y < h; y++) {
@@ -1256,8 +1261,13 @@ function inkGrain(c: HTMLCanvasElement, v: View): void {
       const mx = dx / v.s, my = dy / v.s;
       const t1 = 0.6 * vnoise(mx * tooth + 5.1, my * tooth + 9.7) + 0.4 * vnoise(mx * tooth * 2.3 + 17.3, my * tooth * 2.3 + 3.1);
       const saw = sawK ? sawK * Math.sin(TAU * (Math.hypot(mx - sx, my - sy) / SAW + 0.8 * vnoise(mx * 0.3, my * 0.3))) : 0;
-      const thr = 0.5 + 0.95 * (t1 - 0.5) + 0.2 * (vnoise(mx * low + 40, my * low + 11) - 0.5) + saw;
-      const e = Math.max(0, Math.min(1, (val - thr + 0.07) / 0.14));
+      let took = val;
+      if (sea && field) {
+        const u = mx * perTex, w = my * perTex;
+        took = val * (0.35 + 0.7 * tile(sea, u + 17, w + 31) * (0.55 + 0.45 * tile(field, (u * fc - w * fs) * 0.8, (u * fs + w * fc) * 0.8)));
+      }
+      const thr = 0.5 + (sea ? 0.35 : 0.95) * (t1 - 0.5) + 0.2 * (vnoise(mx * low + 40, my * low + 11) - 0.5) + saw;
+      const e = Math.max(0, Math.min(1, (took - thr + 0.07) / 0.14));
       d[k + 3] = Math.round(255 * e * e * (3 - 2 * e));
     }
   }

@@ -7,11 +7,14 @@ export interface Level { w: number; h: number; d: Float32Array }
 export interface Years { n: number; year: number; levels: (Level & { rows: number })[] }
 
 export const YEAR = 112;
-export const wood: { oak?: Years; pine?: Level } = {};
+/** (And how ink takes on a real relief print: Munch's sea and his field, as density, 1 full, 0 the paper.) */
+export const wood: { oak?: Years; pine?: Level; sea?: Level; field?: Level } = {};
 
 const URLS = {
   oak: new URL('./wood/red-oak-years.png', import.meta.url).href,
   pine: new URL('./wood/red-pine-fibre.png', import.meta.url).href,
+  sea: new URL('./wood/munch-sea-ink.png', import.meta.url).href,
+  field: new URL('./wood/munch-field-ink.png', import.meta.url).href,
 };
 
 function pixels(url: string): Promise<Level> {
@@ -46,6 +49,8 @@ function shrink(l: Level, years: number, rows: number, w: number): Level {
   return { w, h: years * rows, d };
 }
 
+/** Bilinear, wrapping both ways (a tile). */
+export const tile = (l: Level, u: number, v: number) => sample(l, u, ((v % l.h) + l.h) % l.h);
 /** Bilinear, wrapping round (along) and clamped within one year's strip (across). */
 export function sample(l: Level, u: number, v: number, top = 0, rows = l.h): number {
   u = ((u % l.w) + l.w) % l.w;
@@ -70,4 +75,6 @@ export function loadWood(then: () => void): void {
     then();
   }).catch(() => {});
   pixels(URLS.pine).then((l) => { wood.pine = l; then(); }).catch(() => {});
+  pixels(URLS.sea).then((l) => { wood.sea = l; then(); }).catch(() => {});
+  pixels(URLS.field).then((l) => { wood.field = l; then(); }).catch(() => {});
 }

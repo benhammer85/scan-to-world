@@ -17,3 +17,18 @@ would print (`inkmap.py`): the pores and rays open (paper), the latewood heavy, 
 tiling round. The pine's rings were too faint in the scan to trace, so only its fibre is kept, its
 ring-lines taken out (`fibre.py`); its years are still drawn. (Birch's scan held nothing finer than
 noise, so birch is drawn.)
+
+## The ink
+
+How ink takes on a real relief print, from Edvard Munch, *Two Women on the Shore* (1898, woodcut printed
+from one block; Art Institute of Chicago, public domain, CC0): patches of its solid areas made into
+density (1 the ink's full strength, 0 the paper through it), their slow shading taken out, tiling
+(`scripts/wood/inktake.py`).
+
+| File | Patch |
+| --- | --- |
+| `munch-sea-ink.png` | the dark sea: the ink's mottle and its sparse specks |
+| `munch-field-ink.png` | the green field: the plank's grain and streaks, where the ink took thinly |
+
+Looked at, not taken from (to learn how a solid black and a thin inking print): Félix Vallotton's
+*Intimacies* (1898) and *The Coffin Bearers* (1892), and Paul Gauguin's *Noa Noa* woodcuts (1893–94).
