@@ -425,6 +425,8 @@ Each is ink on a transparent ground (`scripts/plates.py` fetches the scans, crop
 | how round | 52% | 82% | 91% | 85% |
 | still growing | 8 of 8 | 8 of 8 | 8 of 8 | 8 of 8 |
 
+**On GitHub Pages:** this repository's Pages are Warm to the Touch's, so Well Rounded is published to a repository of its own, `benhammer85/well-rounded`, served from its `main` branch: `scripts/publish-pages.sh` builds the site (as for Netlify, below) and pushes it there as the whole of that branch (https://benhammer85.github.io/well-rounded/).
+
 **On Netlify:** `netlify.toml` publishes Well Rounded alone (the same build as the iPhone app, `GAME=rings npm run build:app` into `dist-app`: the daily practice as the site's home page, the first game at `classic.html`, and `/press.html`, where the practice was first tried, sent home). Connect the repository on netlify.com and set the branch to deploy.
 
 To try it: `npm run dev` and open `/press.html` (the daily practice) or `/rings.html` (the first game). `?grow=200` grows the tree 200 years first; `?seed=` gives the same weather again; `?ink=ink` starts in engraving; `?debug` exposes the tree for a headless browser to draw with. For the iPhone shell, `GAME=rings npm run build:app` builds this game instead of the volcano.
