@@ -531,7 +531,7 @@ function hear(): void {
       run.score += pts; run.rings++; showScore();
       window.setTimeout(() => say(`+${pts}${touches ? `  (touched the edge: −${TOUCH * touches})` : ''}`, 1.4), 150);
       if (run.rings >= RUN) endRun();
-    } else if (first) window.setTimeout(() => say(daysDrawn() === 1 ? 'Your first day.' : `Day ${daysDrawn()}.`, 5), 2400);
+    } else if (first) editionAt = clock() + 1.6;
     // (The ring is done: it settles into the paper and the slice draws back to make room, while the
     // next can be begun as soon as the finger comes down again.)
     painter = null;
@@ -992,6 +992,44 @@ function restOf(v: View): View {
 /** The slice as it's shown now: at rest (true scale) or drawing (magnified). */
 const shownOf = (v: View) => (relax > 0.5 ? restOf(v) : v);
 
+/**
+ * The edition, pencilled under the print as a printmaker signs and numbers one: how many days drawn on
+ * the left, the day's date in the middle, the tree on the right; beside it a blind stamp, a small ring
+ * slice pressed into the paper with no ink (the maker's mark). Away while a finger is down; written in
+ * again, left to right, when a new day's ring has bloomed. (The practice only: the challenge keeps its score.)
+ */
+let editionAt = 0, editionShown = 0;
+function drawEdition(v: View, t: number, dt: number): void {
+  if (CHALLENGE || !tree.rings.length) return;
+  const away = fingers.size > 0 || !!tree.stroke;
+  editionShown = away ? Math.max(0, editionShown - dt / 0.3) : Math.min(1, editionShown + dt / 1.2);
+  if (editionShown <= 0.01) return;
+  const last = tree.rings[tree.rings.length - 1];
+  let rmax = 0;
+  for (let i = 0; i < K; i++) rmax = Math.max(rmax, v.s * warpR(v.warp, last[i]));
+  const y = v.cy + rmax + (barkCss(v) + 30) * px, half = Math.min(rmax, W / 2 - 30 * px);
+  const [yy, mm, dd] = (days[days.length - 1] ?? dayOf()).split('-').map(Number);
+  const date = new Date(yy, mm - 1, dd).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
+  // (Written in, left to right, once a new day's ring has bloomed.)
+  const w = t < editionAt ? 0 : smooth((t - editionAt) / 1.1);
+  g.save();
+  g.beginPath(); g.rect(v.cx - half - 40 * px, y - 30 * px, (2 * half + 80 * px) * (editionAt ? w : 1), 60 * px); g.clip();
+  g.globalAlpha = editionShown;
+  // Graphite: a soft grey, its grain the paper's own (laid over it after).
+  g.fillStyle = 'rgba(92,88,84,0.78)'; g.font = `italic ${13 * px}px Newsreader, "Iowan Old Style", Georgia, serif`; g.textBaseline = 'middle';
+  g.textAlign = 'left'; g.fillText(String(daysDrawn()), v.cx - half, y);
+  g.textAlign = 'center'; g.fillText(date, v.cx, y);
+  g.textAlign = 'right'; g.fillText(kind, v.cx + half - 22 * px, y);
+  // The blind stamp: three rings and a heart, pressed in (a highlight above, a shadow below, no ink).
+  const sx = v.cx + half - 6 * px, sy = y;
+  for (const [dx, dy, col] of [[-0.7, -0.7, 'rgba(255,253,246,0.95)'], [0.7, 0.7, 'rgba(96,74,52,0.28)']] as [number, number, string][]) {
+    g.strokeStyle = col; g.fillStyle = col; g.lineWidth = 0.9 * px;
+    for (const r of [7, 4.6, 2.4]) { g.beginPath(); g.arc(sx + dx * px, sy + dy * px, r * px, 0, TAU); g.stroke(); }
+    g.beginPath(); g.arc(sx + dx * px, sy + dy * px, 0.9 * px, 0, TAU); g.fill();
+  }
+  g.restore();
+}
+
 /** When the page opened: the slice paints itself in from the heart. */
 let openedAt = 0;
 // (`?slow=5` plays the opening and the bloom five times slower, to look at them.)
@@ -1050,6 +1088,7 @@ function frame(): void {
   // slice, so it draws back with it.)
   drawBrush(g, v, t);
   drawKnots(shownOf(v), t);
+  drawEdition(shownOf(v), t, dt);
   drawPaper(g, W, H);
   requestAnimationFrame(frame);
 }
