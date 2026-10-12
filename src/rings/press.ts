@@ -82,14 +82,15 @@ function brushPoint(v: View, x: number, y: number): [number, number] {
 const ROUND = CHALLENGE ? 0 : PRINT ? 0.15 : 0.3;
 /**
  * The practice, printed, grows as a tree does: from a seed planted on a bare sheet, shown true to a
- * tree's scale (`TRUE_MM` CSS px to the mm, till it fills its room), so a year is a thin ring and the slice
+ * tree's scale (`TRUE_MM` CSS px to the mm, till it fills its room; but never under `YOUNG` CSS px across
+ * its radius, so a seedling's first weeks can be seen), so a year is a thin ring and the slice
  * grows slowly, denser year on year. The loop is drawn at the hand's size, wherever is comfortable round
  * the slice: how loose it is sets how wide the year is (`STEADY` CSS px out from the bark a steady year;
  * from `LEAST` to `LOOSEST` of one), its wobble how the year swells and thins round the tree; then it
  * draws in onto the slice as the year. (The watercolour and the challenge keep the hand's own scale.)
  */
 const GROWN = PRINT && !CHALLENGE;
-const TRUE_MM = 0.6, STEADY = 46, LEAST = 0.15, LOOSEST = 3.2;
+const TRUE_MM = 0.6, STEADY = 34, LEAST = 0.4, LOOSEST = 3.2, YOUNG = 44;
 /** Where the finger puts the line (steady widths from the bark), eased a little toward round. */
 function rounded(a: number, u: number): number {
   if (!GROWN) return Math.min(WIDEST, u) * lean(a) + ROUND * (tree.radius - radiusAt((i) => tree.inner(i), a)) / tree.wRef;
@@ -225,7 +226,7 @@ function baseNow(t = clock()): View {
   if (!view && GROWN) {
     // True to a tree's scale till the slice fills its room, then fitted to it; where the seed was
     // planted, as near as the whole slice (its bark, the edition under it) can sit on the sheet.
-    const s = Math.min(TRUE_MM * px, (0.74 * roomNow()) / barkMax()), R = s * barkMax() + 14 * px;
+    const s = Math.min(Math.max(TRUE_MM * px, (YOUNG * px) / barkMax()), (0.74 * roomNow()) / barkMax()), R = s * barkMax() + 14 * px;
     const [fx, fy] = seedAt ?? [0.5, 0.47], clamp = (x: number, lo: number, hi: number) => (lo > hi ? (lo + hi) / 2 : Math.max(lo, Math.min(hi, x)));
     view = { cx: clamp(fx * W, R + 16 * px, W - R - 16 * px), cy: clamp(fy * H, R + 56 * px, H - R - 96 * px), s, turn: 0, px, warp: undefined };
     ease = null;
@@ -457,8 +458,11 @@ let pinch: { d: number; mx: number; my: number } | null = null, pinched = false;
 let tapStart = { x: 0, y: 0, at: 0 }, lastTap = 0;
 const spread = () => { const [a, b] = [...fingers.values()]; return { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 }; };
 
+/** Whether this touch came down on the slice (a tap there reads its day). */
+let inside = false;
 canvas.addEventListener('pointerdown', (e) => {
   canvas.setPointerCapture(e.pointerId);
+  if (fingers.size === 0) inside = false;
   fingers.set(e.pointerId, { x: e.clientX * px, y: e.clientY * px });
   if (fingers.size === 1) { tapStart = { x: e.clientX, y: e.clientY, at: clock() }; pinched = false; }
   if (fingers.size === 2) {
@@ -471,6 +475,7 @@ canvas.addEventListener('pointerdown', (e) => {
   navAway(true);
   // (Looked at closely, or the run over: a finger moves the slice about, or taps; nothing is drawn. And
   // on a bare sheet, a tap plants the seed: see the tap, below.)
+  if (tree.rings.length && brushAt(tree, viewNow(), 0, e.clientX * px, e.clientY * px).u < 0) inside = true;
   if (closer() || run.over || (GROWN && !seedAt)) return;
   words.classList.remove('shown');
   const x = e.clientX * px, y = e.clientY * px;
@@ -484,7 +489,8 @@ canvas.addEventListener('pointerdown', (e) => {
   }
   // Inside the slice, a ring's day is read; anywhere outside it, the circle begins (the brush a little
   // way in from the finger).
-  if (brushAt(tree, v, 0, x, y).u < 0) { if (!CHALLENGE) readDay(shownOf(v), x, y); return; }
+  // (Read only on a tap, when the finger lifts: a pinch or a drag begun on the slice reads nothing.)
+  if (inside) return;
   const b = brushAt(tree, v, 0, ...brushPoint(v, x, y));
   strokeView = v;
   if (GROWN) { trail = []; inward = null; }
@@ -547,6 +553,8 @@ for (const type of ['pointerup', 'pointercancel'] as const) canvas.addEventListe
     if (closer() && t - lastTap < 0.35) { lookBack = { ...look, at: t }; lastTap = 0; return; }
     lastTap = t;
     if (run.over && !closer() && t - endedAt > 1.8) { restart(); return; }
+    // A tap on the slice: the ring there, and its day.
+    if (inside && !CHALLENGE && painter === null) { readDay(shownOf(viewNow()), e.clientX * px, e.clientY * px); return; }
     // Before the first ring, a tap plants the seed there (or moves it).
     if (GROWN && !tree.rings.length && !closer()) {
       if (painter === e.pointerId) { tree.cancel(); trail = []; painter = null; }
@@ -738,17 +746,21 @@ function drawBark(v: View): void {
 function drawBrush(g: CanvasRenderingContext2D, v: View, t: number): void {
   const n = trail.length;
   if (n < 2) return;
-  // (Growing true to scale, the loop, once closed, draws in onto the slice as the year, fading as it arrives.)
-  const inn = inward && inward.ring < tree.rings.length ? smooth((t - inward.at) / 0.9) : 0, ring = inn ? barkOf(inward!.ring) : null;
+  // (Growing true to scale, the loop, once closed, draws in onto the slice and lies along it as the year,
+  // its width the year's, wet; then it dries into the print.)
+  const going = inward && inward.ring < tree.rings.length ? inward : null;
+  const inn = going ? smooth((t - going.at) / 1.2) : 0, dry = going ? 1 - smooth((t - going.at - 1.6) / 2.6) : 1;
+  const ring = going ? barkOf(going.ring) : null, prev = going ? barkOf(going.ring - 1) : null;
   const pts = trail.map((q) => {
-    const [x, y] = at(v, q.a, ring ? q.r + (ring(q.a) - q.r) * inn : q.r);
-    return { x, y, life: Math.exp(-(t - q.t) / 3.5) * (1 - 0.85 * inn), q, nx: 0, ny: 0, hw: 0 };
+    const mid = ring && prev ? (ring(q.a) + prev(q.a)) / 2 : q.r, [x, y] = at(v, q.a, q.r + (mid - q.r) * inn);
+    return { x, y, life: going ? dry : Math.exp(-(t - q.t) / 3.5), q, nx: 0, ny: 0, hw: 0, band: ring && prev ? Math.max(0.6 * px, v.s * (ring(q.a) - prev(q.a))) : 0 };
   });
   const lap = (i: number) => Math.abs(trail[i].a - trail[i - 1].a) > 0.5;
   for (let i = 0; i < n; i++) {
     const a = pts[i > 0 && !lap(i) ? i - 1 : i], b = pts[i + 1 < n && !lap(i + 1) ? i + 1 : i];
     const dx = b.x - a.x, dy = b.y - a.y, l = Math.hypot(dx, dy) || 1, p = pts[i];
     p.nx = -dy / l; p.ny = dx / l; p.hw = 0.5 * p.q.w * (0.55 + 0.45 * p.life) * px;
+    if (going) p.hw += (p.band / 2 - p.hw) * inn;
   }
   const quad = (p: typeof pts[0], q: typeof pts[0], k0: number, k1: number) => {
     g.beginPath();
@@ -766,9 +778,17 @@ function drawBrush(g: CanvasRenderingContext2D, v: View, t: number): void {
     g.fillStyle = `rgba(140,96,62,${(0.1 * wet).toFixed(3)})`; quad(p, q, 1, 1.4); quad(p, q, -1.4, -1);
     if (PRINT) {
       // (Printing ink, not watercolour: dense and dark while wet, breaking up dry as it fades.)
-      if (life < 0.75 && h1(i * 0.613) > life + 0.25) continue;
+      // (Breaking up dry as it fades; but a loop laid as the year only fades, into the print beneath.)
+      if (!going && life < 0.75 && h1(i * 0.613) > life + 0.25) continue;
       g.fillStyle = ink(0.55 * life + 0.3 * wet); quad(p, q, -1, 1);
       g.fillStyle = ink(0.3 * wet); quad(p, q, -0.6, 0.6);
+      // (Laid as the year, fresh ink on the print: it catches the light along the ring while it's wet,
+      // then dries matte into the rest.)
+      if (going && inn > 0.5) {
+        const sheen = smooth((inn - 0.5) / 0.5) * life;
+        g.fillStyle = `rgba(255,252,244,${(0.55 * sheen).toFixed(3)})`; quad(p, q, -0.25, 0.65);
+        g.fillStyle = `rgba(255,252,244,${(0.45 * sheen).toFixed(3)})`; quad(p, q, 0.05, 0.4);
+      }
       continue;
     }
     g.fillStyle = `rgba(112,70,42,${(0.3 * life * tone).toFixed(3)})`; quad(p, q, -1, 1);
@@ -1015,16 +1035,24 @@ function drawPrint(v: View): void {
   for (let j = 0; j <= K * 3; j++) { const a = (j / (K * 3)) * TAU, [x, y] = pt(a, bark(a), T * (0.7 + 0.55 * torn(a))); if (j) g.lineTo(x, y); else g.moveTo(x, y); }
   for (let j = K * 3; j >= 0; j--) { const a = (j / (K * 3)) * TAU, [x, y] = pt(a, bark(a)); g.lineTo(x, y); }
   g.closePath(); g.fillStyle = ink(0.82); g.fill();
-  // (Its fissures: short pale splits from the outside in.)
+  // (Its fissures: splits from the outside in, never evenly spaced: in runs and gaps, some shallow, some
+  // through to the wood, each tapering and a little bent, as bark cracks as it stretches.)
   {
-    const pine = kind === 'pine', count = Math.round((TAU * scr(Rb)) / ((pine ? 13 : 6) * px));
-    g.strokeStyle = 'rgba(244,239,228,0.85)'; g.lineWidth = (pine ? 1.1 : 0.8) * px; g.lineCap = 'round'; g.beginPath();
-    for (let q = 0; q < count; q++) {
-      const a = ((q + h1(q * 2.3)) / count) * TAU, out = T * (0.7 + 0.55 * torn(a));
-      const [x0, y0] = pt(a, bark(a), out), [x1, y1] = pt(a + (h1(q * 7.9) - 0.5) * 0.02, bark(a), out * (pine ? 0.1 + 0.2 * h1(q * 4.4) : 0.25 + 0.4 * h1(q * 4.4)));
-      g.moveTo(x0, y0); g.lineTo(x1, y1);
+    const pine = kind === 'pine', mean = (TAU * px * (pine ? 13 : 7)) / Math.max(1, scr(Rb));
+    g.save(); g.globalCompositeOperation = 'destination-out'; g.fillStyle = '#000';
+    let a = h1(tree.seed * 0.17) * TAU, q = 0;
+    const end = a + TAU - mean * 0.5;
+    while (a < end && q < 4000) {
+      const k = q++, out = T * (0.7 + 0.55 * torn(a)), deep = pine ? 0.1 + 0.25 * h1(k * 4.4) : 0.15 + 0.8 * h1(k * 4.4) ** 1.5;
+      const w0 = (0.35 + 0.8 * h1(k * 3.1) ** 2) * px * (pine ? 1.4 : 1), bend = (h1(k * 7.9) - 0.5) * 0.03, R0 = Math.max(1, scr(bark(a)));
+      g.beginPath();
+      for (let j = 0; j <= 6; j++) { const f = j / 6, [x, y] = pt(a + bend * f * f + (w0 * (1 - f)) / R0, bark(a), out * (1 - deep * f)); if (j) g.lineTo(x, y); else g.moveTo(x, y); }
+      for (let j = 6; j >= 0; j--) { const f = j / 6, [x, y] = pt(a + bend * f * f - (w0 * (1 - f)) / R0, bark(a), out * (1 - deep * f)); g.lineTo(x, y); }
+      g.closePath(); g.fill();
+      // (The next: close by in a run, or far off across a smooth stretch.)
+      a += mean * (h1(k * 2.3 + 0.7) < 0.7 ? 0.35 + 0.8 * h1(k * 5.7) : 1.6 + 2.2 * h1(k * 6.1));
     }
-    g.stroke();
+    g.restore();
   }
   g.strokeStyle = ink(0.95); g.lineWidth = 1 * px; ringPath(v, bark, 0, K * 2); g.stroke();
   }
@@ -1237,18 +1265,21 @@ function inkGrain(c: HTMLCanvasElement, v: View): void {
 }
 
 /** The print, kept as a picture between changes; while the slice moves, the picture moves with it. */
-const printCaches: Record<string, { c: HTMLCanvasElement; key: string; v: View }> = {};
+const printCaches: Record<string, { c: HTMLCanvasElement; key: string; v: View; at: number }> = {};
 function drawPrintCached(v: View, moving: boolean, slot = 'drawing', alpha = 1): void {
   const key = `${tree.rings.length}|${v.warp?.R ?? 0}|${v.warp?.beta ?? 0}|${W}x${H}`;
   let pc = printCaches[slot];
   const same = pc && pc.key === key;
   const exact = same && pc.v.s === v.s && pc.v.cx === v.cx && pc.v.cy === v.cy;
-  if (!same || (!moving && !exact)) {
+  // (Moving, the picture is moved; but looked into by more than a quarter, it's pressed again at the new
+  // size, a few times a second, so it's never a blown-up bitmap.)
+  const far = same && moving && Math.abs(Math.log(v.s / pc.v.s)) > Math.log(1.25) && clock() - pc.at > 0.2;
+  if (!same || (!moving && !exact) || far) {
     const c = pc?.c.width === W && pc.c.height === H ? pc.c : document.createElement('canvas');
     c.width = W; c.height = H;
     const was = g; g = c.getContext('2d')!;
     try { drawPrint(v); inkGrain(c, v); } finally { g = was; }
-    pc = printCaches[slot] = { c, key, v: { ...v } };
+    pc = printCaches[slot] = { c, key, v: { ...v }, at: clock() };
   }
   const k = v.s / pc.v.s;
   g.globalAlpha = alpha;
@@ -1343,7 +1374,12 @@ function frame(): void {
   const n = tree.rings.length;
   // A ring touched: lit softly along its edge for a moment, as its day is read.
   const glow = lit >= 0 && lit < n ? 1 - smooth((t - litAt - 2) / 1.2) : 0;
-  if (glow > 0.01) { g.strokeStyle = `rgba(255,251,240,${(0.85 * glow).toFixed(3)})`; g.lineWidth = 2 * px; ringPath(shownOf(v), barkOf(lit)); g.stroke(); }
+  // (A soft light along it, never a ruled line.)
+  if (glow > 0.01) {
+    g.save(); g.lineJoin = 'round';
+    for (const [w, al] of [[7, 0.1], [3.5, 0.16], [1.4, 0.3]]) { g.strokeStyle = `rgba(255,251,240,${(al * glow).toFixed(3)})`; g.lineWidth = w * px; ringPath(shownOf(v), barkOf(lit)); g.stroke(); }
+    g.restore();
+  }
   if (!PRINT) drawBark(v);
   // The newest ring's colour spreads from the line drawn in toward the last ring, its front soft.
   if (settle.ring >= 0 && settle.ring < n) {
