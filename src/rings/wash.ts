@@ -37,6 +37,8 @@ export class Wash {
   readonly water: Float32Array;
   readonly sus: Float32Array;
   readonly dep: Float32Array;
+  /** How strongly pigment flows to a drying edge (the coffee-ring effect's dark rim); 2.2 by default. */
+  edgeFlow = 2.2;
   /** The paper's tooth, 0 to 1: pits where pigment settles (granulation). */
   readonly tooth: Float32Array;
   /** How much each cell's pigment granulates (drought's ochre does; most don't much). */
@@ -154,7 +156,7 @@ export class Wash {
   step(dt = 1 / 60): void {
     if (!this.count) return;
     const n = this.n, W = this.water, S = this.sus, dW = this.dW, dS = this.dS, w = this.weather;
-    const kw = 0.22, kp = 0.1, ke = 2.2, kb = w.dry > 0 ? 0.012 * w.wet : 0;
+    const kw = 0.22, kp = 0.1, ke = this.edgeFlow, kb = w.dry > 0 ? 0.012 * w.wet : 0;
     // How quickly it dries: about four seconds for a wash, slower in rain, quicker in a drought.
     const ev = (dt / 4) * w.dry / w.wet;
     const [dx, dy] = w.drift;

@@ -7,8 +7,9 @@
  * left. Each ring is painted in oak's straw and honey (its day's season only a tint), pale earlywood and
  * a fine umber line of latewood, inside a painted bark edge.
  *
- *   draw      a circle round the slice, at your own pace, as wide or close as you like, with a wet brush:
- *             dark at the brush, evaporating behind it (disappearing ink), exactly under the finger
+ *   draw      a circle round the slice, at your own pace, as wide or close as you like, with a brush of
+ *             the wood's own umber watercolour, a little way in from the fingertip (so the finger never
+ *             hides the line): glossy and dark where it's wet, paling as it dries into the paper
  *   bloom     as the ring closes, its colour spreads from your line in toward the last ring, like water
  *             touching wet paint, while the slice draws back slowly to make room; the next ring can be
  *             begun at once
@@ -51,6 +52,16 @@ const smooth = (x: number) => { const t = Math.max(0, Math.min(1, x)); return t 
 const DAILY = { yearsPerRing: 1, crown: OAK.crown / 5, crownYears: 6, oldFrom: 1e6, oldTo: 2e6, ink: 1e6 };
 /** The widest year (steady widths): a circle drawn at the screen's edge stops at this. */
 const WIDEST = 6;
+/**
+ * The brush is a little way in from the fingertip, toward the heart (CSS px): the finger rests just
+ * outside the line, so the line, the bark and the gap between them are all in sight while drawing.
+ */
+const REACH = 30;
+/** Where the brush is for a finger at (x, y) (device px). */
+function brushPoint(v: View, x: number, y: number): [number, number] {
+  const dx = x - v.cx, dy = y - v.cy, d = Math.hypot(dx, dy) || 1, k = Math.max(0, d - REACH * px) / d;
+  return [v.cx + dx * k, v.cy + dy * k];
+}
 /** How far each ring is eased toward round (a tree evens out its lumps over the years). */
 const ROUND = 0.15;
 /** Where the finger puts the line (steady widths from the bark), eased a little toward round. */
@@ -67,6 +78,8 @@ const daysDrawn = () => new Set(days).size;
 const paper = new Paper(512);
 // (The season's colour stays, half settled into the wood: green and gold to rust and violet, in oak.)
 paper.turn = 0.5;
+// (No dark drying rim: each ring's edge is its own painted line, so the wash makes no second one.)
+paper.wash.edgeFlow = 0;
 // Each year grown across its ring, as wood is (pale spring wood, a dark band of late summer's), in the
 // colour of its day's season: spring green, summer gold, autumn rust, winter violet (northern seasons).
 paper.across = (ring) => {
@@ -169,13 +182,14 @@ canvas.addEventListener('pointerdown', (e) => {
   const v = viewNow();
   if (tree.stroke && tree.resting) {
     // Taken up where it rested; or, touched anywhere else, the circle begins again from there.
-    const b = brushAt(tree, strokeView ?? v, 0, x, y);
+    const sv = strokeView ?? v, b = brushAt(tree, sv, 0, ...brushPoint(sv, x, y));
     if (tree.begin(e.timeStamp / 1000, b.a, rounded(b.a, b.u))) { painter = e.pointerId; trailAt(b.a, b.u); return; }
     tree.cancel(); trail = [];
   }
-  const b = brushAt(tree, v, 0, x, y);
-  // Inside the slice, a ring's day is read; anywhere outside it, the circle begins.
-  if (b.u < 0) { readDay(v, x, y); return; }
+  // Inside the slice, a ring's day is read; anywhere outside it, the circle begins (the brush a little
+  // way in from the finger).
+  if (brushAt(tree, v, 0, x, y).u < 0) { readDay(v, x, y); return; }
+  const b = brushAt(tree, v, 0, ...brushPoint(v, x, y));
   strokeView = v;
   if (tree.begin(e.timeStamp / 1000, b.a, rounded(b.a, b.u))) {
     painter = e.pointerId; paper.begin(tree); trailAt(b.a, b.u);
@@ -186,7 +200,7 @@ canvas.addEventListener('pointermove', (e) => {
   if (e.pointerId !== painter || !strokeView) return;
   const evs = typeof e.getCoalescedEvents === 'function' ? e.getCoalescedEvents() : [];
   for (const c of evs.length ? evs : [e]) {
-    const b = brushAt(tree, strokeView, 0, c.clientX * px, c.clientY * px);
+    const b = brushAt(tree, strokeView, 0, ...brushPoint(strokeView, c.clientX * px, c.clientY * px));
     tree.move(c.timeStamp / 1000, b.a, rounded(b.a, b.u));
     trailAt(b.a, b.u);
     if (!tree.stroke) break;
@@ -223,7 +237,7 @@ function readDay(v: View, x: number, y: number): void {
   lit = i; litAt = clock();
 }
 
-/** The ink, laid exactly where the finger is (angle a, u steady widths from the bark). */
+/** The paint, laid exactly where the brush is (angle a, u steady widths from the bark). */
 function trailAt(a: number, u: number): void {
   if (!strokeView) return;
   const t = clock(), last = trail[trail.length - 1], joined = last && Math.abs(last.a - a) < 0.5;
@@ -237,7 +251,7 @@ function trailAt(a: number, u: number): void {
   }
   // A brush: full and wet when unhurried, thin and dry when quick, tapering in as it touches down.
   const n = joined ? trail.length : 0;
-  const w = (3 + 5 * (1 - fast)) * Math.min(1, 0.3 + n / 8);
+  const w = (3.5 + 4.5 * (1 - fast)) * Math.min(1, 0.3 + n / 8);
   trail.push({ a, r, t, w: joined && n ? last.w + (w - last.w) * 0.35 : w * 0.4, fast });
 }
 function hear(): void {
@@ -303,8 +317,8 @@ function hideBetween(v: View, r0: (a: number) => number, r1: (a: number) => numb
 }
 
 /**
- * The latewood: a fine umber line along each ring's outer edge, as a painter draws it with a rigger,
- * where the ring is wide enough on the screen to show it (finer rings are left to the wash's tone).
+ * Each ring's edge: one fine line of the wood's umber, painted with a rigger, where the ring is wide enough on the screen to show it; finer rings are left to the wash's tone.
+ * It's the line the brush left, dried into the wood.
  */
 function drawLatewood(v: View): void {
   const n = tree.rings.length;
@@ -313,8 +327,8 @@ function drawLatewood(v: View): void {
     const w = v.s * (warpR(v.warp, meanR(i)) - warpR(v.warp, meanR(i - 1))) / px;
     const k = Math.max(0, Math.min(1, (w - 2.5) / 5));
     if (k <= 0) continue;
-    g.strokeStyle = `rgba(92,58,36,${(0.2 * k).toFixed(3)})`; g.lineWidth = (0.55 + 0.25 * k) * px;
-    ringPath(v, barkOf(i)); g.stroke();
+    ringPath(v, barkOf(i));
+    g.strokeStyle = `rgba(104,66,40,${(0.34 * k).toFixed(3)})`; g.lineWidth = 0.9 * px; g.stroke();
   }
 }
 
@@ -332,45 +346,39 @@ function drawBark(v: View): void {
   g.strokeStyle = 'rgba(58,38,26,0.78)'; g.lineWidth = 1.15 * px; ringPath(v, r, wob, K * 2); g.stroke();
 }
 
-/** A fast, steady little hash, 0 to 1: which bristles have run dry where. */
-function hash(x: number): number { const h = Math.sin(x * 127.1) * 43758.5453; return h - Math.floor(h); }
 
-/** The brush's line on the page: a wet body that thins and fades, and seven bristles that break up as it dries.
- *  Each piece is drawn edge to edge with the next (sharing its ends), so the translucent ink never doubles. */
-function drawBrush(g: CanvasRenderingContext2D, sv: View, t: number): void {
+/**
+ * The brush's line: the wood's own umber, as watercolour: a soft, translucent stroke, deepest down its
+ * middle, wide when unhurried, thin when quick, tapering in. Wet, it's glossy and dark; as
+ * it dries it pales and thins, sinking into the paper (where the ring's own edge is painted once it
+ * closes). Each piece is drawn edge to edge with the next, so the translucent paint never doubles.
+ */
+function drawBrush(g: CanvasRenderingContext2D, v: View, t: number): void {
   const n = trail.length;
   if (n < 2) return;
-  const pts = trail.map((q) => { const [x, y] = at(sv, q.a, q.r); return { x, y, life: Math.exp(-(t - q.t) / 5), q, nx: 0, ny: 0, hw: 0 }; });
+  const pts = trail.map((q) => { const [x, y] = at(v, q.a, q.r); return { x, y, life: Math.exp(-(t - q.t) / 3.5), q, nx: 0, ny: 0, hw: 0 }; });
   const lap = (i: number) => Math.abs(trail[i].a - trail[i - 1].a) > 0.5;
   for (let i = 0; i < n; i++) {
     const a = pts[i > 0 && !lap(i) ? i - 1 : i], b = pts[i + 1 < n && !lap(i + 1) ? i + 1 : i];
     const dx = b.x - a.x, dy = b.y - a.y, l = Math.hypot(dx, dy) || 1, p = pts[i];
-    p.nx = -dy / l; p.ny = dx / l; p.hw = 0.5 * p.q.w * (0.45 + 0.55 * p.life) * px;
+    p.nx = -dy / l; p.ny = dx / l; p.hw = 0.5 * p.q.w * (0.55 + 0.45 * p.life) * px;
   }
-  g.lineCap = 'butt';
+  const quad = (p: typeof pts[0], q: typeof pts[0], k0: number, k1: number) => {
+    g.beginPath();
+    g.moveTo(p.x + p.nx * k1 * p.hw, p.y + p.ny * k1 * p.hw); g.lineTo(q.x + q.nx * k1 * q.hw, q.y + q.ny * k1 * q.hw);
+    g.lineTo(q.x + q.nx * k0 * q.hw, q.y + q.ny * k0 * q.hw); g.lineTo(p.x + p.nx * k0 * p.hw, p.y + p.ny * k0 * p.hw);
+    g.closePath(); g.fill();
+  };
   for (let i = 1; i < n; i++) {
     const p = pts[i - 1], q = pts[i], life = q.life;
     if (life < 0.02 || lap(i)) continue;
-    // The wet body, with a faint bleed into the paper at its edges: both fade first.
-    const band = (k: number, alpha: number) => {
-      const bp = k * p.hw, bq = k * q.hw;
-      g.fillStyle = `rgba(30,24,20,${alpha.toFixed(3)})`;
-      g.beginPath();
-      g.moveTo(p.x + p.nx * bp, p.y + p.ny * bp); g.lineTo(q.x + q.nx * bq, q.y + q.ny * bq);
-      g.lineTo(q.x - q.nx * bq, q.y - q.ny * bq); g.lineTo(p.x - p.nx * bp, p.y - p.ny * bp);
-      g.closePath(); g.fill();
-    };
-    band(1.35, 0.07 * life * life);
-    band(0.7, 0.62 * life * life);
-    // The bristles: fine lines across the brush, each running dry in streaks as the stroke dries.
-    const dry = Math.min(0.85, 0.75 * (1 - life) + 0.35 * q.q.fast);
-    g.lineWidth = Math.max(0.6 * px, 0.2 * (p.hw + q.hw));
-    for (let j = 0; j < 7; j++) {
-      if (hash(j * 13.7 + Math.floor(i / 5) * 0.917) < dry) continue;
-      const o = (j / 6 - 0.5) * 1.8;
-      g.strokeStyle = `rgba(30,24,20,${(0.5 * life * (0.5 + 0.5 * hash(j + 0.5))).toFixed(3)})`;
-      g.beginPath(); g.moveTo(p.x + p.nx * o * p.hw, p.y + p.ny * o * p.hw); g.lineTo(q.x + q.nx * o * q.hw, q.y + q.ny * o * q.hw); g.stroke();
-    }
+    const wet = life * life;
+    // A soft stroke, its paint deepest down the middle and thinning to its edges, a little uneven along
+    // its length, as a loaded brush lays it; a faint bleed beyond while it's wet.
+    const tone = 0.85 + 0.15 * Math.sin(i * 0.37 + q.q.a * 3);
+    g.fillStyle = `rgba(140,96,62,${(0.1 * wet).toFixed(3)})`; quad(p, q, 1, 1.4); quad(p, q, -1.4, -1);
+    g.fillStyle = `rgba(112,70,42,${(0.3 * life * tone).toFixed(3)})`; quad(p, q, -1, 1);
+    g.fillStyle = `rgba(92,56,32,${(0.3 * life * tone + 0.2 * wet).toFixed(3)})`; quad(p, q, -0.5, 0.5);
   }
 }
 
