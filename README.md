@@ -831,3 +831,10 @@ Choosing whether a fall was icy afresh at each try at a landing place had also l
 * **Surtsey, 1967.** Its craters were in the north of the island and the lava ran south, so the outline lies south of the vent, with a spit to the north. Only hard land counts, not loose ash, so a fresh ash cone can't pass for the island. 70% alike will do.
 * **Olympus Mons.** Long north to south, narrow east to west: pour most to the north and south. 62% alike will do.
 * Bots: played as meant, both are made in one to four minutes. Played carelessly or at random, neither is.
+
+**Clearer pressure worlds, and chilling lava with a touch.**
+* **Enceladus** names Saturn ("the big ringed planet at the top left"), and a burst facing away says "The burst missed Saturn's ring: turn the volcano towards Saturn first".
+* **Triton:** a burst in the dark says "In the dark, no geyser: turn the volcano into the sunlight first".
+* **Mercury:** when the far side breaks open, dust and embers are thrown up there, the view knocks, the hand feels it, and it says how high the far side has risen. The world now turns to show it even with a finger on the screen.
+* **Europa's** aim says when: "erupt while the circle round the volcano is closed".
+* **Chilling** (`chill`), as the people of Heimaey chilled their lava with seawater in 1973 and saved their harbour. A touch on running lava, away from the vent, sets it there at once in a low wall, with a puff of steam, so what comes after runs round it. It's taught once, after a couple of flows. While the eruption circle is closed, a touch still erupts, so a timed tap is never lost to it.

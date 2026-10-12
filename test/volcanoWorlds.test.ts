@@ -138,6 +138,20 @@ describe('the Moon', () => {
   });
 });
 
+describe('chilling lava', () => {
+  it('sets running lava where it is touched, in a low wall, but not at the vent or on bare ground', () => {
+    const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('mars').rules);
+    const at = { x: Math.sin(0.2), y: 0, z: Math.cos(0.2) }, v = nearest(at.x, at.y, at.z);
+    expect(pl.chill(at)).toBe(false);
+    pl.lava[v] = 0.02;
+    const before = pl.rock[v];
+    expect(pl.chill({ x: 0, y: 0, z: 1 })).toBe(false);
+    expect(pl.chill(at)).toBe(true);
+    expect(pl.lava[v]).toBe(0);
+    expect(pl.rock[v]).toBeGreaterThan(before + 0.02);
+  });
+});
+
 describe('surveys', () => {
   it('lay a real outline round the vent, and match what is made against it', () => {
     const s = SURVEYS.surtsey!, pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('surtsey').rules), mask = surveyMask(topo, pl.plume, s);

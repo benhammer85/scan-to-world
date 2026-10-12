@@ -1237,7 +1237,7 @@ export class Planet {
       this.orbit += fed;
       left -= fed;
       this.tell('Ice reaches the ring');
-    }
+    } else if (!blast && this.k.ringShare > 0) this.tell("The burst missed Saturn's ring: turn the volcano towards Saturn first");
     if (!blast && this.k.orbitShare > 0 && volume > this.k.explosive) {
       // (Any burst throws some: counted from a little under the burst point, so a burst when the smoke
       // is heavy makes a start, and a bigger one, held longer, throws more.)
@@ -1264,6 +1264,7 @@ export class Planet {
     const ashShare = this.k.wet > 0 && this.rock[v] < this.k.wet ? 1 : this.k.ashShare;
     // (The field book: a fountain from a dry vent, let go nearly full, flung high enough for the wind to spin its lava into glass.)
     if (this.k.formations && !blast && ashShare < 1 && volume >= this.capNow * 0.9 && !this.found.includes('hair')) { this.found.push('hair'); this.tell("Found: Pele's hair. A tall lava fountain, spun by the wind into threads of glass"); }
+    if (!blast && this.k.streak > 0 && this.star && !geysering) this.tell('In the dark, no geyser: turn the volcano into the sunlight first');
     if (geysering) this.geyser(left * ashShare * s);
     else this.fallOfAsh(v, left * ashShare * s, (blast ? 3 : 1) * far);
     if (!blast) this.tally.bursts++;
@@ -2333,13 +2334,43 @@ export class Planet {
     if (this.k.formations && !this.found.includes('rootless')) { this.found.push('rootless'); this.tell('Found: rootless cones. Lava over ice in the ground boils it, and steam blasts up small cones'); }
   }
 
+  /**
+   * A touch on running lava chills it where it lies, as the people of Heimaey chilled theirs with seawater in 1973:
+   * it sets at once, in a low wall, and what comes after runs round it. Not at the vent itself (a touch there erupts).
+   */
+  chill(at: { x: number; y: number; z: number }): boolean {
+    const p = this.topo.basePositions, q = this.plume, r = 0.035;
+    if (Math.hypot(at.x - q.x, at.y - q.y, at.z - q.z) < 0.06) return false;
+    const near: number[] = [];
+    let running = false;
+    for (let v = 0; v < this.rock.length; v++) {
+      const d = Math.hypot(p[v * 3] - at.x, p[v * 3 + 1] - at.y, p[v * 3 + 2] - at.z);
+      if (d > r) continue;
+      near.push(v);
+      if (this.lava[v] > this.k.thin) running = true;
+    }
+    if (!running) return false;
+    for (const v of near) {
+      const d = Math.hypot(p[v * 3] - at.x, p[v * 3 + 1] - at.y, p[v * 3 + 2] - at.z);
+      this.rock[v] += this.lava[v] + 0.006 * (1 - d / r);
+      if (this.lava[v] > 2e-5) this.laid[v] = 0;
+      this.lava[v] = 0;
+    }
+    this.moltenKnown = false;
+    this.chilled++;
+    if (this.chilled === 1) this.tell('Chilled: the lava sets where you touched it, and the flow runs on another way');
+    return true;
+  }
+  /** How many times lava has been chilled by a touch. */
+  chilled = 0;
+
   /** Mercury: a burst's shock arriving at the far side, and erupting there. */
   private farSide(): void {
     if (!this.far || !this.echoes.length || this.echoes[0].at > this.seconds) return;
     const e = this.echoes.shift()!, v = this.vertexAt(this.far), a = e.volume * this.scale;
     this.eruptions.push({ vertex: v, flank: v, left: a, rate: a / this.k.pour, total: a, t: 0, dur: this.k.pour * 1.5 });
     this.echoed++;
-    this.tell('The far side breaks open');
+    this.tell(`The far side breaks open, and rises: ${Math.round(this.farRaised * 40)} km so far`);
   }
 
   /** How squarely the ground at a vertex faces the star: 0 on the night side and at the edge, to 1 under it. */

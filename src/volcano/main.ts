@@ -1668,6 +1668,8 @@ let aimDone = 0, aimOf = WORLD.goal === 'nests' ? NESTS : WORLD.goal === 'white'
 let peakReached = false;
 /** How much of the aim is done now, reckoned afresh. */
 function reckonAim(): void {
+  // (Chilling, taught once on any world, when lava is running and a flow or two has gone.)
+  if (!CHILL_TOLD && HAND && !LAMP && !MARBLE && begun && !ending && planet.tally.flows >= 2 && planet.molten > 0.01) { CHILL_TOLD = true; remember('volcano.learned.chill', '1'); announce('Touch running lava to chill it: it sets there, and the flow turns aside', true); }
   // (The field book: what the rock has made so far, kept for good the moment it's made.)
   for (; foundSeen < planet.found.length; foundSeen++) if (keepFound(planet.found[foundSeen])) feel(20);
   // (Judged as it stands once the fire is out, as a surveyor would map it: ash heaped and washed away again doesn't count.)
@@ -1730,7 +1732,7 @@ function reckonAim(): void {
   else if (MARBLE) { if (planet.seconds - marbledAt >= 0.5) { marbledAt = planet.seconds; aimDone = Math.round(100 * planet.marbled); } aimOf = 100; }
   else { aimDone = planet.basins.filter((b) => planet.flooded(b) >= FLOODED_ENOUGH).length; aimOf = planet.basins.length; }
 }
-let calmHeld = 0, calmAt = 0, litFor = 0, litAt = 0, clearOfSea = false, foundSeen = 0;
+let calmHeld = 0, calmAt = 0, litFor = 0, litAt = 0, clearOfSea = false, foundSeen = 0, CHILL_TOLD = remembered('volcano.learned.chill') === '1';
 /** The survey's outline, laid round the vent as the world began. */
 let surveyMaskNow: Uint8Array | null = null, surveyNow = 0;
 const story: { t: number; v: number; sky: number; n: number }[] = [];
@@ -1779,7 +1781,7 @@ const AIM: Record<string, string> = {
   height: `Build a mountain ${HEIGHT.target} km tall.`,
   cover: `Cover ${COVER >= 64 && COVER <= 70 ? 'two thirds' : COVER >= 48 && COVER <= 52 ? 'half' : `${COVER}%`} of the moon in one sheet of new white ice.`,
   plumes: `Make ${PLUMES} big eruptions, each in a new place.`,
-  feed: "Fill the big planet's ring with ice.",
+  feed: "Fill Saturn's ring with ice.",
   round: 'Fill the low ground to even the surface.',
   ridge: 'Build a ridge all the way round the dotted line.',
   lamp: 'Fill the dotted shore with glowing blobs.',
@@ -1800,7 +1802,7 @@ const AIM: Record<string, string> = {
   nests: `Grow an island where ${NESTS} seabirds nest at once.`,
   giant: `Keep a mountain ${HEIGHT.target} km high standing in the night until the fire is out.`,
   oxygen: 'Turn the orange sky blue.',
-  chaos: `Crack the ice in ${FIELDS} places.`,
+  chaos: `Crack the ice in ${FIELDS} places: erupt while the circle round the volcano is closed.`,
   streaks: `Make ${FIELDS} dark streaks on the ice.`,
   town: 'Save the town from the lava.',
   marble: 'Swirl the lava and the blue together in the circle.',
@@ -1819,7 +1821,7 @@ const TIP: Record<string, string> = {
   height: `${HOLD} to pour. Lava runs down the screen: turn the world between pours, so the mountain grows on every side.`,
   cover: `${POUR} The water freezes into new white ice. Only your biggest single sheet counts, so grow it outward from its edge: turn the world so the edge is just below the volcano.`,
   plumes: `The circle round the volcano closes only at high tide. Then ${COMPUTER ? 'click' : 'tap'} the world to erupt, and turn the world to start the next one outside the dotted circles.`,
-  feed: `Turn the volcano towards the big planet, at the top left. ${ERUPT} The ring fades, so keep going.`,
+  feed: `Saturn is the big ringed planet at the top left. Turn the volcano towards it. ${ERUPT} Ice from a burst facing Saturn reaches its ring; facing anywhere else, it falls back. The ring fades, so keep going.`,
   round: `Fill the dotted hollows. Turn one to just below the volcano, and ${HOLD.toLowerCase()} to pour into it. Keep off the hatched high ground: lava there makes the surface more uneven.`,
   ridge: 'Lava runs to the dotted line by itself. Turn a bare part of the line to the top.',
   lamp: `Blobs float to the top of the world. Turn the dotted shore to the top. A blob grows at the volcano: let it grow big, as big blobs stay warm long enough to reach the shore, then ${COMPUTER ? 'click' : 'tap'} to let it go before the circle round it closes: then it bursts.`,
@@ -2254,6 +2256,12 @@ function onWorld(x: number, y: number): THREE.Vector3 | null {
 const upMark = WORLD.rules.lamp ? mark((g) => { g.lineWidth = 2.5; g.beginPath(); g.arc(32, 32, 16, 0, Math.PI * 2); g.stroke(); g.beginPath(); g.arc(32, 32, 3.5, 0, Math.PI * 2); g.fill(); }) : null;
 /** One hand: whether a finger is pouring, and since when. */
 let pourHeld = false, pourSince = 0;
+/** Lava chilled by a touch: a puff of steam where it set, and a knock in the hand. */
+function chillSeen(at: THREE.Vector3): void {
+  feel(14);
+  const v = nearestAbove(at), p = topo.positions;
+  if (!BARE) for (let i = 0; i < 5; i++) puffs.add('ash', p[v * 3], p[v * 3 + 1], p[v * 3 + 2], 0.25, Math.random);
+}
 /** One hand: a tap lets all the heat out at once, an eruption, as big as it's been let grow. */
 function tapErupt(): void {
   if (!begun || lapsing() || ending || planet.over || planet.pressure < planet.k.least) return;
@@ -2281,7 +2289,9 @@ const gestures = new GestureRecognizer(
     // (Except on the glass world played on a computer, which can't be tipped: there a click lets the blob go.)
     tap(x, y) {
       if (LAMP && COMPUTER) { holdShut(); letGo(); }
-      if (HAND && onWorld(x, y)) tapErupt();
+      // (A touch on running lava, away from the vent, chills it there; anywhere else, or once the circle round the volcano
+      // has closed and an eruption is what's wanted, it erupts.)
+      if (HAND) { const at = onWorld(x, y); if (at && !LAMP && !MARBLE && begun && !lapsing() && !ending && !((readyShare() ?? 0) >= 1) && planet.chill(at)) { chillSeen(at); return; } if (at) tapErupt(); }
     },
     spin(dx, dy) { spin.set(0, 0); rotate(dx * 0.006, dy * 0.006); },
     fling(vx, vy) { spin.set(vx * 0.006, vy * 0.006); },
@@ -2539,7 +2549,7 @@ const ACTION_WORDS = /^(A stone is coming|The ground is sinking|The heat is near
  * above were said, and nearly every world's own word on what had just happened, a crack too late, a comet frozen, a
  * burst not at high tide, the far side rising, was kept quiet.)
  */
-const EXPLAIN = /^(It's tumbling again|The shock|Too late|Too early|Too small|Too near|A big eruption|A giant wave|The island is blown|The far side|A dark streak|A streak, but|The ice cracks|A mound|A lava dome|A dome, but|The mound slumps|A blob reaches|Ice reaches the ring|An icy comet|Ice melted|The ice froze|Stone caught|Caught in the glow|The eruption's gas|The ground gives way|The last of the sea|The sea is nearly gone|The day has melted|The volcano is in daylight|That lava|A seabird|A nest|Found:|The island stands|Too tall for its width|A dust storm is coming|Theia|Too big to hold|The big stone|A stone too big)/;
+const EXPLAIN = /^(It's tumbling again|The shock|Too late|Too early|Too small|Too near|A big eruption|A giant wave|The island is blown|The far side|A dark streak|A streak, but|The ice cracks|A mound|A lava dome|A dome, but|The mound slumps|A blob reaches|Ice reaches the ring|An icy comet|Ice melted|The ice froze|Stone caught|Caught in the glow|The eruption's gas|The ground gives way|The last of the sea|The sea is nearly gone|The day has melted|The volcano is in daylight|That lava|A seabird|A nest|Found:|The island stands|Too tall for its width|A dust storm is coming|Theia|Too big to hold|The big stone|A stone too big|The burst missed|In the dark|Chilled)/;
 function announce(text: string, lesson = false): void {
   text = words$(text);
   if (BARE && !ending) return;
@@ -2574,6 +2584,7 @@ function words(): void {
     // Only the few things worth a word are said, quietly, at the foot of the page.
     if (!ending && (QUIET_WORDS.test(text) || EXPLAIN.test(text))) announce(WORLD.goal === 'gather' ? text.replace(/^A stone is coming$/, 'A stone is coming: turn its dotted circle to the top').replace(/^Stone caught: more heat$/, `Caught in the glow: ${planet.tally.caught} of ${GATHER}`) : text);
     if (/Theia and the world/.test(text)) feel([60, 120, 90]);
+    if (/^The far side breaks open/.test(text) && planet.far) farBreaks();
     if (/wish kept|takes in|Land breaks/.test(text)) feel(12);
     else if (/The ground gives way/.test(text)) feel([30, 80, 60]);
     else if (/The stone falls/.test(text)) feel(30);
@@ -3830,6 +3841,16 @@ function breathe(dt: number): void {
  * stops it where it is, and it's left there.
  */
 let farBursts = 0, farAt = -1, farFrom: THREE.Quaternion | null = null;
+/** Mercury: the far side breaking open, seen: dust and embers thrown up there, a knock, and the hand feels it. */
+function farBreaks(): void {
+  feel([40, 60, 40]);
+  knock(0.6);
+  const f = planet.far!, p = topo.positions;
+  for (let v = 0; v < N; v += 7) {
+    const d = Math.hypot(base[v * 3] - f.x, base[v * 3 + 1] - f.y, base[v * 3 + 2] - f.z);
+    if (d < f.r && Math.random() < 0.5 && !BARE) { puffs.add('ash', p[v * 3], p[v * 3 + 1], p[v * 3 + 2], 0.5, Math.random); if (Math.random() < 0.5) puffs.add('ember', p[v * 3], p[v * 3 + 1], p[v * 3 + 2], 0.7, Math.random); }
+  }
+}
 const farTo = new THREE.Quaternion(), FAR_V = new THREE.Vector3(), TOWARD_US = new THREE.Vector3(0, 0, 1);
 const FAR_IN = 1.6, FAR_HOLD = 3.5, FAR_OUT = 1.6;
 function farLook(): void {
@@ -3838,7 +3859,7 @@ function farLook(): void {
   if (farAt < 0) return;
   const t = planet.seconds - farAt;
   if (t < 0) return;
-  if (document.body.classList.contains('touching') || ending) { farAt = -1; farFrom = null; return; }
+  if (ending) { farAt = -1; farFrom = null; return; } // (a finger on the world no longer stops it: the moment was missed by anyone holding to pour)
   if (!farFrom) {
     farFrom = group.quaternion.clone();
     FAR_V.set(planet.far.x, planet.far.y, planet.far.z).normalize().applyQuaternion(farFrom);
