@@ -1589,7 +1589,7 @@ export class Planet {
       this.stormComing = this.stormIn;
       // (Where storms have a side: a new one each time, round the mountain.)
       if (this.k.stormSide > 0) { const q = this.plume, t1 = unit(cross(q, Math.abs(q.y) < 0.9 ? { x: 0, y: 1, z: 0 } : { x: 1, y: 0, z: 0 })), t2 = cross(q, t1), a = this.rand() * Math.PI * 2; this.stormFrom = { x: t1.x * Math.cos(a) + t2.x * Math.sin(a), y: t1.y * Math.cos(a) + t2.y * Math.sin(a), z: t1.z * Math.cos(a) + t2.z * Math.sin(a) }; }
-      this.tell(this.k.stormSide > 0 ? 'A dust storm is coming. The stripes show which side it will wear down: pour fresh lava there' : 'A dust storm is coming');
+      this.tell(this.k.stormSide > 0 ? 'A dust storm is coming. It will wear down the side the wind blows onto: pour fresh lava there' : 'A dust storm is coming');
     }
     if (this.stormComing !== null) this.stormComing = Math.max(0, this.stormIn);
     if (this.stormIn <= 0) { this.storm = true; this.stormComing = null; this.stormLeft = this.k.stormLasts; }

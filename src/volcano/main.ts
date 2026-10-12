@@ -59,6 +59,7 @@ import { Chain, CHAIN } from './chain';
 import { measureSecond, type Second } from './second';
 import { feel, keepImage, NATIVE, rumble, rumbles, tap } from './native';
 import { bookLine, keepFound } from './fieldbook';
+import { WindStreaks } from './windStreaks';
 import { madeAt, SURVEYS, surveyLine, surveyMask, surveyMatch } from './surveys';
 import { SmokeSign } from './smokeSign';
 import { skyBody, starBloom } from './skyBody';
@@ -1287,6 +1288,9 @@ if (WORLD.goal === 'calm') for (const st of [aimInk, aimPencil]) { st.linger = 0
 /** The asteroid: its high ground in short strokes, as old charts hatched a height: where lava makes it lumpier, so keep off it. */
 const highHatch = new Stipple('#' + new THREE.Color(AIM_INK).multiplyScalar(0.6).getHexString(), 'dash', 6);
 highHatch.byDirection = true;
+/** Mars: a storm's wind, as faint streaks drifting onto the side it wears (see windStreaks.ts). */
+const wind = (WORLD.rules.stormSide ?? 0) > 0 ? new WindStreaks(P.landInk) : null;
+if (wind) group.add(wind.object);
 /** Mars: the ice under the ground, in pale blue stipple. */
 const frostDots = new Stipple('#7fa6c4', 'dot', 2);
 frostDots.byDirection = true;
@@ -1851,7 +1855,7 @@ const TIP: Record<string, string> = {
 };
 /** A world's own tip, where its aim is shared with others but the way to it isn't. */
 const OWN_TIP: Partial<Record<WorldId, string>> = {
-  mars: `${HOLD} to pour lava. It flows down the screen, so turn the planet between pours. The dotted ring shows how wide the base must be before the mountain can grow taller: pour down any side where the ring is still faint. If the mountain gets too tall for its narrowest side, that side collapses. Before a dust storm, pour fresh lava on the striped side: storms wear away old rock, but not fresh lava.`,
+  mars: `${HOLD} to pour lava. It flows down the screen, so turn the planet between pours. The dotted ring shows how wide the base must be before the mountain can grow taller: pour down any side where the ring is still faint. If the mountain gets too tall for its narrowest side, that side collapses. Before a dust storm, watch which side the wind blows onto, and pour fresh lava there: storms wear away old rock, but not fresh lava.`,
   hollow: `${HOLD} to pour a little lava, then stop for a while. If cracks appear around the volcano, stop until they fade, or the top collapses. Don't ${COMPUTER ? 'click' : 'tap'} to erupt: a big eruption empties the ground underneath all at once.`,
 };
 if (SURVEY) { AIM[WORLD.goal] = SURVEY.aim; OWN_TIP[WORLD.id] = SURVEY.tip; }
@@ -1918,7 +1922,7 @@ function nextLine(): string {
   const stone = planet.stoneDue;
   if (stone !== null && stone <= SAY_BEFORE) out.push(planet.impact ? `A stone lands in ${Math.ceil(stone)} s` : 'A stone is coming');
   const storm = planet.stormDue;
-  if (storm !== null && storm <= SAY_BEFORE) out.push(planet.k.stormSide > 0 ? (storm <= 0 ? 'Dust storm: it wears down the striped side. Fresh lava there survives it' : `Dust storm in ${Math.ceil(storm)} s: pour fresh lava on the striped side to protect it`) : storm <= 0 ? 'Dust storm: it wears down old rock, but not fresh lava' : `Dust storm in ${Math.ceil(storm)} s: pour now, fresh lava survives it`);
+  if (storm !== null && storm <= SAY_BEFORE) out.push(planet.k.stormSide > 0 ? (storm <= 0 ? 'Dust storm: it wears down the side the wind blows onto. Fresh lava there survives it' : `Dust storm in ${Math.ceil(storm)} s: pour fresh lava on the side the wind blows onto`) : storm <= 0 ? 'Dust storm: it wears down old rock, but not fresh lava' : `Dust storm in ${Math.ceil(storm)} s: pour now, fresh lava survives it`);
   if (planet.k.tide > 0) {
     const p = planet.k.tidePeriod, phase = ((planet.seconds / p) % 1 + 1) % 1, until = ((0.25 - phase + 1) % 1) * p;
     if (planet.tideNow > 0.8) out.push('High tide'); else if (until <= SAY_BEFORE) out.push(`High tide in ${Math.ceil(until)} s`);
@@ -2124,12 +2128,7 @@ function drawAim(now: number): void {
         for (let i = 0; i < 4; i++) pts.push(at(((k + (i + 0.5) / 4) / Planet.FLANKS) * Math.PI * 2 - Math.PI, need));
         onGround(pts, planet.reach[k] >= need ? ink : pencil);
       }
-      const w = planet.stormFrom;
-      if (w && (planet.stormComing !== null || planet.storm)) {
-        const a0 = Math.atan2(w.x * t2.x + w.y * t2.y + w.z * t2.z, w.x * t1.x + w.y * t1.y + w.z * t1.z), pts: THREE.Vector3[] = [];
-        for (let i = -4; i <= 4; i++) for (const r of [0.1, 0.16, 0.22]) pts.push(at(a0 + i * 0.09, r));
-        onGround(pts, hatch);
-      }
+      // (The storm's side is shown by its wind now, drifting onto it: see windStreaks.ts.)
       const ice: number[] = [];
       for (let v = 3; v < N; v += 3) if (planet.frozen[v]) { const r = groundOver(v); ice.push(base[v * 3] * r, base[v * 3 + 1] * r, base[v * 3 + 2] * r); }
       aimInk.set(ink); aimPencil.set(pencil); highHatch.set(hatch); frostDots.set(ice);
@@ -2413,7 +2412,7 @@ const CUES: Cue[] = [
   ...(FREE ? [] : [{ ready: () => true, get say() { return words$((OWN_TIP[WORLD.id] ?? TIP[WORLD.goal] ?? '').trim()); }, done: (s: number) => s > 16 }]), // (said when it's reached, by then every word table is made)
   ...(WORLD.rules.rises ? [{ ready: () => true, say: 'The volcano moves to whichever part of the planet is at the top: turn the planet to move it', done: (s: number) => s > 20 }] : []),
   // (Mars: a storm wears old rock but not fresh lava, so the first one coming is the moment to say so.)
-  ...(planet.k.stormFresh > 0 ? [{ ready: () => planet.stormComing !== null, hand: 'hold' as const, say: planet.k.stormSide > 0 ? 'A dust storm is coming. The stripes show which side it will wear down: pour fresh lava there. Fresh lava doesn\'t wear away' : 'A dust storm is coming: pour now. Fresh lava doesn\'t wear away', done: (s: number) => s > 12 }] : []),
+  ...(planet.k.stormFresh > 0 ? [{ ready: () => planet.stormComing !== null, hand: 'hold' as const, say: planet.k.stormSide > 0 ? 'A dust storm is coming. It will wear down the side the wind blows onto: pour fresh lava there. Fresh lava doesn\'t wear away' : 'A dust storm is coming: pour now. Fresh lava doesn\'t wear away', done: (s: number) => s > 12 }] : []),
   ...(WORLD.goal === 'ridge' ? [{ ready: () => planet.tally.flows + planet.tally.bursts > 0, say: 'The spin carries the lava to the dotted line', done: (s: number) => s > 25 }] : []),
   // (Only where a burst is the way: on the worlds that want pouring, or a release short of a burst, or none
   // at all, it pointed the wrong way, and on the hollow world it emptied the ground.)
@@ -4057,6 +4056,7 @@ const loop = (): void => {
   for (const s of [...kindDots, foam]) s.update(dt);
   if (WORLD.goal === 'round' || WORLD.goal === 'basins' || (WORLD.rules.taper ?? 0) > 0) highHatch.update(dt);
   if ((WORLD.rules.groundIce ?? 0) > 0) frostDots.update(dt);
+  wind?.update(dt, ending ? null : planet.stormFrom, planet.plume, planet.storm ? 1 : planet.stormComing !== null ? 0.5 : 0);
   puffs.update(dt * speed);
   if (begun) breathe(dt);
   inTheHand();
