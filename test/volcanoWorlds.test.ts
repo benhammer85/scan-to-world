@@ -333,6 +333,25 @@ describe('Mars', () => {
     expect(narrow.fell).toBeGreaterThan(0.01);
     expect(wide.slides).toBe(0);
   });
+  it('spreads a fallen side over a wide apron, never a spike, however wide the mountain', () => {
+    const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('mars').rules);
+    pl.stonesFall = false;
+    run(pl, 1.2);
+    const r = 0.44, before = new Float32Array(topo.vertexCount);
+    for (let v = 0; v < topo.vertexCount; v++) { const d = Math.acos(Math.min(1, p[v * 3 + 2])); if (d < r) { pl.rock[v] = pl.start[v] + 0.7 * (1 - d / r) + 0.05; pl.laid[v] = 0; } }
+    before.set(pl.rock);
+    run(pl, 3);
+    expect(pl.slides).toBeGreaterThan(0);
+    // (Beyond the mountain: how high the debris stands at most, and over how much ground. It once piled on a sliver into a spike.)
+    let rise = 0, spread = 0;
+    for (let v = 0; v < topo.vertexCount; v++) {
+      if (Math.acos(Math.min(1, p[v * 3 + 2])) <= r) continue;
+      rise = Math.max(rise, pl.rock[v] - before[v]);
+      if (pl.rock[v] - before[v] > 0.005) spread++;
+    }
+    expect(spread).toBeGreaterThan(60);
+    expect(rise).toBeLessThan(0.25);
+  });
 });
 
 describe('Surtsey', () => {

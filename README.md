@@ -870,3 +870,7 @@ Choosing whether a fall was icy afresh at each try at a landing place had also l
 **The field book page, and ash you can see.**
 * **Field book** (`#book`): opened from the foot of the worlds list ("Field book · 4 of 32 found"). Every world's two formations, chapter by chapter: found ones with how they form; the rest as "Not found yet", with a plain hint for finding them (`hint` in fieldbook.ts).
 * **The Drying Seas' ash** (`windStreaks.ts`, `drift`): while an eruption's ash shades the sea, grey streaks drift west to east over the sea round the volcano, thicker the more ash there is, fading as it wears off. You see when the sea is shaded and when the shade is going.
+
+### Mars: no more debris spikes
+
+When a side of the mountain gave way on a very wide mountain, the fallen rock was dumped on the thin strip of ground at the edge of the area the collapse could reach, and it stacked up into a tall spike. The apron now always spreads over a band 0.23 rad wide just outside the mountain (the flank sectors reach out to 0.65 rad for this, while the mountain's own width is still measured within 0.42), with gentler ridges. A test checks a collapse of a very wide, too-tall mountain spreads its debris over many points and never raises one far.

@@ -1598,6 +1598,8 @@ export class Planet {
   /** The sides of a mountain, round its vent, as Mars reckons them. */
   static readonly FLANKS = 8;
   /** The way round the vent each vertex near it lies (its sector), and how far out; -1 beyond. Reckoned with the vent where it is. */
+  /** Mars: how far out from the vent (radians) the mountain is reckoned. */
+  static readonly MOUNT = 0.42;
   private flankSector: Int8Array | null = null;
   private flankR: Float32Array | null = null;
   private flankAt = -1;
@@ -1609,7 +1611,8 @@ export class Planet {
     const t1 = unit(cross(q, Math.abs(q.y) < 0.9 ? { x: 0, y: 1, z: 0 } : { x: 1, y: 0, z: 0 })), t2 = cross(q, t1);
     for (let v = 0; v < n; v++) {
       const x = p[v * 3], y = p[v * 3 + 1], z = p[v * 3 + 2], r = Math.acos(Math.max(-1, Math.min(1, x * q.x + y * q.y + z * q.z)));
-      if (r > 0.42) { this.flankSector[v] = -1; continue; }
+      // (Out past the mountain's own ground too, to 0.65, so a side's fallen apron always has ground to spread on.)
+      if (r > 0.65) { this.flankSector[v] = -1; continue; }
       const a = Math.atan2(x * t2.x + y * t2.y + z * t2.z, x * t1.x + y * t1.y + z * t1.z);
       this.flankSector[v] = Math.floor(((a + Math.PI) / (Math.PI * 2)) * F) % F;
       this.flankR[v] = r;
@@ -1623,7 +1626,7 @@ export class Planet {
     this.reach.fill(0);
     for (let v = 0; v < this.rock.length; v++) {
       const s = this.flankSector![v];
-      if (s >= 0 && this.laid[v] < 1e5 && this.ash[v] < 0.4 && this.rock[v] - this.start[v] > this.k.baseThick && this.flankR![v] > this.reach[s]) this.reach[s] = this.flankR![v];
+      if (s >= 0 && this.flankR![v] <= Planet.MOUNT && this.laid[v] < 1e5 && this.ash[v] < 0.4 && this.rock[v] - this.start[v] > this.k.baseThick && this.flankR![v] > this.reach[s]) this.reach[s] = this.flankR![v];
     }
   }
   /** Mars: how wide (radians out from the vent, on every side) the mountain must be to stand this high (in height). */
@@ -1646,8 +1649,7 @@ export class Planet {
     const p = this.topo.basePositions;
     let gone = 0;
     for (let v = 0; v < this.rock.length; v++) {
-      const sec = this.flankSector![v]; if (sec < 0) continue;
-      const r = this.flankR![v];
+      const sec = this.flankSector![v], r = this.flankR![v]; if (sec < 0 || r > Planet.MOUNT) continue;
       // (Whatever stands above what the side can hold falls back; and the side itself slides, most from high on it.)
       let take = Math.max(0, this.rock[v] - this.k.floor - allowed) * this.k.collapseTakes;
       if (sec === s && r < 0.22) take += Math.max(0, this.rock[v] - this.start[v]) * this.k.collapseTakes * 0.5 * (1 - r / 0.22);
@@ -1656,13 +1658,14 @@ export class Planet {
       this.rock[v] -= take; gone += take; this.lava[v] = 0;
     }
     if (gone <= 0) return;
-    // (Out beyond the side, in ridges and hummocks, not an even sheet.)
-    const w = this.next, from = Math.max(0.2, this.reach[s]);
+    // (Out beyond the side, in ridges and hummocks, not an even sheet; and always over a band wide enough to hold it,
+    // however far the side reached, so it can't pile up on a sliver of ground into a spike.)
+    const w = this.next, from = Math.min(Math.max(0.2, this.reach[s]), Planet.MOUNT);
     let sum = 0;
     for (let v = 0; v < this.rock.length; v++) {
       w[v] = 0;
       if (this.flankSector![v] !== s || this.flankR![v] < from) continue;
-      w[v] = Math.max(0, (1 - (this.flankR![v] - from) / 0.2) * (0.5 + 0.5 * Math.sin(p[v * 3] * 90 + p[v * 3 + 1] * 70) * Math.cos(p[v * 3 + 2] * 80)));
+      w[v] = Math.max(0, (1 - (this.flankR![v] - from) / 0.23) * (0.75 + 0.25 * Math.sin(p[v * 3] * 90 + p[v * 3 + 1] * 70) * Math.cos(p[v * 3 + 2] * 80)));
       sum += w[v];
     }
     if (sum > 0) for (let v = 0; v < this.rock.length; v++) if (w[v] > 0) { this.rock[v] += (gone * w[v]) / sum; this.ash[v] = Math.max(this.ash[v], 0.5); }
