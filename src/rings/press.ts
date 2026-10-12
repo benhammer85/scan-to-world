@@ -184,7 +184,7 @@ const plural = (n: number, one: string, many: string) => `${n.toLocaleString()} 
 function showScore(): void {
   if (!scoreEl) return;
   const best = bestOf();
-  scoreEl.textContent = run.rings || run.score ? `ring ${Math.min(RUN, run.rings + 1)} of ${RUN} · ${run.score.toLocaleString()}` : best ? `best ${best.toLocaleString()}` : '';
+  scoreEl.textContent = run.rings || run.score ? `Ring ${Math.min(RUN, run.rings + 1)} of ${RUN} · ${plural(run.score, 'point', 'points')}` : best ? `Best: ${best.toLocaleString()}` : '';
 }
 /**
  * A ring's points: closeness (1 on the edge, a half at 5 px off, a sixth at 25; over the edge counts as
@@ -209,7 +209,7 @@ function endRun(): void {
   if (isBest) { best = run.score; try { localStorage.setItem('annulus.challenge', String(best)); } catch { /* not kept */ } }
   window.setTimeout(() => {
     words.classList.add('over');
-    say(`${RUN} rings: ${plural(run.score, 'point', 'points')}${isBest ? ', your best' : `; best ${best.toLocaleString()}`}. Touch to begin again.`, 1e5);
+    say(`Score: ${run.score.toLocaleString()}. ${isBest ? 'New best!' : `Best: ${best.toLocaleString()}.`} Tap to play again.`, 1e5);
     if (scoreEl) scoreEl.textContent = '';
   }, 1400);
 }
@@ -311,7 +311,7 @@ for (const type of ['pointerup', 'pointercancel'] as const) canvas.addEventListe
   // Let go most of the way round, the ring is closed for you; earlier, the line rests, to be taken up.
   if (tree.finish(CHALLENGE ? 0.95 : 0.8)) hear();
   // (A whole loop drawn, but not round the slice: let go, and said where, once the hand is off.)
-  else if (loop.closed && tree.stroke) { tree.cancel(); say('Draw the circle round the slice.', 4); }
+  else if (loop.closed && tree.stroke) { tree.cancel(); say('Draw around the circle.', 4); }
   else { tree.lift(); restAt = clock(); }
 });
 /** When the line was let go to rest (a line left resting a while fades away: no stray marks). */
@@ -355,7 +355,7 @@ function hear(): void {
     if (CHALLENGE) {
       const pts = ringPoints(), touches = run.touches;
       run.score += pts; run.rings++; showScore();
-      window.setTimeout(() => say(`+${pts}${touches ? ` (touched ${touches === 1 ? 'once' : touches === 2 ? 'twice' : `${touches} times`}, −${TOUCH * touches})` : ''}`, 1.4), 150);
+      window.setTimeout(() => say(`+${pts}${touches ? `  (touched the edge: −${TOUCH * touches})` : ''}`, 1.4), 150);
       if (run.rings >= RUN) endRun();
     } else if (first) window.setTimeout(() => say(daysDrawn() === 1 ? 'Your first day.' : `Day ${daysDrawn()}.`, 5), 2400);
     // (The ring is done: it settles into the paper and the slice draws back to make room, while the
@@ -552,8 +552,8 @@ void (async () => {
   fit(); view = null; openedAt = clock();
   const today = dayOf();
   showScore();
-  if (CHALLENGE) say(`${RUN} rings, each as close to the last as you dare, and quick. Touching the edge costs you.`, 8);
-  else say(!tree.rings.length ? 'Draw a circle round the slice, as wide or close as you like: a ring a day.' : days.includes(today) ? 'Today’s ring is drawn. Another, if you like.' : 'Today’s ring.', 8);
+  if (CHALLENGE) say('Draw around the circle. Get close, but don’t touch it. Faster scores more.', 8);
+  else say(!tree.rings.length ? 'Draw a circle around this one. One ring a day.' : days.includes(today) ? 'Today’s ring is done. Draw another if you like.' : 'Draw today’s ring.', 8);
   Object.assign(window, { press: { get tree() { return tree; }, get phase() { return settle.ring >= 0 ? 'settling' : 'trace'; }, get easing() { return !!ease; }, get view() { return viewNow(); }, get days() { return days; }, get run() { return run; } } });
   requestAnimationFrame(frame);
 })();
