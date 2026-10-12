@@ -312,7 +312,11 @@ function picture(n = 640): string {
   g = c; px = 2;
   try {
     c.fillStyle = PAPER; c.fillRect(0, 0, n, n);
-    if (PRINT) drawPrint(v); else { paper.draw(c, v); drawLatewood(v); drawBark(v); }
+    if (PRINT) {
+      // (On a layer of its own, so the grain thins the ink to the paper beneath, not to nothing.)
+      const lay = document.createElement('canvas'); lay.width = lay.height = n;
+      g = lay.getContext('2d')!; drawPrint(v); inkGrain(lay, v); g = c; c.drawImage(lay, 0, 0);
+    } else { paper.draw(c, v); drawLatewood(v); drawBark(v); }
     drawKnots(v, Infinity); drawPaper(c, n, n);
   } finally { g = was.g; px = was.px; }
   return off.toDataURL('image/jpeg', 0.86);
@@ -734,10 +738,13 @@ function drawPrint(v: View): void {
   // The heart: the seedling's first growth, printed as a ring is (an inked band at its edge, paper within),
   // and a dark dot at its very centre: a small dot when the tree is grown, never a black disc when it's young.
   {
+    // (Never a ruled circle: its edges wander a little, as a seedling's first wood does, and its band
+    // thickens and thins.)
     const hr = barkOf(-1), band = Math.min(0.4, (3 * px) / Math.max(1, scr(meanR(-1))));
+    const wob = (a: number, k: number) => 1 + 0.03 * Math.sin(2 * a + k) + 0.018 * Math.sin(3 * a + 2.3 * k) + 0.006 * Math.sin(5 * a + k);
     g.beginPath();
-    for (let j = 0; j <= K; j++) { const a = (j / K) * TAU, [x, y] = pt(a, hr(a)); if (j) g.lineTo(x, y); else g.moveTo(x, y); }
-    for (let j = K; j >= 0; j--) { const a = (j / K) * TAU, [x, y] = pt(a, hr(a) * (1 - Math.max(band, 0.18))); g.lineTo(x, y); }
+    for (let j = 0; j <= K; j++) { const a = (j / K) * TAU, [x, y] = pt(a, hr(a) * wob(a, 1)); if (j) g.lineTo(x, y); else g.moveTo(x, y); }
+    for (let j = K; j >= 0; j--) { const a = (j / K) * TAU, [x, y] = pt(a, hr(a) * (1 - Math.max(band, 0.18) * (1 + 6 * (wob(a, 4) - 1))) * wob(a, 1.3)); g.lineTo(x, y); }
     g.closePath(); g.fillStyle = ink(0.85); g.fill();
     g.beginPath(); g.arc(v.cx, v.cy, 1.6 * px, 0, TAU); g.fill();
   }
@@ -818,17 +825,6 @@ function drawPrint(v: View): void {
       g.closePath();
       // (The ink a little starved now and then.)
       g.fillStyle = ink((0.8 + 0.2 * h1(seed * 0.37)) * tone); g.fill();
-      // (And the paper showing through it in specks, as a hand-pulled print's ink never quite covers.)
-      const area = ((a1 - a0) * R * (scr(outer(a0)) - scr(bandIn(a0)))) / (px * px), specks = Math.floor(area / 26);
-      if (specks > 0) {
-        g.fillStyle = 'rgba(244,239,228,0.7)'; g.beginPath();
-        for (let q = 0; q < specks; q++) {
-          const a = a0 + (a1 - a0) * h1(seed + q * 7.13), lo = bandIn(a), f = h1(seed * 1.3 + q * 3.7);
-          const [x, y] = pt(a, lo + (outer(a) - lo) * f), d = (0.35 + 0.55 * h1(seed + q * 1.9) ** 2) * px;
-          g.moveTo(x + d, y); g.arc(x, y, d, 0, TAU);
-        }
-        g.fill();
-      }
     };
     if (live.length < 2) brick(0, TAU, i * 101);
     else for (let j = 0; j < live.length; j++) {
@@ -840,12 +836,12 @@ function drawPrint(v: View): void {
     }
     // The fine rays, in a wide band: short pale flecks across it, a few px apart (oak's; the others' can't be seen).
     if (!fine && kind === 'oak') {
-      const count = Math.round((TAU * R) / (5 * px));
-      g.strokeStyle = 'rgba(244,239,228,0.8)'; g.lineWidth = 0.6 * px; g.lineCap = 'round'; g.beginPath();
+      const count = Math.round((TAU * R) / (16 * px));
+      g.strokeStyle = 'rgba(244,239,228,0.38)'; g.lineWidth = 0.4 * px; g.lineCap = 'round'; g.beginPath();
       for (let q = 0; q < count; q++) {
-        const a = h1(i * 7.7 + q * 1.31) * TAU, lo = bandIn(a), hi = outer(a), band = hi - lo;
-        const r0 = lo + band * (0.1 + 0.4 * h1(q * 2.9 + i)), r1 = r0 + band * (0.25 + 0.4 * h1(q * 4.1 + i * 3));
-        const [x0, y0] = pt(a, r0), [x1, y1] = pt(a, Math.min(hi, r1)); g.moveTo(x0, y0); g.lineTo(x1, y1);
+        const a = h1(i * 7.7 + q * 1.31) * TAU, lo = bandIn(a), hi = outer(a), band = hi - lo, tilt = (h1(q * 5.9 + i) - 0.5) * 0.6 * px / Math.max(1, R);
+        const r0 = lo + band * (0.15 + 0.5 * h1(q * 2.9 + i)), r1 = r0 + band * (0.12 + 0.3 * h1(q * 4.1 + i * 3));
+        const [x0, y0] = pt(a, r0), [x1, y1] = pt(a + tilt, Math.min(hi, r1)); g.moveTo(x0, y0); g.lineTo(x1, y1);
       }
       g.stroke();
     }
@@ -879,17 +875,18 @@ function drawPrint(v: View): void {
         }
       }
     } else {
-      const ew = (scr(bandIn(0)) - scr(inner(0))) / px;
-      if (ew >= 2.4) {
-        const rows = ew >= 8 ? 2 : 1, step = 2.8 * px, count = Math.round((TAU * scr(meanR(i - 1))) / step);
-        g.fillStyle = ink(0.5 * tone); g.beginPath();
-        for (let row = 0; row < rows; row++) for (let q = 0; q < count; q++) {
-          if (row && h1(q * 9.1 + i) < 0.45) continue;
-          const a = ((q + 0.5 * h1(q * 3.7 + i + row)) / count) * TAU, r0 = scr(inner(a)), r1 = scr(bandIn(a));
-          const at = r0 + (r1 - r0) * (row ? 0.62 : 0.3) + (h1(q * 5.3 + i) - 0.5) * 0.8 * px;
-          const d = Math.min((r1 - r0) * 0.22, (row ? 0.9 : 1.3) * px) * (0.7 + 0.5 * h1(q * 1.1 + i * 2));
+      // Oak's pores: the large open vessels each year opens with didn't take the ink, so in the print
+      // they're small, uneven holes along the inner edge of the year's band, crowding and thinning.
+      const lw = (scr(outer(0)) - scr(bandIn(0))) / px;
+      if (lw >= 2.2) {
+        const count = Math.round((TAU * scr(meanR(i - 1))) / (2.6 * px));
+        g.fillStyle = 'rgba(244,239,228,0.92)'; g.beginPath();
+        for (let q = 0; q < count; q++) {
+          if (h1(q * 0.37 + i * 1.7) < 0.28) continue;
+          const a = ((q + h1(q * 3.7 + i)) / count) * TAU, r0 = scr(bandIn(a)), r1 = scr(outer(a));
+          const at = r0 + (r1 - r0) * (0.04 + 0.16 * h1(q * 5.3 + i) ** 2), d = Math.min((r1 - r0) * 0.16, (0.35 + 0.7 * h1(q * 1.1 + i * 2) ** 2) * px);
           const t = a + v.turn, x = v.cx + at * Math.cos(t), y = v.cy - at * Math.sin(t);
-          g.moveTo(x + d, y); g.arc(x, y, d, 0, TAU);
+          g.moveTo(x + d, y); g.ellipse(x, y, d, d * (0.6 + 0.5 * h1(q * 8.3)), -t, 0, TAU);
         }
         g.fill();
       }
@@ -957,6 +954,54 @@ function drawBirchBark(v: View, pt: (a: number, r: number, dr?: number) => [numb
   g.stroke();
 }
 
+/** Value noise, 0 to 1, smooth, from a fixed 256-square of randoms. */
+const NOISE = (() => { const a = new Float32Array(65536); let r = 20251; for (let i = 0; i < a.length; i++) { r = (r * 16807) % 2147483647; a[i] = r / 2147483647; } return a; })();
+function vnoise(x: number, y: number): number {
+  const xi = Math.floor(x), yi = Math.floor(y), fx = x - xi, fy = y - yi, sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
+  const i0 = xi & 255, j0 = yi & 255, i1 = (i0 + 1) & 255, j1 = (j0 + 1) & 255;
+  const a = NOISE[j0 * 256 + i0], b = NOISE[j0 * 256 + i1], c = NOISE[j1 * 256 + i0], d = NOISE[j1 * 256 + i1];
+  return a + (b - a) * sx + (c - a) * sy + (a - b - c + d) * sx * sy;
+}
+
+/**
+ * The ink's grain: printed from wood, ink lies in the grain's fine streaks along each ring, heavier and
+ * lighter, starved to the paper here and there, its edges breaking a little. Laid into the ink (dark
+ * pixels only; paper-coloured marks left as they are) of a canvas `c` holding the slice drawn for view `v`.
+ */
+function inkGrain(c: HTMLCanvasElement, v: View): void {
+  const n = tree.rings.length, last = n ? tree.rings[n - 1] : null;
+  let rmax = tree.k.pith;
+  if (last) for (let i = 0; i < K; i++) rmax = Math.max(rmax, last[i]);
+  const R = v.s * warpR(v.warp, rmax) + (barkCss(v) * 1.6 + 6) * px;
+  const x0 = Math.max(0, Math.floor(v.cx - R)), y0 = Math.max(0, Math.floor(v.cy - R));
+  const w = Math.min(c.width, Math.ceil(v.cx + R)) - x0, h = Math.min(c.height, Math.ceil(v.cy + R)) - y0;
+  if (w <= 0 || h <= 0) return;
+  const ctx = c.getContext('2d')!, img = ctx.getImageData(x0, y0, w, h), d = img.data;
+  const fine = 1 / (0.8 * px), along = 1 / (12 * px), speck = 1 / (0.8 * px), streak = 1 / (5 * px);
+  for (let y = 0; y < h; y++) {
+    const dy = y + y0 - v.cy;
+    for (let x = 0; x < w; x++) {
+      const k = (y * w + x) * 4, a = d[k + 3];
+      if (a < 8 || d[k] + d[k + 1] + d[k + 2] > 380) continue;
+      const dx = x + x0 - v.cx, r = Math.sqrt(dx * dx + dy * dy), th = Math.atan2(dy, dx);
+      // (Streaks along the ring: fine across it, long along it; across the seam at the left, blended.)
+      const seam = Math.max(0, (Math.abs(th) - (Math.PI - 0.25)) / 0.25);
+      const at = (t: number) => 0.55 * vnoise(r * fine, t * r * along) + 0.45 * vnoise(r * fine * 0.35 + 31.7, t * r * along * 0.25 + 7.1);
+      let gr = at(th);
+      if (seam > 0) gr += (at(th - Math.sign(th) * TAU) - gr) * seam * 0.5;
+      // (Crisp, not smeared: the ink takes the grain or doesn't.)
+      // (Mostly solid, as a pressed block prints; only fine dry streaks where the grain stands low.)
+      const e = Math.min(1, Math.max(0, (gr - 0.6) / 0.16));
+      let f = 1.08 - 0.5 * e * e * (3 - 2 * e);
+      // (Here and there the ink starved: short pale streaks along the grain, never round dots.)
+      const st = vnoise(r * speck + 91, th * r * streak + 13);
+      if (st > 0.86) f *= 1 - 0.75 * Math.min(1, (st - 0.86) / 0.06);
+      d[k + 3] = Math.max(0, Math.min(255, (a * f - 30) / 0.88));
+    }
+  }
+  ctx.putImageData(img, x0, y0);
+}
+
 /** The print, kept as a picture between changes; while the slice moves, the picture moves with it. */
 const printCaches: Record<string, { c: HTMLCanvasElement; key: string; v: View }> = {};
 function drawPrintCached(v: View, moving: boolean, slot = 'drawing', alpha = 1): void {
@@ -968,7 +1013,7 @@ function drawPrintCached(v: View, moving: boolean, slot = 'drawing', alpha = 1):
     const c = pc?.c.width === W && pc.c.height === H ? pc.c : document.createElement('canvas');
     c.width = W; c.height = H;
     const was = g; g = c.getContext('2d')!;
-    try { drawPrint(v); } finally { g = was; }
+    try { drawPrint(v); inkGrain(c, v); } finally { g = was; }
     pc = printCaches[slot] = { c, key, v: { ...v } };
   }
   const k = v.s / pc.v.s;
