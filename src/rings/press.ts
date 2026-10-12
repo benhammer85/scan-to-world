@@ -28,10 +28,12 @@ import { brushAt, radiusAt, scaleFor, unwarpR, warpFor, warpR, type View, type W
 import { at, drawPaper } from './draw';
 import { Paper } from './paint';
 import { holdStill, steadySize } from './steady';
-import { keepTree, recallTree, snapshotTree, treeFrom } from './save';
+import { keepRun, keepTree, recallTree, runs, snapshotTree, treeFrom, type Run } from './save';
 
 const TAU = Math.PI * 2, PAPER = '#f4efe4';
-const canvas = document.getElementById('press') as HTMLCanvasElement, g = canvas.getContext('2d')!;
+const canvas = document.getElementById('press') as HTMLCanvasElement;
+// (The drawing goes to the page, or for a moment to a picture of the slice: see `picture`.)
+let g = canvas.getContext('2d')!;
 const words = document.getElementById('words')!;
 let W = 1, H = 1, px = 1;
 function fit(): void {
@@ -136,11 +138,14 @@ function keep(): void {
  */
 let ease: { from: number; at: number } | null = null;
 const EASE = 3;
-function viewNow(t = clock()): View {
+function baseNow(t = clock()): View {
   if (!view) {
-    // (A little above the middle, with room round it: a study on a sheet, in reach of the thumb.)
+    // (A little above the middle, with room round it: a study on a sheet, in reach of the thumb. The bark
+    // fills at least three-quarters of the room, however close the rings were drawn.)
     const room = Math.max(40 * px, Math.min(W / 2 - 34 * px, H * 0.27)), cy = Math.round(H * 0.47);
-    view = { cx: W / 2, cy, s: scaleFor(tree, room, px, warp), turn: 0, px, warp };
+    let s = scaleFor(tree, room, px, warp);
+    if (tree.rings.length) s = Math.max(s, (0.74 * room) / warpR(warp, tree.radius));
+    view = { cx: W / 2, cy, s, turn: 0, px, warp };
     ease = null;
   }
   if (!ease) return view;
@@ -148,11 +153,36 @@ function viewNow(t = clock()): View {
   if (k >= 1) { ease = null; return view; }
   return { ...view, s: ease.from + (view.s - ease.from) * k };
 }
+/**
+ * Looking closer: two fingers pinch the slice larger (up to six times) about where they are; one finger
+ * then moves it about; a double tap goes back. While it's looked at closely, nothing is drawn.
+ */
+let look = { k: 1, ox: 0, oy: 0 }, lookBack: { k: number; ox: number; oy: number; at: number } | null = null;
+const closer = () => look.k > 1.01;
+function viewNow(t = clock()): View {
+  const v = baseNow(t);
+  if (lookBack) {
+    const p = smooth((t - lookBack.at) / 0.45);
+    look = { k: lookBack.k + (1 - lookBack.k) * p, ox: lookBack.ox * (1 - p), oy: lookBack.oy * (1 - p) };
+    if (p >= 1) { lookBack = null; look = { k: 1, ox: 0, oy: 0 }; }
+  }
+  if (look.k === 1 && !look.ox && !look.oy) return v;
+  return { ...v, s: v.s * look.k, cx: v.cx + look.ox, cy: v.cy + look.oy };
+}
+/** Zoom by f about the point (x, y) (device px). */
+function zoomAbout(x: number, y: number, f: number): void {
+  const v = viewNow(), k = Math.max(1, Math.min(6, look.k * f)), g2 = k / look.k, b = baseNow();
+  const cx = x + (v.cx - x) * g2, cy = y + (v.cy - y) * g2;
+  look = k <= 1.001 ? { k: 1, ox: 0, oy: 0 } : { k, ox: cx - b.cx, oy: cy - b.cy };
+  lookBack = null;
+  if (closer() && !hintedCloser) { hintedCloser = true; say('Double-tap to zoom out.', 3); }
+}
+let hintedCloser = false;
 /** The ring closed: the slice laid out for the tree as it is now, eased to from where it was. */
 function makeRoom(): void {
-  const was = viewNow(), old = warp, bark = tree.radius;
+  const was = baseNow(), old = warp, bark = tree.radius;
   warp = warpFor(tree); paper.fit(warp, warp.R); view = null;
-  const v = viewNow();
+  const v = baseNow();
   // (Where the new bark was drawn, it stays at first: the slice then draws back from there.)
   const from = was.s * warpR(old, bark) / Math.max(1e-6, warpR(warp, bark));
   ease = { from: Math.min(from, 3 * v.s), at: clock() };
@@ -160,8 +190,43 @@ function makeRoom(): void {
 /** A touch: the slice stops drawing back, where it is. */
 function holdView(): void {
   if (!ease) return;
-  view = viewNow(); ease = null;
+  view = baseNow(); ease = null;
 }
+
+// ---------------------------------------------------------------- your runs
+/** The runs page (challenge only): every run kept, best first, each a picture of its slice and its score. */
+const runsEl = document.getElementById('runs');
+const dateOf = (when: number) => new Date(when).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+async function openRuns(): Promise<void> {
+  if (!runsEl) return;
+  keepTheRun();
+  const all = (await runs()).slice().sort((a, b) => b.score - a.score || b.when - a.when);
+  const grid = runsEl.querySelector('.grid')!;
+  grid.replaceChildren();
+  runsEl.querySelector('.none')?.toggleAttribute('hidden', all.length > 0);
+  all.forEach((r: Run, i) => {
+    const card = document.createElement('button');
+    card.className = 'card';
+    const img = new Image(); img.src = r.image; img.alt = `The slice of a run: ${r.score} points`;
+    const score = document.createElement('b'); score.textContent = r.score.toLocaleString();
+    const meta = document.createElement('small'); meta.textContent = `${i === 0 ? 'Best · ' : ''}${dateOf(r.when)}`;
+    card.append(img, score, meta);
+    card.addEventListener('click', () => showRun(r));
+    grid.append(card);
+  });
+  runsEl.classList.add('open');
+}
+function showRun(r: Run): void {
+  const big = runsEl?.querySelector<HTMLElement>('.big');
+  if (!big) return;
+  big.querySelector('img')!.src = r.image;
+  big.querySelector('b')!.textContent = `${r.score.toLocaleString()} points`;
+  big.querySelector('small')!.textContent = `${r.rings} rings · ${dateOf(r.when)}`;
+  big.classList.add('open');
+}
+runsEl?.querySelector('.close')?.addEventListener('click', () => runsEl.classList.remove('open'));
+runsEl?.querySelector('.big')?.addEventListener('click', (e) => (e.currentTarget as HTMLElement).classList.remove('open'));
+document.getElementById('open-runs')?.addEventListener('click', (e) => { e.preventDefault(); void openRuns(); });
 
 // ---------------------------------------------------------------- the turn of a ring
 // ---------------------------------------------------------------- the challenge
@@ -201,12 +266,39 @@ function touchEdge(a: number): void {
   marks.push({ a, r: radiusAt((i) => tree.inner(i), a), at: clock() });
   if (NATIVE) tap({ strength: 0.6, sharpness: 0.5 });
 }
+/**
+ * A picture of the slice as it is (a square, JPEG): drawn afresh off the page, centred and whole, so
+ * however it's being looked at, the picture is the same.
+ */
+function picture(n = 640): string {
+  const off = document.createElement('canvas'); off.width = off.height = n;
+  const c = off.getContext('2d')!, was = { g, px };
+  let rmax = tree.k.pith;
+  const last = tree.rings[tree.rings.length - 1];
+  if (last) for (let i = 0; i < K; i++) rmax = Math.max(rmax, last[i]);
+  const v: View = { cx: n / 2, cy: n / 2, s: (n * 0.4) / warpR(warp, rmax), turn: 0, px: 2, warp };
+  g = c; px = 2;
+  try {
+    c.fillStyle = PAPER; c.fillRect(0, 0, n, n);
+    paper.draw(c, v); drawLatewood(v); drawBark(v); drawKnots(v, Infinity); drawPaper(c, n, n);
+  } finally { g = was.g; px = was.px; }
+  return off.toDataURL('image/jpeg', 0.86);
+}
+/** The run just ended, to be kept with its picture (once its last ring has bloomed). */
+let toKeep: { score: number; rings: number; when: number } | null = null;
+function keepTheRun(): void {
+  if (!toKeep) return;
+  const r = toKeep; toKeep = null;
+  void keepRun({ ...r, image: picture() });
+}
 /** Ten rings drawn: the run's points, and the best. */
 function endRun(): void {
   run.over = true; endedAt = clock();
   let best = bestOf();
   const isBest = run.score > best;
   if (isBest) { best = run.score; try { localStorage.setItem('annulus.challenge', String(best)); } catch { /* not kept */ } }
+  toKeep = { score: run.score, rings: run.rings, when: Date.now() };
+  window.setTimeout(keepTheRun, 1500);
   window.setTimeout(() => {
     words.classList.add('over');
     say(`Score: ${run.score.toLocaleString()}. ${isBest ? 'New best!' : `Best: ${best.toLocaleString()}.`} Tap to play again.`, 1e5);
@@ -215,6 +307,7 @@ function endRun(): void {
 }
 /** A new run: a new seedling, a clean sheet. */
 function restart(): void {
+  keepTheRun();
   tree = new TreeSim(1 + Math.floor(Math.random() * 1e6), DAILY);
   days = []; trail = []; marks = []; settle = { ring: -1, at: 0 };
   run = { score: 0, rings: 0, over: false, gapSum: 0, gapN: 0, began: 0, touches: 0, inside: false, out: false };
@@ -251,12 +344,26 @@ function navAway(away: boolean): void {
   else navT = window.setTimeout(() => nav?.classList.remove('away'), 1500);
 }
 
+/** The fingers down (device px), a pinch in progress, and the touch that might be a tap. */
+const fingers = new Map<number, { x: number; y: number }>();
+let pinch: { d: number; mx: number; my: number } | null = null, pinched = false;
+let tapStart = { x: 0, y: 0, at: 0 }, lastTap = 0;
+const spread = () => { const [a, b] = [...fingers.values()]; return { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 }; };
+
 canvas.addEventListener('pointerdown', (e) => {
   canvas.setPointerCapture(e.pointerId);
-  if (painter !== null) return;
+  fingers.set(e.pointerId, { x: e.clientX * px, y: e.clientY * px });
+  if (fingers.size === 1) { tapStart = { x: e.clientX, y: e.clientY, at: clock() }; pinched = false; }
+  if (fingers.size === 2) {
+    // A second finger: a pinch, not a ring (the line begun is let go).
+    if (painter !== null) { tree.cancel(); trail = []; painter = null; }
+    holdView(); pinch = spread(); pinched = true;
+    return;
+  }
+  if (fingers.size > 2 || painter !== null) return;
   navAway(true);
-  // (After a touch on the edge, a moment to see the score before a touch begins again.)
-  if (run.over) { if (clock() - endedAt > 1.8) restart(); return; }
+  // (Looked at closely, or the run over: a finger moves the slice about, or taps; nothing is drawn.)
+  if (closer() || run.over) return;
   words.classList.remove('shown');
   const x = e.clientX * px, y = e.clientY * px;
   holdView();
@@ -279,6 +386,19 @@ canvas.addEventListener('pointerdown', (e) => {
   }
 });
 canvas.addEventListener('pointermove', (e) => {
+  const f = fingers.get(e.pointerId);
+  if (f) {
+    const x = e.clientX * px, y = e.clientY * px, dx = x - f.x, dy = y - f.y;
+    f.x = x; f.y = y;
+    if (pinch && fingers.size >= 2) {
+      const now = spread();
+      zoomAbout(pinch.mx, pinch.my, now.d / pinch.d);
+      look.ox += now.mx - pinch.mx; look.oy += now.my - pinch.my;
+      pinch = now;
+      return;
+    }
+    if (closer() && painter === null && fingers.size === 1) { look.ox += dx; look.oy += dy; return; }
+  }
   if (e.pointerId !== painter || !strokeView) return;
   const evs = typeof e.getCoalescedEvents === 'function' ? e.getCoalescedEvents() : [];
   for (const c of evs.length ? evs : [e]) {
@@ -305,7 +425,18 @@ canvas.addEventListener('pointermove', (e) => {
   hear();
 });
 for (const type of ['pointerup', 'pointercancel'] as const) canvas.addEventListener(type, (e) => {
+  fingers.delete(e.pointerId);
+  if (fingers.size < 2) pinch = null;
   navAway(false);
+  // A tap (short, still, one finger): a double tap goes back from looking closer; after a run, a tap
+  // begins another.
+  const tap = type === 'pointerup' && !pinched && fingers.size === 0 && clock() - tapStart.at < 0.3 && Math.hypot(e.clientX - tapStart.x, e.clientY - tapStart.y) < 12;
+  if (tap) {
+    const t = clock();
+    if (closer() && t - lastTap < 0.35) { lookBack = { ...look, at: t }; lastTap = 0; return; }
+    lastTap = t;
+    if (run.over && !closer() && t - endedAt > 1.8) { restart(); return; }
+  }
   if (e.pointerId !== painter) return;
   painter = null;
   // Let go most of the way round, the ring is closed for you; earlier, the line rests, to be taken up.
@@ -314,6 +445,12 @@ for (const type of ['pointerup', 'pointercancel'] as const) canvas.addEventListe
   else if (loop.closed && tree.stroke) { tree.cancel(); say('Draw around the circle.', 4); }
   else { tree.lift(); restAt = clock(); }
 });
+// (On a computer, the wheel looks closer about the pointer.)
+canvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  if (painter !== null) return;
+  holdView(); zoomAbout(e.clientX * px, e.clientY * px, Math.exp(-e.deltaY * 0.002));
+}, { passive: false });
 /** When the line was let go to rest (a line left resting a while fades away: no stray marks). */
 let restAt = 0;
 
@@ -414,7 +551,8 @@ function hideBetween(v: View, r0: (a: number) => number, r1: (a: number) => numb
 }
 
 /**
- * Each ring's edge: one fine line of the wood's umber, painted with a rigger, where the ring is wide enough on the screen to show it; finer rings are left to the wash's tone.
+ * Each ring's edge: one fine line of the wood's umber, painted with a rigger, fainter as the ring is finer
+ * on the screen (look closer, and it's there); hairline rings are left to the wash's tone.
  * It's the line the brush left, dried into the wood.
  */
 function drawLatewood(v: View): void {
@@ -422,7 +560,7 @@ function drawLatewood(v: View): void {
   g.lineJoin = 'round';
   for (let i = 0; i < n - 1; i++) {
     const w = v.s * (warpR(v.warp, meanR(i)) - warpR(v.warp, meanR(i - 1))) / px;
-    const k = Math.max(0, Math.min(1, (w - 2.5) / 5));
+    const k = Math.max(0, Math.min(1, (w - 1.1) / 3.5));
     if (k <= 0) continue;
     ringPath(v, barkOf(i));
     g.strokeStyle = `rgba(104,66,40,${(0.34 * k).toFixed(3)})`; g.lineWidth = 0.9 * px; g.stroke();
@@ -479,6 +617,23 @@ function drawBrush(g: CanvasRenderingContext2D, v: View, t: number): void {
   }
 }
 
+/** Where the brush has touched an edge this run: a small knot in the wood, kept on the slice. */
+function drawKnots(v: View, t: number): void {
+  for (const m of marks) {
+    const [mx, my] = at(v, m.a, m.r), k = smooth((t - m.at) / 0.8), tang = -(m.a + v.turn) + Math.PI / 2;
+    g.save();
+    g.translate(mx, my); g.rotate(tang); g.scale(1, 0.45);
+    const r = (2.5 + 2.5 * k) * px;
+    const bloom = g.createRadialGradient(0, 0, r * 0.8, 0, 0, r * 1.9);
+    bloom.addColorStop(0, 'rgba(250,244,230,0)'); bloom.addColorStop(0.6, `rgba(250,244,230,${(0.14 * k).toFixed(3)})`); bloom.addColorStop(1, 'rgba(250,244,230,0)');
+    g.fillStyle = bloom; g.beginPath(); g.arc(0, 0, r * 1.9, 0, TAU); g.fill();
+    const knot = g.createRadialGradient(0, 0, 0, 0, 0, r);
+    knot.addColorStop(0, `rgba(80,50,30,${(0.5 * k).toFixed(3)})`); knot.addColorStop(0.5, `rgba(106,70,44,${(0.32 * k).toFixed(3)})`); knot.addColorStop(1, 'rgba(120,80,50,0)');
+    g.fillStyle = knot; g.beginPath(); g.arc(0, 0, r, 0, TAU); g.fill();
+    g.restore();
+  }
+}
+
 /** When the page opened: the slice paints itself in from the heart. */
 let openedAt = 0;
 // (`?slow=5` plays the opening and the bloom five times slower, to look at them.)
@@ -527,21 +682,7 @@ function frame(): void {
   // The ink: a brush's line, wet at first, then drying into bristle-streaks and evaporating. (It's on the
   // slice, so it draws back with it.)
   drawBrush(g, v, t);
-  // Where the brush has touched an edge this run: a small knot in the wood, kept on the slice: a soft
-  // oval of the wood's own umber lying along the ring, darker at its heart, a pale bloom round it.
-  for (const m of marks) {
-    const [mx, my] = at(v, m.a, m.r), k = smooth((t - m.at) / 0.8), tang = -(m.a + v.turn) + Math.PI / 2;
-    g.save();
-    g.translate(mx, my); g.rotate(tang); g.scale(1, 0.45);
-    const r = (2.5 + 2.5 * k) * px;
-    const bloom = g.createRadialGradient(0, 0, r * 0.8, 0, 0, r * 1.9);
-    bloom.addColorStop(0, 'rgba(250,244,230,0)'); bloom.addColorStop(0.6, `rgba(250,244,230,${(0.14 * k).toFixed(3)})`); bloom.addColorStop(1, 'rgba(250,244,230,0)');
-    g.fillStyle = bloom; g.beginPath(); g.arc(0, 0, r * 1.9, 0, TAU); g.fill();
-    const knot = g.createRadialGradient(0, 0, 0, 0, 0, r);
-    knot.addColorStop(0, `rgba(80,50,30,${(0.5 * k).toFixed(3)})`); knot.addColorStop(0.5, `rgba(106,70,44,${(0.32 * k).toFixed(3)})`); knot.addColorStop(1, 'rgba(120,80,50,0)');
-    g.fillStyle = knot; g.beginPath(); g.arc(0, 0, r, 0, TAU); g.fill();
-    g.restore();
-  }
+  drawKnots(v, t);
   drawPaper(g, W, H);
   requestAnimationFrame(frame);
 }
