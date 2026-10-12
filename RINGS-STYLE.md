@@ -27,7 +27,7 @@ The references are the plates of transverse sections in the botanical and forest
 The front page is held to a second test as well: **would it let you breathe while you draw?** Anything that makes the hand careful, or the eye leave the slice, fails it.
 * Nothing to hit: no guide circle, no band to keep to. Where the circle goes is the year's edge.
 * Nothing to read while a finger is down, and nothing behind the slice: no print, no weather across the page, no sound.
-* Ink on paper, never a wooden object or a raised surface: no relief, bevels, highlights or emboss (they read as plastic; a blind emboss was tried and dropped), no shadows of its own. The season runs across a ring (pale earlywood, a fine umber latewood line at its edge), never round it, and is only a tint in oak's straw and honey.
+* Ink on paper, never a wooden object or a raised surface: no relief, bevels, highlights or emboss (they read as plastic; a blind emboss of the slice was tried and dropped), no shadows of its own. The one thing pressed into the paper is the maker's mark: the small blind stamp of three rings beside the pencilled edition. The season runs across a ring (pale earlywood, a fine umber latewood line at its edge), never round it, and is only a tint in oak's straw and honey.
 * Nothing that reads as a scratch: no rays on a young slice, no stray marks left on the page.
 * What's too fine to draw is drawn as its blend, never as shimmer.
 
