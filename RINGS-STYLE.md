@@ -30,3 +30,10 @@ The front page is held to a second test as well: **would it let you breathe whil
 * A painting made to look like wood, never a wooden object: watercolour on paper, no relief, bevels or highlights (they read as plastic), no shadows of its own. The season runs across a ring (pale earlywood, a fine umber latewood line at its edge), never round it, and is only a tint in oak's straw and honey.
 * Nothing that reads as a scratch: no rays on a young slice, no stray marks left on the page.
 * What's too fine to draw is drawn as its blend, never as shimmer.
+
+## Inspired by, never pretending to be
+
+Well Rounded learns from many traditions and dresses up as none of them. Its own lineage is the naturalist's printmaking practice: relief prints taken from real wood (tree-ring prints), the wood-anatomy plates of the nineteenth century, the botanical habit drawing, and the daily nature journal (Thoreau's at Walden, Gilbert White's at Selborne).
+* Borrow principles and craft, never another culture's symbols or sacred practices as decoration: no seals posing as hanko, no borrowed calendars of another climate, no brush "Asian" lettering, kanji or red suns, no ensō in the name, look or words.
+* Where a technique has a name in our own tradition, use it (a blend roll, not bokashi; cotton rag paper, not washi; a printer's blind stamp and a pencilled edition, not a seal).
+* Say where the ideas came from, plainly, in a quiet line the player can find.
