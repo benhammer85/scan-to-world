@@ -19,7 +19,11 @@ export class WindStreaks {
   private fade = { value: 0 };
   private rand: () => number;
 
-  constructor(ink: string, seed = 7) {
+  /**
+   * `storm` (Mars): from one side onto the mountain, parting round it. `drift` (the drying seas): an eruption's ash,
+   * drifting with the planet's winds, one way, over everything round the volcano, as thick as the sky is with ash.
+   */
+  constructor(ink: string, private readonly mode: 'storm' | 'drift' = 'storm', seed = 7) {
     let s = seed;
     this.rand = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
     const g = new THREE.BufferGeometry();
@@ -59,8 +63,8 @@ export class WindStreaks {
     for (const st of this.streaks) {
       st.age += dt;
       if (st.age > st.life) {
-        // (Born upwind, across a band as wide as the mountain and a little more, at a stagger.)
-        const across = (this.rand() - 0.5) * 0.7, back = 0.32 + this.rand() * 0.25;
+        // (Born upwind, across a band as wide as the mountain and a little more, at a stagger; or, drifting ash, anywhere round the volcano.)
+        const across = (this.rand() - 0.5) * (this.mode === 'drift' ? 1.6 : 0.7), back = this.mode === 'drift' ? (this.rand() - 0.5) * 1.6 : 0.32 + this.rand() * 0.25;
         here.copy(c).multiplyScalar(Math.cos(back)).addScaledVector(up, Math.sin(back)).addScaledVector(side, across).normalize().multiplyScalar(R);
         for (const p of st.pts) p.copy(here);
         st.age = 0; st.life = 2.5 + this.rand() * 2.5; st.speed = 0.12 + this.rand() * 0.08;
@@ -68,6 +72,11 @@ export class WindStreaks {
       // Downwind, towards the vent's side and past it; slowed and turned aside as it meets the mountain's face.
       const head = st.pts[0], n = here.copy(head).normalize();
       step.copy(up).multiplyScalar(-1).addScaledVector(n, up.dot(n)).normalize();
+      if (this.mode === 'drift') {
+        for (let k = POINTS - 1; k > 0; k--) st.pts[k].lerp(st.pts[k - 1], Math.min(1, dt * 5));
+        head.addScaledVector(step, st.speed * 0.5 * dt).normalize().multiplyScalar(R);
+        continue;
+      }
       const toVent = n.angleTo(c), facing = new THREE.Vector3().subVectors(n, c).dot(up) > 0;
       let speed = st.speed;
       if (toVent < 0.2 && facing) {

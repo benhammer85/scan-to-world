@@ -58,7 +58,7 @@ import { keepsakeOf, turningGlobe } from './keepsakeGlobe';
 import { Chain, CHAIN } from './chain';
 import { measureSecond, type Second } from './second';
 import { feel, keepImage, NATIVE, rumble, rumbles, tap } from './native';
-import { bookLine, keepFound } from './fieldbook';
+import { bookLine, FORMATIONS, foundSoFar, hiddenIn, keepFound } from './fieldbook';
 import { WindStreaks } from './windStreaks';
 import { madeAt, SURVEYS, surveyLine, surveyMask, surveyMatch } from './surveys';
 import { SmokeSign } from './smokeSign';
@@ -1291,6 +1291,11 @@ highHatch.byDirection = true;
 /** Mars: a storm's wind, as faint streaks drifting onto the side it wears (see windStreaks.ts). */
 const wind = (WORLD.rules.stormSide ?? 0) > 0 ? new WindStreaks(P.landInk) : null;
 if (wind) group.add(wind.object);
+/** The drying seas: an eruption's ash, drifting over the sea round the volcano while it shades it. */
+const ashDrift = (WORLD.rules.dries ?? 0) > 0 ? new WindStreaks('#6f675e', 'drift', 11) : null;
+if (ashDrift) group.add(ashDrift.object);
+/** Which way the drying seas' winds blow over the volcano: west to east, along the ground. */
+const EAST = new THREE.Vector3();
 /** Mars: the ice under the ground, in pale blue stipple. */
 const frostDots = new Stipple('#7fa6c4', 'dot', 2);
 frostDots.byDirection = true;
@@ -1842,7 +1847,7 @@ const TIP: Record<string, string> = {
   water: `Icy comets have blue circles. A comet only turns into water if it lands on warm lava. When one is coming, turn the planet so its circle is just below the volcano, and ${HOLD.toLowerCase()} to pour lava onto that spot. The circle turns orange when it is ready. Keep comets off the volcano itself: they cool it. Dark stones bring heat: let those land on the volcano.`,
   atolls: `Turn an island to the top to bring the volcano near it: coral starts round its shore. Then move on. You don't need to pour; if you do, pour out in the open sea, never on an island or its coral. As the island sinks, the coral keeps up, and a ring is left. The lowest islands go under first.`,
   nests: `First, while the volcano is still under the sea: wait for the circle around it to fill, then ${COMPUTER ? 'click' : 'tap'} the planet to erupt. This builds an island of ash, but the waves wash ash away. Once the island is above the sea, ${HOLD.toLowerCase()} to pour lava instead: lava turns the ground hard. Birds nest on cooled lava, shown with small dots. Turn the planet so new lava flows onto empty ground, not onto the nests.`,
-  sea: `The sea dries up a little every second. Ash from eruptions shades the sea and slows the drying for a while. Wait for the circle around the volcano to fill, then ${COMPUTER ? 'click' : 'tap'} the planet to erupt, and keep doing it. Don't pour lava into the sea: it turns sea into land.`,
+  sea: `The sea dries up a little every second. Ash from eruptions shades the sea and slows the drying: you can see it drifting over the sea while it lasts. Wait for the circle around the volcano to fill, then ${COMPUTER ? 'click' : 'tap'} the planet to erupt, and keep doing it. Don't pour lava into the sea: it turns sea into land.`,
   giant: `The planet slowly turns by itself, and anything on the sunny side melts. Keep turning the planet back so the volcano stays on the dark side, on the left. ${HOLD} to pour lava there, or ${COMPUTER ? 'click' : 'tap'} to erupt.`,
   gather: ACCRETE ? 'A dotted circle shows where each stone will land. Turn the planet so that circle is inside the gold ring around your volcano. Each stone you catch makes your planet bigger, and the gold ring wider. Stones circled in dark red are too big: keep them outside the gold ring, or they break a piece off your planet. When your planet is fully grown, the planet Theia comes: catch it too.' : 'A dotted circle shows where each stone will land. Turn the planet so that circle is inside the gold ring around your volcano.',
   oxygen: `${POUR} Pour lava into the sea until it almost reaches the surface. Life grows in these shallow areas and makes oxygen. Then turn the planet and do the same somewhere else. Don't ${COMPUTER ? 'click' : 'tap'} to erupt: eruptions use up oxygen.`,
@@ -3219,8 +3224,46 @@ function openList(): void {
     }
     box.append(sec);
   }
+  // (At the foot: the field book, everything found so far, and what each world still hides.)
+  const found = foundSoFar(), all = CHAPTERS.flatMap((c) => c.worlds.flatMap((w) => hiddenIn(w)));
+  const book = document.createElement('button'); book.className = 'earthlink'; book.textContent = `Field book · ${all.filter((f) => found.includes(f)).length} of ${all.length} found`;
+  book.addEventListener('click', () => openBook());
+  box.append(book);
   $('list').hidden = false;
 }
+/** The field book: every world's formations, found ones with how they form, the rest with a plain hint for finding them. */
+function openBook(): void {
+  const found = foundSoFar(), into = $('book').querySelector('.pages') as HTMLElement;
+  into.replaceChildren();
+  let have = 0, of = 0;
+  for (const c of CHAPTERS) {
+    const worlds = c.worlds.filter((w) => hiddenIn(w).length);
+    if (!worlds.length) continue;
+    const sec = document.createElement('section'), h = document.createElement('h3');
+    h.textContent = `${c.numeral} · ${c.title}`;
+    sec.append(h);
+    for (const id of worlds) {
+      const row = document.createElement('div'); row.className = 'world';
+      const name = document.createElement('b'); name.textContent = worldOf(id).title; row.append(name);
+      for (const f of hiddenIn(id)) {
+        const got = found.includes(f), d = FORMATIONS[f], e = document.createElement('div');
+        e.className = 'find' + (got ? '' : ' hidden');
+        const t = document.createElement('i'), w = document.createElement('span');
+        t.textContent = got ? d.name : 'Not found yet';
+        w.textContent = got ? d.how : `Hint: ${d.hint}`;
+        e.append(t, w); row.append(e);
+        of++; if (got) have++;
+      }
+      sec.append(row);
+    }
+    into.append(sec);
+  }
+  ($('book').querySelector('header p') as HTMLElement).textContent = `${have} of ${of} formations found`;
+  $('book').hidden = false;
+  requestAnimationFrame(() => $('book').classList.add('open'));
+}
+$('book').addEventListener('pointerdown', (e) => e.stopPropagation());
+$('book').querySelector('.close')!.addEventListener('click', () => { $('book').classList.remove('open'); setTimeout(() => { $('book').hidden = true; }, 600); });
 $('list').addEventListener('pointerdown', (e) => e.stopPropagation());
 $('list').querySelector('.close')!.addEventListener('click', () => { $('list').hidden = true; });
 $('list').querySelector('.about')!.addEventListener('click', () => { const r = $('list').querySelector('.rules') as HTMLElement; r.hidden = !r.hidden; });
@@ -4057,6 +4100,7 @@ const loop = (): void => {
   if (WORLD.goal === 'round' || WORLD.goal === 'basins' || (WORLD.rules.taper ?? 0) > 0) highHatch.update(dt);
   if ((WORLD.rules.groundIce ?? 0) > 0) frostDots.update(dt);
   wind?.update(dt, ending ? null : planet.stormFrom, planet.plume, planet.storm ? 1 : planet.stormComing !== null ? 0.5 : 0);
+  if (ashDrift) { const q = planet.plume; EAST.set(q.z, 0, -q.x).normalize(); ashDrift.update(dt, ending || planet.ashSky < 0.03 ? null : EAST, q, Math.min(1, planet.ashSky * 1.4)); }
   puffs.update(dt * speed);
   if (begun) breathe(dt);
   inTheHand();
