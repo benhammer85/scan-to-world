@@ -856,60 +856,78 @@ function lookAt(to: typeof looking): void {
 }
 views?.querySelectorAll<HTMLAnchorElement>('a[data-view]').forEach((a) => a.addEventListener('click', (e) => { e.preventDefault(); lookAt(a.dataset.view === 'life' ? 'life' : 'year'); }));
 /**
- * The year's print, as it would be pulled: an 8 × 10 inch sheet at 300 dpi, the year's tree pressed in its
- * upper part, true to scale; under it, in pencil, the child's name, the year's dates and how many days it
- * holds; under that, small, the words kept with its days; and the blind stamp. (Of the year looked at, or
+ * The year's print, for printing on real paper: ink only. An 8 × 10 inch sheet at 300 dpi, white (the
+ * paper, unprinted), the year's tree in ink a little above the middle, true to scale, and nothing else: no
+ * printed paper, no lettering pretending to be pencil, no stamp pretending to be pressed. The name and year
+ * are for the parent to pencil under it, by hand; the stamp, if any, pressed. (Of the year looked at, or
  * this one so far.)
  */
+const INK_PRINT = [24, 20, 18];
 async function yearPrint(): Promise<HTMLCanvasElement> {
   const Wp = 2400, Hp = 3000, P = 4, out = document.createElement('canvas'); out.width = Wp; out.height = Hp;
   const c = out.getContext('2d')!, was = { g, px, W, H };
-  try { await document.fonts?.ready; } catch { /* the serif it falls back to will do */ }
-  c.fillStyle = PAPER; c.fillRect(0, 0, Wp, Hp);
-  const R = barkMax(), v: View = { cx: Wp / 2, cy: Hp * 0.4, s: (Wp * 0.33) / Math.max(1e-6, R), turn: 0, px: P };
+  c.fillStyle = '#ffffff'; c.fillRect(0, 0, Wp, Hp);
+  const R = barkMax(), v: View = { cx: Wp / 2, cy: Hp * 0.44, s: (Wp * 0.3) / Math.max(1e-6, R), turn: 0, px: P };
   const lay = document.createElement('canvas'); lay.width = Wp; lay.height = Hp;
   g = lay.getContext('2d')!; px = P; W = Wp; H = Hp;
   try { if (tree.rings.length) { drawPrint(v); inkGrain(lay, v); } } finally { g = was.g; px = was.px; W = was.W; H = was.H; }
+  // (Ink only: whatever the slice laid in the paper's colour is no ink at all; the rest, one ink.)
+  const lc = lay.getContext('2d')!, img = lc.getImageData(0, 0, Wp, Hp), d = img.data;
+  for (let k = 0; k < d.length; k += 4) {
+    const lum = (d[k] + d[k + 1] + d[k + 2]) / 3, amount = (d[k + 3] / 255) * Math.max(0, Math.min(1, (232 - lum) / (232 - 36)));
+    d[k] = INK_PRINT[0]; d[k + 1] = INK_PRINT[1]; d[k + 2] = INK_PRINT[2]; d[k + 3] = Math.round(255 * amount);
+  }
+  lc.putImageData(img, 0, 0);
   c.drawImage(lay, 0, 0);
-  // Pencil: the name, the year's dates, its days.
-  printing = true;
-  const [, mid] = editionWords(dayOf()), y0 = v.cy + Wp * 0.33 + 260, pencil = 'rgba(92,88,84,0.82)';
-  printing = false;
-  c.fillStyle = pencil; c.textBaseline = 'middle'; c.font = `italic ${15 * P}px Newsreader, "Iowan Old Style", Georgia, serif`;
-  c.textAlign = 'left'; c.fillText(child?.name ?? '', 300, y0);
-  c.textAlign = 'center'; c.fillText(mid, Wp / 2, y0);
-  c.textAlign = 'right'; c.fillText(`${new Set(days).size} days`, Wp - 360, y0);
-  // The words of the year, a few, small, as they were written.
-  const said = notes.filter((n): n is string => !!n).slice(0, 8);
-  if (said.length) {
-    c.font = `italic ${11.5 * P}px Newsreader, "Iowan Old Style", Georgia, serif`; c.fillStyle = 'rgba(92,88,84,0.62)'; c.textAlign = 'center';
-    const lines: string[] = [];
-    let line = '';
-    for (const w of said.map((n) => `“${n.replace(/^[“"]+|[”"]+$/g, '')}”`)) { const next = line ? `${line}   ·   ${w}` : w; if (c.measureText(next).width > Wp - 700 && line) { lines.push(line); line = w; } else line = next; }
-    if (line) lines.push(line);
-    lines.slice(0, 3).forEach((l, i) => c.fillText(l, Wp / 2, y0 + 150 + i * 64));
-  }
-  // The blind stamp, pressed beside the dates: three rings and a heart.
-  const sx = Wp - 300, sy = y0;
-  for (const [dx, dy, col] of [[-2.5, -2.5, 'rgba(255,253,246,0.95)'], [2.5, 2.5, 'rgba(96,74,52,0.3)']] as [number, number, string][]) {
-    c.strokeStyle = col; c.fillStyle = col; c.lineWidth = 3.4;
-    for (const r of [27, 18, 9.5]) { c.beginPath(); c.arc(sx + dx, sy + dy, r, 0, TAU); c.stroke(); }
-    c.beginPath(); c.arc(sx + dx, sy + dy, 3.5, 0, TAU); c.fill();
-  }
-  drawPaper(c, Wp, Hp);
   return out;
+}
+/**
+ * The year's words, for the back of the print (or a card tucked behind it): 5 × 7 inches at 300 dpi, ink
+ * only. Set, plainly, as type: the name, the year's dates and its days, then every few words kept with its
+ * days, each on its own line with its day.
+ */
+async function yearWords(): Promise<HTMLCanvasElement> {
+  const Wc = 1500, Hc = 2100, out = document.createElement('canvas'); out.width = Wc; out.height = Hc;
+  const c = out.getContext('2d')!, ink = `rgb(${INK_PRINT.join(',')})`;
+  try { await document.fonts?.ready; } catch { /* the serif it falls back to will do */ }
+  c.fillStyle = '#ffffff'; c.fillRect(0, 0, Wc, Hc);
+  printing = true;
+  const [, span] = editionWords(dayOf());
+  printing = false;
+  c.fillStyle = ink; c.textAlign = 'center'; c.textBaseline = 'alphabetic';
+  c.font = `italic 64px Newsreader, "Iowan Old Style", Georgia, serif`; c.fillText(child?.name ?? '', Wc / 2, 230);
+  c.font = `40px Newsreader, "Iowan Old Style", Georgia, serif`; c.fillText(span, Wc / 2, 300);
+  c.fillText(`${new Set(days).size} days`, Wc / 2, 356);
+  const kept = notes.map((n, i) => (n ? { n, day: days[i] } : null)).filter((x): x is { n: string; day: string } => !!x);
+  const fmt = (d: string) => dayDate(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+  let y = 500;
+  c.textAlign = 'left';
+  for (const { n, day } of kept) {
+    if (y > Hc - 160) break;
+    c.font = `30px Newsreader, "Iowan Old Style", Georgia, serif`; c.globalAlpha = 0.6; c.fillText(fmt(day), 210, y);
+    c.font = `italic 38px Newsreader, "Iowan Old Style", Georgia, serif`; c.globalAlpha = 1; c.fillText(n.replace(/^[“"]+|[”"]+$/g, ''), 420, y);
+    y += 74;
+  }
+  return out;
+}
+/** Hand a canvas over as a PNG file to keep. */
+function saveCanvas(cv: HTMLCanvasElement, name: string): Promise<void> {
+  return new Promise((done) => cv.toBlob((b) => {
+    if (b) { const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = name; document.body.append(a); a.click(); a.remove(); window.setTimeout(() => URL.revokeObjectURL(a.href), 4000); }
+    done();
+  }, 'image/png'));
 }
 document.getElementById('print-year')?.addEventListener('click', (e) => {
   e.preventDefault();
   if (!child || looking === 'life') { say('Open a year to print it: this year, or one from every year.', 4); return; }
   say('Pressing the print…', 3);
-  void yearPrint().then((c) => c.toBlob((b) => {
-    if (!b) return;
-    const a = document.createElement('a'), age = typeof looking === 'number' ? years[looking].age : age0;
-    a.href = URL.createObjectURL(b); a.download = `${child!.name.replace(/[^\p{L}\p{N}]+/gu, '-')}-the-year-at-${age}.png`;
-    document.body.append(a); a.click(); a.remove(); window.setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-    say('The print is saved, ready to print at 8 × 10 in.', 4);
-  }, 'image/png'));
+  const age = typeof looking === 'number' ? years[looking].age : age0, base = `${child.name.replace(/[^\p{L}\p{N}]+/gu, '-')}-the-year-at-${age}`;
+  void (async () => {
+    await saveCanvas(await yearPrint(), `${base}.png`);
+    await new Promise((r) => window.setTimeout(r, 600));
+    await saveCanvas(await yearWords(), `${base}-words.png`);
+    say('Saved: the print, ink only, 8 × 10 in; and its words, 5 × 7 in, for the back. Print on cotton paper; pencil the name and year under it by hand.', 8);
+  })();
 });
 
 /** (The tree being drawn, this year's, wherever one is looking.) */
@@ -1860,7 +1878,7 @@ void (async () => {
   }
   else if (GROWN && !tree.rings.length) say(seedAt ? 'Draw a loop around the seed. One ring a day.' : 'Tap anywhere to plant a seed.', 1e5);
   else say(!tree.rings.length ? 'Draw a circle around this one. One ring a day.' : days.includes(today) ? 'Today’s ring is done. Draw another if you like.' : 'Draw today’s ring.', 8);
-  Object.assign(window, { press: { get tree() { return tree; }, get phase() { return settle.ring >= 0 ? 'settling' : 'trace'; }, get easing() { return !!ease; }, get view() { return viewNow(); }, get days() { return days; }, get run() { return run; }, look: (to: 'year' | 'life' | number) => lookAt(to), print: async () => (await yearPrint()).toDataURL('image/png') } });
+  Object.assign(window, { press: { get tree() { return tree; }, get phase() { return settle.ring >= 0 ? 'settling' : 'trace'; }, get easing() { return !!ease; }, get view() { return viewNow(); }, get days() { return days; }, get run() { return run; }, look: (to: 'year' | 'life' | number) => lookAt(to), print: async () => (await yearPrint()).toDataURL('image/png'), words: async () => (await yearWords()).toDataURL('image/png') } });
   // (The real wood: once it's come, the print is pressed again with it.)
   if (PRINT) loadWood(() => { for (const k in printCaches) delete printCaches[k]; });
   requestAnimationFrame(frame);
