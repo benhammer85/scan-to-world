@@ -1164,7 +1164,9 @@ function printYears(v: View, oak: Years): void {
   for (let i = 0; i < n; i++) {
     const run = runOf(i), q = runs.get(run)!, perPx = oak.year / Math.max(0.5, q.w / q.k);
     reps[i] = Math.max(1, Math.round((TAU * (q.R / q.k) * perPx) / W0));
-    off[i] = h1(run * 7.3 + tree.seed * 0.01) * W0;
+    // (Its rays: mostly the last year's, drifting a little; now and then a fresh set, as rays end and begin.)
+    const fresh = i === 0 || runOf(i - 1) !== run || h1(i * 3.71 + tree.seed * 0.013) < 0.3;
+    off[i] = fresh ? h1(i * 7.3 + tree.seed * 0.01) * W0 : off[i - 1] + (h1(i * 5.9) - 0.5) * 0.06 * W0;
     yr[i] = (i + run * 4) % oak.n;
     const w = scr(meanR(i)) - scr(meanR(i - 1));
     lvl[i] = Math.max(0, Math.min(oak.levels.length - 1, Math.ceil(Math.log2(oak.year / Math.max(0.5, w)))));
@@ -1193,8 +1195,11 @@ function printYears(v: View, oak: Years): void {
       while (lo < hi) { const m = (lo + hi) >> 1; if (at(m, b, f) > r) hi = m; else lo = m + 1; }
       const heart = r < at(-1, b, f), i = heart ? 0 : lo, rin = heart ? 0 : at(i - 1, b, f), rout = heart ? at(-1, b, f) : at(i, b, f);
       const across = (r - rin) / Math.max(1e-3, rout - rin), year = heart ? (yr[0] + oak.n - 1) % oak.n : yr[i];
-      const L = oak.levels[lvl[i]], rows = L.rows;
-      const ink = sample(L, (((a / TAU) * reps[i] * W0 + off[i]) * L.w) / W0, year * rows + across * rows, year * rows, rows) * tone(i);
+      // (Never evenly round: a gentle stretch and squeeze round each ring, its own, so the rays fall
+      // unevenly and bend a little from year to year. The heart, soft: a blurred year, no rays meeting.)
+      const L = oak.levels[heart ? Math.min(oak.levels.length - 1, lvl[i] + 3) : lvl[i]], rows = L.rows;
+      const wob = (0.09 * Math.sin(2 * a + i * 1.7) + 0.06 * Math.sin(3 * a + i * 2.9 + 1) + 0.04 * Math.sin(5 * a + i * 0.6)) * W0;
+      const ink = sample(L, (((a / TAU) * reps[i] * W0 + off[i] + wob * reps[i] * 0.15) * L.w) / W0, year * rows + across * rows, year * rows, rows) * tone(i);
       const k = (y * w + x) * 4;
       d[k] = INK[0]; d[k + 1] = INK[1]; d[k + 2] = INK[2]; d[k + 3] = Math.round(255 * Math.min(1, ink));
     }

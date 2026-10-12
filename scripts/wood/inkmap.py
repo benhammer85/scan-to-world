@@ -19,7 +19,7 @@ for y in range(N):
         pore=np.clip((0.84*med-Lby)/(0.1*med),0,1)
         ray=np.clip((Ly-1.1*med)/(0.14*med),0,1)
         tex=np.clip(1+0.15*(med-Lby)/med,0.9,1.06)
-        ink[s]=base*tex*(1-pore)*(1-0.55*ray)
+        ink[s]=base*tex*(1-pore)*(1-0.3*ray)
     else:
         # darkness relative to the year's range: latewood takes the ink
         lo,hi=np.percentile(Ly,3),np.percentile(Ly,97)
