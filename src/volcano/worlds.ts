@@ -291,18 +291,18 @@ export const WORLDS: World[] = [
     kind: 'A world still forming',
     numeral: 'VII',
     title: 'The First World',
-    first: 'A newborn planet, molten, with rubble still falling on it.',
-    why: 'Planets grow by collecting the rocks that hit them while they are still molten.',
-    second: 'Turn the world so the glow is under each stone as it falls.',
+    first: 'A newborn planet, small and molten, with rubble still falling on it.',
+    why: 'Planets grow by collecting the rocks that hit them while they are still molten. When Earth was nearly grown, a world the size of Mars, Theia, struck it, and the debris became the Moon.',
+    second: 'Let no stone break a piece off.',
     rules: {
       g: 0.6, // (a world still growing's gravity, Earth's being 1)
       terrain: 'first', basins: 0, craters: 30, floor: 0.05, rough: 0.025,
       waves: 0, rain: 0, sink: 0, swell: 0, life: false,
       magma: 0.012, impactMelt: 0.02, // (molten at first, crusting over as it cools; each stone melts its crater again)
-      catchGrow: 0.8, // (the gold ring a stone is caught in widens as the volcano is built: see sim.ts)
+      accrete: 8, catchGrow: 0.8, // (the world grows with each stone caught, eight times over, and the gold ring widens with it; then Theia: see sim.ts)
       talus: 2.2, flow: 2.5, channel: 2, coolLand: 0.05, // (slow-running: the magma sheet crusts over a piece at a time through the first minute, not all at once)
       drift: 0, rises: 0.12, heat: 300, rising: 1.0, steady: true, // (the glow follows a turn quickly, so a catch is one turn, not a chase)
-      impactEvery: [14, 18], impactWarning: 12, impactNear: 0.75, // (a breath between stones: one unhurried turn each, then a rest) impactHeat: 3, crater: 0.07, craterDepth: 0.04,
+      impactEvery: [4, 6], impactWarning: 8, impactNear: 0.75, // (a breath between stones: one unhurried turn each, then a rest) impactHeat: 3, crater: 0.07, craterDepth: 0.04,
     },
     palette: {
       paper: '#d9cbb8', basalt: '#8a7a6c', ash: '#a69888', lava: '#c25a36', deepLava: '#94402a',

@@ -1157,12 +1157,14 @@ function drawMarks(): void {
   stoneHitU.value.w = WASHED && seconds - stoneHitAt < 8 ? seconds - stoneHitAt : -1;
   if (s) {
     setMark(stoneMark, s.vertex, 0.03);
-    setMark(stoneRing, s.vertex, Math.max(0.05, planet.k.crater * 1.2));
+    // (A growing world's stones ringed as big as they are against it; one too big to hold, in dark red; Theia, wide.)
+    const big = ACCRETE && !!s.size && !s.theia && planet.tooBig(s.size);
+    setMark(stoneRing, s.vertex, Math.max(0.05, planet.k.crater * 1.2 * (ACCRETE && s.size ? Math.min(s.theia ? 4 : 2.2, Math.sqrt((s.size / planet.mass) * 3)) : 1)));
     // In the lava's red, if the plume is under it and will catch its heat.
     const inGlow = planet.catchAt(s.vertex) > 0.5, ink = inGlow ? (WORLD.goal === 'gather' ? '#f4b545' : WASHED ? '#c99a3e' : '#9a4230') : WORLD.id === 'first' ? '#efe2c6' : WASHED ? '#6d655f' : INK; // (pale on the first world's dark crust, where ink was lost; gold once the glow is under it, and it will be caught)
     // (An icy comet's ring in pale blue; orange once warm lava lies under it, so it will melt; deep blue over the volcano, to be kept away from.)
     if (s.icy && seconds - iceChecked > 0.3) { iceChecked = seconds; iceReady = planet.warmUnder(s.vertex); }
-    stoneMark.material.color.set(ink); stoneRing.material.color.set(s.icy ? (inGlow ? '#3f78a8' : iceReady ? '#d9772e' : '#5b8fb8') : ink);
+    stoneMark.material.color.set(big ? '#8a2a1c' : ink); stoneRing.material.color.set(big ? (inGlow ? '#c0391f' : '#8a2a1c') : s.icy ? (inGlow ? '#3f78a8' : iceReady ? '#d9772e' : '#5b8fb8') : ink);
     const f = Math.max(0, Math.min(1, s.in / Math.max(1e-6, planet.k.impactWarning)));
     stoneAt(s.vertex, f, STONE_AT); skyStone.position.copy(STONE_AT);
     skyStone.scale.setScalar((0.06 + 0.03 * (1 - f)) * (dist / 3.2)); skyStone.material.opacity = Math.min(1, (1 - f) * 8);
@@ -1649,6 +1651,8 @@ const CALM = WORLD.calm ?? 0, ISLAND = WORLD.island ?? 0, POOL = WORLD.pool ?? 0
 const WATER = WORLD.water ?? 0, ATOLLS_N = WORLD.atolls ?? 0, HEARTH = WORLD.hearth ?? 0, OUTBUILD = WORLD.outbuild ?? 0, SNOWFALL = WORLD.snowfall ?? 0, GATHER = WORLD.gather ?? 0, OXYGEN = WORLD.oxygen ?? 0, FIELDS = WORLD.fields ?? 0, FAR_KM = WORLD.farKm ?? 0, WHITENESS = Math.round((WORLD.whiteness ?? 0) * 100), GLOW = WORLD.glow ?? 0, RINGS = WORLD.rings ?? 0, DOMES = WORLD.domes ?? 0, NESTS = WORLD.nests ?? 0;
 /** Pluto: mounds round a hollow, rather than Venus's domes anywhere. */
 const MOUNDS = (WORLD.rules.domeRing ?? 0) > 0;
+/** The first world, grown as a planet grows (see `accrete`). */
+const ACCRETE = (WORLD.rules.accrete ?? 0) > 0;
 let marbledAt = -1;
 /** The drying seas: the share of the world under the sea, as last reckoned. */
 let seaNow = SEA_START;
@@ -1691,6 +1695,8 @@ function reckonAim(): void {
   else if (WORLD.goal === 'thaw') { aimDone = planet.thawed ? 100 : Math.min(99, (100 * planet.greenhouse) / planet.k.thawAt); aimOf = 100; }
   else if (WORLD.goal === 'outbuild') { aimDone = Math.max(0, (100 * planet.grownBy) / OUTBUILD); aimOf = 100; }
   else if (WORLD.goal === 'snow') { aimDone = (100 * planet.snow) / SNOWFALL; aimOf = 100; }
+  // (A growing world: how far grown, and done once Theia has struck.)
+  else if (WORLD.goal === 'gather' && ACCRETE) { aimDone = planet.theiaStruck ? 100 : Math.min(99, Math.round((100 * (planet.mass - 1)) / (planet.k.accrete - 1))); aimOf = 100; }
   else if (WORLD.goal === 'gather') { aimDone = planet.tally.caught; aimOf = GATHER; }
   else if (WORLD.goal === 'water') { aimDone = planet.water; aimOf = WATER; }
   else if (WORLD.goal === 'sea') {
@@ -1780,7 +1786,7 @@ const AIM: Record<string, string> = {
   glow: 'Keep the blue fire burning for two minutes.',
   waves: `Make ${RINGS} giant waves.`,
   antipode: `Raise the dotted circle on the far side ${FAR_KM} km.`,
-  gather: `Catch ${GATHER} falling stones.`,
+  gather: ACCRETE ? 'Grow the world by catching stones, then catch Theia.' : `Catch ${GATHER} falling stones.`,
   water: `Melt ${WATER} icy comets into water.`,
   atolls: `Make ${ATOLLS_N} atolls: rings of coral left where islands sank.`,
   sea: `Keep some sea until the fire is out.`,
@@ -1825,7 +1831,7 @@ const TIP: Record<string, string> = {
   nests: `While the sea still reaches the volcano, wait for the circle round it to close, then ${COMPUTER ? 'click' : 'tap'} the world to erupt. The sea turns it all to ash, and the island rises, but the waves wash ash away. Once the island stands clear, ${HOLD.toLowerCase()} to pour lava instead: it covers the ash and makes it hard. Birds nest on cooled lava, stippled in pencil. Turn the world so each new flow runs onto bare ground, not over their nests.`,
   sea: `The sea dries a little every second. An eruption's ash shades it and slows the drying for a while, so keep the sky full of ash. ${ERUPT} Don't pour into the sea: lava there turns sea into land.`,
   giant: `The day side melts whatever stands in it, and the night shrinks as the Sun swells. The world turns slowly by itself: turn it back to keep the volcano in the dark, on the left. ${HOLD} to pour, or erupt, there.`,
-  gather: 'A dotted circle shows where each stone will land. Turn it to the top, so the gold ring round your volcano is under it. The more lava you let out, the wider the ring grows.',
+  gather: ACCRETE ? 'A dotted circle shows where each stone will land. Turn it to the top, so the gold ring round your volcano is under it: each stone caught makes the world bigger, and the ring wider. A stone ringed in dark red is too big to hold: turn the gold ring away from it, or it breaks a piece off. Grown, a world as big as Mars comes. Catch it.' : 'A dotted circle shows where each stone will land. Turn it to the top, so the gold ring round your volcano is under it. The more lava you let out, the wider the ring grows.',
   oxygen: `${POUR} Pour into the sea until the lava nearly reaches the surface. Green life grows there and turns the sky blue. Then move on and do it again. Don't erupt: its gas uses up the oxygen.`,
   chaos: `When the circle round the volcano closes, ${COMPUTER ? 'click' : 'tap'} the world to erupt. Then it starts to empty: erupt before it's gone, or the eruption is too big and blasts a hole instead. Then turn to fresh ice.`,
   streaks: `Turn the volcano into the sunlight. ${ERUPT} Then move to a new spot.`,
@@ -1870,7 +1876,7 @@ function goalLine(): string {
     case 'thaw': return planet.thawed ? 'The ice gives way' : `Air warmed · ${pct}%`;
     case 'outbuild': return `New land · ${pct}%`;
     case 'snow': return `Rock snow · ${pct}% of the line`;
-    case 'gather': return `Stones caught · ${d} of ${of}`;
+    case 'gather': return ACCRETE ? (planet.mass >= planet.k.accrete ? (planet.theiaStruck ? 'The giant impact' : 'Grown · Theia is coming: catch it') : `Grown · ${Math.min(99, d)}%${planet.chunks ? ` · ${planet.chunks} ${planet.chunks === 1 ? 'piece' : 'pieces'} broken off` : ''}`) : `Stones caught · ${d} of ${of}`;
     case 'water': return `Water · ${d} of ${of} comets melted`;
     case 'atolls': return `Atolls · ${d} of ${of}`;
     case 'nests': return `Nests · ${d} of ${of}${planet.nestsLost.lava + planet.nestsLost.sea + planet.nestsLost.ash ? ` · ${planet.nestsLost.lava + planet.nestsLost.sea + planet.nestsLost.ash} lost` : ''}`;
@@ -2405,7 +2411,7 @@ if (WORLD.goal === 'gather') CUES.splice(0, CUES.length,
   { ready: () => true, say: 'A stone that lands inside the gold ring round your volcano is caught', done: (s: number) => s > 10 },
   { ready: () => planet.impact !== null, hand: 'drag' as const, at: stoneSpot, say: 'A stone is coming: turn its dotted circle to the top, and the gold ring follows', done: (s: number) => planet.impact === null || s > 14 },
   { ready: () => planet.tally.stones > 0, say: 'The gold ring moves to whatever is at the top', done: (s: number) => s > 12 },
-  { ready: () => planet.drained > 20, say: 'The more lava you let out, the wider the gold ring grows', done: (s: number) => s > 12 },
+  ...(ACCRETE ? [{ ready: () => !!planet.impact?.size && planet.tooBig(planet.impact.size) && !planet.impact.theia, hand: 'drag' as const, at: stoneSpot, say: 'A stone ringed in dark red is too big to hold: turn the gold ring away from it', done: (s: number) => s > 12 }] : [{ ready: () => planet.drained > 20, say: 'The more lava you let out, the wider the gold ring grows', done: (s: number) => s > 12 }]),
 );
 else if (!NEWCOMER) CUES.splice(0, HAND_CUES.length, { ready: () => true, done: (s: number) => {
   const tried = planet.tally.flows + planet.tally.bursts > 0;
@@ -2516,7 +2522,7 @@ const ACTION_WORDS = /^(A stone is coming|The ground is sinking|The heat is near
  * above were said, and nearly every world's own word on what had just happened, a crack too late, a comet frozen, a
  * burst not at high tide, the far side rising, was kept quiet.)
  */
-const EXPLAIN = /^(It's tumbling again|The shock|Too late|Too early|Too small|Too near|A big eruption|A giant wave|The island is blown|The far side|A dark streak|A streak, but|The ice cracks|A mound|A lava dome|A dome, but|The mound slumps|A blob reaches|Ice reaches the ring|An icy comet|Ice melted|The ice froze|Stone caught|Caught in the glow|The eruption's gas|The ground gives way|The last of the sea|The sea is nearly gone|The day has melted|The volcano is in daylight|That lava|A seabird|A nest|Found:|The island stands|Too tall for its width|A dust storm is coming)/;
+const EXPLAIN = /^(It's tumbling again|The shock|Too late|Too early|Too small|Too near|A big eruption|A giant wave|The island is blown|The far side|A dark streak|A streak, but|The ice cracks|A mound|A lava dome|A dome, but|The mound slumps|A blob reaches|Ice reaches the ring|An icy comet|Ice melted|The ice froze|Stone caught|Caught in the glow|The eruption's gas|The ground gives way|The last of the sea|The sea is nearly gone|The day has melted|The volcano is in daylight|That lava|A seabird|A nest|Found:|The island stands|Too tall for its width|A dust storm is coming|Theia|Too big to hold|The big stone|A stone too big)/;
 function announce(text: string, lesson = false): void {
   text = words$(text);
   if (BARE && !ending) return;
@@ -2550,6 +2556,7 @@ function words(): void {
   for (const text of planet.news.splice(0)) {
     // Only the few things worth a word are said, quietly, at the foot of the page.
     if (!ending && (QUIET_WORDS.test(text) || EXPLAIN.test(text))) announce(WORLD.goal === 'gather' ? text.replace(/^A stone is coming$/, 'A stone is coming: turn its dotted circle to the top').replace(/^Stone caught: more heat$/, `Caught in the glow: ${planet.tally.caught} of ${GATHER}`) : text);
+    if (/Theia and the world/.test(text)) feel([60, 120, 90]);
     if (/wish kept|takes in|Land breaks/.test(text)) feel(12);
     else if (/The ground gives way/.test(text)) feel([30, 80, 60]);
     else if (/The stone falls/.test(text)) feel(30);
@@ -2913,7 +2920,7 @@ const GOAL_WORDS: Record<typeof WORLD.goal, { age: (met: boolean) => string; don
   sea: { age: () => 'Later: the last seas dry', done: 'Goal reached: a sea kept to the end of the fire', title: ['A sea kept', 'The seas dried'], got: () => `${Math.round(seaNow * 100)}% of the world still sea` },
   giant: { age: () => 'Later: the night closes over it', done: 'Goal reached: a mountain standing in the night', title: ['A mountain in the night', 'The mountain melted'], got: () => `a mountain ${Math.round(peakNow)} km high` },
   water: { age: () => 'Later: the ponds join into the first sea', done: 'Goal reached: the first water, melted from comets', title: ['First water made', 'Not enough water'], got: () => `${aimDone} of ${aimOf} comets melted` },
-  gather: { age: () => 'Later: the molten surface hardens', done: 'Goal reached: enough stones caught to form a planet', title: ['Planet formed', 'Not enough stones'], got: () => `${aimDone} of ${aimOf} stones caught` },
+  gather: ACCRETE ? { age: (met) => (met ? 'Later: the debris gathers into the Moon' : 'Later: the molten surface hardens'), done: 'Goal reached: the giant impact, and a Moon to come', title: ['A world grown, and Theia caught', 'Not grown enough'], got: () => (planet.theiaStruck ? 'Theia caught' : `${Math.min(99, Math.round(aimDone))}% grown`) } : { age: () => 'Later: the molten surface hardens', done: 'Goal reached: enough stones caught to form a planet', title: ['Planet formed', 'Not enough stones'], got: () => `${aimDone} of ${aimOf} stones caught` },
   oxygen: { age: (met) => (met ? 'Later: the sky keeps turning blue' : 'Later: the orange haze stays'), done: 'Goal reached: the sky turns blue', title: ['Blue sky made', 'Still an orange sky'], got: () => `${Math.min(100, Math.round(aimDone))}% of the oxygen` },
   chaos: { age: () => 'Later: the ice rafts freeze in place', done: 'Goal reached: the ice cracked in enough places', title: ['Ice cracked', 'Not enough cracks'], got: () => `${aimDone} of ${aimOf} cracks` },
   streaks: { age: () => 'Later: the streaks fade a little', done: 'Goal reached: enough dark streaks', title: ['Streaks made', 'Not enough streaks'], got: () => `${aimDone} of ${aimOf} streaks` },
@@ -2950,7 +2957,7 @@ function tale(met: boolean): string {
     case 'sea': return met ? `${Math.round(seaNow * 100)}% of the world still sea when the fire went out, kept under the ash of its eruptions.` : 'The last of the sea dried before the fire went out.';
     case 'giant': { const km = Math.round(peakNow); return met ? `A mountain ${km} km high, the last land standing under the red giant.` : `A mountain ${km} km high, melted back down by the day.`; }
     case 'water': return met ? `${aimDone} icy comets melted on warm lava: the first ponds of a sea.` : `${aimDone} of ${aimOf} comets melted.`;
-    case 'gather': return met ? 'Enough stones caught to form a planet.' : `${aimDone} stones caught. Not enough for a planet.`;
+    case 'gather': return ACCRETE ? (met ? `A world grown from ${planet.tally.caught - 1} stones, then struck by Theia, a world as big as Mars. The debris thrown up will gather into the Moon.` : `A world ${Math.round(aimDone)}% grown.`) : met ? 'Enough stones caught to form a planet.' : `${aimDone} stones caught. Not enough for a planet.`;
     case 'oxygen': return met ? 'Life in the shallow seas made enough oxygen to turn the sky blue.' : `The sky ${pct}% of the way from orange to blue.`;
     case 'chaos': return `The ice cracked in ${aimDone} of ${aimOf} places.`;
     case 'streaks': return `${aimDone} of ${aimOf} dark geyser streaks.`;
@@ -3775,6 +3782,8 @@ function breathe(dt: number): void {
     for (let v = 0; v < N; v += 3) if (planet.rock[v] > 0) least = Math.min(least, base[v * 3] * q.x + base[v * 3 + 1] * q.y + base[v * 3 + 2] * q.z);
     // (Further back on a young Earth, to leave room for the moon's ring round it.)
     reachDist = THREE.MathUtils.clamp(3.4 + 2 * Math.acos(least), 3.4, 4.8) * (WORLD.goal === 'orbit' ? 1.3 : WORLD.goal === 'feed' ? 1.15 : 1);
+    // (A growing world: small and far off at first, nearer, and so bigger, as it grows.)
+    if (ACCRETE) reachDist = 3.6 * (1 + 0.9 * (1 - Math.min(1, (planet.mass - 1) / (planet.k.accrete - 1))));
   }
   // At the end, the world steps back and up the page, leaving the foot for the chart.
   const held = !ending && seconds - momentAt < moment.hold;

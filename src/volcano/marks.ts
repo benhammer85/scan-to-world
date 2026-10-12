@@ -20,7 +20,7 @@ export type Marks = [boolean, boolean, boolean];
 
 /** For each world: the share of heat to have left (in hundredths: a half, third, quarter, fifth or tenth), and the minutes to be done within. */
 export const MARK_AT: Record<WorldId, { heat: number; minutes: number }> = {
-  first: { heat: 50, minutes: 4 },
+  first: { heat: 50, minutes: 3 },
   comets: { heat: 20, minutes: 5 },
   ocean: { heat: 33, minutes: 4 },
   atolls: { heat: 20, minutes: 4 },

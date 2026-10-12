@@ -820,3 +820,9 @@ Choosing whether a fall was icy afresh at each try at a landing place had also l
 * **Ice under the ground** (`groundIce`): pale blue stipple. Lava over it blasts small steam cones.
 * **Field book:** an aureole (a side that gave way) and rootless cones (lava over ground ice).
 * Bots: turning between pours wins in 2.8–3.4 minutes with a quarter to a third of the heat left. Tapping in one place takes nearly 4 minutes and keeps an eighth. Random play sometimes fails. The heat star is now a fifth.
+
+**The First World grows, as Katamari does** (`accrete`).
+* The world starts small and far off. Each stone caught in the gold ring adds its size to the world's (`mass`), and the world grows on the screen and the gold ring widens with it.
+* Stones come in every size, from a crumb to nearly the world's own. The biggest that still fit grow it most. Past six tenths of the world's size a stone is too big to hold: its ring is dark red, and caught, it breaks a third of the world off. So you choose what to catch and what to turn the ring away from.
+* Grown eightfold, **Theia** comes: a world as big as Mars, as really struck the young Earth. Caught, it is the giant impact, and the debris will gather into the Moon, which is where Young Earth begins.
+* Bots: catching only what fits wins in about 2.4 minutes; catching everything averages nearly 3, sometimes 4; random play doesn't grow. The time star is now 3 minutes.

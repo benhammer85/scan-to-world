@@ -234,6 +234,11 @@ export const VOLCANO = {
    * The first world: the glow a stone is caught in grows as the volcano is built, up to this much wider (a share
    * of its first size) once `catchFull` of lava has been let out, by pouring or bursting. 0: it doesn't grow.
    */
+  /**
+   * The first world, growing as a planet grows: each stone caught adds its size to the world's (`mass`, 1 at first),
+   * and stones come in sizes to match, some too big to hold; grown to this size, Theia comes. 0: stones are only heat.
+   */
+  accrete: 0,
   catchGrow: 0,
   catchFull: 150,
 
@@ -587,7 +592,7 @@ export interface Blob { x: number; y: number; z: number; area: number; heat: num
 /** A blob's radius, in radians across the world, from how much of it there is. */
 export const blobRadius = (area: number): number => 0.035 * Math.sqrt(area);
 
-export interface Impact { vertex: number; in: number; icy?: boolean }
+export interface Impact { vertex: number; in: number; icy?: boolean; size?: number; theia?: boolean }
 
 export class Planet {
   /** Rock height at each vertex, relative to the sea. */
@@ -1742,8 +1747,17 @@ export class Planet {
 
   /** How far round the vent a falling stone is caught (radians, as `warmth` is): wider as the volcano grows. */
   get catchReach(): number {
-    return this.k.warmth * (1 + this.k.catchGrow * Math.min(1, this.drained / this.k.catchFull));
+    // (A growing world: wider as it grows, not as it pours.)
+    const grown = this.k.accrete > 0 ? (this.mass - 1) / (this.k.accrete - 1) : this.drained / this.k.catchFull;
+    return this.k.warmth * (1 + this.k.catchGrow * Math.max(0, Math.min(1, grown)));
   }
+  /** The first world: how big it has grown (1 at first; `accrete` when grown); and whether Theia has struck. */
+  mass = 1;
+  theiaStruck = false;
+  /** ...and how many pieces too-big stones have broken off. */
+  chunks = 0;
+  /** Whether a stone of this size is more than the world can hold: caught, it breaks a piece off. */
+  tooBig(size: number): boolean { return size > this.mass * 0.6; }
   /** How surely a stone landing at a vertex is caught, 0 to 1 (more than a half, and it is). */
   catchAt(v: number): number {
     const p = this.topo.basePositions, q = this.plume;
@@ -1797,8 +1811,9 @@ export class Planet {
   }
 
   /** A stone from the sky, at a vertex: a crater with a raised rim, and death round it. Its heat joins yours. */
-  strike(at: number, icy = false): void {
-    const p = this.topo.basePositions, r = this.k.crater * (icy ? 0.75 : 1);
+  strike(at: number, icy = false, size?: number, theia = false): void {
+    // (A growing world's stones dig craters as big as they are, against the world: Theia's, a great part of it.)
+    const p = this.topo.basePositions, r = this.k.crater * (icy ? 0.75 : 1) * (size ? Math.min(theia ? 4 : 2.2, Math.sqrt((size / this.mass) * 3)) : 1);
     // (An icy comet: is the ground it strikes warm with lava laid lately? Looked at before its crater changes it.)
     let warm = false;
     if (icy) warm = this.warmUnder(at);
@@ -1826,6 +1841,18 @@ export class Planet {
     const caught = this.catchAt(at);
     this.reserve += this.k.impactHeat * (1 + (this.k.caught - 1) * caught);
     this.tally.stones++;
+    // A growing world: a stone caught is part of it, a little bigger; one too big breaks a piece off; Theia, caught, is the giant impact.
+    if (size && this.k.accrete > 0) {
+      if (theia) {
+        if (caught > 0.5) { this.theiaStruck = true; this.tally.caught++; this.tell('The giant impact: Theia and the world melt together, and the debris thrown up will gather into the Moon'); }
+        else this.tell('Theia passes by: it will come round again. Keep the gold ring under it');
+        return;
+      }
+      if (caught > 0.5 && this.tooBig(size)) { this.mass = Math.max(1, this.mass * 0.65); this.chunks++; this.tell('Too big to hold: it broke a piece off the world. Keep the gold ring away from big stones'); return; }
+      if (caught > 0.5) { this.mass += size; this.tally.caught++; this.tell('Stone caught: the world grows'); return; }
+      this.tell(this.tooBig(size) ? 'The big stone fell outside the gold ring: well let past' : 'Missed: catch stones inside the gold ring');
+      return;
+    }
     if (caught > 0.5) { this.tally.caught++; this.tell('Stone caught: more heat'); }
     else if (this.k.impactNear > 0) this.tell(this.k.icy > 0 ? 'Missed: turn the volcano under the next dark stone' : 'Missed: catch stones inside the gold ring'); // (where catching them is the aim, a miss is said too)
   }
@@ -2688,7 +2715,7 @@ export class Planet {
   private stones(dt: number): void {
     if (this.impact) {
       this.impact.in -= dt;
-      if (this.impact.in <= 0) { const icy = !!this.impact.icy; this.strike(this.impact.vertex, icy); this.impact = null; if (!icy) this.tell('The stone falls'); }
+      if (this.impact.in <= 0) { const icy = !!this.impact.icy, size = this.impact.size, theia = this.impact.theia; this.strike(this.impact.vertex, icy, size, theia); this.impact = null; if (!icy && !theia) this.tell('The stone falls'); }
       return;
     }
     if (this.over || !this.stonesFall || this.k.impactEvery[1] <= 0) return;
@@ -2702,9 +2729,17 @@ export class Planet {
       const d = Math.hypot(p[v * 3] - this.plume.x, p[v * 3 + 1] - this.plume.y, p[v * 3 + 2] - this.plume.z);
       if (d < 0.08) continue; // not on the vent itself
       // (An icy comet falls nearer the volcano than a stone may, where lava can be poured out to meet it.)
-      if (this.k.impactNear > 0) { const icy = icyNext; if (d > 0.2 && d < (icy ? this.k.iceNear : this.k.impactNear)) { this.impact = { vertex: v, in: this.k.impactWarning, icy }; this.tell(icy ? 'An icy comet is coming: turn its circle to just below the volcano, and pour' : 'A stone is coming'); return; } continue; }
+      if (this.k.impactNear > 0) { const icy = icyNext; if (d > 0.2 && d < (icy ? this.k.iceNear : this.k.impactNear)) { this.impact = { vertex: v, in: this.k.impactWarning, icy, ...this.stoneSize() }; this.tell(icy ? 'An icy comet is coming: turn its circle to just below the volcano, and pour' : this.impact.theia ? 'Theia is coming, a world as big as Mars: catch it in the gold ring' : this.impact.size && this.tooBig(this.impact.size) ? 'A stone too big to hold is coming: keep the gold ring away from it' : 'A stone is coming'); return; } continue; }
       if (this.rand() < 0.5 || d < 0.5) { this.impact = { vertex: v, in: this.k.impactWarning, icy: this.rand() < this.k.icy }; this.tell(this.impact.icy ? 'An icy comet is coming' : 'A stone is coming'); return; }
     }
+  }
+
+  /** The first world: how big the coming stone is, against the world as it is now; grown, Theia. */
+  private stoneSize(): { size?: number; theia?: boolean } {
+    if (this.k.accrete <= 0) return {};
+    if (this.mass >= this.k.accrete) return { size: this.mass, theia: true };
+    // (Every size, from a crumb to near the world's own: the biggest that still fits grow it most; past six tenths, too big.)
+    return { size: this.mass * (0.15 + 0.75 * this.rand()) };
   }
 
   /** Whether an icy comet landing at a vertex would melt: warm lava lies near enough (lately laid, or still running). */

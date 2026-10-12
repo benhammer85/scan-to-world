@@ -723,11 +723,23 @@ describe('real terrain', () => {
 });
 
 describe('the first world', () => {
-  it('catches stones further round the volcano the more lava it has let out', () => {
+  it('grows with each stone it catches, and catches further round as it grows', () => {
     const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('first').rules);
     const first = pl.catchReach;
-    pl.drained = pl.k.catchFull;
+    pl.strike(pl.plumeVertex, false, 0.3);
+    expect(pl.mass).toBeCloseTo(1.3, 5);
+    expect(pl.catchReach).toBeGreaterThan(first);
+    pl.mass = pl.k.accrete;
     expect(pl.catchReach).toBeCloseTo(first * (1 + worldOf('first').rules.catchGrow!), 5);
+  });
+  it('breaks a piece off for a stone too big to hold, and ends with Theia', () => {
+    const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('first').rules);
+    pl.mass = 4;
+    pl.strike(pl.plumeVertex, false, 3);
+    expect(pl.mass).toBeLessThan(4);
+    expect(pl.chunks).toBe(1);
+    pl.strike(pl.plumeVertex, false, pl.mass, true);
+    expect(pl.theiaStruck).toBe(true);
   });
   it('crusts over slowly, not all at once', () => {
     // (On a planet of the detail the game plays at: on a coarse one the magma drains as fast either way.)
@@ -744,7 +756,7 @@ describe('the first world', () => {
   it('begins molten, and gathers a stone that falls on the glow', () => {
     const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('first').rules);
     expect(pl.lava[nearest(1, 0, 0)]).toBeGreaterThan(0);
-    pl.strike(pl.plumeVertex);
+    pl.strike(pl.plumeVertex, false, 0.3);
     expect(pl.tally.caught).toBe(1);
   });
 });
