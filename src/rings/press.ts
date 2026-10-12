@@ -15,7 +15,7 @@
  *             begun at once
  *
  * The challenge (challenge.html, the same drawing): ten rings a run on a new tree, each as close to the
- * last as you dare, and quick, scored for both; each touch on the last ring's edge costs 30 and is marked.
+ * last as you dare, and quick, scored for both; each touch on the last ring's edge costs 30 and leaves a knot in the wood.
  * Nothing eased toward round, nothing kept in the diary; the best score is kept (`annulus.challenge`).
  *
  * On opening, the slice paints itself in from the heart. Each ring is eased a little toward round (the
@@ -195,7 +195,7 @@ function ringPoints(): number {
   const gap = run.gapN ? run.gapSum / run.gapN : 30, secs = Math.max(0.5, clock() - run.began);
   return Math.max(0, Math.round(100 * (1 / (1 + gap / 5)) * Math.min(2, 4 / secs)) - TOUCH * run.touches);
 }
-/** The brush went over the last ring's edge: it costs, and the place is marked. */
+/** The brush went over the last ring's edge: it costs, and leaves a knot there. */
 function touchEdge(a: number): void {
   run.touches++;
   marks.push({ a, r: radiusAt((i) => tree.inner(i), a), at: clock() });
@@ -527,12 +527,20 @@ function frame(): void {
   // The ink: a brush's line, wet at first, then drying into bristle-streaks and evaporating. (It's on the
   // slice, so it draws back with it.)
   drawBrush(g, v, t);
-  // Where the brush has touched an edge this run: small blooms of vermilion, kept on the slice.
+  // Where the brush has touched an edge this run: a small knot in the wood, kept on the slice: a soft
+  // oval of the wood's own umber lying along the ring, darker at its heart, a pale bloom round it.
   for (const m of marks) {
-    const [mx, my] = at(v, m.a, m.r), k = smooth((t - m.at) / 0.5), r = (3 + 4 * k) * px;
-    const grd = g.createRadialGradient(mx, my, 0, mx, my, r);
-    grd.addColorStop(0, 'rgba(196,72,40,0.75)'); grd.addColorStop(0.7, 'rgba(196,72,40,0.3)'); grd.addColorStop(1, 'rgba(196,72,40,0)');
-    g.fillStyle = grd; g.beginPath(); g.arc(mx, my, r, 0, TAU); g.fill();
+    const [mx, my] = at(v, m.a, m.r), k = smooth((t - m.at) / 0.8), tang = -(m.a + v.turn) + Math.PI / 2;
+    g.save();
+    g.translate(mx, my); g.rotate(tang); g.scale(1, 0.45);
+    const r = (2.5 + 2.5 * k) * px;
+    const bloom = g.createRadialGradient(0, 0, r * 0.8, 0, 0, r * 1.9);
+    bloom.addColorStop(0, 'rgba(250,244,230,0)'); bloom.addColorStop(0.6, `rgba(250,244,230,${(0.14 * k).toFixed(3)})`); bloom.addColorStop(1, 'rgba(250,244,230,0)');
+    g.fillStyle = bloom; g.beginPath(); g.arc(0, 0, r * 1.9, 0, TAU); g.fill();
+    const knot = g.createRadialGradient(0, 0, 0, 0, 0, r);
+    knot.addColorStop(0, `rgba(80,50,30,${(0.5 * k).toFixed(3)})`); knot.addColorStop(0.5, `rgba(106,70,44,${(0.32 * k).toFixed(3)})`); knot.addColorStop(1, 'rgba(120,80,50,0)');
+    g.fillStyle = knot; g.beginPath(); g.arc(0, 0, r, 0, TAU); g.fill();
+    g.restore();
   }
   drawPaper(g, W, H);
   requestAnimationFrame(frame);
