@@ -86,8 +86,9 @@ const daysDrawn = () => new Set(days).size;
 const paper = new Paper(512);
 // (The season's colour stays, half settled into the wood: green and gold to rust and violet, in oak.)
 paper.turn = 0.5;
-// (No dark drying rim: each ring's edge is its own painted line, so the wash makes no second one.)
-paper.wash.edgeFlow = 0;
+// (A gentle dark drying rim, as watercolour has; each ring's wash reaches under the last ring's line, so
+// the rim it leaves there pools into that line rather than making a second one.)
+paper.wash.edgeFlow = 1.3;
 // Each year grown across its ring, as wood is (pale spring wood, a dark band of late summer's), in the
 // colour of its day's season: spring green, summer gold, autumn rust, winter violet (northern seasons).
 paper.across = (ring) => {
@@ -154,7 +155,7 @@ function baseNow(t = clock()): View {
   return { ...view, s: ease.from + (view.s - ease.from) * k };
 }
 /**
- * Looking closer: two fingers pinch the slice larger (up to six times) about where they are; one finger
+ * Looking closer: two fingers pinch the slice larger (up to three times) about where they are; one finger
  * then moves it about; a double tap goes back. While it's looked at closely, nothing is drawn.
  */
 let look = { k: 1, ox: 0, oy: 0 }, lookBack: { k: number; ox: number; oy: number; at: number } | null = null;
@@ -171,7 +172,7 @@ function viewNow(t = clock()): View {
 }
 /** Zoom by f about the point (x, y) (device px). */
 function zoomAbout(x: number, y: number, f: number): void {
-  const v = viewNow(), k = Math.max(1, Math.min(6, look.k * f)), g2 = k / look.k, b = baseNow();
+  const v = viewNow(), k = Math.max(1, Math.min(3, look.k * f)), g2 = k / look.k, b = baseNow();
   const cx = x + (v.cx - x) * g2, cy = y + (v.cy - y) * g2;
   look = k <= 1.001 ? { k: 1, ox: 0, oy: 0 } : { k, ox: cx - b.cx, oy: cy - b.cy };
   lookBack = null;
@@ -392,6 +393,8 @@ canvas.addEventListener('pointermove', (e) => {
     f.x = x; f.y = y;
     if (pinch && fingers.size >= 2) {
       const now = spread();
+      // (Only a deliberate pinch: two fingers resting, or brushing the glass, look no closer.)
+      if (!closer() && Math.abs(now.d - pinch.d) < 14 * px) return;
       zoomAbout(pinch.mx, pinch.my, now.d / pinch.d);
       look.ox += now.mx - pinch.mx; look.oy += now.my - pinch.my;
       pinch = now;
@@ -563,9 +566,16 @@ function drawLatewood(v: View): void {
     const k = Math.max(0, Math.min(1, (w - 1.1) / 3.5));
     if (k <= 0) continue;
     ringPath(v, barkOf(i));
-    g.strokeStyle = `rgba(104,66,40,${(0.34 * k).toFixed(3)})`; g.lineWidth = 0.9 * px; g.stroke();
+    g.strokeStyle = `rgba(104,66,40,${(0.28 * k).toFixed(3)})`; g.lineWidth = 0.85 * px; g.setLineDash([]); g.stroke();
+    // (Over it, the brush's pressure: a fuller stroke, broken irregularly, so the line swells and thins
+    // along its length as a hand-painted one does, differently each year.)
+    g.setLineDash(DASH.map((d) => d * px)); g.lineDashOffset = (i * 37.7) % 60 * px;
+    g.strokeStyle = `rgba(96,60,36,${(0.11 * k).toFixed(3)})`; g.lineWidth = 1.8 * px; g.stroke();
   }
+  g.setLineDash([]);
 }
+/** The swell and thinning of a painted line (CSS px: stroke, gap, ...). */
+const DASH = [26, 2, 11, 1, 34, 3, 15, 2, 8, 1];
 
 /** The bark: a painted edge, a little uneven, darker inside a softer band. */
 function drawBark(v: View): void {

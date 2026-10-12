@@ -122,7 +122,7 @@ export class Paper {
       if (tree.state[i] !== 1 || this.laid[i]) continue;
       this.laid[i] = 1;
       const out = inner(i) + edge[i] * w;
-      this.layYear((i - 0.5) * STEP, (i + 0.5) * STEP, (a) => (n ? radiusAt(inner, a) : 0), () => out, wx, this.across ? this.across(n) : tree.at[i], tree.tone[i]);
+      this.layYear((i - 0.5) * STEP, (i + 0.5) * STEP, (a) => (n ? radiusAt(inner, a) : 0), () => out, wx, this.across ? this.across(n) : tree.at[i], tree.tone[i], n);
     }
     this.dirty = true;
   }
@@ -157,7 +157,7 @@ export class Paper {
       this.wash.weather = { ...weatheringOf(tree, n), dry: 0 };
       for (let i = 0; i < K; i++) {
         const a = i * STEP, f = ((((dir * (a - start)) % TAU) + TAU) % TAU) / TAU, tone = tones ? tones[Math.floor(i / 8) % tones.length] : 0.5;
-        this.layYear(a - STEP / 2, a + STEP / 2, inner, (b) => radiusAt(ring, b), wx, this.across ? this.across(n) : f, tone);
+        this.layYear(a - STEP / 2, a + STEP / 2, inner, (b) => radiusAt(ring, b), wx, this.across ? this.across(n) : f, tone, n);
       }
       this.wash.weather = weatheringOf(tree, n);
       for (const s of tree.scars) if (s.ring === n + 1) this.fireOn(tree, n, s.angle);
@@ -171,7 +171,7 @@ export class Paper {
   }
 
   /** A stretch of a year's ring laid on the paper, between radii (mm, unwarped): see `across`. */
-  private layYear(a0: number, a1: number, rIn: (a: number) => number, rOut: (a: number) => number, wx: number, f: number, tone: number): void {
+  private layYear(a0: number, a1: number, rIn: (a: number) => number, rOut: (a: number) => number, wx: number, f: number, tone: number, ring = 0): void {
     const ink = pigmentOf(wx, f, tone), water = wx === RAIN ? 1 : 0.9, gran = granulation(wx), dries = woodOf(this.wood, wx);
     const W = (r: (a: number) => number) => (a: number) => warpR(this.warp, r(a));
     if (!this.across) { this.wash.layArc(a0, a1, W(rIn), W(rOut), water, () => ink, gran, dries, this.turn); return; }
@@ -183,8 +183,10 @@ export class Paper {
     // between them to read as a groove; the overlap is hidden under the painted line.)
     const seam = 0.8 * this.wash.h, Win = (a: number) => (rIn(a) > 0 ? Math.max(0, warpR(this.warp, rIn(a)) - seam) : 0);
     const heart = absorb(this.wood.heart), sap = absorb(this.wood.sap);
-    const blend: RGB = [0, 1, 2].map((c) => 0.8 * (0.62 * 0.55 * sap[c] + 0.38 * ink[c]) + 0.0128 * heart[c]) as RGB;
-    this.wash.layArc(a0, a1, Win, W(rOut), water, () => blend, gran * 0.5, dries, this.turn);
+    // (Each year its own density, as growth years are: some paler, some deeper, never two quite alike.)
+    const h = Math.sin(ring * 12.9898 + 4.1) * 43758.5453, year = 0.8 + 0.42 * (h - Math.floor(h));
+    const blend: RGB = [0, 1, 2].map((c) => year * (0.8 * (0.62 * 0.55 * sap[c] + 0.38 * ink[c]) + 0.0128 * heart[c])) as RGB;
+    this.wash.layArc(a0, a1, Win, W(rOut), water, () => blend, gran, dries, this.turn);
   }
 
   private fireOn(tree: TreeSim, n: number, angle: number): void {
