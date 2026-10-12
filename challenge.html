@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="theme-color" content="#f4efe4" />
+    <meta name="apple-mobile-web-app-title" content="Well Rounded" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <link rel="apple-touch-icon" href="/src/rings/icon/icon-180.png" />
+    <link rel="icon" type="image/png" href="/src/rings/icon/icon-180.png" />
+    <title>Well Rounded: Challenge</title>
+    <style>
+      body { position: fixed; inset: 0; }
+      html, body { margin: 0; height: 100%; background: #f4efe4; overflow: hidden; overscroll-behavior: none; touch-action: none; -webkit-user-select: none; user-select: none; }
+      #press { position: fixed; inset: 0; width: 100vw; height: 100dvh; display: block; }
+      #words { position: fixed; top: calc(70px + env(safe-area-inset-top)); left: 24px; right: 24px; text-align: center; font: italic 15px "Newsreader", "Iowan Old Style", Georgia, serif; color: #2e2118; opacity: 0; transition: opacity 2s; pointer-events: none; text-wrap: balance; }
+      #words.shown { opacity: 0.5; }
+      #score { position: fixed; top: calc(24px + env(safe-area-inset-top)); left: 0; right: 0; text-align: center; font: 15px "Newsreader", "Iowan Old Style", Georgia, serif; letter-spacing: 0.06em; color: #2e2118; opacity: 0.55; pointer-events: none; font-variant-numeric: tabular-nums; }
+      #words.over { opacity: 0.75; }
+    </style>
+  </head>
+  <body data-mode="challenge">
+    <canvas id="press" aria-label="Well Rounded, the challenge: draw each ring as close to the last as you dare, and quickly; touch it and the run is over"></canvas>
+    <p id="score"></p>
+    <p id="words"></p>
+    <script type="module" src="/src/rings/press.ts"></script>
+  </body>
+</html>

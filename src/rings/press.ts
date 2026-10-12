@@ -14,6 +14,10 @@
  *             touching wet paint, while the slice draws back slowly to make room; the next ring can be
  *             begun at once
  *
+ * The challenge (challenge.html, the same drawing): a new tree each run; each ring as close to the last
+ * as you dare, and quick, scored for both; let the brush touch the last ring's edge and the run is over.
+ * Nothing eased toward round, nothing kept in the diary; the best score is kept (`annulus.challenge`).
+ *
  * On opening, the slice paints itself in from the heart. Each ring is eased a little toward round (the
  * way a tree evens out), so the slice stays organic, never a lump. `?demo` shows a year already drawn.
  */
@@ -49,6 +53,8 @@ const smooth = (x: number) => { const t = Math.max(0, Math.min(1, x)); return t 
 // (so the first days aren't hairlines); the tree never grows old.
 // No line to keep to and no wood to run out of: wherever the circle is drawn, round the slice, is the
 // year's edge (a loose, wide circle a wide year; a close one, a narrow year).
+/** The challenge (challenge.html) rather than the daily practice. */
+const CHALLENGE = document.body.dataset.mode === 'challenge';
 const DAILY = { yearsPerRing: 1, crown: OAK.crown / 5, crownYears: 6, oldFrom: 1e6, oldTo: 2e6, ink: 1e6 };
 /** The widest year (steady widths): a circle drawn at the screen's edge stops at this. */
 const WIDEST = 6;
@@ -63,7 +69,7 @@ function brushPoint(v: View, x: number, y: number): [number, number] {
   return [v.cx + dx * k, v.cy + dy * k];
 }
 /** How far each ring is eased toward round (a tree evens out its lumps over the years). */
-const ROUND = 0.15;
+const ROUND = CHALLENGE ? 0 : 0.15;
 /** Where the finger puts the line (steady widths from the bark), eased a little toward round. */
 function rounded(a: number, u: number): number {
   return Math.min(WIDEST, u) + ROUND * (tree.radius - radiusAt((i) => tree.inner(i), a)) / tree.wRef;
@@ -110,6 +116,7 @@ function demoYear(): void {
 
 /** The kept tree, if there is one (`?fresh` begins another). */
 async function recall(): Promise<void> {
+  if (CHALLENGE) return;
   if (params.has('demo')) { demoYear(); return; }
   if (params.has('fresh')) return;
   const k = await recallTree(DIARY), t = k && treeFrom(k, DAILY);
@@ -118,7 +125,7 @@ async function recall(): Promise<void> {
   while (days.length < t.rings.length) days.unshift(days[0] ?? dayOf());
 }
 function keep(): void {
-  if (params.has('demo')) return;
+  if (params.has('demo') || CHALLENGE) return;
   void keepTree({ tree: 'oak', seed: tree.seed, wander: false, turn: 0, sim: snapshotTree(tree), days: days.slice() }, DIARY);
 }
 
@@ -157,6 +164,48 @@ function holdView(): void {
 }
 
 // ---------------------------------------------------------------- the turn of a ring
+// ---------------------------------------------------------------- the challenge
+const scoreEl = document.getElementById('score');
+/** The run: its points and rings; this ring's closeness (CSS px from the last ring's edge, summed) and when it began. */
+let run = { score: 0, rings: 0, over: false, gapSum: 0, gapN: 0, began: 0 };
+/** Where the brush touched the edge (device px), and when. */
+let touched: { x: number; y: number; at: number } | null = null;
+const bestOf = () => { try { return Number(localStorage.getItem('annulus.challenge')) || 0; } catch { return 0; } };
+function showScore(): void {
+  if (!scoreEl) return;
+  const best = bestOf();
+  scoreEl.textContent = run.rings || run.score ? `${run.rings} ${run.rings === 1 ? 'ring' : 'rings'} · ${run.score.toLocaleString()}` : best ? `best ${best.toLocaleString()}` : '';
+}
+/**
+ * A ring's points: closeness (1 on the edge, a half at 5 px off, a sixth at 25) times pace (2 for a ring
+ * in 2 s or less, 1 at 4 s, a half at 8), out of 200.
+ */
+function ringPoints(): number {
+  const gap = run.gapN ? run.gapSum / run.gapN : 30, secs = Math.max(0.5, clock() - run.began);
+  return Math.round(100 * (1 / (1 + gap / 5)) * Math.min(2, 4 / secs));
+}
+/** The brush touched the last ring's edge: the run is over, where it touched marked. */
+function collide(x: number, y: number): void {
+  run.over = true; tree.cancel(); painter = null; trail = [];
+  touched = { x, y, at: clock() };
+  let best = bestOf();
+  if (run.score > best) { best = run.score; try { localStorage.setItem('annulus.challenge', String(best)); } catch { /* not kept */ } }
+  if (NATIVE) tap({ strength: 0.8, sharpness: 0.6 });
+  words.classList.add('over');
+  say(`Touched the edge. ${run.rings} ${run.rings === 1 ? 'ring' : 'rings'}, ${run.score.toLocaleString()} points${run.score >= best && run.score > 0 ? ': your best' : `; best ${best.toLocaleString()}`}. Touch to begin again.`, 1e5);
+  if (scoreEl) scoreEl.textContent = '';
+}
+/** A new run: a new seedling, a clean sheet. */
+function restart(): void {
+  tree = new TreeSim(1 + Math.floor(Math.random() * 1e6), DAILY);
+  days = []; trail = []; touched = null; settle = { ring: -1, at: 0 };
+  run = { score: 0, rings: 0, over: false, gapSum: 0, gapN: 0, began: 0 };
+  warp = warpFor(tree); paper.fit(warp, warp.R); paper.bake(tree); view = null; ease = null;
+  openedAt = clock();
+  words.classList.remove('over', 'shown');
+  showScore();
+}
+
 /** The ring just closed, blooming (a look only: the next can be begun at once). */
 let settle = { ring: -1, at: 0 };
 /** The brush's track: where, when, how wide it laid (slow is wide), and how fast. */
@@ -176,6 +225,8 @@ let sayT = 0;
 canvas.addEventListener('pointerdown', (e) => {
   canvas.setPointerCapture(e.pointerId);
   if (painter !== null) return;
+  // (After a touch on the edge, a moment to see the score before a touch begins again.)
+  if (run.over) { if (touched && clock() - touched.at > 0.8) restart(); return; }
   words.classList.remove('shown');
   const x = e.clientX * px, y = e.clientY * px;
   holdView();
@@ -188,11 +239,12 @@ canvas.addEventListener('pointerdown', (e) => {
   }
   // Inside the slice, a ring's day is read; anywhere outside it, the circle begins (the brush a little
   // way in from the finger).
-  if (brushAt(tree, v, 0, x, y).u < 0) { readDay(v, x, y); return; }
+  if (brushAt(tree, v, 0, x, y).u < 0) { if (!CHALLENGE) readDay(v, x, y); return; }
   const b = brushAt(tree, v, 0, ...brushPoint(v, x, y));
   strokeView = v;
   if (tree.begin(e.timeStamp / 1000, b.a, rounded(b.a, b.u))) {
     painter = e.pointerId; paper.begin(tree); trailAt(b.a, b.u);
+    run.gapSum = 0; run.gapN = 0; run.began = clock();
     loop = { x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, len: 0, closed: false };
   }
 });
@@ -200,7 +252,14 @@ canvas.addEventListener('pointermove', (e) => {
   if (e.pointerId !== painter || !strokeView) return;
   const evs = typeof e.getCoalescedEvents === 'function' ? e.getCoalescedEvents() : [];
   for (const c of evs.length ? evs : [e]) {
-    const b = brushAt(tree, strokeView, 0, ...brushPoint(strokeView, c.clientX * px, c.clientY * px));
+    const bp = brushPoint(strokeView, c.clientX * px, c.clientY * px), b = brushAt(tree, strokeView, 0, ...bp);
+    if (CHALLENGE) {
+      // How far the brush is outside the last ring's edge, on the screen: below nothing, it's touched.
+      const sv = strokeView, edge = sv.s * warpR(sv.warp, radiusAt((i) => tree.inner(i), b.a));
+      const gap = (Math.hypot(bp[0] - sv.cx, bp[1] - sv.cy) - edge) / px;
+      if (gap < 0) { collide(bp[0], bp[1]); return; }
+      run.gapSum += gap; run.gapN++;
+    }
     tree.move(c.timeStamp / 1000, b.a, rounded(b.a, b.u));
     trailAt(b.a, b.u);
     if (!tree.stroke) break;
@@ -208,7 +267,7 @@ canvas.addEventListener('pointermove', (e) => {
     loop.len += Math.hypot(c.clientX - loop.x, c.clientY - loop.y); loop.x = c.clientX; loop.y = c.clientY;
     if (loop.len > 160 && Math.hypot(loop.x - loop.x0, loop.y - loop.y0) < Math.max(28, loop.len / 16)) {
       loop.closed = true;
-      if (tree.finish(0.5)) break;
+      if (tree.finish(CHALLENGE ? 0.9 : 0.5)) break;
     }
   }
   hear();
@@ -217,7 +276,7 @@ for (const type of ['pointerup', 'pointercancel'] as const) canvas.addEventListe
   if (e.pointerId !== painter) return;
   painter = null;
   // Let go most of the way round, the ring is closed for you; earlier, the line rests, to be taken up.
-  if (tree.finish()) hear();
+  if (tree.finish(CHALLENGE ? 0.95 : 0.8)) hear();
   // (A whole loop drawn, but not round the slice: let go, and said where, once the hand is off.)
   else if (loop.closed && tree.stroke) { tree.cancel(); say('Draw the circle round the slice.', 4); }
   else { tree.lift(); restAt = clock(); }
@@ -260,7 +319,11 @@ function hear(): void {
     // The day's ring, kept; the first of the day is counted, quietly, once it has settled.
     const today = dayOf(), first = !days.includes(today);
     days.push(today); keep();
-    if (first) window.setTimeout(() => say(daysDrawn() === 1 ? 'Your first day.' : `Day ${daysDrawn()}.`, 5), 2400);
+    if (CHALLENGE) {
+      const pts = ringPoints();
+      run.score += pts; run.rings++; showScore();
+      window.setTimeout(() => { if (!run.over) say(`+${pts}`, 1.2); }, 150);
+    } else if (first) window.setTimeout(() => say(daysDrawn() === 1 ? 'Your first day.' : `Day ${daysDrawn()}.`, 5), 2400);
     // (The ring is done: it settles into the paper and the slice draws back to make room, while the
     // next can be begun as soon as the finger comes down again.)
     painter = null;
@@ -430,6 +493,13 @@ function frame(): void {
   // The ink: a brush's line, wet at first, then drying into bristle-streaks and evaporating. (It's on the
   // slice, so it draws back with it.)
   drawBrush(g, v, t);
+  // Where the brush touched the edge: a small bloom of vermilion.
+  if (touched) {
+    const k = smooth((t - touched.at) / 0.5), r = (4 + 6 * k) * px;
+    const grd = g.createRadialGradient(touched.x, touched.y, 0, touched.x, touched.y, r);
+    grd.addColorStop(0, 'rgba(196,72,40,0.75)'); grd.addColorStop(0.7, 'rgba(196,72,40,0.35)'); grd.addColorStop(1, 'rgba(196,72,40,0)');
+    g.fillStyle = grd; g.beginPath(); g.arc(touched.x, touched.y, r, 0, TAU); g.fill();
+  }
   drawPaper(g, W, H);
   requestAnimationFrame(frame);
 }
@@ -439,7 +509,9 @@ void (async () => {
   warp = warpFor(tree); paper.fit(warp, warp.R); paper.bake(tree);
   fit(); view = null; openedAt = clock();
   const today = dayOf();
-  say(!tree.rings.length ? 'Draw a circle round the slice, as wide or close as you like: a ring a day.' : days.includes(today) ? 'Today’s ring is drawn. Another, if you like.' : 'Today’s ring.', 8);
-  Object.assign(window, { press: { get tree() { return tree; }, get phase() { return settle.ring >= 0 ? 'settling' : 'trace'; }, get easing() { return !!ease; }, get view() { return viewNow(); }, get days() { return days; } } });
+  showScore();
+  if (CHALLENGE) say('Draw each ring as close to the last as you dare, and quickly. Touch it, and the run is over.', 8);
+  else say(!tree.rings.length ? 'Draw a circle round the slice, as wide or close as you like: a ring a day.' : days.includes(today) ? 'Today’s ring is drawn. Another, if you like.' : 'Today’s ring.', 8);
+  Object.assign(window, { press: { get tree() { return tree; }, get phase() { return settle.ring >= 0 ? 'settling' : 'trace'; }, get easing() { return !!ease; }, get view() { return viewNow(); }, get days() { return days; }, get run() { return run; } } });
   requestAnimationFrame(frame);
 })();

@@ -12,7 +12,8 @@ const GAME = process.env.GAME === 'rings' ? 'rings' : 'volcano';
 const asIndex: Plugin = {
   name: 'volcano-as-index',
   // (Capacitor opens index.html: the game's page is renamed so, once it's written. For Well Rounded
-  // that's the daily practice, a ring a day (press.html); the first game is kept at classic.html.)
+  // that's the daily practice, a ring a day (press.html); the first game is kept at classic.html, and the
+  // challenge is at challenge.html.)
   writeBundle(options) {
     const dir = options.dir ?? 'dist-app';
     if (GAME === 'rings') {
@@ -31,6 +32,6 @@ export default defineConfig({
     outDir: 'dist-app',
     emptyOutDir: true,
     // (Well Rounded is two pages: the daily practice and the first game.)
-    rollupOptions: { input: { [GAME]: resolve(__dirname, `${GAME}.html`), ...(GAME === 'rings' ? { press: resolve(__dirname, 'press.html') } : {}) } },
+    rollupOptions: { input: { [GAME]: resolve(__dirname, `${GAME}.html`), ...(GAME === 'rings' ? { press: resolve(__dirname, 'press.html'), challenge: resolve(__dirname, 'challenge.html') } : {}) } },
   },
 });
