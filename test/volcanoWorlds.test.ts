@@ -350,7 +350,14 @@ describe('Mars', () => {
       if (pl.rock[v] - before[v] > 0.005) spread++;
     }
     expect(spread).toBeGreaterThan(60);
-    expect(rise).toBeLessThan(0.25);
+    expect(rise).toBeLessThan(0.1);
+    // (Slide after slide down the same side, the apron still never stands tall.)
+    for (let i = 0; i < 4; i++) {
+      for (let v = 0; v < topo.vertexCount; v++) { const d = Math.acos(Math.min(1, p[v * 3 + 2])); if (d < 0.3) pl.rock[v] = Math.max(pl.rock[v], pl.start[v] + 0.7 * (1 - d / r) + 0.05); }
+      run(pl, 9);
+    }
+    expect(pl.slides).toBeGreaterThan(2);
+    for (let v = 0; v < topo.vertexCount; v++) if (Math.acos(Math.min(1, p[v * 3 + 2])) > r) expect(pl.rock[v] - before[v]).toBeLessThan(0.1);
   });
 });
 

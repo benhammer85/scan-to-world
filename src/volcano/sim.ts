@@ -1660,15 +1660,27 @@ export class Planet {
     if (gone <= 0) return;
     // (Out beyond the side, in ridges and hummocks, not an even sheet; and always over a band wide enough to hold it,
     // however far the side reached, so it can't pile up on a sliver of ground into a spike.)
-    const w = this.next, from = Math.min(Math.max(0.2, this.reach[s]), Planet.MOUNT);
-    let sum = 0;
-    for (let v = 0; v < this.rock.length; v++) {
-      w[v] = 0;
-      if (this.flankSector![v] !== s || this.flankR![v] < from) continue;
-      w[v] = Math.max(0, (1 - (this.flankR![v] - from) / 0.23) * (0.75 + 0.25 * Math.sin(p[v * 3] * 90 + p[v * 3 + 1] * 70) * Math.cos(p[v * 3 + 2] * 80)));
-      sum += w[v];
+    // (And no ground in it raised more than a little, slide after slide: what won't fit runs on further out.)
+    const w = this.next, from = Math.min(Math.max(0.2, this.reach[s]), Planet.MOUNT), most = 0.08;
+    let left = gone;
+    for (let band = 0.23; left > 1e-6 && band < 0.7; band += 0.1) {
+      for (let pass = 0; pass < 4 && left > 1e-6; pass++) {
+        let sum = 0;
+        for (let v = 0; v < this.rock.length; v++) {
+          w[v] = 0;
+          if (this.flankSector![v] !== s || this.flankR![v] < from || this.rock[v] >= this.start[v] + most) continue;
+          w[v] = Math.max(0, (1 - (this.flankR![v] - from) / band) * (0.75 + 0.25 * Math.sin(p[v * 3] * 90 + p[v * 3 + 1] * 70) * Math.cos(p[v * 3 + 2] * 80)));
+          sum += w[v];
+        }
+        if (sum <= 0) break;
+        const share = left / sum;
+        for (let v = 0; v < this.rock.length; v++) {
+          if (w[v] <= 0) continue;
+          const put = Math.min(share * w[v], this.start[v] + most - this.rock[v]);
+          this.rock[v] += put; left -= put; this.ash[v] = Math.max(this.ash[v], 0.5);
+        }
+      }
     }
-    if (sum > 0) for (let v = 0; v < this.rock.length; v++) if (w[v] > 0) { this.rock[v] += (gone * w[v]) / sum; this.ash[v] = Math.max(this.ash[v], 0.5); }
     this.slides++;
     this.slidWay = s;
     this.find('aureole', 'an aureole. A side that gave way, spread far out in ridges, as round Olympus Mons');
