@@ -10,7 +10,9 @@
  */
 import type { WorldId } from './worlds';
 
-export const AGES: WorldId[] = ['first', 'young', 'archean', 'snowball', 'ocean', 'atolls', 'drying', 'giant'];
+// (Young Earth, Snowball Earth and the atolls are saved for later, out of the chain: each age now goes on from the one
+// played before it. Put them back here, in their places, if they come back.)
+export const AGES: WorldId[] = ['first', 'archean', 'ocean', 'drying', 'giant'];
 
 /** The age before this one, if it's an age of Earth and not the first. */
 export function ageBefore(id: WorldId): WorldId | null {

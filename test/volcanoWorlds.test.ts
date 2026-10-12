@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { buildTopology } from '../src/mesh/topology';
 import { Planet } from '../src/volcano/sim';
 import { Chain, CHAIN } from '../src/volcano/chain';
-import { WORLDS, worldOf, nextWorld, CHAPTERS, chapterOf } from '../src/volcano/worlds';
+import { WORLDS, worldOf, nextWorld, CHAPTERS, chapterOf, SAVED } from '../src/volcano/worlds';
 import { stage } from '../src/volcano/ecology';
 import { ageBefore, carried } from '../src/volcano/ages';
 import { aged, atollPlaces, atollState, defaultChain, tendCoral } from '../src/volcano/atolls';
@@ -23,43 +23,17 @@ const run = (pl: Planet, seconds: number) => { for (let t = 0; t < seconds; t +=
 
 describe('the worlds', () => {
   it('come one after another, and each has its own aim', () => {
-    expect(WORLDS.map((w) => w.id)).toEqual(['mars', 'moon', 'ice', 'asteroid', 'rogue', 'hollow', 'first', 'comets', 'young', 'archean', 'snowball', 'ocean', 'atolls', 'drying', 'giant', 'surtsey', 'lengai', 'ijen', 'tonga', 'io', 'europa', 'enceladus', 'triton', 'tumble', 'mercury', 'magma', 'dust', 'deep', 'spin', 'venus', 'pluto', 'lamp', 'twofires']);
+    const played = WORLDS.filter((w) => !SAVED.includes(w.id)).map((w) => w.id);
+    expect(played).toEqual(['mars', 'moon', 'mercury', 'io', 'europa', 'venus', 'first', 'comets', 'archean', 'ocean', 'drying', 'giant', 'surtsey', 'tonga', 'hollow', 'rogue', 'lamp', 'twofires']);
+    for (let i = 0; i + 1 < played.length; i++) expect(nextWorld(worldOf(played[i]))!.id).toBe(played[i + 1]);
+    expect(nextWorld(worldOf('twofires'))).toBe(null);
+    // (Saved for later: kept whole, but never come to.)
+    expect(nextWorld(worldOf('enceladus'))).toBe(null);
+    expect(worldOf('enceladus').goal).toBe('feed');
     expect(worldOf('moon').goal).toBe('basins');
     expect(worldOf('nowhere').id).toBe('mars');
-    expect(nextWorld(worldOf('mars'))!.id).toBe('moon');
-    expect(nextWorld(worldOf('moon'))!.id).toBe('ice');
-    expect(nextWorld(worldOf('ice'))!.id).toBe('asteroid');
-    expect(nextWorld(worldOf('asteroid'))!.id).toBe('rogue');
-    expect(nextWorld(worldOf('rogue'))!.id).toBe('hollow');
-    expect(nextWorld(worldOf('hollow'))!.id).toBe('first');
-    expect(nextWorld(worldOf('first'))!.id).toBe('comets');
-    expect(nextWorld(worldOf('comets'))!.id).toBe('young');
-    expect(nextWorld(worldOf('young'))!.id).toBe('archean');
-    expect(nextWorld(worldOf('archean'))!.id).toBe('snowball');
-    expect(nextWorld(worldOf('snowball'))!.id).toBe('ocean');
-    expect(nextWorld(worldOf('ocean'))!.id).toBe('atolls');
-    expect(nextWorld(worldOf('atolls'))!.id).toBe('drying');
-    expect(nextWorld(worldOf('drying'))!.id).toBe('giant');
-    expect(nextWorld(worldOf('giant'))!.id).toBe('surtsey');
-    expect(nextWorld(worldOf('surtsey'))!.id).toBe('lengai');
-    expect(nextWorld(worldOf('lengai'))!.id).toBe('ijen');
-    expect(nextWorld(worldOf('ijen'))!.id).toBe('tonga');
-    expect(nextWorld(worldOf('tonga'))!.id).toBe('io');
-    expect(nextWorld(worldOf('io'))!.id).toBe('europa');
-    expect(nextWorld(worldOf('europa'))!.id).toBe('enceladus');
-    expect(nextWorld(worldOf('enceladus'))!.id).toBe('triton');
-    expect(nextWorld(worldOf('triton'))!.id).toBe('tumble');
-    expect(nextWorld(worldOf('tumble'))!.id).toBe('mercury');
-    expect(nextWorld(worldOf('mercury'))!.id).toBe('magma');
-    expect(nextWorld(worldOf('magma'))!.id).toBe('dust');
-    expect(nextWorld(worldOf('dust'))!.id).toBe('deep');
-    expect(nextWorld(worldOf('deep'))!.id).toBe('spin');
-    expect(nextWorld(worldOf('spin'))!.id).toBe('venus');
-    expect(nextWorld(worldOf('venus'))!.id).toBe('pluto');
-    expect(nextWorld(worldOf('pluto'))!.id).toBe('lamp');
-    expect(nextWorld(worldOf('lamp'))!.id).toBe('twofires');
-    expect(nextWorld(worldOf('twofires'))).toBe(null);
   });
+
 });
 
 describe('the ocean world', () => {
@@ -255,7 +229,7 @@ describe('the Atolls', () => {
   const young = defaultChain(topo, from, floor), places = atollPlaces(young, topo);
   const peak = (rock: ArrayLike<number>, i: number) => Math.max(...places[i].core.map((v) => rock[v]));
   it('begin on a chain of islands, a million years on: lower, the furthest from the volcano the lowest', () => {
-    expect(ageBefore('atolls')).toBe('ocean');
+    expect(ageBefore('atolls')).toBe(null); // (saved for later: out of the chain)
     expect(places.length).toBeGreaterThanOrEqual(worldOf('atolls').atolls!);
     const old = aged(young, topo, places, from, floor);
     const byDistance = places.map((q, i) => ({ i, d: Math.acos(q.centre.z) })).sort((a, b) => b.d - a.d);
@@ -292,7 +266,7 @@ describe('the Atolls', () => {
 describe('the Drying Seas', () => {
   const floor = -0.22, from = { x: 0, y: 0, z: 1 }, young = defaultChain(topo, from, floor);
   it('begin on the world the atolls left, a billion years on, with the sea fallen into the basins', () => {
-    expect(ageBefore('drying')).toBe('atolls');
+    expect(ageBefore('drying')).toBe('ocean');
     const old = dried(young, topo, 7, 0.42);
     expect(seaShare(young)).toBeGreaterThan(0.8);
     expect(seaShare(old)).toBeCloseTo(0.42, 1);
@@ -940,8 +914,8 @@ describe('Triton', () => {
 describe("Earth's ages", () => {
   it('follow one another, and carry the ground on, the oceans filling between the dry ages and the wet', () => {
     expect(ageBefore('first')).toBe(null);
-    expect(ageBefore('young')).toBe('first');
-    expect(ageBefore('ocean')).toBe('snowball');
+    expect(ageBefore('archean')).toBe('first');
+    expect(ageBefore('ocean')).toBe('archean');
     expect(ageBefore('mars')).toBe(null);
     // A young Earth's ground: low plains, and one mountain.
     const rock = new Float32Array(1000).fill(0.05);
@@ -969,11 +943,11 @@ describe('Mercury', () => {
 
 describe('the chapters', () => {
   it('hold every world once, in the order they come', () => {
-    expect(CHAPTERS.flatMap((c) => c.worlds)).toEqual(WORLDS.map((w) => w.id));
-    expect(chapterOf('mercury').title).toBe('Pressure');
+    expect(CHAPTERS.flatMap((c) => c.worlds)).toEqual(WORLDS.filter((w) => !SAVED.includes(w.id)).map((w) => w.id));
+    expect(chapterOf('mercury').title).toBe('Our Neighbours');
     // Earth's one world, in two: its past, and its future, the ages going on from one chapter into the next.
     expect(chapterOf('ocean').title).toBe('Earth\'s Past');
-    expect(chapterOf('atolls').title).toBe('Earth\'s Future');
+    expect(chapterOf('drying').title).toBe('Earth\'s Future');
     expect(chapterOf('giant').numeral).toBe('III');
   });
 });
