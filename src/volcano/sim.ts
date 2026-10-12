@@ -430,7 +430,7 @@ export const VOLCANO = {
    * Whether this world's rock keeps a record of how it was made, for the field book: lava run into the sea from
    * land sets as pillows; a fountain let go nearly full from a dry vent spins threads of glass.
    */
-  formations: false,
+  formations: [] as string[],
   /**
    * Mars: how tall (in height) the mountain may stand for each radian its narrowest side reaches out from the vent;
    * built taller, that side gives way, and `collapseTakes` of the excess falls from the top. 0: it never does.
@@ -1214,7 +1214,8 @@ export class Planet {
     }
     if (volume < this.k.explosive) {
       this.tally.flows++;
-      if (this.k.chaos > 0 && !blast && volume < this.k.chaos) this.tell('Too early: wait for the circle to close');
+      if (!blast) this.lavaKind(volume);
+      if (this.k.chaos > 0 && !blast && volume < this.k.chaos) { this.tell('Too early: wait for the circle to close'); this.find('lenticulae', 'lenticulae. Warm ice rose under the crust but didn\'t break through, leaving freckles of domes and pits'); }
       if (this.k.antipode > 0 && !blast) this.tell('Too small to reach the far side: wait for the circle to close');
       if (this.k.chaos > 0 && !blast && volume >= this.k.chaos) this.counted(Math.sqrt(volume / this.k.explosive) * 0.16, 'The ice cracks', 'The ice cracks, but too close to an earlier crack: move further away');
       // (It lasts by its size, so lava comes out at much the same pace whatever the eruption: it
@@ -1230,7 +1231,7 @@ export class Planet {
     // Torn open, it throws its ash far and wide rather than piling it on the summit.
     // Where it can, the biggest throw some clear of the world altogether, into orbit.
     // (Europa: held too long, a burst blasts a hole through the ice, and breaks no rafts: let go while the circle is whole.)
-    if (this.k.chaos > 0 && !blast) this.tell('Too late: the eruption blasted a hole instead of cracking the ice');
+    if (this.k.chaos > 0 && !blast) { this.tell('Too late: the eruption blasted a hole instead of cracking the ice'); this.find('plume', 'a water plume. The burst blasted ocean water up through the ice into space, as telescopes may have seen over Europa'); }
     let left = volume;
     if (!blast && this.k.ringShare > 0 && this.towardGiant) {
       const fed = volume * this.k.ringShare;
@@ -1263,7 +1264,7 @@ export class Planet {
     // (Where the sea still reaches the vent, the water shatters all of it to ash: no lava wells out after, as at Surtsey.)
     const ashShare = this.k.wet > 0 && this.rock[v] < this.k.wet ? 1 : this.k.ashShare;
     // (The field book: a fountain from a dry vent, let go nearly full, flung high enough for the wind to spin its lava into glass.)
-    if (this.k.formations && !blast && ashShare < 1 && volume >= this.capNow * 0.9 && !this.found.includes('hair')) { this.found.push('hair'); this.tell("Found: Pele's hair. A tall lava fountain, spun by the wind into threads of glass"); }
+    if (!blast && ashShare < 1 && volume >= this.capNow * 0.9) this.find('hair', "Pele's hair. A tall lava fountain, spun by the wind into threads of glass");
     if (!blast && this.k.streak > 0 && this.star && !geysering) this.tell('In the dark, no geyser: turn the volcano into the sunlight first');
     if (geysering) this.geyser(left * ashShare * s);
     else this.fallOfAsh(v, left * ashShare * s, (blast ? 3 : 1) * far);
@@ -1321,12 +1322,13 @@ export class Planet {
       this.pourCounted = false;
     // (It stops a little short of where it starts, so a shaking hand doesn't flicker it; but not so far
     // short that the phone held level again, the vent a little off the top, keeps it trickling away.)
-    } else if (this.pouring && tip < this.k.tipPour * 0.9) this.pouring = false;
-    if (!this.pouring) return;
+    } else if (this.pouring && tip < this.k.tipPour * 0.9) { this.pouring = false; this.lavaKind(this.pourRunOut); }
+    if (!this.pouring) { this.pourRunOut = 0; return; }
     const rate = this.k.pourLeast + (this.k.pourMost - this.k.pourLeast) * Math.min(1, (tip - this.k.tipPour) / (1 - this.k.tipPour));
     const amount = Math.min(this.pressure, Math.max(0, rate) * dt);
     if (amount <= 0) return;
     this.pressure -= amount;
+    this.pourRunOut += amount;
     this.breathe(amount, false);
     // (Counted once it pours at all: a gentle pour, begun under the least, never counted.)
     if (!this.pourCounted) { this.pourCounted = true; this.tally.flows++; }
@@ -1335,11 +1337,19 @@ export class Planet {
     this.eruptions.push({ vertex: v, flank: this.aimedFlank(v) ?? v, left: a, rate: a / dt });
   }
 
+  /** How much the pour going now has let out. */
+  private pourRunOut = 0;
+  /** The field book: what a flow's size makes of it, a gentle one ropy, a great one rough clinker. */
+  private lavaKind(volume: number): void {
+    if (volume <= 0) return;
+    if (volume <= this.k.least * 1.3) this.find('pahoehoe', 'pāhoehoe. A small, slow flow kept its skin, and wrinkled it into ropes');
+    else if (volume >= this.k.explosive * 0.8) this.find('aa', 'ʻaʻā. A big, fast flow tore its crust into rough clinker');
+  }
   /** Pluto: poured on too long at once, the mound's top slumps, as slush does that can't freeze as fast as it comes. */
   private slumping(dt: number): void {
     if (this.pouring) { this.pourRun += dt; this.pourRest = 0; } else { this.pourRest += dt; if (this.pourRest > 1) { this.pourRun = 0; this.slumpSaid = false; } }
     if (this.pourRun <= this.k.slumpAfter) return;
-    if (!this.slumpSaid) { this.slumpSaid = true; this.tell('The mound slumps: pour in short bursts, and let each freeze'); }
+    if (!this.slumpSaid) { this.slumpSaid = true; this.tell(this.k.dome > 0 && this.k.domeRing <= 0 ? 'The dome slumps: pour in short bursts, and let each set' : 'The mound slumps: pour in short bursts, and let each freeze'); }
     const p = this.topo.basePositions, v0 = this.plumeVertex, r = 0.07;
     for (let v = 0; v < this.rock.length; v++) {
       const d = Math.hypot(p[v * 3] - p[v0 * 3], p[v * 3 + 1] - p[v0 * 3 + 1], p[v * 3 + 2] - p[v0 * 3 + 2]);
@@ -1650,7 +1660,7 @@ export class Planet {
     if (sum > 0) for (let v = 0; v < this.rock.length; v++) if (w[v] > 0) { this.rock[v] += (gone * w[v]) / sum; this.ash[v] = Math.max(this.ash[v], 0.5); }
     this.slides++;
     this.slidWay = s;
-    if (this.k.formations && !this.found.includes('aureole')) { this.found.push('aureole'); this.tell('Found: an aureole. A side that gave way, spread far out in ridges, as round Olympus Mons'); }
+    this.find('aureole', 'an aureole. A side that gave way, spread far out in ridges, as round Olympus Mons');
     this.tell('Too tall for its width: a side gave way. Widen the mountain where the ring is still dotted');
   }
   /** Mars: how high the ground under the mountain stood before it, as first reckoned. */
@@ -1790,6 +1800,7 @@ export class Planet {
     if (h > 0.6 && !this.sinkingSaid) { this.sinkingSaid = true; this.tell('The ground is sinking: stop pouring for a while'); }
     else if (h < 0.3) this.sinkingSaid = false;
     if (h >= 1) {
+      this.fellFrom = Math.max(this.fellFrom ?? 0, this.summit);
       // (Wide as well as deep: the whole summit over the chamber, not a pit at its tip.)
       const depth = this.k.calderaDepth, width = this.k.caldera;
       this.k.calderaDepth = depth * this.k.hollowDepth; this.k.caldera = width * 2.2;
@@ -1799,8 +1810,14 @@ export class Planet {
       this.tally.calderas++;
       this.lavaChanged();
       this.tell('The ground gives way: the summit falls in');
+      this.find('caldera', 'a caldera. The emptied chamber gave way and the summit fell in, as at Crater Lake');
     }
+    // (Built back higher than it fell from: the chamber refilled under it, lifting it again.)
+    if (this.fellFrom !== null && (this.resurgeIn -= dt) <= 0) { this.resurgeIn = 1; if (this.summit > this.fellFrom + 0.01) this.find('resurgent', 'a resurgent dome. The chamber filled again and lifted the fallen summit higher than before, as at Yellowstone'); }
   }
+  /** The hollow world: how high the summit stood when it last fell in (null: it hasn't). */
+  fellFrom: number | null = null;
+  private resurgeIn = 1;
 
   private collapse(): void {
     const p = this.topo.basePositions, at = this.plumeVertex, r = this.k.caldera;
@@ -2269,7 +2286,8 @@ export class Planet {
       if (solid > 2e-5) this.laid[v] = 0; // (a layer, not a trace: a last trickle setting doesn't make it fresh again)
       this.lava[v] -= solid;
       this.rock[v] += solid;
-      if (this.k.formations && solid > 2e-5 && sea) this.formed(v);
+      if (this.k.formations.length && solid > 2e-5 && sea) this.formed(v);
+      if (this.k.formations.length && sea && l > 0.02) this.find('littoral', 'a littoral cone. Lava poured into the sea burst into steam and built a cone of glassy sand on the shore');
       if (this.frozen[v] && l > this.k.cover) this.steamCone(v);
       if (l > this.k.cover) { if (this.life[v] > 0.05) this.scorch[v] = 1; this.age[v] = 0; this.life[v] = 0; this.grown[v] = 0; this.ash[v] = 0; this.rich[v] = 0; }
     }
@@ -2280,9 +2298,9 @@ export class Planet {
    * up under the sea at the vent doesn't count as pillows: it's lava run from the land into the sea that does.)
    */
   private formed(v: number): void {
-    if (this.found.includes('pillow') || this.rock[this.plumeVertex] <= 0) return;
+    if (!this.k.formations.includes('pillow') || this.found.includes('pillow') || this.rock[this.plumeVertex] <= 0) return;
     const p = this.topo.basePositions, q = this.plume, d = Math.hypot(p[v * 3] - q.x, p[v * 3 + 1] - q.y, p[v * 3 + 2] - q.z);
-    if (d > 0.08) { this.found.push('pillow'); this.tell('Found: pillow lava. Lava running into the sea cools in round pillows'); }
+    if (d > 0.08) this.find('pillow', 'pillow lava. Lava running into the sea cools in round pillows');
   }
 
   /**
@@ -2331,7 +2349,7 @@ export class Planet {
     const t = this.topo;
     this.rock[v] += 0.006;
     for (let q = t.nbrOffsets[v]; q < t.nbrOffsets[v + 1]; q++) this.rock[t.nbrList[q]] += 0.01;
-    if (this.k.formations && !this.found.includes('rootless')) { this.found.push('rootless'); this.tell('Found: rootless cones. Lava over ice in the ground boils it, and steam blasts up small cones'); }
+    this.find('rootless', 'rootless cones. Lava over ice in the ground boils it, and steam blasts up small cones');
   }
 
   /**
@@ -2360,6 +2378,12 @@ export class Planet {
     this.chilled++;
     if (this.chilled === 1) this.tell('Chilled: the lava sets where you touched it, and the flow runs on another way');
     return true;
+  }
+  /** The field book: a formation made, the first time, on a world that keeps them. */
+  private find(id: string, text: string): void {
+    if (!this.k.formations.includes(id) || this.found.includes(id)) return;
+    this.found.push(id);
+    this.tell(`Found: ${text}`);
   }
   /** How many times lava has been chilled by a touch. */
   chilled = 0;
@@ -2541,6 +2565,7 @@ export class Planet {
       for (let v = 0; v < n; v++) r[v] += d;
       this.dried += d;
       this.ashSky = Math.max(0, this.ashSky - dt / this.k.shadeLasts);
+      if (this.k.formations.includes('salt') && !this.found.includes('salt') && this.seaShare < 0.25) this.find('salt', 'salt flats. Where a sea dried away, it left its salt behind in a white plain, as in Death Valley');
     }
   }
   /** The share of the world under the sea. */

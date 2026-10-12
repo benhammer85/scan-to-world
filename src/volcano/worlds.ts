@@ -146,7 +146,7 @@ export const WORLDS: World[] = [
       stormEvery: [55, 80], stormWarning: 15, stormLasts: 18, stormWear: 0.012, softer: 7, stormFresh: 30, // (often enough to plan for, and hard on old rock and ash: lava poured just before one is still fresh, and keeps the peak)
       stormSide: 0.7, // (each storm from its own side: that side wears hardest)
       taper: 1.1, // (only so tall for its width: a narrow side gives way)
-      groundIce: 3, formations: true,
+      groundIce: 3, formations: ['aureole', 'rootless'],
     },
     palette: {
       paper: '#ead3b4', basalt: '#a67a5c', ash: '#c9ad92', lava: '#b8563c', deepLava: '#8f3b28',
@@ -244,6 +244,7 @@ export const WORLDS: World[] = [
     why: "Where warm water rises under Europa's ice, the ice breaks into rafts that drift and freeze again. Scientists call this chaos terrain.",
     second: 'Erupt before the circle starts to empty: the ice breaks into rafts.',
     rules: {
+      formations: ['lenticulae', 'plume'],
       g: 0.13, // (Europa's gravity, Earth's being 1)
       terrain: 'ice', basins: 0, craters: 6, floor: 0.05, rough: 0.012,
       waves: 0, rain: 0, sink: 0, life: false,
@@ -268,7 +269,7 @@ export const WORLDS: World[] = [
     title: 'Venus',
     first: 'Scorching ground under thick yellow clouds.',
     why: 'Venus has flat, round lava domes about 25 km wide, made by thick lava that barely flows.',
-    second: 'Let it out in one place till a dome stands; then turn the world, and start the next.',
+    second: 'Build each dome in short pours, letting each set; then turn the world, and start the next.',
     rules: {
       g: 0.9, // (Venus's gravity, Earth's being 1)
       terrain: 'mars', basins: 0, craters: 4, floor: 0.05, rough: 0.02,
@@ -276,6 +277,7 @@ export const WORLDS: World[] = [
       talus: 1.0, flow: 4, channel: 1, thin: 0.01, coolLand: 2, grainPull: 0, // (stiff and quick to set: it heaps where it comes out, rather than running)
       drift: 0, rises: 0.03, heat: 230, rising: 1.0, steady: true,
       dome: 0.12, plumesApart: 0.4, ashShare: 0.1, // (a burst wells out as more of the same stiff lava, not ash)
+      slumpAfter: 3, slumpBy: 0.03, // (Pluto's rule, folded in: the stiff lava sets only so fast; poured on too long at once, the top slumps)
       impactEvery: [0, 0], // (its thick air burns small stones up before they land)
     },
     palette: {
@@ -382,7 +384,8 @@ export const WORLDS: World[] = [
     why: 'The Sun grows about a tenth brighter every billion years. In one or two billion years Earth will be warm enough that its oceans boil away into the sky and are lost to space. Great eruptions can cool a world for a while: the ash of Tambora in 1815 gave Europe a year without a summer.',
     second: 'Keep more of the sea.',
     sun: [0.75, 0.3, 0.55],
-    rules: { drift: 0, rises: 0.04, heat: 360, rising: 1.3, steady: true, origin: 4, reseed: 10, spread: 0.05, floor: -0.3, swell: 0, sink: 0, reef: 0, waves: 0, rain: 0, dries: 0.00045, shadeLasts: 20, impactEvery: [0, 0] }, // (the volcano creeps to whatever is on top; the sea falls by itself, and only a great burst's ash slows it)
+    rules: {
+      formations: ['littoral', 'salt'], drift: 0, rises: 0.04, heat: 360, rising: 1.3, steady: true, origin: 4, reseed: 10, spread: 0.05, floor: -0.3, swell: 0, sink: 0, reef: 0, waves: 0, rain: 0, dries: 0.00047, shadeLasts: 20, impactEvery: [0, 0] }, // (the volcano creeps to whatever is on top; the sea falls by itself, and only a great burst's ash slows it)
     palette: {
       paper: '#efdcb8', basalt: '#a08a70', ash: '#b9ad9c', lava: '#b8563c', deepLava: '#8f3b28',
       shallow: '#d9e2d4', deep: '#aec3c6',
@@ -429,7 +432,7 @@ export const WORLDS: World[] = [
       heat: 130, rising: 1.3, steady: true, cap: 8, explosive: 4, // (a small fire: every eruption counts)
       waves: 0.004, softer: 5, // (the sea takes Surtsey's ash fast; lava rock it can hardly touch)
       wet: 0.03, // (until the cone stands clear of the sea, every eruption is all ash)
-      nests: 8, formations: true,
+      nests: 8, formations: ['pillow', 'hair'],
       impactEvery: [0, 0],
     },
     palette: {
@@ -469,6 +472,7 @@ export const WORLDS: World[] = [
     why: "If magma drains from under a volcano too fast, the top falls in. Kilauea's summit dropped about 500 m this way in 2018.",
     second: 'Build in short pours, and let the ground rest between them.',
     rules: {
+      formations: ['caldera', 'resurgent'],
       g: 0.5,
       terrain: 'mars', basins: 0, craters: 12, floor: 0.05, rough: 0.02,
       waves: 0, rain: 0, sink: 0, life: false,
@@ -494,6 +498,7 @@ export const WORLDS: World[] = [
     why: 'Some planets drift through space with no star, so the only heat they have comes from inside.',
     second: 'Pour beside the green, never on it, to keep it warm and alive.',
     rules: {
+      formations: ['pahoehoe', 'aa'],
       terrain: 'rogue', basins: 0, craters: 14, floor: 0.05, rough: 0.02,
       waves: 0, rain: 0, sink: 0, swell: 0,
       origin: 1e9, arrives: 4, spread: 0.3, grow: 0.15, hearth: 1.0, warmLasts: 45, warmNear: 1, reef: 0, wishes: false, // (life lands only near the vent, and lives only on ground lava has lately run beside: a band along each flow's edge)

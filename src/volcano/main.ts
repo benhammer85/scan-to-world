@@ -1291,7 +1291,7 @@ highHatch.byDirection = true;
 const frostDots = new Stipple('#7fa6c4', 'dot', 2);
 frostDots.byDirection = true;
 if ((WORLD.rules.groundIce ?? 0) > 0) group.add(frostDots.object);
-if (WORLD.goal === 'round' || (WORLD.rules.taper ?? 0) > 0) group.add(highHatch.object);
+if (WORLD.goal === 'round' || WORLD.goal === 'basins' || (WORLD.rules.taper ?? 0) > 0) group.add(highHatch.object);
 /**
  * The circle round the volcano, where the aim asks for an eruption: dotted, inking itself in, dot by dot, as the heat
  * builds towards what the aim needs, and closed when it's time to let go. It says what a grey or gold edge on the
@@ -1817,7 +1817,7 @@ const LEARNED = { hold: remembered('volcano.learned.hold') === '1', drag: rememb
 const POUR = LEARNED.hold ? '' : `${HOLD} to pour lava.`;
 const TIP: Record<string, string> = {
   ring: `${POUR} The sea floor slides over the hot spot, so the volcano moves along the dotted line, as Hawaii's did. Pour, then stop and let some sea pass, then pour again: each island must stand apart from the last. The volcano leaves the dotted line in about two and a half minutes.`,
-  basins: `The craters still to fill are dotted in pencil. Turn one to just below the volcano. ${HOLD} to pour into it.`,
+  basins: `The craters still to fill are dotted in pencil. Turn one to just below the volcano. ${HOLD} to pour into it. Keep off the hatched high ground: lava there runs off and is lost.`,
   height: `${HOLD} to pour. Lava runs down the screen: turn the world between pours, so the mountain grows on every side.`,
   cover: `${POUR} The water freezes into new white ice. Only your biggest single sheet counts, so grow it outward from its edge: turn the world so the edge is just below the volcano.`,
   plumes: `The circle round the volcano closes only at high tide. Then ${COMPUTER ? 'click' : 'tap'} the world to erupt, and turn the world to start the next one outside the dotted circles.`,
@@ -1847,7 +1847,7 @@ const TIP: Record<string, string> = {
   snow: 'Turn the volcano under the star and pour. The lava boils away and falls as snow on the dotted line.',
   marble: `${COMPUTER ? 'Hold the mouse' : 'Hold a finger'} in the circle to pour glowing lava. Blue wells up by itself. Drag through the colours to swirl them into patterns. Keep about as much glowing lava as blue: too much of either and the swirl stops counting. The circle's edge fills in as the pattern grows.`,
   town: `Lava runs down from the crack towards the town. ${COMPUTER ? 'Click' : 'Tap'} the ground to build a wall; ${COMPUTER ? 'click' : 'tap'} again nearby to make it longer. You have ${WORLD.rules.walls ?? 0} taps.`,
-  domes: MOUNDS ? `${POUR} The slush freezes fast: pour two seconds at a time, then let go a moment, or the mound slumps. When the small circle round the volcano fills, turn the world to start the next mound, further round the big dotted ring.` : `${POUR} Pour in one spot until a dotted circle round the volcano fills. Then turn the world so the volcano moves outside the inked circles, and start the next.`,
+  domes: MOUNDS ? `${POUR} The slush freezes fast: pour two seconds at a time, then let go a moment, or the mound slumps. When the small circle round the volcano fills, turn the world to start the next mound, further round the big dotted ring.` : `${POUR} Pour in one spot, two seconds at a time, letting each set, until a dotted circle round the volcano fills: poured on too long, the dome slumps. Then turn the world so the volcano moves outside the inked circles, and start the next.`,
 };
 /** A world's own tip, where its aim is shared with others but the way to it isn't. */
 const OWN_TIP: Partial<Record<WorldId, string>> = {
@@ -2214,6 +2214,16 @@ function drawAim(now: number): void {
     // stipple goes where lava has lain, so what's left to fill is what's still stippled; a crater flooded enough is
     // done, and its last stipple goes too. (It was a dotted circle round each, a mark with nothing under it.)
     if (WORLD.goal === 'basins') spillCheck(); // (only where there are craters to fill: elsewhere every pour counted as spilt outside them)
+    // (The asteroid's hatching, folded into the Moon: the high ground near the volcano, where lava runs off and is lost.)
+    if (WORLD.goal === 'basins') {
+      const h = (v: number) => planet.rock[v] + planet.lava[v], q = planet.plume;
+      let m = 0;
+      for (let v = 0; v < N; v++) m += h(v);
+      m /= N;
+      const high = m + planet.spreadOf(h) * 0.9, hatch: number[] = [];
+      for (let v = 3; v < N; v += 6) if (h(v) > high && base[v * 3] * q.x + base[v * 3 + 1] * q.y + base[v * 3 + 2] * q.z > 0.85 && !planet.basins.some((b) => Math.hypot(base[v * 3] - b.x, base[v * 3 + 1] - b.y, base[v * 3 + 2] - b.z) < b.r * 0.9)) { const r = groundOver(v); hatch.push(base[v * 3] * r, base[v * 3 + 1] * r, base[v * 3 + 2] * r); }
+      highHatch.set(hatch);
+    }
     for (const b of planet.basins) {
       if (planet.flooded(b) >= FLOODED_ENOUGH) continue;
       for (const d of capDots(b, b.r * 0.8)) {
@@ -2549,7 +2559,7 @@ const ACTION_WORDS = /^(A stone is coming|The ground is sinking|The heat is near
  * above were said, and nearly every world's own word on what had just happened, a crack too late, a comet frozen, a
  * burst not at high tide, the far side rising, was kept quiet.)
  */
-const EXPLAIN = /^(It's tumbling again|The shock|Too late|Too early|Too small|Too near|A big eruption|A giant wave|The island is blown|The far side|A dark streak|A streak, but|The ice cracks|A mound|A lava dome|A dome, but|The mound slumps|A blob reaches|Ice reaches the ring|An icy comet|Ice melted|The ice froze|Stone caught|Caught in the glow|The eruption's gas|The ground gives way|The last of the sea|The sea is nearly gone|The day has melted|The volcano is in daylight|That lava|A seabird|A nest|Found:|The island stands|Too tall for its width|A dust storm is coming|Theia|Too big to hold|The big stone|A stone too big|The burst missed|In the dark|Chilled)/;
+const EXPLAIN = /^(It's tumbling again|The shock|Too late|Too early|Too small|Too near|A big eruption|A giant wave|The island is blown|The far side|A dark streak|A streak, but|The ice cracks|A mound|A lava dome|A dome, but|The mound slumps|The dome slumps|A blob reaches|Ice reaches the ring|An icy comet|Ice melted|The ice froze|Stone caught|Caught in the glow|The eruption's gas|The ground gives way|The last of the sea|The sea is nearly gone|The day has melted|The volcano is in daylight|That lava|A seabird|A nest|Found:|The island stands|Too tall for its width|A dust storm is coming|Theia|Too big to hold|The big stone|A stone too big|The burst missed|In the dark|Chilled)/;
 function announce(text: string, lesson = false): void {
   text = words$(text);
   if (BARE && !ending) return;
@@ -4045,7 +4055,7 @@ const loop = (): void => {
     gaugePencil.update(dt);
   }
   for (const s of [...kindDots, foam]) s.update(dt);
-  if (WORLD.goal === 'round' || (WORLD.rules.taper ?? 0) > 0) highHatch.update(dt);
+  if (WORLD.goal === 'round' || WORLD.goal === 'basins' || (WORLD.rules.taper ?? 0) > 0) highHatch.update(dt);
   if ((WORLD.rules.groundIce ?? 0) > 0) frostDots.update(dt);
   puffs.update(dt * speed);
   if (begun) breathe(dt);

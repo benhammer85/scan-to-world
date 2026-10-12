@@ -112,6 +112,19 @@ describe('the Moon', () => {
   });
 });
 
+describe('the field book', () => {
+  it('finds only what each world hides', () => {
+    const intoSea = (id: 'drying' | 'surtsey') => {
+      const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf(id).rules), v = nearest(Math.sin(0.5), 0, Math.cos(0.5));
+      pl.rock[v] = -0.05; pl.lava[v] = 0.03;
+      run(pl, 0.5);
+      return pl.found;
+    };
+    expect(intoSea('drying')).toContain('littoral');
+    expect(intoSea('surtsey')).not.toContain('littoral');
+  });
+});
+
 describe('chilling lava', () => {
   it('sets running lava where it is touched, in a low wall, but not at the vent or on bare ground', () => {
     const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('mars').rules);

@@ -842,3 +842,14 @@ Choosing whether a fall was icy afresh at each try at a landing place had also l
 **Sixteen worlds, and two toys.** Each world kept asks one decision no other asks. Chapters: I Our Neighbours (Mars, the Moon, Mercury, Io, Europa, Venus), II Earth's Past (the First World, Earth's First Water, the Orange Earth, an Ocean World), III Earth's Future (the Drying Seas, the Red Giant), IV Real Volcanoes (Surtsey, Hunga Tonga), V Other Worlds (the Hollow World, a Rogue Planet), VI Extras (the glass world, Io's Two Lavas). Numbered I to XVIII in that order.
 * **Saved for later** (`SAVED` in worlds.ts), not deleted: the asteroid, the ice moon, Young Earth, Snowball Earth, the Atolls, Ol Doinyo Lengai, Kawah Ijen, Enceladus, Triton, the Tumbling Moon, the lava world, the disintegrating planet, the deep ocean, the spinning world, Pluto. Their rules are untouched; they're out of the chapters and the star map, and the game never leads to them. To bring one back, put it back in a chapter (and, for an age of Earth, back in `AGES`).
 * Earth's ages now go first, orange Earth, ocean, drying seas, red giant: each begins on the ground the one played before it left.
+
+**Four worlds reworked, two merges done.**
+* **Field book finds** on four more worlds, each world listing exactly what it hides (`formations` is now a list, and the field book reads it). Several are found by doing it wrong, so a mistake teaches something:
+  * **Hollow World:** a caldera (let the chamber empty and the summit falls in) and a resurgent dome (build back higher than it fell from, as at Yellowstone).
+  * **Rogue planet:** pāhoehoe (a small, slow pour) and ʻaʻā (a big, fast one).
+  * **Drying Seas:** a littoral cone (lava poured thick into the sea) and salt flats (let the sea fall below a quarter of the world).
+  * **Europa:** lenticulae (erupt too early) and a water plume (erupt too late).
+* **Drying Seas** dries a little faster (`dries` 0.00047): careful play wins three games in four, random play none. Its second and third stars are now 10% and 12% of the world still sea.
+* **The Moon** has the asteroid's hatching: the high ground near the volcano, where lava runs off and is lost.
+* **Venus** has Pluto's rhythm: poured on more than three seconds at once, the dome slumps. Pour in short bursts and let each set.
+* Bots: careful play still wins all of these; tapping in one spot and random play lose.
