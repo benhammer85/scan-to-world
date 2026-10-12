@@ -31,8 +31,11 @@ import { holdStill, steadySize } from './steady';
 import { keepRun, keepTree, recallTree, runs, snapshotTree, treeFrom, type Run } from './save';
 
 const TAU = Math.PI * 2, PAPER = '#f4efe4';
-/** The relief print (`?ink=print`), after tree-ring prints: the wood inked and pressed. */
-const PRINT = new URLSearchParams(location.search).get('ink') === 'print';
+/**
+ * The relief print, after tree-ring prints (the wood inked and pressed): the slice's look.
+ * `?ink=water` shows the watercolour instead.
+ */
+const PRINT = new URLSearchParams(location.search).get('ink') !== 'water';
 const canvas = document.getElementById('press') as HTMLCanvasElement;
 // (The drawing goes to the page, or for a moment to a picture of the slice: see `picture`.)
 let g = canvas.getContext('2d')!;
@@ -281,7 +284,8 @@ function picture(n = 640): string {
   let rmax = tree.k.pith;
   const last = tree.rings[tree.rings.length - 1];
   if (last) for (let i = 0; i < K; i++) rmax = Math.max(rmax, last[i]);
-  const v: View = { cx: n / 2, cy: n / 2, s: (n * 0.4) / warpR(warp, rmax), turn: 0, px: 2, warp };
+  // (True to scale, as a plate is: no fisheye.)
+  const v: View = PRINT ? { cx: n / 2, cy: n / 2, s: (n * 0.4) / rmax, turn: 0, px: 2 } : { cx: n / 2, cy: n / 2, s: (n * 0.4) / warpR(warp, rmax), turn: 0, px: 2, warp };
   g = c; px = 2;
   try {
     c.fillStyle = PAPER; c.fillRect(0, 0, n, n);
@@ -343,8 +347,8 @@ let sayT = 0;
 const nav = document.getElementById('nav');
 // (On the dev server the practice is press.html; published, it's the index.)
 if (import.meta.env.DEV) nav?.querySelector<HTMLAnchorElement>('a[data-page="practice"]')?.setAttribute('href', './press.html');
-// (In the print, the other page opens in the print too.)
-if (PRINT) nav?.querySelectorAll<HTMLAnchorElement>('a[data-page]').forEach((a) => { a.href += `${a.href.includes('?') ? '&' : '?'}ink=print`; });
+// (In the watercolour, the other page opens in the watercolour too.)
+if (!PRINT) nav?.querySelectorAll<HTMLAnchorElement>('a[data-page]').forEach((a) => { a.href += `${a.href.includes('?') ? '&' : '?'}ink=water`; });
 let navT = 0;
 function navAway(away: boolean): void {
   clearTimeout(navT);
@@ -384,7 +388,7 @@ canvas.addEventListener('pointerdown', (e) => {
   }
   // Inside the slice, a ring's day is read; anywhere outside it, the circle begins (the brush a little
   // way in from the finger).
-  if (brushAt(tree, v, 0, x, y).u < 0) { if (!CHALLENGE) readDay(v, x, y); return; }
+  if (brushAt(tree, v, 0, x, y).u < 0) { if (!CHALLENGE) readDay(shownOf(v), x, y); return; }
   const b = brushAt(tree, v, 0, ...brushPoint(v, x, y));
   strokeView = v;
   if (tree.begin(e.timeStamp / 1000, b.a, rounded(b.a, b.u))) {
@@ -629,8 +633,15 @@ function drawBrush(g: CanvasRenderingContext2D, v: View, t: number): void {
     // its length, as a loaded brush lays it; a faint bleed beyond while it's wet.
     const tone = 0.85 + 0.15 * Math.sin(i * 0.37 + q.q.a * 3);
     g.fillStyle = `rgba(140,96,62,${(0.1 * wet).toFixed(3)})`; quad(p, q, 1, 1.4); quad(p, q, -1.4, -1);
-    g.fillStyle = PRINT ? ink(0.32 * life * tone) : `rgba(112,70,42,${(0.3 * life * tone).toFixed(3)})`; quad(p, q, -1, 1);
-    g.fillStyle = PRINT ? ink(0.4 * life * tone + 0.25 * wet) : `rgba(92,56,32,${(0.3 * life * tone + 0.2 * wet).toFixed(3)})`; quad(p, q, -0.5, 0.5);
+    if (PRINT) {
+      // (Printing ink, not watercolour: dense and dark while wet, breaking up dry as it fades.)
+      if (life < 0.75 && h1(i * 0.613) > life + 0.25) continue;
+      g.fillStyle = ink(0.55 * life + 0.3 * wet); quad(p, q, -1, 1);
+      g.fillStyle = ink(0.3 * wet); quad(p, q, -0.6, 0.6);
+      continue;
+    }
+    g.fillStyle = `rgba(112,70,42,${(0.3 * life * tone).toFixed(3)})`; quad(p, q, -1, 1);
+    g.fillStyle = `rgba(92,56,32,${(0.3 * life * tone + 0.2 * wet).toFixed(3)})`; quad(p, q, -0.5, 0.5);
   }
 }
 
@@ -639,7 +650,16 @@ function drawKnots(v: View, t: number): void {
   for (const m of marks) {
     const [mx, my] = at(v, m.a, m.r), k = smooth((t - m.at) / 0.8), tang = -(m.a + v.turn) + Math.PI / 2;
     g.save();
-    g.translate(mx, my); g.rotate(tang); g.scale(1, 0.45);
+    g.translate(mx, my); g.rotate(tang); g.scale(1, 0.5);
+    if (PRINT) {
+      // A knot as a print shows one: a dark eye, the grain parting and swirling round it in rings.
+      const r = (2.2 + 1.8 * k) * px;
+      for (const [f, fill] of [[3.1, ink(0.85 * k)], [2.5, 'rgba(244,239,228,1)'], [1.9, ink(0.8 * k)], [1.35, 'rgba(244,239,228,1)'], [0.95, ink(0.95 * k)]] as [number, string][]) {
+        g.fillStyle = fill; g.beginPath(); g.ellipse(0, 0, r * f, r * f * 0.82, 0, 0, TAU); g.fill();
+      }
+      g.restore();
+      continue;
+    }
     const r = (2.5 + 2.5 * k) * px;
     const bloom = g.createRadialGradient(0, 0, r * 0.8, 0, 0, r * 1.9);
     bloom.addColorStop(0, 'rgba(250,244,230,0)'); bloom.addColorStop(0.6, `rgba(250,244,230,${(0.14 * k).toFixed(3)})`); bloom.addColorStop(1, 'rgba(250,244,230,0)');
@@ -687,9 +707,16 @@ function drawPrint(v: View): void {
   // (A point at angle a, radius r (mm), and dr device px further out: roughness is on the screen, so the
   // fisheye never magnifies it into spikes.)
   const pt = (a: number, r: number, dr = 0): [number, number] => { const R = scr(r) + dr, t = a + v.turn; return [v.cx + R * Math.cos(t), v.cy - R * Math.sin(t)]; };
-  // The pith: the heart, printed dark (as a print's heart is), a small dot when the tree is grown.
-  g.fillStyle = ink(0.85); ringPath(v, barkOf(-1)); g.fill();
-  g.beginPath(); g.arc(v.cx, v.cy, 1.6 * px, 0, TAU); g.fill();
+  // The heart: the seedling's first growth, printed as a ring is (an inked band at its edge, paper within),
+  // and a dark dot at its very centre: a small dot when the tree is grown, never a black disc when it's young.
+  {
+    const hr = barkOf(-1), band = Math.min(0.4, (3 * px) / Math.max(1, scr(meanR(-1))));
+    g.beginPath();
+    for (let j = 0; j <= K; j++) { const a = (j / K) * TAU, [x, y] = pt(a, hr(a)); if (j) g.lineTo(x, y); else g.moveTo(x, y); }
+    for (let j = K; j >= 0; j--) { const a = (j / K) * TAU, [x, y] = pt(a, hr(a) * (1 - Math.max(band, 0.18))); g.lineTo(x, y); }
+    g.closePath(); g.fillStyle = ink(0.85); g.fill();
+    g.beginPath(); g.arc(v.cx, v.cy, 1.6 * px, 0, TAU); g.fill();
+  }
   if (!n) {
     // (Before the first ring: the heart, ringed, to draw round.)
     g.strokeStyle = ink(0.7); g.lineWidth = 1.2 * px; ringPath(v, barkOf(-1)); g.stroke();
@@ -746,6 +773,17 @@ function drawPrint(v: View): void {
       g.closePath();
       // (The ink a little starved now and then.)
       g.fillStyle = ink((0.8 + 0.2 * h1(seed * 0.37)) * tone); g.fill();
+      // (And the paper showing through it in specks, as a hand-pulled print's ink never quite covers.)
+      const area = ((a1 - a0) * R * (scr(outer(a0)) - scr(bandIn(a0)))) / (px * px), specks = Math.floor(area / 26);
+      if (specks > 0) {
+        g.fillStyle = 'rgba(244,239,228,0.7)'; g.beginPath();
+        for (let q = 0; q < specks; q++) {
+          const a = a0 + (a1 - a0) * h1(seed + q * 7.13), lo = bandIn(a), f = h1(seed * 1.3 + q * 3.7);
+          const [x, y] = pt(a, lo + (outer(a) - lo) * f), d = (0.35 + 0.55 * h1(seed + q * 1.9) ** 2) * px;
+          g.moveTo(x + d, y); g.arc(x, y, d, 0, TAU);
+        }
+        g.fill();
+      }
     };
     if (live.length < 2) brick(0, TAU, i * 101);
     else for (let j = 0; j < live.length; j++) {
@@ -807,21 +845,39 @@ function drawPrint(v: View): void {
 }
 
 /** The print, kept as a picture between changes; while the slice moves, the picture moves with it. */
-let printCache: { c: HTMLCanvasElement; key: string; v: View } | null = null;
-function drawPrintCached(v: View, moving: boolean): void {
-  const key = `${tree.rings.length}|${warp.R}|${warp.beta}|${W}x${H}`;
-  const same = printCache && printCache.key === key;
-  const exact = same && printCache!.v.s === v.s && printCache!.v.cx === v.cx && printCache!.v.cy === v.cy;
+const printCaches: Record<string, { c: HTMLCanvasElement; key: string; v: View }> = {};
+function drawPrintCached(v: View, moving: boolean, slot = 'drawing', alpha = 1): void {
+  const key = `${tree.rings.length}|${v.warp?.R ?? 0}|${v.warp?.beta ?? 0}|${W}x${H}`;
+  let pc = printCaches[slot];
+  const same = pc && pc.key === key;
+  const exact = same && pc.v.s === v.s && pc.v.cx === v.cx && pc.v.cy === v.cy;
   if (!same || (!moving && !exact)) {
-    const c = printCache?.c.width === W && printCache.c.height === H ? printCache.c : document.createElement('canvas');
+    const c = pc?.c.width === W && pc.c.height === H ? pc.c : document.createElement('canvas');
     c.width = W; c.height = H;
     const was = g; g = c.getContext('2d')!;
     try { drawPrint(v); } finally { g = was; }
-    printCache = { c, key, v: { ...v } };
+    pc = printCaches[slot] = { c, key, v: { ...v } };
   }
-  const pc = printCache!, k = v.s / pc.v.s;
+  const k = v.s / pc.v.s;
+  g.globalAlpha = alpha;
   g.drawImage(pc.c, v.cx - pc.v.cx * k, v.cy - pc.v.cy * k, W * k, H * k);
+  g.globalAlpha = 1;
 }
+
+/**
+ * At rest, true to scale. While drawing, the slice's outer rings are magnified (a fisheye) to give the
+ * newest ring room under the finger, which squeezes the old ones toward the heart; left a moment, the
+ * slice settles into true scale, its years evenly spaced, the bark where it was; a touch brings the
+ * magnifier back. (In the print; and in the challenge only once the run is over.)
+ */
+let relax = 0, idleSince = 0;
+function restOf(v: View): View {
+  if (!v.warp || v.warp.beta <= 0 || !tree.rings.length) return v;
+  const Rb = meanR(tree.rings.length - 1);
+  return { ...v, s: (v.s * warpR(v.warp, Rb)) / Rb, warp: undefined };
+}
+/** The slice as it's shown now: at rest (true scale) or drawing (magnified). */
+const shownOf = (v: View) => (relax > 0.5 ? restOf(v) : v);
 
 /** When the page opened: the slice paints itself in from the heart. */
 let openedAt = 0;
@@ -841,12 +897,21 @@ function frame(): void {
 
   g.setTransform(1, 0, 0, 1, 0, 0);
   g.drawImage(groundOf(), 0, 0);
-  if (PRINT) drawPrintCached(v, !!ease || !!lookBack || fingers.size >= 2);
-  else { paper.draw(g, v); drawLatewood(v); }
+  // At rest, or drawing: the one eased into the other (slowly to rest, quickly back).
+  const busy = fingers.size > 0 || !!tree.stroke || !!ease || settle.ring >= 0 || (CHALLENGE && !run.over);
+  if (busy) idleSince = t;
+  const restWanted = PRINT && !busy && t - idleSince > 1.4 && !!v.warp && v.warp.beta > 0;
+  relax = restWanted ? Math.min(1, relax + dt / 0.9) : Math.max(0, relax - dt / 0.22);
+  const moving = !!ease || !!lookBack || fingers.size >= 2;
+  if (PRINT) {
+    const rk = smooth(relax);
+    if (rk < 1) drawPrintCached(v, moving, 'drawing', 1 - rk);
+    if (rk > 0) drawPrintCached(restOf(v), moving, 'rest', rk);
+  } else { paper.draw(g, v); drawLatewood(v); }
   const n = tree.rings.length;
   // A ring touched: lit softly along its edge for a moment, as its day is read.
   const glow = lit >= 0 && lit < n ? 1 - smooth((t - litAt - 2) / 1.2) : 0;
-  if (glow > 0.01) { g.strokeStyle = `rgba(255,251,240,${(0.85 * glow).toFixed(3)})`; g.lineWidth = 2 * px; ringPath(v, barkOf(lit)); g.stroke(); }
+  if (glow > 0.01) { g.strokeStyle = `rgba(255,251,240,${(0.85 * glow).toFixed(3)})`; g.lineWidth = 2 * px; ringPath(shownOf(v), barkOf(lit)); g.stroke(); }
   if (!PRINT) drawBark(v);
   // The newest ring's colour spreads from the line drawn in toward the last ring, its front soft.
   if (settle.ring >= 0 && settle.ring < n) {
@@ -871,7 +936,7 @@ function frame(): void {
   // The ink: a brush's line, wet at first, then drying into bristle-streaks and evaporating. (It's on the
   // slice, so it draws back with it.)
   drawBrush(g, v, t);
-  drawKnots(v, t);
+  drawKnots(shownOf(v), t);
   drawPaper(g, W, H);
   requestAnimationFrame(frame);
 }
@@ -879,7 +944,7 @@ function frame(): void {
 void (async () => {
   await recall();
   warp = warpFor(tree); paper.fit(warp, warp.R); paper.bake(tree);
-  fit(); view = null; openedAt = clock();
+  fit(); view = null; openedAt = clock(); idleSince = openedAt + OPEN;
   const today = dayOf();
   showScore();
   if (CHALLENGE) say('Draw around the circle. Get close, but don’t touch it. Faster scores more.', 8);
