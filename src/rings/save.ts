@@ -30,7 +30,9 @@ async function run<T>(mode: IDBTransactionMode, act: (s: IDBObjectStore) => IDBR
 
 /** A tree as it's kept: which, its seed (its weather comes from it), whether wandering, and itself. */
 /** (`at`: where on the sheet the seed was planted, as shares of its width and height.) */
-export interface KeptTree { tree: string; seed: number; wander: boolean; turn: number; sim: Record<string, unknown>; days?: string[]; at?: [number, number] }
+/** (A child's tree also keeps their `name`, their `birth` (as 2023-05-02), and how many of its first rings are
+ * `whole` years, grown before the days began to be drawn.) */
+export interface KeptTree { tree: string; seed: number; wander: boolean; turn: number; sim: Record<string, unknown>; days?: string[]; at?: [number, number]; name?: string; birth?: string; whole?: number }
 
 /**
  * What of a tree is kept: everything but its rules and its weather (which come fresh from its seed),

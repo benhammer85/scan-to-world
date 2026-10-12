@@ -29,7 +29,7 @@ import { brushAt, radiusAt, scaleFor, unwarpR, warpFor, warpR, type View, type W
 import { at, drawPaper } from './draw';
 import { Paper } from './paint';
 import { holdStill, steadySize } from './steady';
-import { keepRun, keepTree, recallTree, runs, snapshotTree, treeFrom, type Run } from './save';
+import { keepRun, keepTree, recallTree, runs, snapshotTree, treeFrom, type KeptTree, type Run } from './save';
 
 const TAU = Math.PI * 2, PAPER = '#f4efe4';
 /**
@@ -128,7 +128,70 @@ function lean(a: number): number {
   const side = (Math.sin(tree.seed * 12.9898) * 43758.5453) % 1 * TAU;
   return 1 + ECCENTRIC * Math.cos(a - side);
 }
-const DIARY = 'diary', params = new URLSearchParams(location.search);
+/**
+ * A child's tree (child.html): a ring for each year of a child's life, closing on their birthday, and in it
+ * a fine line for each day a parent draws. Planted for them by name and birthday; the years before the
+ * first day drawn grown as plain whole years. Kept apart from the practice's tree.
+ */
+const CHILD = document.body.dataset.mode === 'child';
+const DIARY = CHILD ? 'child' : 'diary', params = new URLSearchParams(location.search);
+/** The child (once planted for), and how many of the tree's first rings are whole years. */
+let child: { name: string; birth: string } | null = null, whole = 0;
+const dayDate = (s: string) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
+/** The child's age on a day: whole years, the day of that year (0 on the birthday), and that year's length. */
+function ageOn(day: string): { years: number; day: number; len: number } {
+  const b = dayDate(child!.birth), t = dayDate(day);
+  let years = t.getFullYear() - b.getFullYear();
+  const at = (n: number) => new Date(b.getFullYear() + n, b.getMonth(), b.getDate());
+  if (t < at(years)) years--;
+  years = Math.max(0, years);
+  const from = at(years), to = at(years + 1);
+  return { years, day: Math.round((t.getTime() - from.getTime()) / 864e5), len: Math.round((to.getTime() - from.getTime()) / 864e5) };
+}
+/** Their age, as it's said: "3 weeks", "7 months", "2 years, 4 months". */
+function ageWords(day: string): string {
+  const a = ageOn(day), months = Math.floor((a.day / a.len) * 12 + 1e-6);
+  if (a.years === 0 && months === 0) return a.day < 7 ? `${a.day} ${a.day === 1 ? 'day' : 'days'}` : `${Math.floor(a.day / 7)} weeks`;
+  if (a.years === 0) return `${months} ${months === 1 ? 'month' : 'months'}`;
+  return `${a.years} ${a.years === 1 ? 'year' : 'years'}${months ? `, ${months} ${months === 1 ? 'month' : 'months'}` : ''}`;
+}
+/**
+ * Where in its year of their life ring i lies: the year (their age), and the share of that year from where
+ * it begins to where it ends (a whole year 0 to 1; a day, its own day's share; days drawn more than once
+ * share their day between them).
+ */
+function yearSpans(): { y: number; f0: number; f1: number; whole: boolean }[] {
+  const out: { y: number; f0: number; f1: number; whole: boolean }[] = [], count = new Map<string, number>(), seen = new Map<string, number>();
+  for (let i = whole; i < days.length; i++) count.set(days[i], (count.get(days[i]) ?? 0) + 1);
+  for (let i = 0; i < tree.rings.length; i++) {
+    if (i < whole || !days[i]) { out.push({ y: i, f0: 0, f1: 1, whole: true }); continue; }
+    const a = ageOn(days[i]), k = count.get(days[i]) ?? 1, j = seen.get(days[i]) ?? 0;
+    seen.set(days[i], j + 1);
+    out.push({ y: a.years, f0: (a.day + j / k) / a.len, f1: (a.day + (j + 1) / k) / a.len, whole: false });
+  }
+  return out;
+}
+/**
+ * The years before the first day drawn, grown as a tree grows them, each a whole ring: as much wood as its
+ * year's days would have laid (the crown's wood a day, for each day of it), the tree's own swells on it.
+ */
+function growPast(): void {
+  if (!child) return;
+  const age = ageOn(dayOf()).years, b = dayDate(child.birth);
+  let time = 0, rnd = tree.seed;
+  const r = () => { rnd = (rnd * 16807) % 2147483647; return rnd / 2147483647; };
+  for (let y = 0; y < age; y++) {
+    const R = tree.radius, target = Math.sqrt(R * R + (365 * (0.85 + 0.3 * r()) * DAILY.crown) / Math.PI);
+    const width = (target - R) / tree.wRef, ph = r() * TAU;
+    const u = (q: number) => Math.max(LEAST, width * growth(q, y * 365) * (1 + 0.04 * Math.sin(2 * q + ph)) + evenUp(q));
+    let a = r() * TAU;
+    tree.begin(time, a, u(a));
+    while (tree.stroke) { a += TAU / 5 / 60; time += 1 / 60; tree.move(time, a % TAU, u(a % TAU)); }
+    days.push(dayOf(new Date(b.getFullYear() + y, b.getMonth(), b.getDate()))); time += 2;
+  }
+  whole = tree.rings.length;
+  tree.news.length = 0;
+}
 /**
  * The kind of tree, which decides how its wood prints (a tree keeps its kind; `?tree=pine` or `?tree=birch`
  * plants that kind when a tree is begun):
@@ -164,11 +227,11 @@ paper.across = (ring) => {
 let warp: Warp = warpFor(tree), view: View | null = null;
 
 /** A year already drawn, by a hand that's calm some days and loose on others (for `?demo`; not kept). */
-function demoYear(): void {
+function demoYear(count = 365): void {
   let time = 0, rnd = tree.seed;
   const r = () => { rnd = (rnd * 16807) % 2147483647; return rnd / 2147483647; };
-  const start = new Date(); start.setDate(start.getDate() - 365);
-  for (let n = 0; n < 365; n++) {
+  const start = new Date(); start.setDate(start.getDate() - count);
+  for (let n = 0; n < count; n++) {
     if (r() < 0.12) continue; // (some days missed)
     const day = new Date(start); day.setDate(start.getDate() + n);
     const width = 0.6 + 1.6 * r() ** 1.5, wob = 0.15 + 0.5 * r(), ph = r() * TAU;
@@ -189,17 +252,30 @@ function demoYear(): void {
 /** The kept tree, if there is one (`?fresh` begins another). */
 async function recall(): Promise<void> {
   if (CHALLENGE) return;
+  // (For trying: `?name=Ada&birth=2023-05-02` plants for a child at once; with `?demo`, the days since
+  // their last birthday drawn too.)
+  if (CHILD && params.get('name') && params.get('birth')) {
+    child = { name: params.get('name')!, birth: params.get('birth')! }; kind = 'oak'; seedAt = [0.5, 0.47];
+    growPast();
+    if (params.has('demo')) demoYear(ageOn(dayOf()).day);
+    return;
+  }
   if (params.has('demo')) { demoYear(); return; }
   if (params.has('fresh')) return;
   const k = await recallTree(DIARY), t = k && treeFrom(k, DAILY);
   if (!k || !t) return;
   tree = t; days = (k.days ?? []).slice(0, t.rings.length); kind = asKind(k.tree) ?? 'oak';
   seedAt = k.at ?? (t.rings.length ? [0.5, 0.47] : null);
+  if (CHILD && k.name && k.birth) { child = { name: k.name, birth: k.birth }; whole = k.whole ?? 0; kind = 'oak'; }
   while (days.length < t.rings.length) days.unshift(days[0] ?? dayOf());
 }
 function keep(): void {
   if (params.has('demo') || CHALLENGE) return;
-  void keepTree({ tree: kind, seed: tree.seed, wander: false, turn: 0, sim: snapshotTree(tree), days: days.slice(), ...(seedAt ? { at: seedAt } : {}) }, DIARY);
+  void keepTree(kept(), DIARY);
+}
+/** The tree as kept (and as a copy is kept). */
+function kept(): KeptTree {
+  return { tree: kind, seed: tree.seed, wander: false, turn: 0, sim: snapshotTree(tree), days: days.slice(), ...(seedAt ? { at: seedAt } : {}), ...(child ? { name: child.name, birth: child.birth, whole } : {}) };
 }
 
 /**
@@ -268,7 +344,9 @@ function viewNow(t = clock()): View {
 /** How close one may look: three times; growing true to scale, until a year is some 12 px across. */
 function closest(): number {
   if (!GROWN || !tree.rings.length) return 3;
-  const year = (baseNow().s * barkMax()) / tree.rings.length;
+  // (A child's tree: by its days, not its whole years.)
+  const n = tree.rings.length, from = CHILD ? Math.max(whole, n - 30) : 0;
+  const year = (baseNow().s * (meanR(n - 1) - meanR(from - 1))) / Math.max(1, n - from);
   return Math.max(3, Math.min(60, (12 * px) / Math.max(1e-3, year)));
 }
 function zoomAbout(x: number, y: number, f: number): void {
@@ -489,7 +567,7 @@ canvas.addEventListener('pointerdown', (e) => {
   // (Looked at closely, or the run over: a finger moves the slice about, or taps; nothing is drawn. And
   // on a bare sheet, a tap plants the seed: see the tap, below.)
   if (tree.rings.length && brushAt(tree, viewNow(), 0, e.clientX * px, e.clientY * px).u < 0) inside = true;
-  if (closer() || run.over || (GROWN && !seedAt)) return;
+  if (closer() || run.over || (GROWN && !seedAt) || (CHILD && !child)) return;
   words.classList.remove('shown');
   const x = e.clientX * px, y = e.clientY * px;
   holdView();
@@ -569,7 +647,7 @@ for (const type of ['pointerup', 'pointercancel'] as const) canvas.addEventListe
     // A tap on the slice: the ring there, and its day.
     if (inside && !CHALLENGE && painter === null) { readDay(shownOf(viewNow()), e.clientX * px, e.clientY * px); return; }
     // Before the first ring, a tap plants the seed there (or moves it).
-    if (GROWN && !tree.rings.length && !closer()) {
+    if (GROWN && !tree.rings.length && !closer() && (!CHILD || child)) {
       if (painter === e.pointerId) { tree.cancel(); trail = []; painter = null; }
       plant(e.clientX * px, e.clientY * px);
       return;
@@ -592,6 +670,46 @@ canvas.addEventListener('wheel', (e) => {
 /** When the line was let go to rest (a line left resting a while fades away: no stray marks). */
 let restAt = 0;
 
+// ---------------------------------------------------------------- a child's tree: planting for them, and a copy kept
+const setupEl = document.getElementById('setup') as HTMLFormElement | null;
+/** Asked for once: their name and birthday (or a copy kept before, restored). */
+function openSetup(): void {
+  if (!setupEl) return;
+  setupEl.hidden = false; nav?.classList.add('away');
+  const birth = setupEl.elements.namedItem('birth') as HTMLInputElement;
+  birth.max = dayOf();
+  setupEl.onsubmit = (e) => {
+    e.preventDefault();
+    const name = (setupEl.elements.namedItem('name') as HTMLInputElement).value.trim();
+    if (!name || !birth.value || birth.value > dayOf()) return;
+    child = { name, birth: birth.value }; kind = 'oak';
+    setupEl.hidden = true; nav?.classList.remove('away');
+    keep();
+    say(`Tap anywhere to plant ${name}’s seed.`, 1e5);
+  };
+  (setupEl.elements.namedItem('file') as HTMLInputElement).onchange = (e) => void restoreCopy((e.target as HTMLInputElement).files?.[0]);
+}
+/** A copy of the tree, to keep somewhere safe: a small file, everything in it. */
+function keepCopy(): void {
+  if (!child) { say('Plant their tree first.', 3); return; }
+  const blob = new Blob([JSON.stringify(kept())], { type: 'application/json' }), a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = `${child.name.replace(/[^\p{L}\p{N}]+/gu, '-')}-tree-${dayOf()}.json`;
+  document.body.append(a); a.click(); a.remove();
+  window.setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  say('A copy is kept, as a file. Keep it somewhere safe.', 4);
+}
+/** A copy kept before, taken back (only if it's whole: a child's tree that loads). */
+async function restoreCopy(file: File | undefined): Promise<void> {
+  if (!file) return;
+  try {
+    const k = JSON.parse(await file.text()) as KeptTree;
+    if (!k.name || !k.birth || !treeFrom(k, DAILY)) throw new Error('not a tree');
+    await keepTree(k, DIARY);
+    location.reload();
+  } catch { say('That file isn’t a copy of a child’s tree.', 4); }
+}
+document.getElementById('keep-copy')?.addEventListener('click', (e) => { e.preventDefault(); keepCopy(); });
+
 /** The seed, planted: a small inked blot, uneven, pressed in as it lands. */
 function drawSeed(v: View, t: number): void {
   const k = smooth((t - plantedAt) / 0.7), r = (2.6 + 0.9 * (1 - k)) * px, tilt = h1(tree.seed * 0.37) * TAU;
@@ -610,8 +728,12 @@ function drawSeed(v: View, t: number): void {
 let plantedAt = 0;
 function plant(x: number, y: number): void {
   seedAt = [x / W, y / H]; view = null; plantedAt = clock();
+  // (A child's tree: the years they've lived already grown, before today's day is drawn.)
+  if (CHILD && child && !tree.rings.length) {
+    growPast(); warp = warpNow(); view = null; openedAt = clock(); idleSince = openedAt + OPEN;
+  }
   keep();
-  say('Now draw a loop around it. One ring a day.', 8);
+  say(CHILD && child ? `Now draw a loop around it: ${child.name}’s day. A ring for each year, a line for each day.` : 'Now draw a loop around it. One ring a day.', 8);
 }
 
 /** A touch inside the slice: the ring under it, lit for a moment, and the day it was drawn. */
@@ -621,8 +743,12 @@ function readDay(v: View, x: number, y: number): void {
   const r = unwarpR(v.warp, Math.hypot(dx, dy) / v.s);
   const i = tree.rings.findIndex((ring) => r <= radiusAt(ring, a));
   if (i < 0 || !days[i]) return;
-  const [yy, mm, dd] = days[i].split('-').map(Number);
-  say(new Date(yy, mm - 1, dd).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }), 3);
+  const [yy, mm, dd] = days[i].split('-').map(Number), when = new Date(yy, mm - 1, dd);
+  if (CHILD && child) {
+    // (A whole year: their age that year; a day: its date, and how old they were.)
+    if (i < whole) say(`${child.name}’s ${i === 0 ? 'first year' : `year at ${i}`}: ${when.getFullYear()}–${when.getFullYear() + 1}`, 3);
+    else say(`${when.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} · ${ageWords(days[i])}`, 3);
+  } else say(when.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }), 3);
   lit = i; litAt = clock();
 }
 
@@ -1095,7 +1221,7 @@ function drawPrint(v: View): void {
   // The checks: as a cut slice dries it splits, from the bark in toward the heart, a few cracks opening
   // and running deeper as the years go on (from about the fortieth), each its own way, wandering with the
   // rays and jagged at the edges, widest at the bark. (The practice only: they belong to an old slice.)
-  if (GROWN && n >= 40) {
+  if (GROWN && !CHILD && n >= 40) {
     const bark = barkOf(n - 1), T = barkCss(v) * px, count = Math.min(5, 1 + Math.floor((n - 40) / 70));
     g.save(); g.globalCompositeOperation = 'destination-out'; g.fillStyle = '#000';
     for (let c = 0; c < count; c++) {
@@ -1155,24 +1281,29 @@ function printYears(v: View, oak: Years): void {
   // Each ring's year, scale round and where round it starts; its mip level from its width on the screen.
   // (Round the ring, the wood keeps its own proportions: as many texels to the mm as across the run's
   // years, so a pore stays round and a ray fine.)
-  const W0 = oak.levels[0].w, runOf = (i: number) => Math.floor(Math.log2(Math.max(1, meanR(i) / 3)));
+  // (A child's tree: each day is a year of the oak, as the practice's are, its pores its fine line; a whole
+  // year grown before the days were drawn is made of its days just the same (365 of them across it); and
+  // across each year of their life, the days after a birthday print lighter, those before the next darker
+  // and denser, so each birthday closes a ring. The run of rays is the year's.)
+  const spans = CHILD ? yearSpans() : null, share = (i: number) => (spans?.[i].whole ? 1 / 365 : 1);
+  const W0 = oak.levels[0].w, runOf = (i: number) => (spans ? spans[i].y : Math.floor(Math.log2(Math.max(1, meanR(i) / 3))));
   // (On the screen, as the fisheye widens a ring without lengthening it.)
   // (Each run's scale is set by its first year, so a year added never changes the years before it.)
   const runs = new Map<number, { w: number; R: number; k: number }>();
-  for (let i = 0; i < n; i++) if (!runs.has(runOf(i))) runs.set(runOf(i), { w: scr(meanR(i)) - scr(meanR(i - 1)), R: scr((meanR(i) + meanR(i - 1)) / 2), k: 1 });
-  const reps = new Float32Array(n), off = new Float32Array(n), yr = new Int32Array(n), lvl = new Int32Array(n);
+  for (let i = 0; i < n; i++) if (!runs.has(runOf(i))) runs.set(runOf(i), { w: (scr(meanR(i)) - scr(meanR(i - 1))) * share(i), R: scr((meanR(i) + meanR(i - 1)) / 2), k: 1 });
+  const reps = new Float32Array(n), off = new Float32Array(n), yr = new Int32Array(n), lvl = new Int32Array(n), runR = new Float32Array(n);
   for (let i = 0; i < n; i++) {
     const run = runOf(i), q = runs.get(run)!, perPx = oak.year / Math.max(0.5, q.w / q.k);
-    reps[i] = Math.max(1, Math.round((TAU * (q.R / q.k) * perPx) / W0));
+    reps[i] = Math.max(1, Math.round((TAU * (q.R / q.k) * perPx) / W0)); runR[i] = q.R / q.k;
     // (Its rays: mostly the last year's, drifting a little; now and then a fresh set, as rays end and begin.)
-    const fresh = i === 0 || runOf(i - 1) !== run || h1(i * 3.71 + tree.seed * 0.013) < 0.3;
+    const fresh = i === 0 || runOf(i - 1) !== run || (!spans && h1(i * 3.71 + tree.seed * 0.013) < 0.3);
     off[i] = fresh ? h1(i * 7.3 + tree.seed * 0.01) * W0 : off[i - 1] + (h1(i * 5.9) - 0.5) * 0.06 * W0;
-    yr[i] = (i + run * 4) % oak.n;
-    const w = scr(meanR(i)) - scr(meanR(i - 1));
+    yr[i] = ((spans ? i * 3 + run * 5 : i + run * 4) % oak.n + oak.n) % oak.n;
+    const w = (scr(meanR(i)) - scr(meanR(i - 1))) * share(i);
     lvl[i] = Math.max(0, Math.min(oak.levels.length - 1, Math.ceil(Math.log2(oak.year / Math.max(0.5, w)))));
   }
   // (The sapwood, paler, fading into the heartwood over some eight years: a year added shifts it by a hair.)
-  const tone = (i: number) => 1 - 0.16 * smooth((i - (n - 9)) / 8) * smooth((n - 12) / 8);
+  const tone = (i: number) => (spans ? 1 : 1 - 0.16 * smooth((i - (n - 9)) / 8) * smooth((n - 12) / 8));
   let rmax = 0;
   for (let b = 0; b <= B; b++) rmax = Math.max(rmax, rad[n * (B + 1) + b]);
   const x0 = Math.max(0, Math.floor(v.cx - rmax - 1)), y0 = Math.max(0, Math.floor(v.cy - rmax - 1));
@@ -1197,9 +1328,22 @@ function printYears(v: View, oak: Years): void {
       const across = (r - rin) / Math.max(1e-3, rout - rin), year = heart ? (yr[0] + oak.n - 1) % oak.n : yr[i];
       // (Never evenly round: a gentle stretch and squeeze round each ring, its own, so the rays fall
       // unevenly and bend a little from year to year. The heart, soft: a blurred year, no rays meeting.)
-      const L = oak.levels[heart ? Math.min(oak.levels.length - 1, lvl[i] + 3) : lvl[i]], rows = L.rows;
+      // (Toward the middle, a ring's wood is drawn in ever tighter round: there it takes a softer copy, so
+      // it never gathers into a star.)
+      const tight = r < runR[i] ? Math.ceil(Math.log2(runR[i] / Math.max(1, r))) : 0;
+      const L = oak.levels[Math.min(oak.levels.length - 1, lvl[i] + tight + (heart ? 3 : 0))], rows = L.rows;
       const wob = (0.09 * Math.sin(2 * a + i * 1.7) + 0.06 * Math.sin(3 * a + i * 2.9 + 1) + 0.04 * Math.sin(5 * a + i * 0.6)) * W0;
-      const ink = sample(L, (((a / TAU) * reps[i] * W0 + off[i] + wob * reps[i] * 0.15) * L.w) / W0, year * rows + across * rows, year * rows, rows) * tone(i);
+      const sp = spans && !heart ? spans[i] : null, cyc = sp?.whole ? 365 : 1, inDay = (across * cyc) % 1;
+      // (The days of a year of their life all the one year of the oak, each set round by its own amount: told
+      // apart by their own fine lines, never by a shift in tone from one to the next, which would shimmer.)
+      const day = sp ? (sp.whole ? Math.floor(across * cyc) : i) : 0, yy = sp ? ((sp.y * 5) % oak.n + oak.n) % oak.n : year;
+      let ink = sample(L, (((a / TAU) * reps[i] * W0 + off[i] + wob * reps[i] * 0.15 + day * 37.3) * L.w) / W0, yy * rows + inDay * rows, yy * rows, rows) * tone(i);
+      if (sp) {
+        // (Where in their year: lighter after the birthday, darker and denser toward the next.)
+        const f = sp.whole ? across : sp.f0 + across * (sp.f1 - sp.f0);
+        ink = ink * (0.7 + 0.3 * smooth((f - 0.04) / 0.5));
+        ink += (1 - ink) * 0.55 * smooth((f - 0.72) / 0.26);
+      }
       const k = (y * w + x) * 4;
       d[k] = INK[0]; d[k + 1] = INK[1]; d[k + 2] = INK[2]; d[k + 3] = Math.round(255 * Math.min(1, ink));
     }
@@ -1399,7 +1543,7 @@ function drawEdition(v: View, t: number, dt: number): void {
   let rmax = 0;
   for (let i = 0; i < K; i++) rmax = Math.max(rmax, v.s * warpR(v.warp, last[i]));
   // (Never narrower than its words need, however small the slice; and kept on the sheet.)
-  const y = v.cy + rmax + (barkCss(v) + 30) * px, half = Math.min(Math.max(rmax, 112 * px), W / 2 - 30 * px);
+  const y = v.cy + rmax + (barkCss(v) + 30) * px, half = Math.min(Math.max(rmax, (CHILD ? 150 : 112) * px), W / 2 - 24 * px);
   v = { ...v, cx: Math.max(half + 30 * px, Math.min(W - half - 30 * px, v.cx)) };
   const [yy, mm, dd] = (days[days.length - 1] ?? dayOf()).split('-').map(Number);
   const date = new Date(yy, mm - 1, dd).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
@@ -1410,9 +1554,9 @@ function drawEdition(v: View, t: number, dt: number): void {
   g.globalAlpha = editionShown;
   // Graphite: a soft grey, its grain the paper's own (laid over it after).
   g.fillStyle = 'rgba(92,88,84,0.78)'; g.font = `italic ${13 * px}px Newsreader, "Iowan Old Style", Georgia, serif`; g.textBaseline = 'middle';
-  g.textAlign = 'left'; g.fillText(String(daysDrawn()), v.cx - half, y);
+  g.textAlign = 'left'; g.fillText(CHILD && child ? ageWords(days[days.length - 1] ?? dayOf()) : String(daysDrawn()), v.cx - half, y);
   g.textAlign = 'center'; g.fillText(date, v.cx, y);
-  g.textAlign = 'right'; g.fillText(kind, v.cx + half - 22 * px, y);
+  g.textAlign = 'right'; g.fillText(CHILD && child ? child.name : kind, v.cx + half - 22 * px, y);
   // The blind stamp: three rings and a heart, pressed in (a highlight above, a shadow below, no ink).
   const sx = v.cx + half - 6 * px, sy = y;
   for (const [dx, dy, col] of [[-0.7, -0.7, 'rgba(255,253,246,0.95)'], [0.7, 0.7, 'rgba(96,74,52,0.28)']] as [number, number, string][]) {
@@ -1501,6 +1645,12 @@ void (async () => {
   const today = dayOf();
   showScore();
   if (CHALLENGE) say('Draw around the circle. Get close, but don’t touch it. Faster scores more.', 8);
+  else if (CHILD) {
+    // (Recalled above, so read afresh here.)
+    const c = child as { name: string; birth: string } | null;
+    if (!c) openSetup();
+    else say(!tree.rings.length && !seedAt ? `Tap anywhere to plant ${c.name}’s seed.` : days.slice(whole).includes(today) ? `${c.name}’s day is drawn. Draw another if you like.` : `Draw a loop for ${c.name}’s day.`, tree.rings.length ? 8 : 1e5);
+  }
   else if (GROWN && !tree.rings.length) say(seedAt ? 'Draw a loop around the seed. One ring a day.' : 'Tap anywhere to plant a seed.', 1e5);
   else say(!tree.rings.length ? 'Draw a circle around this one. One ring a day.' : days.includes(today) ? 'Today’s ring is done. Draw another if you like.' : 'Draw today’s ring.', 8);
   Object.assign(window, { press: { get tree() { return tree; }, get phase() { return settle.ring >= 0 ? 'settling' : 'trace'; }, get easing() { return !!ease; }, get view() { return viewNow(); }, get days() { return days; }, get run() { return run; } } });

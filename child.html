@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="theme-color" content="#f4efe4" />
+    <meta name="apple-mobile-web-app-title" content="Well Rounded" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <link rel="apple-touch-icon" href="/src/rings/icon/icon-180.png" />
+    <link rel="icon" type="image/png" href="/src/rings/icon/icon-180.png" />
+    <title>Well Rounded · a child’s tree</title>
+    <style>
+      body { position: fixed; inset: 0; }
+      html, body { margin: 0; height: 100%; background: #f4efe4; overflow: hidden; overscroll-behavior: none; touch-action: none; -webkit-user-select: none; user-select: none; }
+      #press { position: fixed; inset: 0; width: 100vw; height: 100dvh; display: block; }
+      #words { position: fixed; top: calc(70px + env(safe-area-inset-top)); left: 24px; right: 24px; text-align: center; font: italic 15px "Newsreader", "Iowan Old Style", Georgia, serif; color: #2e2118; opacity: 0; transition: opacity 2s; pointer-events: none; text-wrap: balance; }
+      #words.shown { opacity: 0.5; }
+      #nav { position: fixed; bottom: calc(18px + env(safe-area-inset-bottom)); left: 0; right: 0; text-align: center; font: italic 15px "Newsreader", "Iowan Old Style", Georgia, serif; color: #2e2118; opacity: 0.5; transition: opacity 0.8s; pointer-events: none; }
+      #nav a, #nav span { pointer-events: auto; color: inherit; text-decoration: none; padding: 12px 10px; display: inline-block; }
+      #nav span { opacity: 0.55; }
+      #nav.away { opacity: 0; }
+      #nav.away a { pointer-events: none; }
+      #setup { position: fixed; inset: 0; display: flex; flex-direction: column; justify-content: center; gap: 18px; padding: 0 36px; background: #f4efe4; font: 17px "Newsreader", "Iowan Old Style", Georgia, serif; color: #2e2118; }
+      #setup[hidden] { display: none; }
+      #setup p { font-style: italic; opacity: 0.7; margin: 0 0 8px; line-height: 1.45; text-wrap: balance; }
+      #setup label { display: flex; flex-direction: column; gap: 6px; font-style: italic; opacity: 0.85; }
+      #setup input { font: 19px "Newsreader", Georgia, serif; color: #2e2118; background: transparent; border: 0; border-bottom: 1px solid rgba(46,33,24,0.35); padding: 6px 0; border-radius: 0; -webkit-user-select: text; user-select: text; touch-action: auto; }
+      #setup input:focus { outline: none; border-bottom-color: #2e2118; }
+      #setup button { margin-top: 10px; align-self: flex-start; font: italic 18px "Newsreader", Georgia, serif; color: #2e2118; background: transparent; border: 1px solid rgba(46,33,24,0.45); padding: 10px 18px; }
+      #setup .restore { margin-top: 14px; font-size: 15px; opacity: 0.55; }
+      #setup .restore input { border: 0; font-size: 14px; }
+    </style>
+  </head>
+  <body data-mode="child">
+    <canvas id="press" aria-label="A child’s tree: a ring for each year of their life, a fine line for each day; touch the wood to read its day"></canvas>
+    <p id="words"></p>
+    <form id="setup" hidden>
+      <p>A tree for your child: a ring for each year of their life, closing on their birthday, and a fine line in it for each day you draw.</p>
+      <label>Their name <input name="name" autocomplete="off" maxlength="40" required /></label>
+      <label>Their birthday <input name="birth" type="date" required /></label>
+      <button type="submit">Plant their tree</button>
+      <label class="restore">Or restore a copy you kept <input name="file" type="file" accept="application/json,.json" /></label>
+    </form>
+    <nav id="nav"><a href="./" data-page="practice">practice</a> · <span aria-current="page">child</span> · <a href="./challenge.html" data-page="challenge">challenge</a> · <a href="#copy" id="keep-copy">keep a copy</a></nav>
+    <script type="module" src="/src/rings/press.ts"></script>
+  </body>
+</html>

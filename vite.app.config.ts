@@ -32,6 +32,6 @@ export default defineConfig({
     outDir: 'dist-app',
     emptyOutDir: true,
     // (Well Rounded is two pages: the daily practice and the first game.)
-    rollupOptions: { input: { [GAME]: resolve(__dirname, `${GAME}.html`), ...(GAME === 'rings' ? { press: resolve(__dirname, 'press.html'), challenge: resolve(__dirname, 'challenge.html') } : {}) } },
+    rollupOptions: { input: { [GAME]: resolve(__dirname, `${GAME}.html`), ...(GAME === 'rings' ? { press: resolve(__dirname, 'press.html'), challenge: resolve(__dirname, 'challenge.html'), child: resolve(__dirname, 'child.html') } : {}) } },
   },
 });
