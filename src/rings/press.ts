@@ -375,6 +375,8 @@ function closest(): number {
   return Math.max(3, Math.min(60, (12 * px) / Math.max(1e-3, year)));
 }
 function zoomAbout(x: number, y: number, f: number): void {
+  // (The puzzle is looked at whole: the outline and the slice together, never closer.)
+  if (PUZZLE) return;
   const v = viewNow(), k = Math.max(1, Math.min(closest(), look.k * f)), g2 = k / look.k, b = baseNow();
   const cx = x + (v.cx - x) * g2, cy = y + (v.cy - y) * g2;
   look = k <= 1.001 ? { k: 1, ox: 0, oy: 0 } : { k, ox: cx - b.cx, oy: cy - b.cy };
