@@ -2564,7 +2564,7 @@ const ACTION_WORDS = /^(A stone is coming|The ground is sinking|The heat is near
  * above were said, and nearly every world's own word on what had just happened, a crack too late, a comet frozen, a
  * burst not at high tide, the far side rising, was kept quiet.)
  */
-const EXPLAIN = /^(Every (crack|plume) so far|The comet melted|The comet froze|It's tumbling again|You poured too fast|No wave|Not high tide|That stone was too big|Too tall|Theia|The shock|Too late|Too early|Too small|Too near|A big eruption|A giant wave|The island is blown|The far side|A dark streak|A streak, but|The ice cracks|A mound|A lava dome|A dome, but|The mound slumps|The dome slumps|A blob reaches|Ice reaches the ring|An icy comet|Ice melted|The ice froze|Stone caught|Caught in the glow|The eruption's gas|The ground gives way|The last of the sea|The sea is nearly gone|The day has melted|The volcano is in daylight|That lava|A seabird|A nest|Found:|The island stands|Too tall for its width|A dust storm is coming|Theia|Too big to hold|The big stone|A stone too big|The burst missed|In the dark|Chilled)/;
+const EXPLAIN = /^(Goal: |Every (crack|plume) so far|The comet melted|The comet froze|It's tumbling again|You poured too fast|No wave|Not high tide|That stone was too big|Too tall|Theia|The shock|Too late|Too early|Too small|Too near|A big eruption|A giant wave|The island is blown|The far side|A dark streak|A streak, but|The ice cracks|A mound|A lava dome|A dome, but|The mound slumps|The dome slumps|A blob reaches|Ice reaches the ring|An icy comet|Ice melted|The ice froze|Stone caught|Caught in the glow|The eruption's gas|The ground gives way|The last of the sea|The sea is nearly gone|The day has melted|The volcano is in daylight|That lava|A seabird|A nest|Found:|The island stands|Too tall for its width|A dust storm is coming|Theia|Too big to hold|The big stone|A stone too big|The burst missed|In the dark|Chilled)/;
 function announce(text: string, lesson = false): void {
   text = words$(text);
   if (BARE && !ending) return;
@@ -3060,9 +3060,10 @@ function theEnd(): void {
     announce(AGE_LEN ? `The fire is out. ${AGE_WORDS(ending.won)}` : 'The fire is out');
     measureTheSecond();
     if (MAY_RETRY && !ending.won && looks.length) $('retry').classList.add('shown');
+    if (!ending.won && OPENINGS[WORLD.id]) remember(OPENING_KEY, 'again'); // (lost: the opening shows again next time)
   }
   // Met, the chart comes a few moments later; and after the long age, where there is one (see `AGE_LEN`).
-  if (ending && !ending.shown && planet.seconds - ending.from >= AGE_LEN && (!ending.won || seconds - wonAt() > 4)) {
+  if (ending && !ending.shown && planet.seconds - ending.from >= AGE_LEN && (!ending.won || seconds - wonAt() > WIN_FOR)) {
     ending.shown = true;
     ending.at = seconds;
     document.body.classList.add('charted'); // (the line of words under the world would run through the chart's timeline)
@@ -3884,10 +3885,10 @@ function breathe(dt: number): void {
   // While lava runs, the view leans in a little, so the flow is big when it matters; and eases back after.
   const running = !BARE && !WASHED && !ending && !held && (planet.pouring || (planet.erupting && planet.molten > 0.01)) && !STILL;
   lean += ((running ? 0.82 : 1) - lean) * Math.min(1, dt * (running ? 0.9 : 0.45));
-  const want = ending?.shown ? farthest * 0.84 : reachDist * (held && !STILL ? moment.back : gathering && !STILL ? 1.3 : 1) * lean * lapseBack() * shotZoom, wantLift = ending?.shown ? 0.12 : 0; // (at the end: larger, and up into the room under the title)
+  const want = ending?.shown ? farthest * 0.84 : reachDist * (held && !STILL ? moment.back : gathering && !STILL ? 1.3 : 1) * lean * lapseBack() * shotZoom * sceneZoom, wantLift = ending?.shown ? 0.12 : 0; // (at the end: larger, and up into the room under the title)
   if (!ending?.shown && seconds - zoomedAt < 10) return;
   const gliding = seconds - begunAt < 5; // (from the card's view: quicker, so the world comes to hand)
-  const d = dist + (want - dist) * Math.min(1, (held || gathering || shotZoom !== 1 ? 0.9 : gliding ? 0.9 : Math.abs(lean - 1) > 0.01 ? 1.4 : 0.15) * dt), l = lift + (wantLift - lift) * Math.min(1, (gliding ? 1.2 : 0.6) * dt);
+  const d = dist + (want - dist) * Math.min(1, (held || gathering || shotZoom !== 1 || sceneZoom !== 1 ? 0.9 : gliding ? 0.9 : Math.abs(lean - 1) > 0.01 ? 1.4 : 0.15) * dt), l = lift + (wantLift - lift) * Math.min(1, (gliding ? 1.2 : 0.6) * dt);
   if (Math.abs(d - dist) > 1e-4 || Math.abs(l - lift) > 1e-5) { dist = d; lift = l; look(); }
 }
 /**
@@ -3975,6 +3976,74 @@ function shotLook(): void {
   shot.pose(shot.from, t);
   shotZoom = 1 + (shot.zoom - 1) * Math.min(1, t / 1.2, (shot.len - t) / 1.2);
 }
+/**
+ * A level's opening and its win, shown on the world. Opening (the first time a world is played, and again after it's
+ * lost): the fire waits while the view goes to what the goal is about, with the goal said plainly; a tap skips it.
+ * Won: while the fire's work replays, the view goes to what was made, and stays there for the chart. Only on the
+ * worlds whose goal is hard to see from where you start; with less motion asked for, the words alone.
+ */
+type V3 = { x: number; y: number; z: number };
+interface ShowLook { len: number; zoom: number; words?: () => string; dir?: () => V3 | null; at?: THREE.Vector3; turn?: [number, number, number]; round?: boolean }
+const HORIZON = new THREE.Vector3(0, 0.88, 0.47).normalize(); // (the vent near the world's top edge: its mountain seen side-on, against the sky)
+const ventDir = (): V3 => planet.plume, antiVent = (): V3 => ({ x: -planet.plume.x, y: -planet.plume.y, z: -planet.plume.z });
+const OPENINGS: Partial<Record<WorldId, ShowLook>> = {
+  mars: { len: 4.6, zoom: 0.95, dir: ventDir, at: HORIZON, turn: [1.2, 2.2, 1.2], words: () => `Goal: a mountain ${HEIGHT.target} km high. A tall mountain needs a wide base, or its sides collapse` },
+  mercury: { len: 4.8, zoom: 1, dir: () => planet.far, at: TOWARD_US, turn: [1.4, 2, 1.4], words: () => `Goal: raise the ground ${FAR_KM} km in the dotted circle on the far side of the planet. Eruptions at the volcano send shocks through the planet to it` },
+  io: { len: 4.5, zoom: 1.45, words: () => `Goal: ${PLUMES} big eruptions, each in a different place. They only work at high tide, when Jupiter looks biggest` },
+  europa: { len: 4.5, zoom: 0.72, words: () => `Goal: crack the ice in ${FIELDS} places. Under it is an ocean: erupt when the circle around the volcano is full` },
+  tonga: { len: 4.6, zoom: 0.85, dir: ventDir, at: HORIZON, turn: [1.2, 2.2, 1.2], words: () => `Goal: ${RINGS} giant waves. Erupt with the top of the volcano just under the sea` },
+  first: { len: 4.5, zoom: 1.5, words: () => 'Goal: grow the planet by catching stones in the gold ring. Keep away from red stones, too big to hold. Grow big enough, and Theia comes' },
+};
+const WINS: Partial<Record<WorldId, ShowLook>> = {
+  mars: { len: 6, zoom: 0.9, dir: ventDir, at: HORIZON, turn: [2, 4, 0] },
+  mercury: { len: 6, zoom: 1, dir: () => planet.far, at: TOWARD_US, turn: [2, 4, 0] },
+  io: { len: 6, zoom: 1.3, round: true },
+  europa: { len: 6, zoom: 1.3, round: true },
+  tonga: { len: 6, zoom: 1.15, dir: antiVent, at: TOWARD_US, turn: [5, 1, 0] }, // (after the last wave, round to where it meets itself)
+  first: { len: 6, zoom: 1.6, round: true },
+};
+/** How long a win is shown before the chart. */
+const WIN_FOR = WINS[WORLD.id] && !STILL ? 6 : 4;
+const OPENING_KEY = `volcano.opening.${WORLD.id}`;
+let showing: (ShowLook & { kind: 'open' | 'win'; at0: number; from: THREE.Quaternion | null; to: THREE.Quaternion | null }) | null = null;
+let sceneZoom = 1, openingDecided = false, winDecided = false;
+const opening = () => showing?.kind === 'open';
+function endScene(): void { if (showing?.from && showing.kind === 'open') group.quaternion.copy(showing.from); showing = null; sceneZoom = 1; }
+function sceneLook(): void {
+  if (!openingDecided && begun && !lapsing() && !replaying) {
+    openingDecided = true;
+    const o = OPENINGS[WORLD.id];
+    if (o && remembered(OPENING_KEY) !== 'seen') {
+      remember(OPENING_KEY, 'seen');
+      if (o.words) announce(o.words());
+      if (!STILL) showing = { ...o, kind: 'open', at0: seconds, from: null, to: null };
+    }
+  }
+  if (!winDecided && ending?.won && !FREE) {
+    winDecided = true;
+    const w = WINS[WORLD.id];
+    if (w && !STILL) { if (showing) endScene(); shot = null; showing = { ...w, kind: 'win', at0: seconds, from: null, to: null }; }
+  }
+  sceneZoom = 1;
+  if (!showing) return;
+  if (showing.kind === 'win' && ending?.shown) { showing = null; return; }
+  const t = seconds - showing.at0;
+  if (showing.kind === 'open' && t >= showing.len) { endScene(); return; }
+  if (!showing.from) {
+    showing.from = group.quaternion.clone();
+    const d = showing.dir?.();
+    if (d && showing.at) { SHOT_V.set(d.x, d.y, d.z).normalize().applyQuaternion(showing.from); showing.to = new THREE.Quaternion().setFromUnitVectors(SHOT_V, showing.at).multiply(showing.from); }
+  }
+  if (showing.to && showing.turn) {
+    const [a, h, b] = showing.turn;
+    const u = t < a ? smooth(t / a) : t < a + h || !b ? 1 : 1 - smooth(Math.min(1, (t - a - h) / b));
+    group.quaternion.slerpQuaternions(showing.from, showing.to, u);
+  } else if (showing.round) group.quaternion.copy(showing.from).premultiply(SHOT_TURN.setFromAxisAngle(SKY_Y, Math.PI * 2 * smooth(Math.min(1, t / showing.len))));
+  const ease = showing.kind === 'open' ? Math.min(1, t / 1.2, (showing.len - t) / 1.2) : Math.min(1, t / 1.5);
+  sceneZoom = 1 + (showing.zoom - 1) * Math.max(0, ease);
+}
+// (A tap during an opening skips it, and only skips it.)
+stage.addEventListener('pointerdown', (e) => { if (opening()) { endScene(); e.stopImmediatePropagation(); } }, { capture: true });
 /** If the phone can't keep up, draw a little less finely: the pixel ratio comes down a half at a time, but never below two to a point (see FINEST). */
 let slowFor = 0, frameTime = 1 / 60;
 /** Never coarser than this, however slow the phone: below two pixels to a point, lines and edges look pixelated. */
@@ -4052,7 +4121,7 @@ const loop = (): void => {
   arrows(dt);
   // Gravity as the phone is held (or, without one, a little down the screen and into it), in the planet's frame.
   // (While the world is turned for you, it is still held as it was: the heat doesn't move, nor the way lava runs.)
-  INVERSE.copy(shot?.from ?? group.quaternion).invert();
+  INVERSE.copy(shot?.from ?? showing?.from ?? group.quaternion).invert();
   // (Breathing, the world as if held a little tipped towards you, so each breath runs down the screen;
   // tipping, how far the phone is from level is what pours, however the world has been turned.)
   if (HAND) GRAV.copy(BREATH_DOWN).applyQuaternion(INVERSE);
@@ -4066,11 +4135,12 @@ const loop = (): void => {
   drawLevel();
   // Once the fire is out, the long age runs quickly, in small steps so the sea's work stays as it would be.
   // (A moon gathering goes at half that, to be watched: it's the world's great moment.)
-  const speed = ending && !ending.shown && (!ending.won || seconds - wonAt() > 4) ? (ending.won && WORLD.goal === 'orbit' ? AGE_SPEED / 2 : AGE_SPEED) : pace01();
+  const speed = ending && !ending.shown && (!ending.won || seconds - wonAt() > WIN_FOR) ? (ending.won && WORLD.goal === 'orbit' ? AGE_SPEED / 2 : AGE_SPEED) : pace01();
   // Nothing happens until the world is begun.
   lapseStep();
+  sceneLook();
   if (replaying) replayStep();
-  else if (begun && !lapsing() && !ending?.shown) {
+  else if (begun && !lapsing() && !ending?.shown && !opening()) {
     const before = new THREE.Vector3(planet.plume.x, planet.plume.y, planet.plume.z);
     // (In the long age, four larger steps rather than fourteen small ones: it was 14 to 43 ms a frame.)
     const steps = speed > 1 ? 4 : 1;

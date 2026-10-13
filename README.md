@@ -894,3 +894,11 @@ Mercury's far-side turn, as a move the game makes elsewhere too, but only where 
 - Never while lava is being poured (it waits for the finger to lift, up to 6 s, then lets the moment go), and not at all with less motion asked for. While turned, the game still treats the world as held where it was: the heat doesn't creep and the pour's direction doesn't change.
 
 Looked at and left out: Theia's and the icy comets' landing spots are always near the volcano, so already in view, and Hunga Tonga's wave going round doesn't change what to do next.
+
+### Openings and wins, shown on the world
+
+On the six worlds whose goal is hardest to see from where you start (Mars, Mercury, Io, Europa, Hunga Tonga, the First World), the camera shows the goal at both ends of the level (`OPENINGS`, `WINS`, `sceneLook` in main.ts):
+
+- **Opening:** the first time a world is played, and again after it's lost. The fire waits (the game's clock is held) for about 4.5 s while the view goes to what the goal is about, with the goal said plainly ("Goal: …"). Mars and Tonga: the vent on the world's top edge, seen side-on (height; the sea's surface). Mercury: round to the dotted circle on the far side, and back. Io: pulled back with Jupiter in view (the tide). Europa: close on the ice over the volcano. The First World: pulled back, small among the stones. A tap skips it.
+- **Win:** while the game's work replays, the view goes to what was made and stays for the chart (the chart comes after 6 s rather than 4). Mars: the mountain side-on against the sky. Mercury: the risen far side. Io and Europa: once round, every ring or crack. Tonga: round to the far side, where the last wave meets itself. The First World: pulled back, once round.
+- With less motion asked for: the words alone.
