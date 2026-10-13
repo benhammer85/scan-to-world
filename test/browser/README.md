@@ -12,7 +12,7 @@ screenshots, e.g. `mkdir -p /tmp/wr && node test/browser/childflow.cjs /tmp/wr`.
 | `years.cjs` | the child's tree: this year, every year, opening a past year, the ink-only print and the words card |
 | `views.cjs` | the child's tree: which links show where; the microphone off by default |
 | `puzzle.cjs` | the puzzle: eight rings grown toward the target (`node test/browser/puzzle.cjs out lobes 1`; the last number how well the rings are judged), the score, the share card, a tap to try again |
-| `replant.cjs` | the practice: a long press on the pencilled line asks to plant a new tree; cancelled it stays, confirmed the sheet is bare |
+| `replant.cjs` | the practice: a tap on the maker's mark asks to plant a new tree; cancelled it stays, confirmed the sheet is bare; no daily words on reload |
 | `pinch.cjs` | the practice: zoom in, then a two-finger pinch back out (screenshots mid-pinch: the whole slice, never a cut edge) |
 
 Environment: `PLAYWRIGHT` (path to the playwright module, default `playwright`), `CHROME` (a Chromium to

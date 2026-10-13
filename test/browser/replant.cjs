@@ -1,5 +1,5 @@
-// The practice: a long press on the pencilled line under the slice asks to plant a new tree; cancelled,
-// the tree stays; confirmed, the sheet is bare again.
+// The practice: a tap on the maker's mark (the small stamp at the end of the pencilled line) asks to plant
+// a new tree; cancelled, the tree stays; confirmed, the sheet is bare again. And no daily words.
 const { chromium } = require(process.env.PLAYWRIGHT || 'playwright');
 const BASE = process.env.BASE || 'http://localhost:5199';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -16,13 +16,13 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await p.mouse.up(); await sleep(12000);
   const rings = () => p.evaluate(() => window.press.tree.rings.length);
   console.log('drawn:', await rings());
-  const y = await p.evaluate(() => window.press.editionY / 2);
+  const [sx, sy] = await p.evaluate(() => window.press.stampAt.map((v) => v / 2));
   const hold = async (accept) => {
     p.once('dialog', (d) => { console.log('asked:', d.message()); accept ? d.accept() : d.dismiss(); });
-    await p.mouse.move(120, y); await p.mouse.down(); await sleep(1300); await p.mouse.up(); await sleep(1500);
+    await p.mouse.click(sx, sy); await sleep(1500);
   };
   await hold(false); console.log('cancelled -> rings', await rings());
-  await p.reload(); await sleep(1500); console.log('after reload -> rings', await rings());
+  await p.reload(); await sleep(1500); console.log('after reload -> rings', await rings(), '| words:', JSON.stringify(await p.evaluate(() => document.getElementById('words').classList.contains('shown') ? document.getElementById('words').textContent : '')));
   await sleep(4000); await hold(true); await sleep(1500);
   console.log('confirmed -> rings', await rings(), '|', await p.evaluate(() => document.getElementById('words').textContent));
   console.log('errors', bad.length ? bad : 'none'); await b.close();
