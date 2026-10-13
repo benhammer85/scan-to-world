@@ -8,11 +8,16 @@ export interface Years { n: number; year: number; levels: (Level & { rows: numbe
 
 export const YEAR = 112;
 /** (And how ink takes on a real relief print: Munch's sea and his field, as density, 1 full, 0 the paper.) */
-export const wood: { oak?: Years; pine?: Level; sea?: Level; field?: Level } = {};
+export const wood: { oak?: Years; pine?: Level; sea?: Level; field?: Level; years: Record<string, Years>; fibre: Record<string, Level> } = { years: {}, fibre: {} };
 
 const URLS = {
   oak: new URL('./wood/red-oak-years.png', import.meta.url).href,
   pine: new URL('./wood/red-pine-fibre.png', import.meta.url).href,
+  ash: new URL('./wood/white-ash-years.png', import.meta.url).href,
+  cherry: new URL('./wood/black-cherry-fibre.png', import.meta.url).href,
+  maple: new URL('./wood/bigleaf-maple-fibre.png', import.meta.url).href,
+  birch: new URL('./wood/paper-birch-fibre.png', import.meta.url).href,
+  redwood: new URL('./wood/giant-sequoia-fibre.png', import.meta.url).href,
   sea: new URL('./wood/munch-sea-ink.png', import.meta.url).href,
   field: new URL('./wood/munch-field-ink.png', import.meta.url).href,
 };
@@ -65,16 +70,22 @@ let asked = false;
 export function loadWood(then: () => void): void {
   if (asked) return;
   asked = true;
-  pixels(URLS.oak).then((l) => {
+  const years = (url: string, as: string) => pixels(url).then((l) => {
     const n = Math.round(l.h / YEAR), levels = [{ ...l, rows: YEAR }];
     for (let k = 1; 2 ** (k - 1) < YEAR; k++) {
       const rows = Math.max(1, Math.round(YEAR / 2 ** k));
       levels.push({ ...shrink(l, n, rows, Math.max(4, Math.round(l.w / 2 ** k))), rows });
     }
-    wood.oak = { n, year: YEAR, levels };
+    wood.years[as] = { n, year: YEAR, levels };
+    if (as === 'oak') wood.oak = wood.years.oak;
     then();
   }).catch(() => {});
-  pixels(URLS.pine).then((l) => { wood.pine = l; then(); }).catch(() => {});
+  years(URLS.oak, 'oak'); years(URLS.ash, 'ash');
+  // (The fibre of each wood whose years are drawn; bristlecone and olive, with no section to hand, take
+  // their nearest kin's: a red pine's, a cherry's.)
+  const fibre = (url: string, ...as: string[]) => pixels(url).then((l) => { for (const k of as) wood.fibre[k] = l; then(); }).catch(() => {});
+  fibre(URLS.cherry, 'cherry', 'olive'); fibre(URLS.maple, 'maple'); fibre(URLS.birch, 'birch'); fibre(URLS.redwood, 'redwood');
+  pixels(URLS.pine).then((l) => { wood.pine = l; wood.fibre.pine = l; wood.fibre.bristlecone = l; then(); }).catch(() => {});
   pixels(URLS.sea).then((l) => { wood.sea = l; then(); }).catch(() => {});
   pixels(URLS.field).then((l) => { wood.field = l; then(); }).catch(() => {});
 }

@@ -1,6 +1,6 @@
 const { chromium } = require(process.env.PLAYWRIGHT || 'playwright');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const out = process.argv[2];
+const out = process.argv[2], pick = Number(process.argv[3] ?? 0); // (which seed: 0 oak … 8 olive, in rows of three)
 (async () => {
   const b = await chromium.launch({ executablePath: process.env.CHROME || undefined });
   const p = await b.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
@@ -8,8 +8,8 @@ const out = process.argv[2];
   await p.goto(`${process.env.BASE || 'http://localhost:5199'}/press.html?fresh`); await sleep(2000);
   console.log('words:', await p.evaluate(() => document.getElementById('words').textContent));
   await p.screenshot({ path: out + '/sd-choose.png' });
-  await p.mouse.click(195 - 107, 397); await sleep(1200);
-  console.log('kind after tapping left seed:', await p.evaluate(() => window.press.kind), '|', await p.evaluate(() => document.getElementById('words').textContent));
+  await p.mouse.click(195 + ((pick % 3) - 1) * 110, 397 + (Math.floor(pick / 3) - 1) * 120); await sleep(1200);
+  console.log('kind after tapping seed', pick, ':', await p.evaluate(() => window.press.kind), '|', await p.evaluate(() => document.getElementById('words').textContent));
   await p.screenshot({ path: out + '/sd-planted.png' });
   const loop = async () => {
     const g = await p.evaluate(() => { const v = window.press.view; return { cx: v.cx / 2, cy: v.cy / 2, R: v.s * window.press.tree.radius / 2 }; });
