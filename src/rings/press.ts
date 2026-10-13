@@ -31,6 +31,7 @@ import { Paper } from './paint';
 import { Ear } from './ear';
 import { TYPICAL, ageOn as ageOf, ageWords as ageSaid, dayDate, dayOf, grewIn as grewOf, question as askOf, yearSpans as spansOf } from './child';
 import { climate, growth as growthOf, season } from './growing';
+import { RINGS, overlap, percent, shapeFor } from './puzzle';
 import { holdStill, steadySize } from './steady';
 import { keepRun, keepTree, recallTree, runs, snapshotTree, treeFrom, type KeptTree, type Run } from './save';
 
@@ -66,6 +67,8 @@ const smooth = (x: number) => { const t = Math.max(0, Math.min(1, x)); return t 
 // year's edge (a loose, wide circle a wide year; a close one, a narrow year).
 /** The challenge (challenge.html) rather than the daily practice. */
 const CHALLENGE = document.body.dataset.mode === 'challenge';
+/** The puzzle (puzzle.html): grow a tree to fill an outline, in eight rings. Like the challenge, a game. */
+const PUZZLE = document.body.dataset.mode === 'puzzle', GAME = CHALLENGE || PUZZLE;
 // The tree starts from a small heart (2 mm: a 6 mm one was a third of a young slice), and each ring's edge is
 // smoothed over a wider arc (12°), so a hand's wobble becomes a gentle swell, as real rings are.
 const DAILY = { yearsPerRing: 1, crown: OAK.crown / 5, crownYears: 6, oldFrom: 1e6, oldTo: 2e6, ink: 1e6, pith: 2, smooth: (12 * Math.PI) / 180 };
@@ -82,7 +85,7 @@ function brushPoint(v: View, x: number, y: number): [number, number] {
   return [v.cx + dx * k, v.cy + dy * k];
 }
 /** How far each ring is eased toward round (a tree evens out its lumps over the years). */
-const ROUND = CHALLENGE ? 0 : PRINT ? 0.15 : 0.3;
+const ROUND = GAME ? 0 : PRINT ? 0.15 : 0.3;
 /**
  * The practice, printed, grows as a tree does: from a seed planted on a bare sheet, shown true to a
  * tree's scale (`TRUE_MM` CSS px to the mm, till it fills its room; a seedling shown up to `YOUNG` times
@@ -92,7 +95,7 @@ const ROUND = CHALLENGE ? 0 : PRINT ? 0.15 : 0.3;
  * from `LEAST` to `LOOSEST` of one), its wobble how the year swells and thins round the tree; then it
  * draws in onto the slice as the year. (The watercolour and the challenge keep the hand's own scale.)
  */
-const GROWN = PRINT && !CHALLENGE;
+const GROWN = PRINT && !GAME;
 const TRUE_MM = 0.6, STEADY = 34, LEAST = 0.4, LOOSEST = 2.4, YOUNG = 2;
 /** Where the finger puts the line (steady widths from the bark), eased a little toward round. */
 function rounded(a: number, u: number): number {
@@ -115,7 +118,7 @@ const growth = (a: number, n = tree.rings.length) => growthOf(tree.seed, a, n);
  * comes to sit off the middle: each ring a sixth wider on that side and as much narrower on the other.
  * The side is the tree's own (from its seed). Not in the challenge, where the line is exactly yours.
  */
-const ECCENTRIC = CHALLENGE ? 0 : 0.16;
+const ECCENTRIC = GAME ? 0 : 0.16;
 function lean(a: number): number {
   const side = (Math.sin(tree.seed * 12.9898) * 43758.5453) % 1 * TAU;
   return 1 + ECCENTRIC * Math.cos(a - side);
@@ -258,7 +261,7 @@ function demoChild(): void {
 
 /** The kept tree, if there is one (`?fresh` begins another). */
 async function recall(): Promise<void> {
-  if (CHALLENGE) return;
+  if (GAME) return;
   // (For trying: `?name=Ada&birth=2023-05-02` plants for a child at once; with `?demo`, the days since
   // their last birthday drawn too.)
   if (CHILD && params.get('name') && params.get('birth')) {
@@ -282,7 +285,7 @@ async function recall(): Promise<void> {
   while (days.length < t.rings.length) days.unshift(days[0] ?? dayOf());
 }
 function keep(): void {
-  if (params.has('demo') || CHALLENGE) return;
+  if (params.has('demo') || GAME) return;
   void keepTree(kept(), DIARY);
 }
 /** The tree as kept (and as a copy is kept). */
@@ -304,7 +307,7 @@ const EASE = 3, EASE_GROWN = 90;
 /** Where the seed was planted (shares of the sheet), if it has been (the practice, printed). */
 let seedAt: [number, number] | null = null;
 /** The fisheye for the tree now (none where the tree grows true to scale). */
-const warpNow = (): Warp => (GROWN ? { ...warpFor(tree), beta: 0 } : warpFor(tree));
+const warpNow = (): Warp => (GROWN || PUZZLE ? { ...warpFor(tree), beta: 0 } : warpFor(tree));
 /** The room the slice has (device px of radius). */
 const roomNow = () => Math.max(40 * px, Math.min(W / 2 - 34 * px, H * 0.27));
 /** The outermost the bark reaches (mm). */
@@ -315,6 +318,12 @@ function barkMax(): number {
   return r;
 }
 function baseNow(t = clock()): View {
+  if (!view && PUZZLE) {
+    // (The puzzle: true to scale, the target filling the room, still all the way through.)
+    const room = roomNow(), s = (0.86 * room) / (target.size * target.reach);
+    view = { cx: W / 2, cy: Math.round(H * 0.47), s, turn: 0, px, warp: undefined };
+    ease = null;
+  }
   if (!view && GROWN) {
     // True to a tree's scale till the slice fills its room, then fitted to it; where the seed was
     // planted, as near as the whole slice (its bark, the edition under it) can sit on the sheet.
@@ -444,6 +453,7 @@ const bestOf = () => { try { return Number(localStorage.getItem('annulus.challen
 const plural = (n: number, one: string, many: string) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
 function showScore(): void {
   if (!scoreEl) return;
+  if (PUZZLE) { scoreEl.textContent = run.over ? '' : `${target.shape.name} · ring ${Math.min(RINGS, run.rings + 1)} of ${RINGS}`; return; }
   const best = bestOf();
   scoreEl.textContent = run.rings || run.score ? `Ring ${Math.min(RUN, run.rings + 1)} of ${RUN} · ${plural(run.score, 'point', 'points')}` : best ? `Best: ${best.toLocaleString()}` : '';
 }
@@ -493,6 +503,73 @@ function keepTheRun(): void {
   const r = toKeep; toKeep = null;
   void keepRun({ ...r, image: picture() });
 }
+// ---------------------------------------------------------------- the puzzle
+/**
+ * Today's target, as an outline round the heart: its shape, its mean radius (mm: what steady years would
+ * reach in the rings given, and half again, so it has to be grown into), and how far its widest point
+ * reaches beyond that.
+ */
+const target = (() => {
+  const shape = shapeFor(dayOf(), params.get('shape'));
+  let R = DAILY.pith, reach = 1;
+  for (let y = 1; y <= RINGS; y++) R = Math.sqrt(R * R + (DAILY.crown * (1 - Math.exp(-((y / DAILY.crownYears) ** 1.4)))) / Math.PI);
+  for (let i = 0; i < 360; i++) reach = Math.max(reach, shape.r((i / 360) * TAU));
+  const size = 1.5 * R;
+  return { shape, size, reach, r: (a: number) => size * shape.r(a) };
+})();
+const shareWrap = document.getElementById('share-wrap');
+let puzzleScore = 0;
+/** The target, pencilled on the paper: a soft graphite line, broken here and there. */
+function drawTarget(v: View): void {
+  if (!PUZZLE) return;
+  // (Over the ink, a paler line beneath it, so it reads on the wood as on the paper.)
+  g.save(); g.setLineDash([7 * px, 3 * px]); ringPath(v, target.r, 0, K * 2);
+  g.lineWidth = 2.6 * px; g.strokeStyle = 'rgba(244,239,228,0.38)'; g.stroke();
+  g.lineWidth = 1.1 * px; g.strokeStyle = 'rgba(92,88,84,0.6)'; g.stroke(); g.restore();
+}
+const puzzleBest = () => { try { return Number(localStorage.getItem(`annulus.puzzle.${dayOf()}.${target.shape.id}`)) || 0; } catch { return 0; } };
+/** The eighth ring: how well it fills the outline, and the best today. */
+function endPuzzle(): void {
+  run.over = true; endedAt = clock();
+  const bark = barkOf(tree.rings.length - 1);
+  puzzleScore = overlap(bark, target.r);
+  const best = puzzleBest(), isBest = puzzleScore > best;
+  if (isBest) { try { localStorage.setItem(`annulus.puzzle.${dayOf()}.${target.shape.id}`, String(puzzleScore)); } catch { /* not kept */ } }
+  window.setTimeout(() => {
+    words.classList.add('over');
+    say([`${percent(puzzleScore)}.`, isBest ? (best ? 'Your best today.' : '') : `Best today: ${percent(best)}.`, 'Tap to try again.'].filter(Boolean).join(' '), 1e5);
+    showScore(); shareWrap?.toggleAttribute('hidden', false);
+  }, 1400);
+}
+/** The result, to share: the slice and the target, true to scale, and how well it filled it. */
+async function puzzleCard(): Promise<Blob | null> {
+  const Wc = 1080, Hc = 1350, c = document.createElement('canvas'); c.width = Wc; c.height = Hc;
+  const x = c.getContext('2d')!, was = { g, px };
+  try { await document.fonts?.ready; } catch { /* the serif it falls back to will do */ }
+  x.fillStyle = PAPER; x.fillRect(0, 0, Wc, Hc);
+  const v: View = { cx: Wc / 2, cy: Hc * 0.44, s: (Wc * 0.36) / (target.size * target.reach), turn: 0, px: 2 };
+  const lay = document.createElement('canvas'); lay.width = Wc; lay.height = Hc;
+  g = lay.getContext('2d')!; px = 2;
+  try { drawPrint(v); inkGrain(lay, v); g = x; x.drawImage(lay, 0, 0); drawTarget(v); } finally { g = was.g; px = was.px; }
+  x.fillStyle = '#2e2118'; x.textAlign = 'center';
+  x.font = `italic 64px Newsreader, "Iowan Old Style", Georgia, serif`; x.fillText(percent(puzzleScore), Wc / 2, Hc * 0.86);
+  x.globalAlpha = 0.6; x.font = `34px Newsreader, "Iowan Old Style", Georgia, serif`;
+  x.fillText(`${target.shape.name}, in ${RINGS} rings · ${new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}`, Wc / 2, Hc * 0.86 + 60);
+  x.fillText('Well Rounded', Wc / 2, Hc - 60); x.globalAlpha = 1;
+  drawPaper(x, Wc, Hc);
+  return new Promise((done) => c.toBlob(done, 'image/png'));
+}
+document.getElementById('share')?.addEventListener('click', (e) => {
+  e.preventDefault();
+  void puzzleCard().then(async (b) => {
+    if (!b) return;
+    const file = new File([b], `well-rounded-${dayOf()}-${target.shape.id}.png`, { type: 'image/png' });
+    try { if (navigator.canShare?.({ files: [file] })) { await navigator.share({ files: [file], text: `Well Rounded · ${target.shape.name} · ${percent(puzzleScore)}` }); return; } } catch { return; }
+    const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = file.name; document.body.append(a); a.click(); a.remove();
+    window.setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  });
+});
+
 /** Ten rings drawn: the run's points, and the best. */
 function endRun(): void {
   run.over = true; endedAt = clock();
@@ -509,13 +586,14 @@ function endRun(): void {
 }
 /** A new run: a new seedling, a clean sheet. */
 function restart(): void {
-  keepTheRun();
+  if (!PUZZLE) keepTheRun();
   tree = new TreeSim(1 + Math.floor(Math.random() * 1e6), DAILY);
   days = []; trail = []; marks = []; settle = { ring: -1, at: 0 };
   run = { score: 0, rings: 0, over: false, gapSum: 0, gapN: 0, began: 0, touches: 0, inside: false, out: false };
-  warp = warpFor(tree); paper.fit(warp, warp.R); paper.bake(tree); view = null; ease = null;
+  warp = warpNow(); paper.fit(warp, warp.R); paper.bake(tree); view = null; ease = null;
   openedAt = clock();
   words.classList.remove('over', 'shown');
+  if (PUZZLE) { shareWrap?.toggleAttribute('hidden', true); for (const k in printCaches) delete printCaches[k]; }
   showScore();
 }
 
@@ -643,7 +721,7 @@ canvas.addEventListener('pointermove', (e) => {
     loop.len += Math.hypot(c.clientX - loop.x, c.clientY - loop.y); loop.x = c.clientX; loop.y = c.clientY;
     if (loop.len > 160 && Math.hypot(loop.x - loop.x0, loop.y - loop.y0) < Math.max(28, loop.len / 16)) {
       loop.closed = true;
-      if (tree.finish(CHALLENGE ? 0.9 : 0.5)) break;
+      if (tree.finish(GAME ? 0.9 : 0.5)) break;
     }
   }
   hear();
@@ -661,7 +739,7 @@ for (const type of ['pointerup', 'pointercancel'] as const) canvas.addEventListe
     lastTap = t;
     if (run.over && !closer() && t - endedAt > 1.8) { restart(); return; }
     // A tap on the slice: the ring there, and its day.
-    if (inside && !CHALLENGE && painter === null) { readDay(shownOf(viewNow()), e.clientX * px, e.clientY * px); return; }
+    if (inside && !GAME && painter === null) { readDay(shownOf(viewNow()), e.clientX * px, e.clientY * px); return; }
     // Before the first ring, a tap plants the seed there (or moves it).
     if (GROWN && !tree.rings.length && !closer() && (!CHILD || child)) {
       if (painter === e.pointerId) { tree.cancel(); trail = []; painter = null; }
@@ -673,7 +751,7 @@ for (const type of ['pointerup', 'pointercancel'] as const) canvas.addEventListe
   painter = null;
   if (CHILD) ear.stop();
   // Let go most of the way round, the ring is closed for you; earlier, the line rests, to be taken up.
-  if (tree.finish(CHALLENGE ? 0.95 : 0.8)) hear();
+  if (tree.finish(GAME ? 0.95 : 0.8)) hear();
   // (A whole loop drawn, but not round the slice: let go, and said where, once the hand is off.)
   else if (loop.closed && tree.stroke) { tree.cancel(); say(GROWN ? (tree.rings.length ? 'Draw your loop around the tree.' : 'Draw your loop around the seed.') : 'Draw around the circle.', 4); }
   else { tree.lift(); restAt = clock(); }
@@ -1019,7 +1097,10 @@ function hear(): void {
     days.push(today);
     if (CHILD) { notes.push(null); ear.stop(); window.setTimeout(() => { if (painter === null) askNote({ kind: 'words', ring: tree.rings.length - 1 }, 'A few words, if you like'); }, 2600); }
     keep();
-    if (CHALLENGE) {
+    if (PUZZLE) {
+      run.rings++; showScore();
+      if (run.rings >= RINGS) endPuzzle();
+    } else if (CHALLENGE) {
       const pts = ringPoints(), touches = run.touches;
       run.score += pts; run.rings++; showScore();
       window.setTimeout(() => say(`+${pts}${touches ? `  (touched the edge: −${TOUCH * touches})` : ''}`, 1.4), 150);
@@ -1805,7 +1886,7 @@ const shownOf = (v: View) => (relax > 0.5 ? restOf(v) : v);
  */
 let editionAt = 0, editionShown = 0;
 function drawEdition(v: View, t: number, dt: number): void {
-  if (CHALLENGE || !tree.rings.length) return;
+  if (GAME || !tree.rings.length) return;
   const away = fingers.size > 0 || !!tree.stroke;
   editionShown = away ? Math.max(0, editionShown - dt / 0.3) : Math.min(1, editionShown + dt / 1.2);
   if (editionShown <= 0.01) return;
@@ -1869,7 +1950,7 @@ function frame(): void {
   g.setTransform(1, 0, 0, 1, 0, 0);
   g.drawImage(groundOf(), 0, 0);
   // At rest, or drawing: the one eased into the other (slowly to rest, quickly back).
-  const busy = fingers.size > 0 || !!tree.stroke || !!ease || settle.ring >= 0 || (CHALLENGE && !run.over);
+  const busy = fingers.size > 0 || !!tree.stroke || !!ease || settle.ring >= 0 || (GAME && !run.over);
   if (busy) idleSince = t;
   const restWanted = PRINT && !busy && t - idleSince > 1.4 && !!v.warp && v.warp.beta > 0;
   relax = restWanted ? Math.min(1, relax + dt / 0.9) : Math.max(0, relax - dt / 0.22);
@@ -1916,6 +1997,7 @@ function frame(): void {
   // slice, so it draws back with it.)
   if (GROWN && !n && seedAt) drawSeed(v, t);
   drawBreath(shownOf(v), t, dt);
+  drawTarget(v);
   drawBrush(g, v, t);
   drawKnots(shownOf(v), t);
   drawEdition(shownOf(v), t, dt);
@@ -1929,7 +2011,8 @@ void (async () => {
   fit(); view = null; openedAt = clock(); idleSince = openedAt + OPEN;
   const today = dayOf();
   showScore();
-  if (CHALLENGE) say('Draw around the circle. Get close, but don’t touch it. Faster scores more.', 8);
+  if (PUZZLE) say(`Grow your tree to fill the outline: ${target.shape.name}, in ${RINGS} rings. Draw each ring wider where it needs to reach.`, 9);
+  else if (CHALLENGE) say('Draw around the circle. Get close, but don’t touch it. Faster scores more.', 8);
   else if (CHILD) {
     // (Recalled above, so read afresh here.)
     const c = child as { name: string; birth: string } | null;
@@ -1944,7 +2027,7 @@ void (async () => {
   }
   else if (GROWN && !tree.rings.length) say(seedAt ? 'Draw a loop around the seed. One ring a day.' : 'Tap anywhere to plant a seed.', 1e5);
   else say(!tree.rings.length ? 'Draw a circle around this one. One ring a day.' : days.includes(today) ? 'Today’s ring is done. Draw another if you like.' : 'Draw today’s ring.', 8);
-  Object.assign(window, { press: { get tree() { return tree; }, get phase() { return settle.ring >= 0 ? 'settling' : 'trace'; }, get easing() { return !!ease; }, get view() { return viewNow(); }, get days() { return days; }, get run() { return run; }, look: (to: 'year' | 'life' | number) => lookAt(to), print: async () => (await yearPrint()).toDataURL('image/png'), words: async () => (await yearWords()).toDataURL('image/png'), block: async () => (await yearBlock()).toDataURL('image/png') } });
+  Object.assign(window, { press: { get tree() { return tree; }, get phase() { return settle.ring >= 0 ? 'settling' : 'trace'; }, get easing() { return !!ease; }, get view() { return viewNow(); }, get days() { return days; }, get run() { return run; }, target: (a: number) => target.r(a), look: (to: 'year' | 'life' | number) => lookAt(to), print: async () => (await yearPrint()).toDataURL('image/png'), words: async () => (await yearWords()).toDataURL('image/png'), block: async () => (await yearBlock()).toDataURL('image/png') } });
   // (The real wood: once it's come, the print is pressed again with it.)
   if (PRINT) loadWood(() => { for (const k in printCaches) delete printCaches[k]; });
   requestAnimationFrame(frame);
