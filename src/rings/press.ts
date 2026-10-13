@@ -744,6 +744,44 @@ function guardKept(): void {
   if (drawn >= 7 && drawn - last >= 30) window.setTimeout(() => say(home ? 'It’s been a while: keep a copy, somewhere safe.' : 'Add this page to your Home Screen to keep it safe, and keep a copy now and then.', 6), 12000);
 }
 
+/**
+ * A breath, in the paper (the practice only): left still a few seconds, a faint shade round the bark swells
+ * and ebbs at six breaths a minute, four seconds in and six out (slow breathing, the out-breath long, is what
+ * calms); a touch, and it's gone. Never a word about it but once.
+ */
+const BREATH = PRINT && GROWN && !CHILD, IN = 4, OUT = 6;
+let breathShown = 0, stillSince = 0;
+function drawBreath(v: View, t: number, dt: number): void {
+  if (!BREATH) return;
+  const n = tree.rings.length, still = fingers.size === 0 && !tree.stroke && !growing && settle.ring < 0 && !closer() && !!seedAt;
+  // (Its own stillness: the slice slowly making room doesn't count; a finger, a ring growing, does.)
+  if (!still) stillSince = t;
+  breathShown = still && t - stillSince > 3 ? Math.min(1, breathShown + dt / 2.5) : Math.max(0, breathShown - dt / 0.25);
+  if (breathShown <= 0.01) return;
+  // (In: eased swell; out: a long, slow ebb.)
+  const c = (t - stillSince - 3) % (IN + OUT), b = c < IN ? smooth(c / IN) : 1 - smooth((c - IN) / OUT);
+  const bark = n ? barkOf(n - 1) : barkOf(-1), T = n ? barkCss(v) : 2, reach = 6 + 16 * b;
+  g.save(); g.lineJoin = 'round';
+  for (let k = 0; k < 12; k++) {
+    const f = (k + 0.5) / 12;
+    g.strokeStyle = ink(0.011 * breathShown * (1 - f) ** 1.5 * (0.55 + 0.45 * b));
+    g.lineWidth = (reach / 4 + 3) * px;
+    ringPath(v, bark, T + 2 + reach * f);
+    g.stroke();
+  }
+  g.restore();
+}
+let breathTold = false;
+try { breathTold = !!localStorage.getItem('annulus.breath'); } catch { /* not known */ }
+/** Said once only, the first time a ring may be drawn: how to breathe with it. */
+function tellBreath(): boolean {
+  if (!BREATH || breathTold) return false;
+  breathTold = true;
+  try { localStorage.setItem('annulus.breath', '1'); } catch { /* said again next time, then */ }
+  say('Breathe in as you touch, out as you draw round.', 8);
+  return true;
+}
+
 /** The seed, planted: a small inked blot, uneven, pressed in as it lands. */
 function drawSeed(v: View, t: number): void {
   const k = smooth((t - plantedAt) / 0.7), r = (2.6 + 0.9 * (1 - k)) * px, tilt = h1(tree.seed * 0.37) * TAU;
@@ -763,7 +801,8 @@ let plantedAt = 0;
 function plant(x: number, y: number): void {
   seedAt = [x / W, y / H]; view = null; plantedAt = clock();
   keep();
-  say(CHILD && child ? `${question()} Draw a loop around the seed: loose for an easy day, close for a hard one.` : 'Now draw a loop around it. One ring a day.', 9);
+  if (!(CHILD && child)) { if (!tellBreath()) say('Now draw a loop around it. One ring a day.', 9); return; }
+  say(`${question()} Draw a loop around the seed: loose for an easy day, close for a hard one.`, 9);
 }
 
 // ---------------------------------------------------------------- a child's tree: the day's question, its words, its years
@@ -1845,6 +1884,7 @@ function frame(): void {
   // The ink: a brush's line, wet at first, then drying into bristle-streaks and evaporating. (It's on the
   // slice, so it draws back with it.)
   if (GROWN && !n && seedAt) drawSeed(v, t);
+  drawBreath(shownOf(v), t, dt);
   drawBrush(g, v, t);
   drawKnots(shownOf(v), t);
   drawEdition(shownOf(v), t, dt);
@@ -1872,7 +1912,7 @@ void (async () => {
     else say(days.includes(today) ? `${c.name}’s day is drawn. Draw another if you like.` : question(), 10);
   }
   else if (GROWN && !tree.rings.length) say(seedAt ? 'Draw a loop around the seed. One ring a day.' : 'Tap anywhere to plant a seed.', 1e5);
-  else say(!tree.rings.length ? 'Draw a circle around this one. One ring a day.' : days.includes(today) ? 'Today’s ring is done. Draw another if you like.' : 'Draw today’s ring.', 8);
+  else if (!(tree.rings.length && !days.includes(today) && tellBreath())) say(!tree.rings.length ? 'Draw a circle around this one. One ring a day.' : days.includes(today) ? 'Today’s ring is done. Draw another if you like.' : 'Draw today’s ring.', 8);
   Object.assign(window, { press: { get tree() { return tree; }, get phase() { return settle.ring >= 0 ? 'settling' : 'trace'; }, get easing() { return !!ease; }, get view() { return viewNow(); }, get days() { return days; }, get run() { return run; }, look: (to: 'year' | 'life' | number) => lookAt(to), print: async () => (await yearPrint()).toDataURL('image/png'), words: async () => (await yearWords()).toDataURL('image/png'), block: async () => (await yearBlock()).toDataURL('image/png') } });
   // (The real wood: once it's come, the print is pressed again with it.)
   if (PRINT) loadWood(() => { for (const k in printCaches) delete printCaches[k]; });
