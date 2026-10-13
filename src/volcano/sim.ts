@@ -1857,7 +1857,7 @@ export class Planet {
     const p = this.topo.basePositions, r = this.k.crater * (icy ? 0.75 : 1) * (size ? Math.min(theia ? 4 : 2.2, Math.sqrt((size / this.mass) * 3)) : 1);
     // (An icy comet: is the ground it strikes warm with lava laid lately? Looked at before its crater changes it.)
     let warm = false;
-    if (icy) warm = this.warmUnder(at);
+    if (icy) warm = this.warmUnder(at) || this.warmthAt(at) > 0.5;
     this.craters.push({ x: p[at * 3], y: p[at * 3 + 1], z: p[at * 3 + 2], r, born: this.seconds });
     for (let v = 0; v < this.rock.length; v++) {
       const d = Math.hypot(p[v * 3] - p[at * 3], p[v * 3 + 1] - p[at * 3 + 1], p[v * 3 + 2] - p[at * 3 + 2]);
@@ -1873,9 +1873,10 @@ export class Planet {
     }
     if (icy) {
       this.tally.stones++;
-      if (this.warmthAt(at) > 0.5) { const cool = Math.min(this.reserve, this.k.iceCool); this.reserve -= cool; this.tell('An icy comet hit the volcano and cooled it'); this.find('phreatic', 'a steam-blast crater. Ice struck hot rock and flashed to steam, blowing out a crater'); }
+      // (On the volcano itself it melts too, it's the hottest ground there is; but it takes the volcano's heat to do it.)
+      if (this.warmthAt(at) > 0.5) { const cool = Math.min(this.reserve, this.k.iceCool); this.reserve -= cool; this.water++; this.tell(`The comet melted on the volcano, but cost some of its heat: water ${this.water}`); this.find('phreatic', 'a steam-blast crater. Ice struck hot rock and flashed to steam, blowing out a crater'); }
       else if (warm) { this.water++; this.tell(`Ice melted on warm lava: water ${this.water}`); }
-      else this.tell('The ice froze on cold ground: pour lava where the next one lands');
+      else this.tell('The comet froze: it landed on old, cold rock. Pour fresh lava where the next one lands');
       return;
     }
     if (this.lava[at] > this.k.thin) this.find('tektites', 'tektites. A stone struck molten lava and splashed it into the sky, where it froze into beads of glass');
@@ -2419,7 +2420,7 @@ export class Planet {
     this.eruptions.push({ vertex: v, flank: v, left: a, rate: a / this.k.pour, total: a, t: 0, dur: this.k.pour * 1.5 });
     this.echoed++;
     this.find('weird', 'weird terrain. The shock came through the planet and broke the far side into jumbled hills, as opposite Mercury\'s Caloris basin');
-    this.tell(`The far side breaks open, and rises: ${Math.round(this.farRaised * 40)} km so far`);
+    this.tell('The shock arrives: the far side breaks open and rises');
   }
 
   /** How squarely the ground at a vertex faces the star: 0 on the night side and at the edge, to 1 under it. */

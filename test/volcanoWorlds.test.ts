@@ -864,7 +864,7 @@ describe('Venus and Pluto', () => {
 });
 
 describe("Earth's first water", () => {
-  it('melts an icy comet on warm lava into a pond, chills the volcano with one, and freezes one on cold ground', () => {
+  it('melts an icy comet on warm lava into a pond, melts one on the volcano at a cost in heat, and freezes one on cold ground', () => {
     const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('comets').rules);
     const p = topo.basePositions, far = nearest(0.6, 0, 0.8);
     // On cold ground: frozen, no water.
@@ -875,11 +875,11 @@ describe("Earth's first water", () => {
     pl.strike(far, true);
     expect(pl.water).toBe(1);
     expect(pl.rock[far]).toBeLessThan(0);
-    // On the volcano: it cools it.
+    // On the volcano: it melts too, but costs heat.
     const before = pl.reserve;
     pl.strike(pl.plumeVertex, true);
     expect(pl.reserve).toBeLessThan(before);
-    expect(pl.water).toBe(1);
+    expect(pl.water).toBe(2);
     // A rocky stone still brings heat.
     const r0 = pl.reserve;
     pl.strike(far, false);

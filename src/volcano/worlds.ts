@@ -196,7 +196,8 @@ export const WORLDS: World[] = [
       g: 0.38, // (Mercury's gravity, Earth's being 1)
       terrain: 'moon', basins: 0, craters: 45, floor: 0.22, rough: 0.02,
       waves: 0, rain: 0, sink: 0, swell: 0, life: false,
-      talus: 2.2, flow: 9, channel: 2, coolLand: 0.25,
+      talus: 1.3, // (gentler than its low gravity would let it stand: steeper, a tall cone's outline broke into steps on the globe's mesh)
+      flow: 9, channel: 2, coolLand: 0.25,
       drift: 0, rises: 0, heat: 420, rising: 1.3, steady: true,
       antipode: 0.35, antipodeDelay: 6,
       impactEvery: [60, 100], impactWarning: 12, impactHeat: 4, ageCraters: 0.08,
