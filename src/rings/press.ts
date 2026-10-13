@@ -923,8 +923,28 @@ function tellBreath(): boolean {
  * tiny, between two round wings; a pine's on its long thin wing; a redwood's small round cone; a
  * bristlecone's, its scales tipped with prickles; an olive, with a leaf.
  */
+/**
+ * The seeds as printed: each a figure cut whole from a real plate (Faxon's, for Sargent's Silva of North
+ * America; the olive Le Maout and Decaisne's) and pressed as the slices are (scripts/wood/seeds-press.py;
+ * src/rings/seeds/). Their heights (CSS px at z = 1/0.35) keep their true proportion to each other; until
+ * one has loaded, its seed is drawn as below.
+ */
+const ART_H: Record<Kind, number> = { oak: 84, ash: 112, cherry: 62, maple: 92, birch: 52, pine: 64, redwood: 72, bristlecone: 118, olive: 66 };
+const SEED_ART: Partial<Record<Kind, HTMLImageElement>> = {};
+for (const sp of Object.keys(ART_H) as Kind[]) {
+  const im = new Image();
+  im.onload = () => { SEED_ART[sp] = im; };
+  im.src = new URL(`./seeds/${sp}.png`, import.meta.url).href;
+}
 const TILT: Record<Kind, number> = { oak: -0.25, ash: 0.45, cherry: 0.15, maple: 0, birch: 0.1, pine: 0.5, redwood: -0.2, bristlecone: 0.25, olive: -0.4 };
-function drawSeedOf(sp: Kind, x: number, y: number, k = 1, z = 1): void {
+function drawSeedOf(sp: Kind, x: number, y: number, k = 1, z = 1, standing = false): void {
+  // (Printed, from its plate: centred at (x, y), or standing on it.)
+  const art = SEED_ART[sp];
+  if (art) {
+    const h = ART_H[sp] * 0.35 * z * px, w = (h * art.width) / art.height;
+    g.save(); g.globalAlpha = k; g.drawImage(art, x - w / 2, standing ? y - h : y - h / 2, w, h); g.restore();
+    return;
+  }
   const u = px * z, tilt = TILT[sp];
   g.save(); g.translate(x, y); g.rotate(tilt); g.globalAlpha = k;
   g.fillStyle = ink(0.88); g.strokeStyle = ink(0.75); g.lineWidth = 0.8 * u;
@@ -1007,7 +1027,7 @@ function drawSeedChoice(v: View, t: number): void {
   const k = smooth((t - openedAt) / 1.2);
   g.save();
   for (const { sp, x, y } of seedSpots(v)) {
-    drawSeedOf(sp, x, y, k, 2);
+    drawSeedOf(sp, x, y + 26 * px, k, 2, true);
     g.globalAlpha = k * 0.75; g.fillStyle = 'rgba(92,88,84,0.85)'; g.textAlign = 'center'; g.textBaseline = 'middle';
     g.font = `italic ${14 * px}px Newsreader, "Iowan Old Style", Georgia, serif`; g.fillText(sp, x, y + 40 * px);
   }

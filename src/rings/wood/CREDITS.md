@@ -43,3 +43,24 @@ density (1 the ink's full strength, 0 the paper through it), their slow shading 
 
 Looked at, not taken from (to learn how a solid black and a thin inking print): Félix Vallotton's
 *Intimacies* (1898) and *The Coffin Bearers* (1892), and Paul Gauguin's *Noa Noa* woodcuts (1893–94).
+
+## The seeds
+
+Each seed is a figure cut whole from a real plate (`scripts/wood/seeds-cut.py`), then pressed as the slices
+print (`seeds-press.py`): solid ink or paper, the engraver's own outline and strong strokes kept, the
+shading turned to lines following the form, the ink's take broken by the paper's tooth and Munch's mottle.
+Public domain.
+
+| File (`src/rings/seeds/`) | Figure | Source |
+| --- | --- | --- |
+| `oak.png` | *Quercus rubra*, acorn | Sargent, *The Silva of North America* (1891–1902), drawn by C. E. Faxon |
+| `ash.png` | *Fraxinus americana*, key | the same |
+| `cherry.png` | *Prunus serotina*, one fruit from the raceme | the same |
+| `maple.png` | *Acer macrophyllum*, a pair of keys | the same |
+| `birch.png` | *Betula papyrifera*, winged nutlet | the same |
+| `pine.png` | *Pinus resinosa*, seed and wing | the same |
+| `redwood.png` | *Sequoia sempervirens*, cone | the same |
+| `bristlecone.png` | *Pinus aristata*, cone (its top traced free of the needles over it) | the same |
+| `olive.png` | *Olea europaea*, fruit cut to show the stone | Le Maout & Decaisne, *A General System of Botany* (1873), p. 546 |
+
+(Sargent's volumes are the Missouri Botanical Garden's scans on the Internet Archive.)
