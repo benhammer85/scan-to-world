@@ -751,35 +751,43 @@ function guardKept(): void {
  * calms); a touch, and it's gone. Never a word about it but once.
  */
 const BREATH = PRINT && GROWN && !CHILD, IN = 4, OUT = 6;
-let breathShown = 0, stillSince = 0;
-function drawBreath(v: View, t: number, dt: number): void {
-  if (!BREATH) return;
-  const n = tree.rings.length, still = fingers.size === 0 && !tree.stroke && !growing && settle.ring < 0 && !closer() && !!seedAt;
+let breathShown = 0, stillSince = 0, breathNow = 0;
+/** Where in the breath it is now, 0 (out) to 1 (in), and how present the breath is (0 to 1). */
+function breathe(t: number, dt: number): void {
+  const still = BREATH && fingers.size === 0 && !tree.stroke && !growing && settle.ring < 0 && !lookBack && tree.rings.length > 0;
   // (Its own stillness: the slice slowly making room doesn't count; a finger, a ring growing, does.)
   if (!still) stillSince = t;
-  breathShown = still && t - stillSince > 3 ? Math.min(1, breathShown + dt / 2.5) : Math.max(0, breathShown - dt / 0.25);
-  if (breathShown <= 0.01) return;
+  breathShown = still && t - stillSince > 3 ? Math.min(1, breathShown + dt / 3) : Math.max(0, breathShown - dt / 0.25);
   // (In: eased swell; out: a long, slow ebb.)
-  const c = (t - stillSince - 3) % (IN + OUT), b = c < IN ? smooth(c / IN) : 1 - smooth((c - IN) / OUT);
+  const c = (t - stillSince - 3) % (IN + OUT);
+  breathNow = c < IN ? smooth(c / IN) : 1 - smooth((c - IN) / OUT);
+  // (The first time it breathes, at the start of an in-breath, it's said once what it's doing.)
+  if (breathShown > 0.5 && c < 0.3 && !words.classList.contains('shown')) tellBreath();
+}
+/** How much larger the slice is drawn now, breathing (about one part in sixty at the full in-breath). */
+const breathGrow = () => 1 + 0.016 * breathShown * breathNow;
+function drawBreath(v: View, _t: number, _dt: number): void {
+  if (!BREATH || breathShown <= 0.01) return;
+  const n = tree.rings.length, b = breathNow;
   const bark = n ? barkOf(n - 1) : barkOf(-1), T = n ? barkCss(v) : 2, reach = 6 + 16 * b;
   g.save(); g.lineJoin = 'round';
   for (let k = 0; k < 12; k++) {
     const f = (k + 0.5) / 12;
-    g.strokeStyle = ink(0.011 * breathShown * (1 - f) ** 1.5 * (0.55 + 0.45 * b));
+    g.strokeStyle = ink(0.026 * breathShown * (1 - f) ** 1.5 * (0.4 + 0.6 * b));
     g.lineWidth = (reach / 4 + 3) * px;
-    ringPath(v, bark, T + 2 + reach * f);
+    ringPath({ ...v, s: v.s * breathGrow() }, bark, T + 2 + reach * f);
     g.stroke();
   }
   g.restore();
 }
 let breathTold = false;
-try { breathTold = !!localStorage.getItem('annulus.breath'); } catch { /* not known */ }
-/** Said once only, the first time a ring may be drawn: how to breathe with it. */
+try { breathTold = !!localStorage.getItem('annulus.breath2'); } catch { /* not known */ }
+/** Said once only, the first time it breathes: what it's doing. */
 function tellBreath(): boolean {
   if (!BREATH || breathTold) return false;
   breathTold = true;
-  try { localStorage.setItem('annulus.breath', '1'); } catch { /* said again next time, then */ }
-  say('Breathe in as you touch, out as you draw round.', 8);
+  try { localStorage.setItem('annulus.breath2', '1'); } catch { /* said again next time, then */ }
+  say('Leave it still, and it breathes: in as it swells, out as it settles.', 9);
   return true;
 }
 
@@ -802,7 +810,7 @@ let plantedAt = 0;
 function plant(x: number, y: number): void {
   seedAt = [x / W, y / H]; view = null; plantedAt = clock();
   keep();
-  if (!(CHILD && child)) { if (!tellBreath()) say('Now draw a loop around it. One ring a day.', 9); return; }
+  if (!(CHILD && child)) { say('Now draw a loop around it. One ring a day.', 9); return; }
   say(`${question()} Draw a loop around the seed: loose for an easy day, close for a hard one.`, 9);
 }
 
@@ -1758,8 +1766,8 @@ function drawGrowing(v: View, t: number, moving: boolean, drift: boolean): void 
   drawKept(now, v, 1, k0 + (1 - k0) * f);
   g.restore();
 }
-function drawPrintCached(v: View, moving: boolean, slot = 'drawing', alpha = 1, drift = false): void {
-  drawKept(printFor(v, moving, slot, drift), v, alpha);
+function drawPrintCached(v: View, moving: boolean, slot = 'drawing', alpha = 1, drift = false, grow = 1): void {
+  drawKept(printFor(v, moving, slot, drift), v, alpha, grow);
 }
 
 /**
@@ -1855,10 +1863,11 @@ function frame(): void {
   relax = restWanted ? Math.min(1, relax + dt / 0.9) : Math.max(0, relax - dt / 0.22);
   const moving = (!!ease && !GROWN) || !!lookBack || fingers.size >= 2, drift = !!ease && GROWN;
   if (PRINT && growing && (growing.ring !== tree.rings.length - 1 || t - growing.at > SEASON)) growing = null;
+  breathe(t, dt);
   if (PRINT && growing) drawGrowing(v, t, moving, drift);
   else if (PRINT) {
     const rk = smooth(relax);
-    if (rk < 1) drawPrintCached(v, moving, 'drawing', 1 - rk, drift);
+    if (rk < 1) drawPrintCached(v, moving, 'drawing', 1 - rk, drift, breathGrow());
     if (rk > 0) drawPrintCached(restOf(v), moving, 'rest', rk);
   } else { paper.draw(g, v); drawLatewood(v); }
   const n = tree.rings.length;
@@ -1922,7 +1931,7 @@ void (async () => {
     else say(days.includes(today) ? `${c.name}’s day is drawn. Draw another if you like.` : question(), 10);
   }
   else if (GROWN && !tree.rings.length) say(seedAt ? 'Draw a loop around the seed. One ring a day.' : 'Tap anywhere to plant a seed.', 1e5);
-  else if (!(tree.rings.length && !days.includes(today) && tellBreath())) say(!tree.rings.length ? 'Draw a circle around this one. One ring a day.' : days.includes(today) ? 'Today’s ring is done. Draw another if you like.' : 'Draw today’s ring.', 8);
+  else say(!tree.rings.length ? 'Draw a circle around this one. One ring a day.' : days.includes(today) ? 'Today’s ring is done. Draw another if you like.' : 'Draw today’s ring.', 8);
   Object.assign(window, { press: { get tree() { return tree; }, get phase() { return settle.ring >= 0 ? 'settling' : 'trace'; }, get easing() { return !!ease; }, get view() { return viewNow(); }, get days() { return days; }, get run() { return run; }, look: (to: 'year' | 'life' | number) => lookAt(to), print: async () => (await yearPrint()).toDataURL('image/png'), words: async () => (await yearWords()).toDataURL('image/png'), block: async () => (await yearBlock()).toDataURL('image/png') } });
   // (The real wood: once it's come, the print is pressed again with it.)
   if (PRINT) loadWood(() => { for (const k in printCaches) delete printCaches[k]; });
