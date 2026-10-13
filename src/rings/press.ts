@@ -1767,7 +1767,19 @@ function drawGrowing(v: View, t: number, moving: boolean, drift: boolean): void 
   g.restore();
 }
 function drawPrintCached(v: View, moving: boolean, slot = 'drawing', alpha = 1, drift = false, grow = 1): void {
-  drawKept(printFor(v, moving, slot, drift), v, alpha, grow);
+  const pc = printFor(v, moving, slot, drift);
+  // (Looking closer, the picture kept holds only what was on the screen: pinching back out, the whole
+  // slice, kept at its own size, shows beneath wherever that picture doesn't reach, never a cut edge.)
+  if (slot === 'drawing' && (closer() || lookBack || pinch)) {
+    const home = printFor(baseNow(), true, 'home', true), k = (v.s / pc.v.s) * grow;
+    const ox = v.cx - pc.v.cx * k, oy = v.cy - pc.v.cy * k;
+    if (ox > 0.5 || oy > 0.5 || ox + W * k < W - 0.5 || oy + H * k < H - 0.5) {
+      g.save(); g.beginPath(); g.rect(0, 0, W, H); g.rect(ox + 1, oy + 1, W * k - 2, H * k - 2); g.clip('evenodd');
+      drawKept(home, v, alpha, grow);
+      g.restore();
+    }
+  }
+  drawKept(pc, v, alpha, grow);
 }
 
 /**

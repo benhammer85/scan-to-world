@@ -11,6 +11,7 @@ screenshots, e.g. `mkdir -p /tmp/wr && node test/browser/childflow.cjs /tmp/wr`.
 | `childflow.cjs` | the child's tree: setup, planting, a day drawn and kept, a copy kept and restored into empty storage |
 | `years.cjs` | the child's tree: this year, every year, opening a past year, the ink-only print and the words card |
 | `views.cjs` | the child's tree: which links show where; the microphone off by default |
+| `pinch.cjs` | the practice: zoom in, then a two-finger pinch back out (screenshots mid-pinch: the whole slice, never a cut edge) |
 
 Environment: `PLAYWRIGHT` (path to the playwright module, default `playwright`), `CHROME` (a Chromium to
 launch, default Playwright's own), `BASE` (default `http://localhost:5199`).
