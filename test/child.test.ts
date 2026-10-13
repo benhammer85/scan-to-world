@@ -108,7 +108,7 @@ describe('the tree’s own years', () => {
   it('runs wide and lean, now and then a hard year, never to nothing', () => {
     const c = Array.from({ length: 400 }, (_, n) => climate(9, n));
     expect(Math.min(...c)).toBeGreaterThan(0.25);
-    expect(Math.max(...c)).toBeLessThan(1.7);
+    expect(Math.max(...c)).toBeLessThan(2.3);
     expect(Math.max(...c) / Math.min(...c)).toBeGreaterThan(2);
     expect(c.filter((x) => x < 0.55).length).toBeGreaterThan(3);
   });

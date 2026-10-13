@@ -1650,14 +1650,23 @@ function printYears(v: View, oak: Years): void {
   if (w <= 0 || h <= 0) return;
   const ctx = c.getContext('2d')!, img = ctx.getImageData(x0, y0, w, h), d = img.data;
   const at = (i: number, b: number, f: number) => { const k = (i + 1) * (B + 1) + b; return rad[k] + (rad[k + 1] - rad[k]) * f; };
+  // (Never ruled: the wood wanders a little, here and there, every ring with its neighbours, as grain
+  // swells round a knot or a bit of reaction wood: a shift of the rings, a fifth of a year or so, over a
+  // few mm, in the wood's own place (so it stays put as the slice is looked into), fading out at the bark.)
+  const yearMm = n ? meanR(n - 1) / n : 1, wA = 0.22 * yearMm * v.s, wL = 1 / (Math.max(2.2, 3 * yearMm) * v.s), wL2 = wL * 2.7;
   for (let y = 0; y < h; y++) {
     const dy = v.cy - (y + y0);
     for (let x = 0; x < w; x++) {
-      const dx = x + x0 - v.cx, r = Math.sqrt(dx * dx + dy * dy);
+      const dx = x + x0 - v.cx;
+      let r = Math.sqrt(dx * dx + dy * dy);
       if (r > rmax) continue;
       let a = Math.atan2(dy, dx) - v.turn;
       a = ((a % TAU) + TAU) % TAU;
       const fb = (a / TAU) * B, b = Math.min(B - 1, Math.floor(fb)), f = fb - b;
+      if (wA > 0.3 && r < at(n - 1, b, f)) {
+        const fade = smooth((at(n - 1, b, f) - r) / (3 * wA)) * smooth(r / (6 * wA + 1));
+        r += fade * wA * (1.4 * (vnoise(dx * wL + 13.1, dy * wL + 7.7) - 0.5) + 0.6 * (vnoise(dx * wL2 + 3.3, dy * wL2 + 41.9) - 0.5));
+      }
       if (r >= at(n - 1, b, f)) continue;
       // (Which ring: the first whose outer edge lies beyond; inside the first, the heart, the seedling's
       // first year, from the pith out, its rays the first ring's run on in.)
@@ -1805,6 +1814,11 @@ function inkGrain(c: HTMLCanvasElement, v: View): void {
 
 /** The print, kept as a picture between changes; while the slice moves, the picture moves with it. */
 const printCaches: Record<string, { c: HTMLCanvasElement; key: string; v: View; at: number }> = {};
+/** Whether a kept picture, drawn for view `v`, still covers the whole screen. */
+function covers(pc: { v: View }, v: View): boolean {
+  const k = v.s / pc.v.s, ox = v.cx - pc.v.cx * k, oy = v.cy - pc.v.cy * k;
+  return ox <= 0.5 && oy <= 0.5 && ox + W * k >= W - 0.5 && oy + H * k >= H - 0.5;
+}
 /** The print for view `v`, kept in `slot`: pressed again only when it must be. */
 function printFor(v: View, moving: boolean, slot = 'drawing', drift = false): { c: HTMLCanvasElement; key: string; v: View; at: number } {
   const key = `${tree.rings.length}|${v.warp?.R ?? 0}|${v.warp?.beta ?? 0}|${W}x${H}`;
@@ -1815,7 +1829,7 @@ function printFor(v: View, moving: boolean, slot = 'drawing', drift = false): { 
   // size, a few times a second, so it's never a blown-up bitmap.)
   // (And drifting slowly to make room, pressed again each second or so, so it's never soft, then sharp.)
   const off = same ? Math.abs(Math.log(v.s / pc.v.s)) + Math.hypot(v.cx - pc.v.cx, v.cy - pc.v.cy) / W : 0;
-  const far = same && ((moving && off > Math.log(1.25) && clock() - pc.at > 0.2) || (drift && !moving && off > 0.004 && clock() - pc.at > 0.8));
+  const far = same && ((moving && off > Math.log(1.25) && clock() - pc.at > 0.2) || (drift && !moving && off > 0.004 && clock() - pc.at > 0.8) || (!moving && !exact && !covers(pc, v) && clock() - pc.at > 0.25));
   if (!same || (!moving && !drift && !exact) || far) {
     const c = pc?.c.width === W && pc.c.height === H ? pc.c : document.createElement('canvas');
     c.width = W; c.height = H;

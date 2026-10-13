@@ -32,11 +32,11 @@ const hash = (x: number) => { const v = Math.sin(x * 127.1 + 311.7) * 43758.5453
  * The tree's own years, besides the hand: how much wider or narrower year n grows than the hand alone
  * would make it, for a tree of this seed. Runs of good years and lean ones (a slow swing over a few weeks
  * of years), a little from year to year, and now and then a hard year, very narrow, as a drought or a late
- * frost leaves. Between about a third and one and a half.
+ * frost leaves. Between about a third and two.
  */
 export function climate(seed: number, n: number): number {
   const s = seed * 0.0213;
   const slow = noise(s + n / 11) - 0.5, quick = noise(s + 70 + n / 2.3) - 0.5;
   const hard = hash(s * 3.7 + n * 0.731) < 0.035 ? 0.42 : 1;
-  return Math.exp(0.75 * slow + 0.3 * quick) * hard;
+  return Math.exp(1.0 * slow + 0.55 * quick) * hard;
 }
