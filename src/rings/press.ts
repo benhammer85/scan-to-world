@@ -87,16 +87,16 @@ function brushPoint(v: View, x: number, y: number): [number, number] {
 /** How far each ring is eased toward round (a tree evens out its lumps over the years). */
 const ROUND = GAME ? 0 : PRINT ? 0.15 : 0.3;
 /**
- * The practice, printed, grows as a tree does: from a seed planted on a bare sheet, shown true to a
- * tree's scale (`TRUE_MM` CSS px to the mm, till it fills its room; a seedling shown up to `YOUNG` times
- * larger again, the boost waning over its first weeks), so a year is a thin ring and the slice
- * grows slowly, denser year on year. The loop is drawn at the hand's size, wherever is comfortable round
+ * The practice, printed, grows as a tree does: from a seed planted on a bare sheet. The loop is always
+ * the same size on the screen, day after day, a ritual's: the bark is always shown at the same size
+ * (`BARK` of the room), and as the tree grows the view draws slowly back, so the years before tighten in
+ * toward the heart; growth shows as the rings' density, as a real slice's age does. The loop is drawn at the hand's size, wherever is comfortable round
  * the slice: how loose it is sets how wide the year is (`STEADY` CSS px out from the bark a steady year;
  * from `LEAST` to `LOOSEST` of one), its wobble how the year swells and thins round the tree; then it
  * draws in onto the slice as the year. (The watercolour and the challenge keep the hand's own scale.)
  */
 const GROWN = PRINT && !GAME;
-const TRUE_MM = 0.6, STEADY = 34, LEAST = 0.4, LOOSEST = 2.4, YOUNG = 2;
+const BARK = 0.6, STEADY = 34, LEAST = 0.4, LOOSEST = 2.4;
 /** Where the finger puts the line (steady widths from the bark), eased a little toward round. */
 function rounded(a: number, u: number): number {
   if (!GROWN) return Math.min(WIDEST, u) * lean(a) + ROUND * (tree.radius - radiusAt((i) => tree.inner(i), a)) / tree.wRef;
@@ -325,13 +325,12 @@ function baseNow(t = clock()): View {
     ease = null;
   }
   if (!view && GROWN) {
-    // True to a tree's scale till the slice fills its room, then fitted to it; where the seed was
-    // planted, as near as the whole slice (its bark, the edition under it) can sit on the sheet.
-    // (A seedling shown larger, its first weeks, the boost waning a little each day: never a jump.)
-    const young = 1 + YOUNG * Math.exp(-tree.rings.length / 16);
-    const s = Math.min(TRUE_MM * px * young, (0.74 * roomNow()) / barkMax()), R = s * barkMax() + 14 * px;
-    const [fx, fy] = seedAt ?? [0.5, 0.47], clamp = (x: number, lo: number, hi: number) => (lo > hi ? (lo + hi) / 2 : Math.max(lo, Math.min(hi, x)));
-    view = { cx: clamp(fx * W, R + 16 * px, W - R - 16 * px), cy: clamp(fy * H, R + 56 * px, H - R - 96 * px), s, turn: 0, px, warp: undefined };
+    // The bark and the year to come always the same size, in the middle of the sheet, a little high: the
+    // day's loop the same size round it every day, and the year it makes growing out to the same place.
+    // (A seedling's years are wide beside it, so in its first days the seed sits small in the middle,
+    // coming out to meet the loop as the tree grows.)
+    const s = (BARK * roomNow()) / (barkMax() + tree.wRef);
+    view = { cx: W / 2, cy: Math.round(H * 0.47), s, turn: 0, px, warp: undefined };
     ease = null;
   }
   if (!view) {
@@ -749,7 +748,15 @@ for (const type of ['pointerup', 'pointercancel'] as const) canvas.addEventListe
     // Before the first ring, a tap plants the seed there (or moves it).
     if (GROWN && !tree.rings.length && !closer() && (!CHILD || child)) {
       if (painter === e.pointerId) { tree.cancel(); trail = []; painter = null; }
-      plant(e.clientX * px, e.clientY * px);
+      // (The practice, on a bare sheet: the seed tapped is the tree; tapped again before the first ring, it
+      // changes. The child's tree is an oak.)
+      if (!CHILD) {
+        const v = viewNow(), x = e.clientX * px, y = e.clientY * px;
+        const near = seedSpots(v).find((q) => Math.hypot(q.x - x, q.y - y) < 46 * px);
+        if (!seedAt && !near) return;
+        if (near && !seedAt) kind = near.sp;
+      }
+      plant(W / 2, H * 0.47);
       return;
     }
   }
@@ -875,17 +882,52 @@ function tellBreath(): boolean {
   return true;
 }
 
-/** The seed, planted: a small inked blot, uneven, pressed in as it lands. */
-function drawSeed(v: View, t: number): void {
-  const k = smooth((t - plantedAt) / 0.7), r = (2.6 + 0.9 * (1 - k)) * px, tilt = h1(tree.seed * 0.37) * TAU;
-  g.save(); g.translate(v.cx, v.cy); g.rotate(tilt);
-  g.beginPath();
-  for (let j = 0; j <= 24; j++) {
-    const a = (j / 24) * TAU, rr = r * (1 + 0.28 * Math.cos(a) + 0.07 * Math.sin(3 * a + tree.seed) + 0.05 * Math.sin(5 * a));
-    const x = rr * Math.cos(a) * 1.15, y = rr * Math.sin(a) * 0.82;
-    if (j) g.lineTo(x, y); else g.moveTo(x, y);
+/**
+ * A seed, in ink, as a naturalist's plate draws one, `k` of its full size (fading in), at (x, y): an acorn
+ * in its cup; a pine's seed on its long thin wing; a birch's, tiny, between two round wings.
+ */
+function drawSeedOf(sp: Kind, x: number, y: number, k = 1, z = 1): void {
+  const u = px * z, tilt = sp === 'oak' ? -0.25 : sp === 'pine' ? 0.5 : 0.1;
+  g.save(); g.translate(x, y); g.rotate(tilt); g.globalAlpha = k;
+  g.fillStyle = ink(0.88); g.strokeStyle = ink(0.75); g.lineWidth = 0.8 * u;
+  if (sp === 'oak') {
+    // The nut, then its cup (scaled, cross-hatched a little), and its stalk.
+    g.beginPath(); g.ellipse(0, 2.5 * u, 5.2 * u, 7 * u, 0, 0, TAU); g.fill();
+    g.fillStyle = 'rgba(244,239,228,0.32)'; g.beginPath(); g.ellipse(-1.8 * u, 3.5 * u, 1.2 * u, 3 * u, -0.2, 0, TAU); g.fill();
+    g.fillStyle = ink(0.95); g.beginPath(); g.ellipse(0, -2.6 * u, 6.4 * u, 3.4 * u, 0, Math.PI, TAU); g.lineTo(6.4 * u, -1.6 * u); g.lineTo(-6.4 * u, -1.6 * u); g.closePath(); g.fill();
+    g.strokeStyle = 'rgba(244,239,228,0.5)'; g.lineWidth = 0.6 * u; g.beginPath();
+    for (let i = -5; i <= 5; i += 2) { g.moveTo(i * u, -1.8 * u); g.lineTo(i * u + 1.4 * u, -4.4 * u); }
+    g.stroke(); g.strokeStyle = ink(0.85); g.lineWidth = 1.1 * u; g.beginPath(); g.moveTo(0, -5.8 * u); g.quadraticCurveTo(1 * u, -8.5 * u, 2.4 * u, -9.6 * u); g.stroke();
+  } else if (sp === 'pine') {
+    // The wing, thin and veined, the seed dark at its base.
+    g.beginPath(); g.moveTo(0, 4 * u); g.bezierCurveTo(-4 * u, 0, -3.2 * u, -11 * u, 0.6 * u, -15 * u); g.bezierCurveTo(3.6 * u, -10 * u, 3.4 * u, 0, 0, 4 * u);
+    g.fillStyle = ink(0.22); g.fill(); g.stroke();
+    g.lineWidth = 0.45 * u; g.beginPath(); for (let i = -1; i <= 1; i++) { g.moveTo(i * 0.8 * u, 1 * u); g.quadraticCurveTo(i * 1.6 * u, -6 * u, 0.6 * u + i * 0.6 * u, -13 * u); } g.stroke();
+    g.fillStyle = ink(0.92); g.beginPath(); g.ellipse(0, 2.6 * u, 2.2 * u, 3 * u, 0, 0, TAU); g.fill();
+  } else {
+    // Two round wings, papery, the seed small between them.
+    for (const sgn of [-1, 1]) { g.beginPath(); g.ellipse(sgn * 3.6 * u, 0, 3.6 * u, 2.8 * u, sgn * 0.15, 0, TAU); g.fillStyle = ink(0.18); g.fill(); g.lineWidth = 0.6 * u; g.stroke(); }
+    g.fillStyle = ink(0.92); g.beginPath(); g.ellipse(0, 0, 1.3 * u, 2.4 * u, 0, 0, TAU); g.fill();
+    g.lineWidth = 0.7 * u; g.beginPath(); g.moveTo(0, -2.3 * u); g.lineTo(-0.8 * u, -4.2 * u); g.moveTo(0, -2.3 * u); g.lineTo(0.8 * u, -4.2 * u); g.stroke();
   }
-  g.closePath(); g.fillStyle = ink(0.88 * k); g.fill();
+  g.restore();
+}
+/** The seed, planted: the one chosen, at the heart, settling in as it lands. */
+function drawSeed(v: View, t: number): void {
+  const k = smooth((t - plantedAt) / 0.7);
+  drawSeedOf(kind, v.cx, v.cy, k, 1.4 + 0.3 * (1 - k));
+}
+/** On a bare sheet, the seeds to choose from, each named beneath in pencil; where each lies. */
+const SEEDS: Kind[] = ['oak', 'pine', 'birch'];
+const seedSpots = (v: View) => SEEDS.map((sp, i) => ({ sp, x: v.cx + (i - 1) * Math.min(110 * px, W * 0.27), y: v.cy }));
+function drawSeedChoice(v: View, t: number): void {
+  const k = smooth((t - openedAt) / 1.2);
+  g.save();
+  for (const { sp, x, y } of seedSpots(v)) {
+    drawSeedOf(sp, x, y, k, 2.3);
+    g.globalAlpha = k * 0.75; g.fillStyle = 'rgba(92,88,84,0.85)'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.font = `italic ${14 * px}px Newsreader, "Iowan Old Style", Georgia, serif`; g.fillText(sp, x, y + 44 * px);
+  }
   g.restore();
 }
 
@@ -2028,6 +2070,7 @@ function frame(): void {
   // The ink: a brush's line, wet at first, then drying into bristle-streaks and evaporating. (It's on the
   // slice, so it draws back with it.)
   if (GROWN && !n && seedAt) drawSeed(v, t);
+  if (GROWN && !CHILD && !n && !seedAt) drawSeedChoice(v, t);
   drawBreath(shownOf(v), t, dt);
   drawTarget(v);
   drawBrush(g, v, t);
@@ -2057,10 +2100,10 @@ void (async () => {
     } else if (!tree.rings.length && !seedAt) say(`Tap where ${c.name}’s tree should grow.`, 1e5);
     else say(days.includes(today) ? `${c.name}’s day is drawn. Draw another if you like.` : question(), 10);
   }
-  else if (GROWN && !tree.rings.length) say(seedAt ? 'Draw a loop around the seed. One ring a day.' : 'Tap anywhere to plant a seed.', 1e5);
+  else if (GROWN && !tree.rings.length) say(seedAt ? 'Draw a loop around the seed. One ring a day.' : 'Choose a seed.', 1e5);
   // (Words only where they're needed: before the first ring. After that, the tree says it.)
   else if (!tree.rings.length) say('Draw a circle around this one. One ring a day.', 8);
-  Object.assign(window, { press: { get tree() { return tree; }, get phase() { return settle.ring >= 0 ? 'settling' : 'trace'; }, get easing() { return !!ease; }, get view() { return viewNow(); }, get days() { return days; }, get run() { return run; }, get editionY() { return editionY; }, get stampAt() { return stampAt; }, target: (a: number) => target.r(a), look: (to: 'year' | 'life' | number) => lookAt(to), print: async () => (await yearPrint()).toDataURL('image/png'), words: async () => (await yearWords()).toDataURL('image/png'), block: async () => (await yearBlock()).toDataURL('image/png') } });
+  Object.assign(window, { press: { get tree() { return tree; }, get phase() { return settle.ring >= 0 ? 'settling' : 'trace'; }, get easing() { return !!ease; }, get view() { return viewNow(); }, get days() { return days; }, get run() { return run; }, get kind() { return kind; }, get editionY() { return editionY; }, get stampAt() { return stampAt; }, target: (a: number) => target.r(a), look: (to: 'year' | 'life' | number) => lookAt(to), print: async () => (await yearPrint()).toDataURL('image/png'), words: async () => (await yearWords()).toDataURL('image/png'), block: async () => (await yearBlock()).toDataURL('image/png') } });
   // (The real wood: once it's come, the print is pressed again with it.)
   if (PRINT) loadWood(() => { for (const k in printCaches) delete printCaches[k]; });
   requestAnimationFrame(frame);
