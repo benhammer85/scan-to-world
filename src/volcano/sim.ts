@@ -1662,7 +1662,7 @@ export class Planet {
     // however far the side reached, so it can't pile up on a sliver of ground into a spike.)
     // (And no ground in it raised more than a little, slide after slide: what won't fit runs on further out.)
     const w = this.next, from = Math.min(Math.max(0.2, this.reach[s]), Planet.MOUNT), most = 0.08;
-    let left = gone;
+    let left = gone, sx = 0, sy = 0, sz = 0;
     for (let band = 0.23; left > 1e-6 && band < 0.7; band += 0.1) {
       for (let pass = 0; pass < 4 && left > 1e-6; pass++) {
         let sum = 0;
@@ -1678,16 +1678,20 @@ export class Planet {
           if (w[v] <= 0) continue;
           const put = Math.min(share * w[v], this.start[v] + most - this.rock[v]);
           this.rock[v] += put; left -= put; this.ash[v] = Math.max(this.ash[v], 0.5);
+          sx += put * p[v * 3]; sy += put * p[v * 3 + 1]; sz += put * p[v * 3 + 2];
         }
       }
     }
     this.slides++;
     this.slidWay = s;
+    { const r = Math.hypot(sx, sy, sz); this.slidTo = r > 0 ? { x: sx / r, y: sy / r, z: sz / r } : null; }
     this.find('aureole', 'an aureole. A side that gave way, spread far out in ridges, as round Olympus Mons');
     this.tell('Too tall for its base: a side collapsed. Pour down the sides where the dotted ring is faint, to widen it');
   }
   /** Mars: how high the ground under the mountain stood before it, as first reckoned. */
   summitBefore: number | null = null;
+  /** Mars: where the last side to give way spread its debris (a direction from the centre), if any. */
+  slidTo: { x: number; y: number; z: number } | null = null;
   /** Mars: the side that last gave way (a sector), if any. */
   slidWay = -1;
   /** Mars: how many flanks have given way. */

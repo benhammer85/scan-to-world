@@ -884,3 +884,13 @@ Then a second cause: debris doesn't count towards a side's width, so the same si
 - **Earth's first water:** a comet landing on the volcano itself now melts into water too, as a player expects, but costs the volcano some heat (it used to only cool the volcano, with a message that flashed by). Pouring fresh lava out to meet a comet stays the cheaper way. Comets that freeze on old rock now say why, and both messages stay on screen. The ring turns orange whenever the comet will melt.
 - **Mercury:** lava stands at a gentler slope (talus 1.3, was 2.2): steeper cones broke into a sawtooth outline on the globe's mesh. The far side's "rises: N km so far" message (said before it rose, and in different km from the goal line) is now just "The shock arrives: the far side breaks open and rises".
 - **End chart:** the message line under the world is hidden once the chart is drawn; it ran through the chart's timeline.
+
+### The world turned for you, where it decides what to do next
+
+Mercury's far-side turn, as a move the game makes elsewhere too, but only where what it shows decides the next move (`shotLook` in main.ts):
+
+- **Mars:** when a side gives way, the world turns to lean in over that side (where its debris spread, `slidTo` in sim.ts) and holds a few seconds before turning back. That's the side too narrow for the mountain's height: the one to widen.
+- **Io and Europa:** after each plume or crack that counts (not the last), the world turns once right round, a little further off, so every circle used so far is seen, including those on the far side, and the next can be put outside them all. Said in words too.
+- Never while lava is being poured (it waits for the finger to lift, up to 6 s, then lets the moment go), and not at all with less motion asked for. While turned, the game still treats the world as held where it was: the heat doesn't creep and the pour's direction doesn't change.
+
+Looked at and left out: Theia's and the icy comets' landing spots are always near the volcano, so already in view, and Hunga Tonga's wave going round doesn't change what to do next.

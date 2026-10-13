@@ -2564,7 +2564,7 @@ const ACTION_WORDS = /^(A stone is coming|The ground is sinking|The heat is near
  * above were said, and nearly every world's own word on what had just happened, a crack too late, a comet frozen, a
  * burst not at high tide, the far side rising, was kept quiet.)
  */
-const EXPLAIN = /^(The comet melted|The comet froze|It's tumbling again|You poured too fast|No wave|Not high tide|That stone was too big|Too tall|Theia|The shock|Too late|Too early|Too small|Too near|A big eruption|A giant wave|The island is blown|The far side|A dark streak|A streak, but|The ice cracks|A mound|A lava dome|A dome, but|The mound slumps|The dome slumps|A blob reaches|Ice reaches the ring|An icy comet|Ice melted|The ice froze|Stone caught|Caught in the glow|The eruption's gas|The ground gives way|The last of the sea|The sea is nearly gone|The day has melted|The volcano is in daylight|That lava|A seabird|A nest|Found:|The island stands|Too tall for its width|A dust storm is coming|Theia|Too big to hold|The big stone|A stone too big|The burst missed|In the dark|Chilled)/;
+const EXPLAIN = /^(Every (crack|plume) so far|The comet melted|The comet froze|It's tumbling again|You poured too fast|No wave|Not high tide|That stone was too big|Too tall|Theia|The shock|Too late|Too early|Too small|Too near|A big eruption|A giant wave|The island is blown|The far side|A dark streak|A streak, but|The ice cracks|A mound|A lava dome|A dome, but|The mound slumps|The dome slumps|A blob reaches|Ice reaches the ring|An icy comet|Ice melted|The ice froze|Stone caught|Caught in the glow|The eruption's gas|The ground gives way|The last of the sea|The sea is nearly gone|The day has melted|The volcano is in daylight|That lava|A seabird|A nest|Found:|The island stands|Too tall for its width|A dust storm is coming|Theia|Too big to hold|The big stone|A stone too big|The burst missed|In the dark|Chilled)/;
 function announce(text: string, lesson = false): void {
   text = words$(text);
   if (BARE && !ending) return;
@@ -3884,10 +3884,10 @@ function breathe(dt: number): void {
   // While lava runs, the view leans in a little, so the flow is big when it matters; and eases back after.
   const running = !BARE && !WASHED && !ending && !held && (planet.pouring || (planet.erupting && planet.molten > 0.01)) && !STILL;
   lean += ((running ? 0.82 : 1) - lean) * Math.min(1, dt * (running ? 0.9 : 0.45));
-  const want = ending?.shown ? farthest * 0.84 : reachDist * (held && !STILL ? moment.back : gathering && !STILL ? 1.3 : 1) * lean * lapseBack(), wantLift = ending?.shown ? 0.12 : 0; // (at the end: larger, and up into the room under the title)
+  const want = ending?.shown ? farthest * 0.84 : reachDist * (held && !STILL ? moment.back : gathering && !STILL ? 1.3 : 1) * lean * lapseBack() * shotZoom, wantLift = ending?.shown ? 0.12 : 0; // (at the end: larger, and up into the room under the title)
   if (!ending?.shown && seconds - zoomedAt < 10) return;
   const gliding = seconds - begunAt < 5; // (from the card's view: quicker, so the world comes to hand)
-  const d = dist + (want - dist) * Math.min(1, (held || gathering ? 0.9 : gliding ? 0.9 : Math.abs(lean - 1) > 0.01 ? 1.4 : 0.15) * dt), l = lift + (wantLift - lift) * Math.min(1, (gliding ? 1.2 : 0.6) * dt);
+  const d = dist + (want - dist) * Math.min(1, (held || gathering || shotZoom !== 1 ? 0.9 : gliding ? 0.9 : Math.abs(lean - 1) > 0.01 ? 1.4 : 0.15) * dt), l = lift + (wantLift - lift) * Math.min(1, (gliding ? 1.2 : 0.6) * dt);
   if (Math.abs(d - dist) > 1e-4 || Math.abs(l - lift) > 1e-5) { dist = d; lift = l; look(); }
 }
 /**
@@ -3924,6 +3924,56 @@ function farLook(): void {
   if (t >= FAR_IN + FAR_HOLD + FAR_OUT) { group.quaternion.copy(farFrom); farFrom = null; farAt = -1; return; }
   const u = t < FAR_IN ? ease(t / FAR_IN) : t < FAR_IN + FAR_HOLD ? 1 : 1 - ease((t - FAR_IN - FAR_HOLD) / FAR_OUT);
   group.quaternion.slerpQuaternions(farFrom, farTo, u);
+}
+/**
+ * The world turned for you at a moment that decides what to do next, then put back as it was (as Mercury's far
+ * side is shown, above). On Mars, when a side gives way: the view leans in over that side, the one to widen. On
+ * Io and Europa, after each plume or crack that counts: the world turns once right round, so every circle used so
+ * far is seen, the ones on the far side too, and the next can be put outside them all. Never while lava is being
+ * poured (it waits for the finger to lift, a while), and not at all if less motion is asked for.
+ */
+interface Shot { due: number; len: number; zoom: number; from: THREE.Quaternion | null; pose: (from: THREE.Quaternion, t: number) => void; begin?: () => void }
+let shot: Shot | null = null, shotZoom = 1, shotSlides = 0, shotPlaces = 0;
+const SHOT_V = new THREE.Vector3(), SHOT_TO = new THREE.Quaternion(), SHOT_TURN = new THREE.Quaternion(), SKY_Y = new THREE.Vector3(0, 1, 0);
+const smooth = (u: number) => u * u * (3 - 2 * u);
+function shotLook(): void {
+  // What to show, as it happens.
+  if (planet.slides > shotSlides) {
+    shotSlides = planet.slides;
+    const to = planet.slidTo, q = planet.plume;
+    if (to && !shot) {
+      const IN = 1.4, HOLD = 3, OUT = 1.4;
+      const mid = new THREE.Vector3(q.x + to.x, q.y + to.y, q.z + to.z).normalize();
+      shot = { due: planet.seconds, len: IN + HOLD + OUT, zoom: 0.84, from: null, pose: (from, t) => {
+        if (!SHOT_V.lengthSq()) { SHOT_V.copy(mid).applyQuaternion(from); SHOT_TO.setFromUnitVectors(SHOT_V, TOWARD_US).multiply(from); }
+        const u = t < IN ? smooth(t / IN) : t < IN + HOLD ? 1 : 1 - smooth((t - IN - HOLD) / OUT);
+        group.quaternion.slerpQuaternions(from, SHOT_TO, u);
+      } };
+    }
+  }
+  if ((WORLD.goal === 'plumes' || WORLD.goal === 'chaos') && planet.plumes.length > shotPlaces) {
+    shotPlaces = planet.plumes.length;
+    if (shotPlaces < aimOf && !shot) {
+      const ROUND = 7;
+      shot = { due: planet.seconds + 2.5, len: ROUND, zoom: 1.3, from: null, begin: () => announce(`Every ${WORLD.goal === 'chaos' ? 'crack' : 'plume'} so far, all the way round: make the next one outside all the circles`), pose: (from, t) => {
+        group.quaternion.copy(from).premultiply(SHOT_TURN.setFromAxisAngle(SKY_Y, Math.PI * 2 * smooth(t / ROUND)));
+      } };
+    }
+  }
+  shotZoom = 1;
+  if (!shot) return;
+  if (STILL || ending) { if (shot.from) group.quaternion.copy(shot.from); shot = null; return; }
+  const t = planet.seconds - shot.due;
+  if (t < 0) return;
+  if (!shot.from) {
+    // (Waiting for a pour to end; given up on if it goes on too long, and the moment has passed.)
+    if (planet.pouring) { if (t > 6) shot = null; return; }
+    shot.due = planet.seconds; shot.from = group.quaternion.clone(); SHOT_V.set(0, 0, 0); shot.begin?.();
+    return;
+  }
+  if (t >= shot.len) { group.quaternion.copy(shot.from); shot = null; return; }
+  shot.pose(shot.from, t);
+  shotZoom = 1 + (shot.zoom - 1) * Math.min(1, t / 1.2, (shot.len - t) / 1.2);
 }
 /** If the phone can't keep up, draw a little less finely: the pixel ratio comes down a half at a time, but never below two to a point (see FINEST). */
 let slowFor = 0, frameTime = 1 / 60;
@@ -4001,7 +4051,8 @@ const loop = (): void => {
   if (spin.lengthSq() > 1e-6) { rotate(spin.x * dt, spin.y * dt); spin.multiplyScalar(Math.exp(-2.2 * dt)); }
   arrows(dt);
   // Gravity as the phone is held (or, without one, a little down the screen and into it), in the planet's frame.
-  INVERSE.copy(group.quaternion).invert();
+  // (While the world is turned for you, it is still held as it was: the heat doesn't move, nor the way lava runs.)
+  INVERSE.copy(shot?.from ?? group.quaternion).invert();
   // (Breathing, the world as if held a little tipped towards you, so each breath runs down the screen;
   // tipping, how far the phone is from level is what pours, however the world has been turned.)
   if (HAND) GRAV.copy(BREATH_DOWN).applyQuaternion(INVERSE);
@@ -4032,6 +4083,7 @@ const loop = (): void => {
     if (WORLD.goal === 'giant' && !ending) { nightShiftU.value = planet.nightShift; sunDisc?.scale.setScalar(GIANT_SUN + 0.5 * (1 - planet.reserve / planet.k.heat)); }
     if (!ending) { keepReplayFrame(); keepLook(); }
     farLook();
+    shotLook();
     // A tumbling moon rolls of itself, about its spin's axis (in its own frame), as fast as it tumbles.
     if (planet.k.tumble > 0) {
       const w = planet.spinNow, r = Math.hypot(w.x, w.y, w.z);
