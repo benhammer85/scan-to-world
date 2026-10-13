@@ -1,0 +1,188 @@
+/**
+ * The grove from above, as an estate map draws a park: the hill in hand-inked contours, and each tree its
+ * crown seen from above, its shadow hatched to the lower right (the light from the upper left, as on the
+ * slice), its kind in its outline and its marks: broadleaves in clumps (the oak's broad and lobed, the
+ * maple's dense and round, the cherry's small), ash and olive in fine leaflets, birch light and open, the
+ * conifers tight tufts of needles, the bristlecone bare-limbed on its dying side. Never a pattern: every
+ * outline is its own tree's (`k`), wandering.
+ */
+const TAU = Math.PI * 2;
+const h1 = (x: number) => { const v = Math.sin(x * 127.1 + 311.7) * 43758.5453; return v - Math.floor(v); };
+const n1 = (x: number) => { const i = Math.floor(x), f = x - i, s = f * f * (3 - 2 * f); return h1(i) * (1 - s) + h1(i + 1) * s; };
+function vn(x: number, y: number): number {
+  const xi = Math.floor(x), yi = Math.floor(y), fx = x - xi, fy = y - yi, sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
+  const a = h1(xi * 57 + yi * 131), b = h1(xi * 57 + 57 + yi * 131), c = h1(xi * 57 + yi * 131 + 131), e = h1(xi * 57 + 57 + yi * 131 + 131);
+  return a + (b - a) * sx + (c - a) * sy + (a - b - c + e) * sx * sy;
+}
+const INK = '36,28,23', PAPER = 'rgb(244,239,228)';
+const ink = (a: number) => `rgba(${INK},${a})`;
+
+type Habit = { clumps: number; spread: number; rough: number; tip: number; size: number; tall: number; marks: number; squash: number };
+const HABIT: Record<string, Habit> = {
+  oak: { clumps: 8, spread: 0.62, rough: 0.08, tip: 0, size: 1, tall: 1, marks: 0.42, squash: 0.92 },
+  ash: { clumps: 9, spread: 0.55, rough: 0.1, tip: 0, size: 0.9, tall: 1.1, marks: 0.5, squash: 1 },
+  maple: { clumps: 5, spread: 0.38, rough: 0.05, tip: 0, size: 0.92, tall: 1, marks: 0.5, squash: 1 },
+  cherry: { clumps: 4, spread: 0.42, rough: 0.07, tip: 0, size: 0.72, tall: 0.8, marks: 0.42, squash: 0.85 },
+  birch: { clumps: 6, spread: 0.6, rough: 0.14, tip: 0, size: 0.6, tall: 0.9, marks: 0.22, squash: 1 },
+  olive: { clumps: 11, spread: 0.72, rough: 0.12, tip: 0, size: 0.85, tall: 0.5, marks: 0.4, squash: 0.78 },
+  pine: { clumps: 0, spread: 0, rough: 0.08, tip: 0.16, size: 0.62, tall: 1.4, marks: 0.5, squash: 1 },
+  redwood: { clumps: 0, spread: 0, rough: 0.05, tip: 0.1, size: 0.48, tall: 2.1, marks: 0.8, squash: 1 },
+  bristlecone: { clumps: 0, spread: 0, rough: 0.14, tip: 0.24, size: 0.52, tall: 0.45, marks: 0.4, squash: 1 },
+};
+const habit = (sp: string) => HABIT[sp] ?? HABIT.oak;
+const CONIFER = new Set(['pine', 'redwood', 'bristlecone']);
+/** How big a crown is for its kind and its days (a year's, full size), as a share of a full oak's. */
+export const crownSize = (sp: string, days: number) => habit(sp).size * (0.3 + 0.7 * Math.sqrt(Math.min(1.2, days / 365)));
+
+/** Its edge: the radius round it, 1 about its mean. */
+const edges = new Map<string, Float32Array>();
+function edgeOf(sp: string, k: number): Float32Array {
+  const key = `${sp}${k}`, got = edges.get(key);
+  if (got) return got;
+  const h = habit(sp), N = 240, out = new Float32Array(N + 1), cl: [number, number, number][] = [];
+  for (let i = 0; i < h.clumps; i++) { const a = h1(k + i * 2.3) * TAU, d = h.spread * Math.sqrt(h1(k * 3 + i)); cl.push([Math.cos(a) * d, Math.sin(a) * d * h.squash, 0.36 + 0.24 * h1(k * 5 + i)]); }
+  for (let j = 0; j <= N; j++) {
+    const a = (j / N) * TAU, ca = Math.cos(a), sa = Math.sin(a);
+    let r = 0;
+    if (h.clumps) {
+      for (const [cx, cy, cr] of cl) { const p = cx * ca + cy * sa, q = cx * cx + cy * cy - cr * cr, disc = p * p - q; if (disc > 0) r = Math.max(r, p + Math.sqrt(disc)); }
+      r = Math.max(0.5, r / (h.spread + 0.5));
+    } else {
+      // (Needle tufts at its edge, each its own length, bunched: never a star.)
+      const u = (a / TAU) * (sp === 'bristlecone' ? 30 : 48), i = Math.floor(u), f = u - i;
+      r = 0.88 + h.tip * h1(i * 1.7 + k) ** 1.6 * Math.sin(Math.PI * f) ** (3 + 4 * h1(i + k));
+      if (sp === 'bristlecone') r *= 0.72 + 0.28 * (0.5 + 0.5 * Math.cos(a - 5.6));
+    }
+    out[j] = r * (1 + h.rough * (n1(a * 3 + k) - 0.5) + 0.5 * h.rough * (n1(a * 11 + k * 2) - 0.5));
+  }
+  edges.set(key, out);
+  return out;
+}
+function path(g: CanvasRenderingContext2D, x: number, y: number, r: number, E: Float32Array): void {
+  const N = E.length - 1;
+  g.beginPath();
+  for (let j = 0; j <= N; j++) { const a = (j / N) * TAU, px = x + Math.cos(a) * E[j] * r, py = y + Math.sin(a) * E[j] * r; if (j) g.lineTo(px, py); else g.moveTo(px, py); }
+  g.closePath();
+}
+
+/** A crown from above, at (x, y), `r` across (device px), `U` a CSS px; `alpha` to fade it in. */
+export function drawCrown(g: CanvasRenderingContext2D, x: number, y: number, r: number, sp: string, k: number, U: number, alpha = 1): void {
+  if (r < 0.5) return;
+  const h = habit(sp), E = edgeOf(sp, k), sx = x + r * 0.4 * h.tall, sy = y + r * 0.32 * h.tall;
+  g.save(); g.globalAlpha *= alpha; g.lineCap = 'round';
+  // Its shadow on the ground, hatched.
+  g.save(); path(g, sx, sy, r * 0.96, edgeOf(sp, k + 3)); g.clip();
+  g.strokeStyle = ink(0.7); g.lineWidth = 0.7 * U; g.beginPath();
+  for (let d = -r * 3; d < r * 3; d += 2.2 * U) { g.moveTo(sx + d - r * 2, sy - r * 2); g.lineTo(sx + d + r * 2, sy + r * 2); }
+  g.stroke(); g.restore();
+  // The bristlecone's dead limbs, bare and twisted, out past its needles on the dying side.
+  if (sp === 'bristlecone') {
+    g.strokeStyle = ink(0.9);
+    for (let i = 0; i < 5; i++) {
+      const a = 2.2 + i * 0.32 + (h1(i + k) - 0.5) * 0.2, L = r * (0.95 + 0.45 * h1(i * 3 + k));
+      g.lineWidth = (1.3 - i * 0.12) * U; g.beginPath(); g.moveTo(x, y);
+      g.bezierCurveTo(x + Math.cos(a + 0.5) * L * 0.4, y + Math.sin(a + 0.5) * L * 0.4, x + Math.cos(a - 0.4) * L * 0.7, y + Math.sin(a - 0.4) * L * 0.7, x + Math.cos(a) * L, y + Math.sin(a) * L);
+      g.stroke();
+    }
+  }
+  path(g, x, y, r, E); g.fillStyle = PAPER; g.fill();
+  // Its marks, thickening toward the lower right, where it turns from the light.
+  g.save(); path(g, x, y, r, E); g.clip();
+  g.strokeStyle = ink(1); g.fillStyle = ink(1);
+  const N = Math.min(3000, Math.round(((r * r) / (U * U)) * h.marks));
+  for (let i = 0; i < N; i++) {
+    const a = h1(k * 7 + i * 1.37) * TAU, rr = r * Math.sqrt(h1(k * 3 + i * 2.17)), px = x + Math.cos(a) * rr, py = y + Math.sin(a) * rr;
+    const s = Math.max(0, Math.min(1, 0.4 + 0.6 * (((px - x) / r) * 0.6 + ((py - y) / r) * 0.8)));
+    if (h1(i * 5.1 + k) > s * s * 1.25) continue;
+    g.beginPath();
+    if (CONIFER.has(sp)) {
+      const ra = Math.atan2(py - y, px - x) + (h1(i) - 0.5) * 0.9, L = U * (1.6 + 2.2 * h1(i * 3));
+      g.lineWidth = 0.55 * U; g.moveTo(px, py); g.quadraticCurveTo(px + Math.cos(ra + 0.3) * L * 0.5, py + Math.sin(ra + 0.3) * L * 0.5, px + Math.cos(ra) * L, py + Math.sin(ra) * L); g.stroke();
+    } else if (sp === 'ash' || sp === 'olive') {
+      const ra = h1(i * 9) * TAU, L = U * (1.2 + 1.4 * h1(i * 3));
+      g.lineWidth = 0.6 * U; g.moveTo(px, py); g.lineTo(px + Math.cos(ra) * L, py + Math.sin(ra) * L); g.stroke();
+    } else if (sp === 'birch') {
+      const d = (0.35 + 0.3 * h1(i)) * U; g.arc(px, py, d, 0, TAU); g.fill();
+    } else {
+      const cr = U * (sp === 'oak' ? 1.4 + 1.6 * h1(i * 3) : 1 + 1.1 * h1(i * 3)), tilt = (h1(i * 7) - 0.5) * 0.8;
+      g.lineWidth = (0.45 + 0.4 * s) * U; g.arc(px, py, cr, 0.15 * Math.PI + tilt, 0.95 * Math.PI + tilt); g.stroke();
+    }
+  }
+  // (An oak's crown is many crowns: the edges of its big clumps, a few arcs within it.)
+  if (sp === 'oak') {
+    g.strokeStyle = ink(0.8); g.lineWidth = 0.75 * U;
+    for (let i = 0; i < 5; i++) { const a = h1(k + i * 3.3) * TAU, rr = r * (0.25 + 0.3 * h1(k * 2 + i)); g.beginPath(); g.arc(x + Math.cos(a) * rr, y + Math.sin(a) * rr, r * (0.3 + 0.1 * h1(i + k)), 0.1 * Math.PI, 0.85 * Math.PI); g.stroke(); }
+  }
+  g.restore();
+  // Its outline, by hand: heavier on the shade side, broken now and then toward the light.
+  const M = E.length - 1, light = sp === 'birch' || sp === 'olive' ? 0.6 : 1;
+  g.strokeStyle = ink(1);
+  for (let j = 0; j < M; j++) {
+    const a = (j / M) * TAU, b = ((j + 1) / M) * TAU, sh = 0.5 + 0.5 * Math.cos(a - 0.9);
+    if (sh < 0.25 && h1(j * 0.31 + k) < 0.35) continue;
+    g.lineWidth = U * (0.45 + 1.1 * sh) * light;
+    g.beginPath(); g.moveTo(x + Math.cos(a) * E[j] * r, y + Math.sin(a) * E[j] * r); g.lineTo(x + Math.cos(b) * E[j + 1] * r, y + Math.sin(b) * E[j + 1] * r); g.stroke();
+  }
+  g.restore();
+}
+
+/** A seedling, small: the tree being drawn, before it has a crown to speak of. */
+export function drawSeedling(g: CanvasRenderingContext2D, x: number, y: number, r: number, U: number, alpha = 1): void {
+  g.save(); g.globalAlpha *= alpha; g.strokeStyle = ink(0.85); g.lineWidth = 0.8 * U; g.lineCap = 'round';
+  g.beginPath();
+  for (let i = 0; i < 7; i++) { const a = (i / 7) * TAU + 0.3; g.moveTo(x, y); g.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r * 0.9); }
+  g.stroke(); g.fillStyle = ink(1); g.beginPath(); g.arc(x, y, 1.1 * U, 0, TAU); g.fill(); g.restore();
+}
+
+/**
+ * The hill in contours, drawn by hand (the pen's weight wandering, now and then lifting), centred on
+ * (cx, cy), `R` across, its lie its own (`seed`), on a canvas `w` × `h`.
+ */
+export function drawHill(g: CanvasRenderingContext2D, w: number, h: number, cx: number, cy: number, R: number, U: number, seed: number): void {
+  const s1 = h1(seed * 0.013), s2 = h1(seed * 0.029), s3 = h1(seed * 0.047);
+  const ox = 30 * s1, oy = 30 * s2;
+  const height = (x: number, y: number) => {
+    const dx = (x - cx) / R, dy = (y - cy) / R;
+    let z = Math.exp(-(dx * dx * 1.1 + dy * dy * 1.5) * 1.7);
+    z += 0.45 * Math.exp(-((dx + 0.55 - 0.3 * s3) ** 2 * 3 + (dy - 0.35 + 0.2 * s1) ** 2 * 4));
+    z += 0.3 * Math.exp(-((dx - 0.6 + 0.2 * s2) ** 2 * 5 + (dy + 0.4) ** 2 * 5));
+    z += 0.12 * (vn(x / (R * 0.35) + ox, y / (R * 0.35) + oy) - 0.5) + 0.05 * (vn(x / (R * 0.12) + 9 + ox, y / (R * 0.12)) - 0.5);
+    return z;
+  };
+  const step = 3 * U, nx = Math.ceil(w / step) + 1, ny = Math.ceil(h / step) + 1, Z = new Float32Array(nx * ny);
+  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) Z[j * nx + i] = height(i * step, j * step);
+  const SEG: Record<number, [number, number][]> = { 1: [[3, 0]], 2: [[0, 1]], 3: [[3, 1]], 4: [[1, 2]], 5: [[3, 0], [1, 2]], 6: [[0, 2]], 7: [[3, 2]], 8: [[2, 3]], 9: [[0, 2]], 10: [[0, 1], [2, 3]], 11: [[1, 2]], 12: [[1, 3]], 13: [[0, 1]], 14: [[0, 3]] };
+  g.save(); g.lineCap = 'round';
+  let li = 0;
+  for (let L = 0.12; L < 1.2; L += 0.075, li++) {
+    const major = li % 4 === 3;
+    g.strokeStyle = ink(major ? 0.62 : 0.4);
+    for (let j = 0; j < ny - 1; j++) for (let i = 0; i < nx - 1; i++) {
+      const a = Z[j * nx + i], b = Z[j * nx + i + 1], c = Z[(j + 1) * nx + i + 1], d = Z[(j + 1) * nx + i];
+      const idx = (a > L ? 1 : 0) | (b > L ? 2 : 0) | (c > L ? 4 : 0) | (d > L ? 8 : 0);
+      if (idx === 0 || idx === 15) continue;
+      const x = i * step, y = j * step;
+      const e: [number, number][] = [[x + (step * (L - a)) / (b - a), y], [x + step, y + (step * (L - b)) / (c - b)], [x + (step * (L - d)) / (c - d), y + step], [x, y + (step * (L - a)) / (d - a)]];
+      for (const [p, q] of SEG[idx]) {
+        const mx = (e[p][0] + e[q][0]) / 2, my = (e[p][1] + e[q][1]) / 2;
+        if (vn(mx / (40 * U) + li * 7, my / (40 * U)) < (major ? 0.12 : 0.2)) continue;
+        g.lineWidth = U * (major ? 1 : 0.6) * (0.75 + 0.5 * vn(mx / (25 * U), my / (25 * U) + li));
+        g.beginPath(); g.moveTo(e[p][0], e[p][1]); g.lineTo(e[q][0], e[q][1]); g.stroke();
+      }
+    }
+  }
+  g.restore();
+}
+
+/**
+ * Where each tree stands, the first planted in the middle and the rest spiralling out from it, as rings
+ * grow (the golden angle, so none ever falls in line), the spiral drawn in to fit however many there are.
+ * In shares of `R` about the hill's middle, and each crown's size as a share of `R`.
+ */
+export function places(count: number, seed: number): { x: number; y: number; scale: number }[] {
+  const gold = Math.PI * (3 - Math.sqrt(5)), sp = Math.min(0.28, 0.82 / Math.sqrt(count + 0.3)), a0 = h1(seed * 0.71) * TAU;
+  return Array.from({ length: count }, (_, i) => {
+    const a = a0 + i * gold, d = sp * Math.sqrt(i + 0.3) * (1 + 0.15 * (h1(i * 3 + seed) - 0.5));
+    return { x: Math.cos(a) * d - 0.05, y: Math.sin(a) * d * 0.85 - 0.05, scale: sp * 0.74 };
+  });
+}

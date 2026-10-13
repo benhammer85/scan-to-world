@@ -32,6 +32,7 @@ import { Ear } from './ear';
 import { TYPICAL, ageOn as ageOf, ageWords as ageSaid, dayDate, dayOf, grewIn as grewOf, question as askOf, yearSpans as spansOf } from './child';
 import { climate, growth as growthOf, season } from './growing';
 import { RINGS, overlap, percent, shapeFor } from './puzzle';
+import { crownSize, drawCrown, drawHill, drawSeedling, places } from './grove';
 import { holdStill, steadySize } from './steady';
 import { forgetTree, grove, keepInGrove, keepRun, keepTree, recallTree, runs, snapshotTree, treeFrom, type KeptTree, type Run } from './save';
 
@@ -744,7 +745,6 @@ canvas.addEventListener('pointermove', (e) => {
       return;
     }
     if (closer() && painter === null && fingers.size === 1) { look.ox += dx; look.oy += dy; return; }
-    if (far >= 0.99 && painter === null && fingers.size === 1) { panGrove(dx); return; }
   }
   if (e.pointerId !== painter || !strokeView) return;
   const evs = typeof e.getCoalescedEvents === 'function' ? e.getCoalescedEvents() : [];
@@ -2153,13 +2153,12 @@ function plantAgain(): void {
 
 // ---------------------------------------------------------------- the grove
 /**
- * The grove: drawn back past the slice, it tilts flat and settles at the foot of its tree, which rises,
- * and the view draws back to every tree of the practice standing in the order planted, this one last.
- * Each is a real tree etched by J. G. Strutt (Sylva Britannica, 1822-30; src/rings/grove/), as tall as its
- * days; a kind with no portrait yet lies as its seed. Touched, an older tree opens to its slice, to read,
- * not draw; today's comes home. (`?grove` plants a grove to try it by.)
+ * The grove, from above (see `grove.ts`): drawn back past the slice, it becomes the cut face at the heart
+ * of its tree's crown, seen from above, and the view rises off the hill to every tree of the practice,
+ * the first planted in the middle and the rest spiralling out, as rings do; today's the newest, at the
+ * spiral's end. Each crown its kind's, as big as its days. Touched, an older tree opens to its slice, to
+ * read, not draw; today's comes home. (`?grove` plants a grove to try it by.)
  */
-const GROVE_ART: Partial<Record<Kind, HTMLImageElement>> = {};
 let groveKept: KeptTree[] = [];
 /** How far drawn back (0 the slice, 1 the grove), and easing to where it settles. */
 let far = 0, farPull = 0, farTo: { from: number; to: number; at: number } | null = null;
@@ -2167,113 +2166,91 @@ let far = 0, farPull = 0, farTo: { from: number; to: number; at: number } | null
 let visit: { i: number; stash: { tree: TreeSim; days: string[]; kind: Kind } } | null = null;
 const canPull = () => GROWN && !CHILD && (tree.rings.length > 0 || (!!seedAt && groveKept.length > 0));
 const settleFar = () => { farTo = { from: far, to: far > 0.45 ? 1 : 0, at: clock() }; };
-/** How tall a tree stands for its days (a year's, full height). */
-const standOf = (n: number) => Math.min(1.15, 0.3 + 0.7 * Math.sqrt(n / 365));
-interface Stand { sp: Kind; n: number; i: number; x: number; base: number; w: number; h: number; etched: boolean; row: number }
-/**
- * Where each stands: in a row in the order planted, today's at the right, each a little behind the next;
- * as tall as the screen allows a year's to be. Wider than the sheet, the older go on off it to the left,
- * to be walked back through (a finger draws the row along: `groveOx`).
- */
-let groveOx = 0;
-function groveLayout(): Stand[] {
+interface Stand { sp: Kind; n: number; i: number; k: number; x: number; y: number; r: number }
+/** The hill's middle and size, and where each tree stands on it (device px). */
+function groveLayout(): { cx: number; cy: number; R: number; seed: number; trees: Stand[] } {
   const mine = visit ? visit.stash : { tree, days, kind };
   const all = [
-    ...groveKept.map((k, i) => ({ sp: asKind(k.tree) ?? 'oak', n: ((k.sim.rings as unknown[] | undefined) ?? []).length, i })),
-    { sp: mine.kind, n: mine.tree.rings.length, i: -1 },
+    ...groveKept.map((k, i) => ({ sp: asKind(k.tree) ?? 'oak', n: ((k.sim.rings as unknown[] | undefined) ?? []).length, i, k: k.seed })),
+    { sp: mine.kind, n: mine.tree.rings.length, i: -1, k: mine.tree.seed },
   ];
-  const base = Math.round(H * 0.62), tall = Math.min(H * 0.3, W * 0.38);
-  const items = all.map((a) => {
-    const art = GROVE_ART[a.sp], seed = SEED_ART[a.sp];
-    const h = art ? tall * standOf(a.n) : ART_H[a.sp] * 0.35 * 1.4 * px;
-    return { ...a, h, w: art ? (h * art.width) / art.height : seed ? (h * seed.width) / seed.height : h * 0.6, etched: !!art, row: 0 };
-  });
-  const total = items.reduce((sum, it, j) => sum + it.w * (j ? 0.8 : 1), 0);
-  // (From the right, today's in reach of the thumb; all of it centred if it fits.)
-  let x = total <= W * 0.94 ? (W + total) / 2 : W * 0.97;
-  const out: Stand[] = [];
-  for (let j = items.length - 1; j >= 0; j--) {
-    const it = items[j];
-    out.push({ ...it, x: x - it.w / 2 + groveOx, base });
-    x -= it.w * (j ? 0.8 : 1);
+  const cx = W / 2, cy = Math.round(H * 0.46), R = Math.min(W, H) * 0.62, seed = groveKept[0]?.seed ?? mine.tree.seed;
+  const at = places(all.length, seed);
+  return { cx, cy, R, seed, trees: all.map((a, j) => ({ ...a, k: (a.k % 9973) + 11, x: cx + at[j].x * R, y: cy + at[j].y * R, r: at[j].scale * R * crownSize(a.sp, a.n) })) };
+}
+/** The hill, inked once for the sheet as it is (the grove's trees drawn over it). */
+let hillC: HTMLCanvasElement | null = null, hillKey = '';
+function hillOf(L: ReturnType<typeof groveLayout>): HTMLCanvasElement {
+  const key = `${W}x${H}:${L.seed}`;
+  if (hillC && hillKey === key) return hillC;
+  hillC ??= document.createElement('canvas'); hillC.width = W; hillC.height = H; hillKey = key;
+  drawHill(hillC.getContext('2d')!, W, H, L.cx, L.cy, L.R, px, L.seed);
+  return hillC;
+}
+/** The grove (hill and trees) for the sheet, kept until a tree changes; drawn back to, it's only scaled. */
+let groveC: HTMLCanvasElement | null = null, groveKey = '';
+function groveOf(L: ReturnType<typeof groveLayout>): HTMLCanvasElement {
+  const key = `${W}x${H}:${L.seed}:${L.trees.map((t) => `${t.sp}${t.n}`).join(',')}`;
+  if (groveC && groveKey === key) return groveC;
+  groveC ??= document.createElement('canvas'); groveC.width = W; groveC.height = H; groveKey = key;
+  const c = groveC.getContext('2d')!;
+  c.clearRect(0, 0, W, H); c.drawImage(hillOf(L), 0, 0);
+  for (const t of [...L.trees].sort((p, q) => p.y - q.y)) {
+    if (t.n < 30) drawSeedling(c, t.x, t.y, Math.max(4 * px, t.r * 0.8), px);
+    else drawCrown(c, t.x, t.y, t.r, t.sp, t.k, px);
   }
-  groveLeft = x + groveOx;
-  return out.reverse();
+  return groveC;
 }
-/** (Where the row's left end lies: the finger can draw it along until that's on the sheet.) */
-let groveLeft = 0;
-const panGrove = (dx: number) => {
-  groveLayout();
-  const most = Math.max(0, W * 0.03 - (groveLeft - groveOx));
-  groveOx = Math.max(0, Math.min(most, groveOx + dx));
-};
-/** Where the view is: at first, the tree in question alone and large; drawing back to the whole grove. */
-function camera(f: Stand) {
-  const p = smooth((far - 0.6) / 0.4);
-  const k0 = f.etched ? Math.min(H * 0.55, (W * 0.85 * f.h) / f.w) / f.h : 2.6, k = k0 + (1 - k0) * p;
-  const X = W / 2 + (f.x - W / 2) * p;
-  const Y = f.base;
-  return { k, p, at: (x: number, y: number): [number, number] => [X + (x - f.x) * k, Y + (y - f.base) * k] };
-}
-let snapC: HTMLCanvasElement | null = null, riseC: HTMLCanvasElement | null = null;
-/** The etching shown from the foot up to `rise` of its height, fading in softly above that. */
-function risen(art: HTMLImageElement, w: number, h: number, rise: number): HTMLCanvasElement {
-  riseC ??= document.createElement('canvas');
-  const cw = Math.max(1, Math.round(w)), ch = Math.max(1, Math.round(h));
-  if (riseC.width !== cw || riseC.height !== ch) { riseC.width = cw; riseC.height = ch; }
-  const r = riseC.getContext('2d')!;
-  r.globalCompositeOperation = 'source-over'; r.clearRect(0, 0, cw, ch); r.drawImage(art, 0, 0, cw, ch);
-  const top = ch * (1 - rise), soft = ch * 0.35, gr = r.createLinearGradient(0, top - soft, 0, top + soft * 0.3);
-  gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(0,0,0,1)');
-  r.globalCompositeOperation = 'destination-in'; r.fillStyle = gr; r.fillRect(0, 0, cw, ch);
-  return riseC;
-}
+let snapC: HTMLCanvasElement | null = null;
 function drawFar(v: View): void {
-  // The slice as it is on the sheet, taken up whole...
+  // The slice as it is on the sheet, taken up whole.
   const c = g.canvas as HTMLCanvasElement;
   snapC ??= document.createElement('canvas');
   if (snapC.width !== c.width || snapC.height !== c.height) { snapC.width = c.width; snapC.height = c.height; }
   const sc = snapC.getContext('2d')!;
   sc.setTransform(1, 0, 0, 1, 0, 0); sc.clearRect(0, 0, snapC.width, snapC.height); sc.drawImage(c, 0, 0);
   g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(groundOf(), 0, 0);
-  const L = groveLayout(), f = L.find((st) => st.i === (visit ? visit.i : -1)) ?? L[L.length - 1], cam = camera(f);
-  // ...shrinks and tilts flat, settling at its tree's foot, and is gone as the tree rises from it.
-  const p1 = smooth(far / 0.45), fade = 1 - smooth((far - 0.38) / 0.22);
+  const L = groveLayout(), f = L.trees.find((t) => t.i === (visit ? visit.i : -1)) ?? L.trees[L.trees.length - 1];
+  // The camera: at first close over the tree, its crown about the slice; rising (evenly, as a scale is
+  // felt) until the whole hill is in view.
+  const Rs = Math.max(8 * px, v.s * warpR(v.warp, barkMax()) + barkCss(v) * px), fr = Math.max(f.r, 3 * px);
+  const k0 = Math.min(Rs / (0.3 * fr), (0.46 * W) / fr), q = smooth((far - 0.2) / 0.8), k = Math.exp(Math.log(k0) * (1 - q));
+  const X = v.cx + (f.x - v.cx) * q, Y = v.cy + (f.y - v.cy) * q;
+  const at = (x: number, y: number): [number, number] => [X + (x - f.x) * k, Y + (y - f.y) * k];
+  // The grove, coming in as the view rises.
+  const rest = smooth((far - 0.45) / 0.4);
+  if (rest > 0.01) {
+    const [gx, gy] = at(0, 0);
+    g.save(); g.globalAlpha = rest; g.drawImage(groveOf(L), gx, gy, W * k, H * k); g.restore();
+  }
+  // Its own crown, drawn afresh at its size (sharp, however close), coming in round the slice.
+  const own = smooth(far / 0.22), [fx, fy] = at(f.x, f.y);
+  // (Drawn as the grove's own crown magnified: its pen with it, up to a broad nib.)
+  if (f.n >= 30) drawCrown(g, fx, fy, fr * k, f.sp, f.k, px * Math.min(k, 2.2), own);
+  else drawSeedling(g, fx, fy, Math.max(4 * px, fr * 0.8) * k, px, own);
+  // The slice, settling to the cut face at its heart, and gone as the crown closes over.
+  const fade = 1 - smooth((far - 0.35) / 0.25);
   if (fade > 0.01) {
-    const Rs = Math.max(8 * px, v.s * warpR(v.warp, barkMax()) + barkCss(v) * px);
-    const [bx, by] = cam.at(f.x, f.base), tw = Math.max(6 * px, f.w * cam.k * (f.etched ? 0.16 : 0.6));
-    const a = 1 + (tw / 2 / Rs - 1) * p1, sy = 1 - 0.74 * p1;
+    const toR = 0.3 * fr * k, sR = Rs + (toR - Rs) * smooth(far / 0.3), sk = sR / Rs;
     g.save(); g.globalAlpha = fade;
-    g.translate(v.cx + (bx - v.cx) * p1, v.cy + (by - 4 * px - v.cy) * p1); g.scale(a, a * sy);
-    g.beginPath(); g.arc(0, 0, Rs * 1.12, 0, TAU); g.clip();
-    g.drawImage(snapC, -v.cx, -v.cy);
+    g.beginPath(); g.arc(fx, fy, sR * 1.08, 0, TAU); g.fillStyle = 'rgb(244,239,228)'; g.fill(); g.clip();
+    g.translate(fx, fy); g.scale(sk, sk); g.drawImage(snapC, -v.cx, -v.cy);
     g.restore();
   }
-  const rise = smooth((far - 0.3) / 0.35);
-  for (const st of L) {
-    const own = st === f, al = (own ? Math.min(1, rise * 1.5) : cam.p) * (1 - 0.12 * st.row);
-    if (al <= 0.01) continue;
-    const [x, y] = cam.at(st.x, st.base), h = st.h * cam.k, w = st.w * cam.k, art = GROVE_ART[st.sp];
-    g.save(); g.globalAlpha = al;
-    if (art) {
-      // (Its own tree rises from the ground: shown from the foot up, the ink coming softly, never a cut edge.)
-      if (own && rise < 1) g.drawImage(risen(art, w, h, rise), x - w / 2, y - h, w, h);
-      else g.drawImage(art, x - w / 2, y - h, w, h);
-    } else drawSeedOf(st.sp, x, y, al, 1.4 * cam.k, true);
-    g.restore();
-  }
-  // (And when, in pencil, beneath.)
-  if (cam.p > 0.5) {
+  // (And when, in pencil, below the hill.)
+  if (q > 0.6) {
     const first = (groveKept[0]?.days?.[0] ?? (visit ? visit.stash.days : days)[0] ?? dayOf()).slice(0, 4), last = dayOf().slice(0, 4);
-    g.save(); g.globalAlpha = smooth((cam.p - 0.5) / 0.5) * 0.75; g.fillStyle = 'rgba(92,88,84,0.85)'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.save(); g.globalAlpha = smooth((q - 0.6) / 0.4) * 0.75; g.fillStyle = 'rgba(92,88,84,0.85)'; g.textAlign = 'center'; g.textBaseline = 'middle';
     g.font = `italic ${14 * px}px Newsreader, "Iowan Old Style", Georgia, serif`;
-    g.fillText(first === last ? first : `${first} – ${last}`, W / 2, f.base + 40 * px);
+    g.fillText(first === last ? first : `${first} – ${last}`, W / 2, H - 64 * px);
     g.restore();
   }
 }
 /** Touched in the grove: an older tree opens to its slice; today's comes home. */
 function tapGrove(x: number, y: number): void {
-  const hit = groveLayout().reverse().find((st) => Math.abs(x - st.x) < Math.max(st.w * 0.36, 22 * px) && y > st.base - st.h - 6 * px && y < st.base + 16 * px);
+  const L = groveLayout();
+  let hit: Stand | null = null, best = Infinity;
+  for (const t of L.trees) { const d = Math.hypot(x - t.x, y - t.y) / Math.max(t.r * 1.15, 20 * px); if (d < 1 && d < best) { best = d; hit = t; } }
   if (!hit) return;
   if (hit.i < 0) { farTo = { from: far, to: 0, at: clock() }; return; }
   const k = groveKept[hit.i], t2 = treeFrom(k, DAILY);
@@ -2395,11 +2372,6 @@ void (async () => {
   await recall();
   if (GROWN && !CHILD) {
     groveKept = params.has('grove') ? demoGrove() : await grove();
-    for (const sp of ['oak', 'ash', 'pine', 'maple'] as Kind[]) {
-      const im = new Image();
-      im.onload = () => { GROVE_ART[sp] = im; };
-      im.src = new URL(`./grove/${sp}.png`, import.meta.url).href;
-    }
   }
   warp = warpNow(); paper.fit(warp, warp.R); paper.bake(tree);
   fit(); view = null; openedAt = clock(); idleSince = openedAt + OPEN;
@@ -2422,7 +2394,7 @@ void (async () => {
   else if (GROWN && !tree.rings.length) say(seedAt ? 'Draw a loop around the seed. One ring a day.' : 'Choose a seed.', 1e5);
   // (Words only where they're needed: before the first ring. After that, the tree says it.)
   else if (!tree.rings.length) say('Draw a circle around this one. One ring a day.', 8);
-  Object.assign(window, { press: { get tree() { return tree; }, get phase() { return settle.ring >= 0 ? 'settling' : 'trace'; }, get easing() { return !!ease; }, get view() { return viewNow(); }, get days() { return days; }, get run() { return run; }, get kind() { return kind; }, get far() { return far; }, get visiting() { return visit?.i ?? null; }, grove: () => groveLayout().map((st) => ({ sp: st.sp, n: st.n, i: st.i, x: st.x / px, top: (st.base - st.h) / px, base: st.base / px, w: st.w / px })), get editionY() { return editionY; }, get stampAt() { return stampAt; }, target: (a: number) => target.r(a), look: (to: 'year' | 'life' | number) => lookAt(to), print: async () => (await yearPrint()).toDataURL('image/png'), words: async () => (await yearWords()).toDataURL('image/png'), block: async () => (await yearBlock()).toDataURL('image/png') } });
+  Object.assign(window, { press: { get tree() { return tree; }, get phase() { return settle.ring >= 0 ? 'settling' : 'trace'; }, get easing() { return !!ease; }, get view() { return viewNow(); }, get days() { return days; }, get run() { return run; }, get kind() { return kind; }, get far() { return far; }, get visiting() { return visit?.i ?? null; }, grove: () => groveLayout().trees.map((t) => ({ sp: t.sp, n: t.n, i: t.i, x: t.x / px, y: t.y / px, r: t.r / px })), get editionY() { return editionY; }, get stampAt() { return stampAt; }, target: (a: number) => target.r(a), look: (to: 'year' | 'life' | number) => lookAt(to), print: async () => (await yearPrint()).toDataURL('image/png'), words: async () => (await yearWords()).toDataURL('image/png'), block: async () => (await yearBlock()).toDataURL('image/png') } });
   // (The real wood: once it's come, the print is pressed again with it.)
   if (PRINT) loadWood(() => { for (const k in printCaches) delete printCaches[k]; });
   requestAnimationFrame(frame);

@@ -65,16 +65,3 @@ Public domain.
 
 (Sargent's volumes are the Missouri Botanical Garden's scans on the Internet Archive.)
 
-## The grove
-
-The trees standing in the grove are J. G. Strutt's etchings from *Sylva Britannica; or, Portraits of
-Forest Trees* (London, 1822–30; the Library of Congress scan on the Internet Archive,
-`sylvabritannicao00stru`), public domain: each cut free of its scene, the plate's tone taken out, kept as
-ink (`src/rings/grove/`).
-
-| File | Plate |
-| --- | --- |
-| `oak.png` | The Beggar's Oak, Bagot's Park |
-| `ash.png` | The Great Ash at Woburn |
-| `pine.png` | a Scots fir |
-| `maple.png` | the Maple at Boldre |
