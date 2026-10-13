@@ -871,6 +871,34 @@ async function yearWords(): Promise<HTMLCanvasElement> {
   }
   return out;
 }
+/**
+ * The year's block, for engraving into wood to print from by hand: the print's own ink, but as a laser
+ * cutter wants it. Mirrored (a block prints reversed, so it's cut reversed); black where the wood is burned
+ * away (the paper between the inked wood), white where it stands to take the ink; hard-edged, no greys; at
+ * 600 dpi on a 9 in square (a 10 in block with a margin); and a hairline square round it to cut the block's
+ * edge to, if it's cut from a plank.
+ */
+async function yearBlock(): Promise<HTMLCanvasElement> {
+  const ink = await yearPrint(), DPI = 600, S = 9 * DPI, out = document.createElement('canvas'); out.width = out.height = S;
+  const c = out.getContext('2d')!;
+  // (The slice, from the print: its ink found, cropped round, set in the square, mirrored.)
+  const src = ink.getContext('2d')!.getImageData(0, 0, ink.width, ink.height).data;
+  let x0 = ink.width, y0 = ink.height, x1 = 0, y1 = 0;
+  for (let y = 0; y < ink.height; y += 2) for (let x = 0; x < ink.width; x += 2) if (src[(y * ink.width + x) * 4] < 200) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+  const side = Math.max(x1 - x0, y1 - y0) + 20, k = (S - 0.6 * DPI) / Math.max(1, side);
+  c.fillStyle = '#000'; c.fillRect(0, 0, S, S);
+  c.save(); c.translate(S, 0); c.scale(-1, 1);
+  c.imageSmoothingQuality = 'high';
+  // (Ink white, so it stands; the rest black, burned away.)
+  c.filter = 'invert(1)';
+  c.drawImage(ink, x0 - 10, y0 - 10, side, side, (S - side * k) / 2, (S - side * k) / 2, side * k, side * k);
+  c.restore();
+  const img = c.getImageData(0, 0, S, S), d = img.data;
+  for (let i = 0; i < d.length; i += 4) { const v = d[i] > 127 ? 255 : 0; d[i] = d[i + 1] = d[i + 2] = v; d[i + 3] = 255; }
+  c.putImageData(img, 0, 0);
+  c.strokeStyle = '#ff0000'; c.lineWidth = 2; c.strokeRect(1, 1, S - 2, S - 2);
+  return out;
+}
 /** Hand a canvas over as a PNG file to keep. */
 function saveCanvas(cv: HTMLCanvasElement, name: string): Promise<void> {
   return new Promise((done) => cv.toBlob((b) => {
@@ -887,7 +915,9 @@ document.getElementById('print-year')?.addEventListener('click', (e) => {
     await saveCanvas(await yearPrint(), `${base}.png`);
     await new Promise((r) => window.setTimeout(r, 600));
     await saveCanvas(await yearWords(), `${base}-words.png`);
-    say('Saved: the print, ink only, 8 × 10 in; and its words, 5 × 7 in, for the back. Print on cotton paper; pencil the name and year under it by hand.', 8);
+    await new Promise((r) => window.setTimeout(r, 600));
+    await saveCanvas(await yearBlock(), `${base}-block.png`);
+    say('Saved: the print (ink only, 8 × 10 in), its words (5 × 7 in, for the back), and its block (to engrave into wood, mirrored, 600 dpi).', 8);
   })();
 });
 
@@ -1843,7 +1873,7 @@ void (async () => {
   }
   else if (GROWN && !tree.rings.length) say(seedAt ? 'Draw a loop around the seed. One ring a day.' : 'Tap anywhere to plant a seed.', 1e5);
   else say(!tree.rings.length ? 'Draw a circle around this one. One ring a day.' : days.includes(today) ? 'Today’s ring is done. Draw another if you like.' : 'Draw today’s ring.', 8);
-  Object.assign(window, { press: { get tree() { return tree; }, get phase() { return settle.ring >= 0 ? 'settling' : 'trace'; }, get easing() { return !!ease; }, get view() { return viewNow(); }, get days() { return days; }, get run() { return run; }, look: (to: 'year' | 'life' | number) => lookAt(to), print: async () => (await yearPrint()).toDataURL('image/png'), words: async () => (await yearWords()).toDataURL('image/png') } });
+  Object.assign(window, { press: { get tree() { return tree; }, get phase() { return settle.ring >= 0 ? 'settling' : 'trace'; }, get easing() { return !!ease; }, get view() { return viewNow(); }, get days() { return days; }, get run() { return run; }, look: (to: 'year' | 'life' | number) => lookAt(to), print: async () => (await yearPrint()).toDataURL('image/png'), words: async () => (await yearWords()).toDataURL('image/png'), block: async () => (await yearBlock()).toDataURL('image/png') } });
   // (The real wood: once it's come, the print is pressed again with it.)
   if (PRINT) loadWood(() => { for (const k in printCaches) delete printCaches[k]; });
   requestAnimationFrame(frame);
