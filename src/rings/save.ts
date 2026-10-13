@@ -8,7 +8,7 @@ import { restoreInto, snapshotOf } from '../volcano/save';
 import { TreeSim, type Rules } from './tree';
 
 // (The store keeps the game's first name, so trees and plates kept before it was Well Rounded still load.)
-const DB = 'annulus', STORE = 'kept', CURRENT = 'current', PLATES = 'plates', RUNS = 'runs';
+const DB = 'annulus', STORE = 'kept', CURRENT = 'current', PLATES = 'plates', RUNS = 'runs', GROVE = 'grove';
 
 function open(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -105,4 +105,16 @@ export async function keepRun(r: Run): Promise<void> {
 }
 export async function runs(): Promise<Run[]> {
   try { return ((await run('readonly', (s) => s.get(RUNS))) as Run[] | undefined) ?? []; } catch { return []; }
+}
+
+/** The grove: each tree of the practice, once finished (a new one planted), kept standing, oldest first. */
+export async function keepInGrove(k: KeptTree): Promise<void> {
+  try {
+    const all = ((await run('readonly', (s) => s.get(GROVE))) as KeptTree[] | undefined) ?? [];
+    all.push(k);
+    await run('readwrite', (s) => s.put(all, GROVE));
+  } catch { /* not kept, and that's all */ }
+}
+export async function grove(): Promise<KeptTree[]> {
+  try { return ((await run('readonly', (s) => s.get(GROVE))) as KeptTree[] | undefined) ?? []; } catch { return []; }
 }
