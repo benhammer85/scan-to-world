@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ASK, TYPICAL, ageOn, ageWords, dayDate, dayOf, grewIn, question, yearSpans } from '../src/rings/child';
-import { growth, season } from '../src/rings/growing';
+import { climate, growth, season } from '../src/rings/growing';
 
 describe('a child’s tree: days', () => {
   it('keeps a day as a local date and reads it back', () => {
@@ -101,5 +101,20 @@ describe('how a tree grows', () => {
     expect(season(2)).toBe(1);
     expect(season(0.25)).toBeGreaterThan(0.25);
     for (let t = 0; t < 1; t += 0.05) expect(season(t + 0.05)).toBeGreaterThanOrEqual(season(t));
+  });
+});
+
+describe('the tree’s own years', () => {
+  it('runs wide and lean, now and then a hard year, never to nothing', () => {
+    const c = Array.from({ length: 400 }, (_, n) => climate(9, n));
+    expect(Math.min(...c)).toBeGreaterThan(0.25);
+    expect(Math.max(...c)).toBeLessThan(1.7);
+    expect(Math.max(...c) / Math.min(...c)).toBeGreaterThan(2);
+    expect(c.filter((x) => x < 0.55).length).toBeGreaterThan(3);
+  });
+  it('changes in runs: neighbouring years are mostly alike', () => {
+    let near = 0;
+    for (let n = 1; n < 400; n++) if (Math.abs(Math.log(climate(9, n) / climate(9, n - 1))) < 0.3) near++;
+    expect(near / 399).toBeGreaterThan(0.8);
   });
 });

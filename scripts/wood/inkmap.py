@@ -15,8 +15,9 @@ for y in range(N):
     s=slice(y*YR,(y+1)*YR); Ly=L[s]; Lby=Lb[s]; med=np.median(Ly)
     vv=v[s][:,None]
     if kind=='oak':
-        base=np.interp(vv,[0,0.3,0.4,1],[0.52,0.54,0.9,0.93])
-        pore=np.clip((0.84*med-Lby)/(0.1*med),0,1)
+        base=np.interp(vv,[0,0.32,0.42,1],[0.6,0.64,0.95,0.96])
+        # (The pores: crisp open holes, in the springwood only, where the ink doesn't reach.)
+        pore=np.clip((0.82*med-Lby)/(0.05*med),0,1)*np.clip((0.5-vv)/0.12,0,1)
         ray=np.clip((Ly-1.1*med)/(0.14*med),0,1)
         tex=np.clip(1+0.15*(med-Lby)/med,0.9,1.06)
         ink[s]=base*tex*(1-pore)*(1-0.3*ray)

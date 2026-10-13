@@ -30,7 +30,7 @@ import { at, drawPaper } from './draw';
 import { Paper } from './paint';
 import { Ear } from './ear';
 import { TYPICAL, ageOn as ageOf, ageWords as ageSaid, dayDate, dayOf, grewIn as grewOf, question as askOf, yearSpans as spansOf } from './child';
-import { growth as growthOf, season } from './growing';
+import { climate, growth as growthOf, season } from './growing';
 import { holdStill, steadySize } from './steady';
 import { keepRun, keepTree, recallTree, runs, snapshotTree, treeFrom, type KeptTree, type Run } from './save';
 
@@ -100,7 +100,8 @@ function rounded(a: number, u: number): number {
   const v = strokeView ?? viewNow(), loose = (u * tree.wRef * v.s) / (STEADY * px);
   // (A child's tree: the sound of the moment swells the day where it was loud, and pinches it where hushed.)
   const heard = CHILD && ear.on ? 0.78 + 0.5 * ear.read() : 1;
-  return Math.max(LEAST, Math.min(LOOSEST, loose)) * growth(a) * heard + evenUp(a);
+  // (And the tree's own year: good, lean, now and then a hard one.)
+  return Math.max(LEAST, Math.min(LOOSEST, loose)) * growth(a) * heard * climate(tree.seed, tree.rings.length) + evenUp(a);
 }
 /**
  * A tree evens out its lumps, slowly: where it's short of round, a year a little wider (in proportion to
@@ -229,7 +230,7 @@ function demoYear(count = 365, start = (() => { const d = new Date(); d.setDate(
     const R = (b: number) => tree.radius + width * tree.wRef * lean(b), u = GROWN
       // (Growing true to scale, the loop's looseness is the year's width wherever it's drawn, the tree's
       // own swells on it, eased a little toward round.)
-      ? (b: number) => Math.max(LEAST, width * growth(b) * (1 + 0.3 * wob * Math.sin(2 * b + ph)) + evenUp(b))
+      ? (b: number) => Math.max(LEAST, width * growth(b) * climate(tree.seed, tree.rings.length) * (1 + 0.3 * wob * Math.sin(2 * b + ph)) + evenUp(b))
       : (b: number) => Math.max(0.1, (R(b) - radiusAt((i) => tree.inner(i), b)) / tree.wRef + wob * Math.sin(2 * b + ph));
     let a = r() * TAU;
     tree.begin(time, a, u(a));
@@ -1528,13 +1529,20 @@ function printYears(v: View, oak: Years): void {
   const runs = new Map<number, { w: number; R: number; k: number }>();
   for (let i = 0; i < n; i++) if (!runs.has(runOf(i))) runs.set(runOf(i), { w: (scr(meanR(i)) - scr(meanR(i - 1))) * share(i), R: scr((meanR(i) + meanR(i - 1)) / 2), k: 1 });
   const reps = new Float32Array(n), off = new Float32Array(n), yr = new Int32Array(n), lvl = new Int32Array(n), runR = new Float32Array(n);
+  const widthAt = (i: number) => (scr(meanR(i)) - scr(meanR(i - 1))) * share(i);
   for (let i = 0; i < n; i++) {
-    const run = runOf(i), q = runs.get(run)!, perPx = oak.year / Math.max(0.5, q.w / q.k);
-    reps[i] = Math.max(1, Math.round((TAU * (q.R / q.k) * perPx) / W0)); runR[i] = q.R / q.k;
+    const run = runOf(i), q = runs.get(run)!;
+    // (The practice: each year's scale from its own place and the last few years' widths, so the wood's
+    // grain changes size smoothly out from the heart, never in a step where the slice has doubled; and only
+    // from the years before, so a year added never changes them.)
+    let wAvg = 0, k = 0;
+    for (let j = Math.max(0, i - 8); j <= i; j++) { wAvg += widthAt(j); k++; }
+    const R = spans ? q.R / q.k : scr((meanR(i) + meanR(i - 1)) / 2), perPx = oak.year / Math.max(0.5, spans ? q.w / q.k : wAvg / k);
+    reps[i] = Math.max(1, Math.round((TAU * R * perPx) / W0)); runR[i] = R;
     // (Its rays: mostly the last year's, drifting a little; now and then a fresh set, as rays end and begin.)
-    const fresh = i === 0 || runOf(i - 1) !== run || (!spans && h1(i * 3.71 + tree.seed * 0.013) < 0.3);
+    const fresh = i === 0 || (spans ? runOf(i - 1) !== run : reps[i] !== reps[i - 1] && h1(i * 1.9) < 0.5) || (!spans && h1(i * 3.71 + tree.seed * 0.013) < 0.3);
     off[i] = fresh ? h1(i * 7.3 + tree.seed * 0.01) * W0 : off[i - 1] + (h1(i * 5.9) - 0.5) * 0.06 * W0;
-    yr[i] = ((spans ? i * 3 + run * 5 : i + run * 4) % oak.n + oak.n) % oak.n;
+    yr[i] = ((spans ? i * 3 + run * 5 : i * 3) % oak.n + oak.n) % oak.n;
     const w = (scr(meanR(i)) - scr(meanR(i - 1))) * share(i);
     lvl[i] = Math.max(0, Math.min(oak.levels.length - 1, Math.ceil(Math.log2(oak.year / Math.max(0.5, w)))));
   }
@@ -1645,7 +1653,7 @@ function inkGrain(c: HTMLCanvasElement, v: View): void {
   // (How the ink took, from a real print: Munch's, 1898, about a quarter mm to a texel, never finer than a
   // pixel; his sea's mottle and sparse specks, his field's grain and streaks over it, the two at their own
   // scales and turned to each other, so neither repeats in step.)
-  const sea = wood.sea, field = wood.field, perTex = 1 / Math.max(px / v.s, 0.24);
+  const sea = wood.sea, field = wood.field, perTex = 1 / Math.max(px / v.s, 0.24), close = Math.max(0, Math.min(1, (0.24 / (px / v.s) - 1) / 2));
   const fc = Math.cos(0.5 + h1(tree.seed * 0.29)), fs = Math.sin(0.5 + h1(tree.seed * 0.29));
   const sawK = 0.07 * Math.max(0, Math.min(1, (SAW * v.s - 3 * px) / (4 * px))), sa = h1(tree.seed * 0.61) * TAU;
   const sx = 900 * Math.cos(sa), sy = 900 * Math.sin(sa);
@@ -1689,6 +1697,8 @@ function inkGrain(c: HTMLCanvasElement, v: View): void {
       if (sea && field) {
         const u = mx * perTex, w = my * perTex;
         took = val * (0.35 + 0.7 * tile(sea, u + 17, w + 31) * (0.55 + 0.45 * tile(field, (u * fc - w * fs) * 0.8, (u * fs + w * fc) * 0.8)));
+        // (Looked at closer than the print's own grain: finer grain, at the screen's scale, so it stays crisp.)
+        if (close > 0) took *= 1 + close * 0.22 * (vnoise(x * 0.9 + 3.3, y * 0.9 + 7.1) - 0.5);
       }
       const thr = 0.5 + (sea ? 0.35 : 0.95) * (t1 - 0.5) + 0.2 * (vnoise(mx * low + 40, my * low + 11) - 0.5) + saw;
       const e = Math.max(0, Math.min(1, (took - thr + 0.07) / 0.14));
