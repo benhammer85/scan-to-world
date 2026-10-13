@@ -33,7 +33,7 @@ import { TYPICAL, ageOn as ageOf, ageWords as ageSaid, dayDate, dayOf, grewIn as
 import { climate, growth as growthOf, season } from './growing';
 import { RINGS, overlap, percent, shapeFor } from './puzzle';
 import { holdStill, steadySize } from './steady';
-import { keepRun, keepTree, recallTree, runs, snapshotTree, treeFrom, type KeptTree, type Run } from './save';
+import { forgetTree, keepRun, keepTree, recallTree, runs, snapshotTree, treeFrom, type KeptTree, type Run } from './save';
 
 const TAU = Math.PI * 2, PAPER = '#f4efe4';
 /**
@@ -658,6 +658,11 @@ canvas.addEventListener('pointerdown', (e) => {
   }
   if (fingers.size > 2 || painter !== null) return;
   navAway(true);
+  // (Held a moment on the pencilled line under the slice: plant a new tree, if they say so.)
+  if (!GAME && !CHILD && editionShown > 0.5 && Math.abs(e.clientY * px - editionY) < 26 * px) {
+    const id = e.pointerId;
+    clearTimeout(holdT); holdT = window.setTimeout(() => { if (fingers.has(id)) plantAgain(); }, 900);
+  }
   // (Looked at closely, or the run over: a finger moves the slice about, or taps; nothing is drawn. And
   // on a bare sheet, a tap plants the seed: see the tap, below.)
   if (tree.rings.length && brushAt(tree, viewNow(), 0, e.clientX * px, e.clientY * px).u < 0) inside = true;
@@ -691,6 +696,7 @@ canvas.addEventListener('pointermove', (e) => {
   const f = fingers.get(e.pointerId);
   if (f) {
     const x = e.clientX * px, y = e.clientY * px, dx = x - f.x, dy = y - f.y;
+    if (Math.hypot(e.clientX - tapStart.x, e.clientY - tapStart.y) > 10) clearTimeout(holdT);
     f.x = x; f.y = y;
     if (pinch && fingers.size >= 2) {
       const now = spread();
@@ -730,6 +736,7 @@ canvas.addEventListener('pointermove', (e) => {
 });
 for (const type of ['pointerup', 'pointercancel'] as const) canvas.addEventListener(type, (e) => {
   fingers.delete(e.pointerId);
+  clearTimeout(holdT);
   if (fingers.size < 2) pinch = null;
   navAway(false);
   // A tap (short, still, one finger): a double tap goes back from looking closer; after a run, a tap
@@ -1897,6 +1904,7 @@ function drawEdition(v: View, t: number, dt: number): void {
   for (let i = 0; i < K; i++) rmax = Math.max(rmax, v.s * warpR(v.warp, last[i]));
   // (Never narrower than its words need, however small the slice; and kept on the sheet.)
   const y = v.cy + rmax + (barkCss(v) + 30) * px, half = Math.min(Math.max(rmax, (CHILD ? 150 : 112) * px), W / 2 - 24 * px);
+  editionY = y;
   v = { ...v, cx: Math.max(half + 30 * px, Math.min(W - half - 30 * px, v.cx)) };
   const [yy, mm, dd] = (days[days.length - 1] ?? dayOf()).split('-').map(Number);
   const date = new Date(yy, mm - 1, dd).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
@@ -1931,6 +1939,16 @@ function editionWords(date: string): [string, string] {
   const from = new Date(b.getFullYear() + age, b.getMonth(), b.getDate()), to = new Date(b.getFullYear() + age + 1, b.getMonth(), b.getDate() - 1);
   // (On the sheet, this year's day; a finished year, and the print, its dates.)
   return typeof looking === 'number' || printing ? [`the year at ${age}`, `${fmt(from)} – ${fmt(to)}`] : [ageWords(days[days.length - 1] ?? dayOf()), date];
+}
+
+/** Where the pencilled line is (device px), and the press held on it, to plant a new tree. */
+let editionY = -1e9, holdT = 0;
+/** Asked plainly, once confirmed: the tree is let go, and the sheet is bare again for a new seed. */
+function plantAgain(): void {
+  if (painter !== null) { tree.cancel(); trail = []; painter = null; }
+  fingers.clear();
+  if (!window.confirm('Plant a new tree? This tree, and every day in it, will be gone.')) return;
+  void forgetTree(DIARY).then(() => location.replace(location.pathname));
 }
 
 /** When the page opened: the slice paints itself in from the heart. */
@@ -2029,7 +2047,7 @@ void (async () => {
   }
   else if (GROWN && !tree.rings.length) say(seedAt ? 'Draw a loop around the seed. One ring a day.' : 'Tap anywhere to plant a seed.', 1e5);
   else say(!tree.rings.length ? 'Draw a circle around this one. One ring a day.' : days.includes(today) ? 'Today’s ring is done. Draw another if you like.' : 'Draw today’s ring.', 8);
-  Object.assign(window, { press: { get tree() { return tree; }, get phase() { return settle.ring >= 0 ? 'settling' : 'trace'; }, get easing() { return !!ease; }, get view() { return viewNow(); }, get days() { return days; }, get run() { return run; }, target: (a: number) => target.r(a), look: (to: 'year' | 'life' | number) => lookAt(to), print: async () => (await yearPrint()).toDataURL('image/png'), words: async () => (await yearWords()).toDataURL('image/png'), block: async () => (await yearBlock()).toDataURL('image/png') } });
+  Object.assign(window, { press: { get tree() { return tree; }, get phase() { return settle.ring >= 0 ? 'settling' : 'trace'; }, get easing() { return !!ease; }, get view() { return viewNow(); }, get days() { return days; }, get run() { return run; }, get editionY() { return editionY; }, target: (a: number) => target.r(a), look: (to: 'year' | 'life' | number) => lookAt(to), print: async () => (await yearPrint()).toDataURL('image/png'), words: async () => (await yearWords()).toDataURL('image/png'), block: async () => (await yearBlock()).toDataURL('image/png') } });
   // (The real wood: once it's come, the print is pressed again with it.)
   if (PRINT) loadWood(() => { for (const k in printCaches) delete printCaches[k]; });
   requestAnimationFrame(frame);
