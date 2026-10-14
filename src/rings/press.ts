@@ -235,18 +235,19 @@ const SPEC: Record<Kind, {
 };
 const KINDS = Object.keys(SPEC) as Kind[];
 /**
- * Each wood's temperament, said in pencil beneath it when choosing: how it answers the same loop. The
+ * Each wood's temperament, said in pencil beneath it when choosing: true of the tree itself (how it
+ * answers the same loop is left to be found). The
  * olive keeps every crooked day (its line barely smoothed, hardly evened out); the conifers' latewood
  * darkens and widens with an unhurried hand (the ring's calm, as drawn: see `calmOf`).
  */
 const TEMPER: Record<Kind, string> = {
-  oak: 'patient; evens out a crooked day',
+  oak: 'patient; slow to grow',
   ash: 'open-grained, quick to grow',
   cherry: 'fine and close',
   maple: 'fine, pale and even',
   birch: 'light, quick, and faint',
-  pine: 'slow days print dark',
-  redwood: 'broad and calm; slow days print dark',
+  pine: 'dark latewood, as growth slows',
+  redwood: 'broad and calm',
   bristlecone: 'slow, enduring; outlives its own bark',
   olive: 'keeps every crooked day',
 };
