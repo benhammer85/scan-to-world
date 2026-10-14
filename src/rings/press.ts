@@ -2096,30 +2096,37 @@ function inkGrain(c: HTMLCanvasElement, v: View): void {
 }
 
 /** The print, kept as a picture between changes; while the slice moves, the picture moves with it. */
-const printCaches: Record<string, { c: HTMLCanvasElement; key: string; v: View; at: number }> = {};
+const printCaches: Record<string, { c: HTMLCanvasElement; key: string; v: View; at: number; half?: boolean }> = {};
 /** Whether a kept picture, drawn for view `v`, still covers the whole screen. */
 function covers(pc: { v: View }, v: View): boolean {
   const k = v.s / pc.v.s, ox = v.cx - pc.v.cx * k, oy = v.cy - pc.v.cy * k;
   return ox <= 0.5 && oy <= 0.5 && ox + W * k >= W - 0.5 && oy + H * k >= H - 0.5;
 }
 /** The print for view `v`, kept in `slot`: pressed again only when it must be. */
-function printFor(v: View, moving: boolean, slot = 'drawing', drift = false): { c: HTMLCanvasElement; key: string; v: View; at: number } {
+function printFor(v: View, moving: boolean, slot = 'drawing', drift = false): { c: HTMLCanvasElement; key: string; v: View; at: number; half?: boolean } {
   const key = `${tree.rings.length}|${v.warp?.R ?? 0}|${v.warp?.beta ?? 0}|${W}x${H}`;
   let pc = printCaches[slot];
   const same = pc && pc.key === key;
-  const exact = same && pc.v.s === v.s && pc.v.cx === v.cx && pc.v.cy === v.cy;
+  const exact = same && !pc.half && pc.v.s === v.s && pc.v.cx === v.cx && pc.v.cy === v.cy;
   // (Moving, the picture is moved; but looked into by more than a quarter, it's pressed again at the new
   // size, a few times a second, so it's never a blown-up bitmap.)
   // (And drifting slowly to make room, pressed again each second or so, so it's never soft, then sharp.)
   const off = same ? Math.abs(Math.log(v.s / pc.v.s)) + Math.hypot(v.cx - pc.v.cx, v.cy - pc.v.cy) / W : 0;
   const still = fingers.size === 0 && !lookBack;
-  const far = same && ((still && !exact && !covers(pc, v)) || (moving && off > Math.log(1.25) && clock() - pc.at > 0.2) || (drift && !moving && off > 0.004 && clock() - pc.at > 0.8) || (!moving && !exact && !covers(pc, v) && clock() - pc.at > 0.25));
-  if (!same || (!moving && !drift && !exact) || far) {
-    const c = pc?.c.width === W && pc.c.height === H ? pc.c : document.createElement('canvas');
-    c.width = W; c.height = H;
-    const was = g; g = c.getContext('2d')!;
-    try { drawPrint(v); inkGrain(c, v); } finally { g = was; }
-    pc = printCaches[slot] = { c, key, v: { ...v }, at: clock() };
+  // (Moving and no longer covering the sheet, or looked into by a quarter: pressed again at once, at half
+  // the pixels so it keeps up with the fingers; never a blown-up bitmap at the edges.)
+  const quick = same && moving && clock() - pc.at > 0.05 && (!covers(pc, v) || off > Math.log(1.25));
+  const far = same && ((still && !exact && !covers(pc, v)) || (drift && !moving && off > 0.004 && clock() - pc.at > 0.8) || (!moving && !exact && !covers(pc, v) && clock() - pc.at > 0.25));
+  if (!same || (!moving && !drift && !exact) || far || quick) {
+    const S = quick && !far ? 0.5 : 1, cw = Math.ceil(W * S), ch = Math.ceil(H * S);
+    const c = pc?.c.width === cw && pc.c.height === ch ? pc.c : document.createElement('canvas');
+    c.width = cw; c.height = ch;
+    const was = { g, px, W, H };
+    g = c.getContext('2d')!;
+    const vs = S === 1 ? v : { ...v, cx: v.cx * S, cy: v.cy * S, s: v.s * S, px: v.px * S };
+    if (S !== 1) { px *= S; W = cw; H = ch; }
+    try { drawPrint(vs); inkGrain(c, vs); } finally { g = was.g; px = was.px; W = was.W; H = was.H; }
+    pc = printCaches[slot] = { c, key, v: { ...v }, at: clock(), half: S !== 1 };
   }
   return pc;
 }
