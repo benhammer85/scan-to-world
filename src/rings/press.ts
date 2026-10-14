@@ -1628,18 +1628,14 @@ function drawPrint(v: View): void {
       if (!dense[i]) continue;
       let j = i;
       while (j + 1 < n && dense[j + 1]) j++;
-      if (!ring) {
-        const r0 = barkOf(i - 1), r1 = barkOf(j);
-        g.beginPath();
-        for (let q = 0; q <= K; q++) { const a = (q / K) * TAU, [x, y] = pt(a, r1(a)); if (q) g.lineTo(x, y); else g.moveTo(x, y); }
-        for (let q = K; q >= 0; q--) { const a = (q / K) * TAU, [x, y] = pt(a, r0(a)); g.lineTo(x, y); }
-        g.closePath(); g.fillStyle = ink(conifer ? 0.26 * sp.tone : 0.14 * sp.tone); g.fill();
-      }
-      g.strokeStyle = ink(sp.line); g.lineWidth = (conifer ? 1.1 : 0.8) * px;
+      // (Lines only, never a grey tone, which the press breaks into smudges; as far apart as a hand would
+      // rule them, each its own distance and weight, so they never beat into waves.)
+      g.strokeStyle = ink(sp.line);
       let lastR = scr(meanR(i - 1));
       for (let k = i; k <= j; k++) {
         const R = scr(meanR(k));
-        if (R - lastR < (ring ? 1.9 : 2.4) * px) continue;
+        if (R - lastR < (ring ? 1.9 : 2.8 + 1.4 * h1(k * 1.37 + 0.5)) * px) continue;
+        g.lineWidth = (conifer ? 0.9 : 0.7) * (0.8 + 0.4 * h1(k * 3.7)) * px;
         lastR = R; ringPath(v, barkOf(k)); g.stroke();
       }
       i = j;
@@ -1682,17 +1678,6 @@ function drawPrint(v: View): void {
         // (The ink a little starved now and then.)
         g.fillStyle = ink((0.8 + 0.2 * h1(seed * 0.37)) * tone); g.fill();
       };
-      // (A conifer's latewood comes on gradually through its year, as the cells thicken: a soft tone
-      // before the dark band, which the press breaks to a grain.)
-      if (conifer && w > 6 * px) {
-        const soft = (k2: number) => (a: number) => outer(a) - Math.min(0.9, share * k2) * (outer(a) - inner(a));
-        for (const [k2, al] of [[2.8, 0.3], [1.8, 0.5]] as [number, number][]) {
-          g.beginPath();
-          for (let q = 0; q <= K; q++) { const a = (q / K) * TAU, [x, y] = pt(a, bandIn(a)); if (q) g.lineTo(x, y); else g.moveTo(x, y); }
-          for (let q = K; q >= 0; q--) { const a = (q / K) * TAU, [x, y] = pt(a, soft(k2)(a)); g.lineTo(x, y); }
-          g.closePath(); g.fillStyle = ink(al * tone); g.fill();
-        }
-      }
       if (live.length < 2) brick(0, TAU, i * 101);
       else for (let j = 0; j < live.length; j++) {
         // (A ray wavers a little from ring to ring, as the grain does.)
@@ -2229,7 +2214,7 @@ function drawEdition(v: View, t: number, dt: number): void {
   const midW = g.measureText(mid).width, room = v.cx + half - 22 * px - g.measureText(right).width - 12 * px;
   const midX = Math.max(v.cx - half + g.measureText(left).width + 12 * px + midW / 2, Math.min(v.cx, room - midW / 2));
   g.textAlign = 'left'; g.fillText(left, v.cx - half, y);
-  g.textAlign = 'center'; g.fillText(mid, midX, y);
+  if (printing || CHILD) { g.textAlign = 'center'; g.fillText(mid, midX, y); }
   g.textAlign = 'right'; g.fillText(right, v.cx + half - 22 * px, y);
   // The blind stamp: three rings and a heart, pressed in (a highlight above, a shadow below, no ink).
   const sx = v.cx + half - 6 * px, sy = y;
