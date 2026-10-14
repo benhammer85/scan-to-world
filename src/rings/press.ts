@@ -1731,14 +1731,17 @@ function drawPrint(v: View): void {
       } else if (conifer) {
         // A conifer: resin canals, here and there in the latewood, as small dark dots ringed with paper.
         const lw = (scr(outer(0)) - scr(bandIn(0))) / px;
-        if (lw >= 2.4 && sp.resin) {
-          const count = Math.round((TAU * scr(mr)) / (26 * px));
+        // (In the wood's own place and size, so looking closer never adds more or blows them up into
+        // rings: a few to a ring, each a small dark fleck in the latewood, a share of its width.)
+        if (lw >= 3 && sp.resin) {
+          const count = Math.min(40, Math.round(TAU * mr * 0.35));
+          g.fillStyle = ink(0.95 * tone);
           for (let q = 0; q < count; q++) {
             const a = h1(i * 5.3 + q * 1.37) * TAU, r0 = scr(bandIn(a)), r1 = scr(outer(a));
-            const at = r0 + (r1 - r0) * (0.25 + 0.5 * h1(q * 6.1 + i)), d = Math.min((r1 - r0) * 0.3, (0.8 + 0.5 * h1(q * 3.3 + i)) * px);
+            const at = r0 + (r1 - r0) * (0.3 + 0.4 * h1(q * 6.1 + i)), d = (r1 - r0) * (0.12 + 0.08 * h1(q * 3.3 + i));
+            if (d < 0.5 * px) continue;
             const t = a + v.turn, x = v.cx + at * Math.cos(t), y = v.cy - at * Math.sin(t);
-            g.fillStyle = 'rgba(244,239,228,0.9)'; g.beginPath(); g.arc(x, y, d * 1.7, 0, TAU); g.fill();
-            g.fillStyle = ink(0.95 * tone); g.beginPath(); g.arc(x, y, d, 0, TAU); g.fill();
+            g.beginPath(); g.ellipse(x, y, d, d * 0.75, -t, 0, TAU); g.fill();
           }
         }
       } else {
@@ -2147,7 +2150,11 @@ function drawPrintCached(v: View, moving: boolean, slot = 'drawing', alpha = 1, 
     if (ox > 0.5 || oy > 0.5 || ox + W * k < W - 0.5 || oy + H * k < H - 0.5) {
       // (The whole slice beneath; the sharper picture over it, faded out softly toward its own edges, so
       // the two never meet in a line: no square seen in the slice as it's pinched.)
+      // (Beneath only out where the sharper picture fades: never showing through its paper.)
+      const f = 40 * px * k;
+      g.save(); g.beginPath(); g.rect(0, 0, W, H); g.rect(ox + f, oy + f, Math.max(0, W * k - 2 * f), Math.max(0, H * k - 2 * f)); g.clip('evenodd');
       drawKept(home, v, alpha, grow);
+      g.restore();
       g.save(); g.globalAlpha = alpha; g.drawImage(feathered(pc.c), ox, oy, W * k, H * k); g.restore();
       return;
     }
