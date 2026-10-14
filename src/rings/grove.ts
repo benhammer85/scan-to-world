@@ -139,7 +139,7 @@ export function drawCrown(g: CanvasRenderingContext2D, x: number, y: number, r: 
 export function drawSeedling(g: CanvasRenderingContext2D, x: number, y: number, r: number, U: number, alpha = 1): void {
   g.save(); g.globalAlpha *= alpha; g.strokeStyle = ink(0.85); g.lineWidth = 0.8 * U; g.lineCap = 'round';
   g.beginPath();
-  for (let i = 0; i < 7; i++) { const a = (i / 7) * TAU + 0.3; g.moveTo(x, y); g.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r * 0.9); }
+  for (let i = 0; i < 5; i++) { const a = (i / 5) * TAU + 0.3 + 0.4 * h1(i * 3.1), L = r * (0.5 + 0.5 * h1(i * 7.7)); g.moveTo(x, y); g.quadraticCurveTo(x + Math.cos(a + 0.4) * L * 0.6, y + Math.sin(a + 0.4) * L * 0.6, x + Math.cos(a) * L, y + Math.sin(a) * L * 0.9); }
   g.stroke(); g.fillStyle = ink(1); g.beginPath(); g.arc(x, y, 1.1 * U, 0, TAU); g.fill(); g.restore();
 }
 
@@ -159,7 +159,7 @@ export function land(count: number, seed: number): { hills: Hill[]; places: Plac
   const hills: Hill[] = [], places: Place[] = [], a0 = h1(seed * 0.71) * TAU;
   for (let h = 0; h * PER_HILL < Math.max(1, count); h++) {
     const n = Math.min(PER_HILL, count - h * PER_HILL), a = a0 + h * 2.4 + 0.6 * (h1(h * 5.3 + seed) - 0.5), d = h ? 15 * Math.sqrt(h) * (0.92 + 0.16 * h1(h * 3.1 + seed)) : 0;
-    hills.push({ x: Math.cos(a) * d, y: Math.sin(a) * d * 0.9, R: 4 + SPACING * Math.sqrt(Math.max(1, n) + 0.5) * 1.3, n });
+    hills.push({ x: Math.cos(a) * d, y: Math.sin(a) * d * 0.9, R: 2.6 + SPACING * Math.sqrt(Math.max(1, n) + 0.5) * 1.3, n });
   }
   for (let i = 0; i < count; i++) {
     const h = Math.floor(i / PER_HILL), j = i % PER_HILL, H = hills[h], a = a0 + h * 1.3 + j * GOLD;

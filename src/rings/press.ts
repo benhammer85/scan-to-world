@@ -1393,8 +1393,10 @@ function drawBrush(g: CanvasRenderingContext2D, v: View, t: number): void {
   // the sheet, while the year grows on the slice.)
   const going = inward && inward.ring < tree.rings.length ? inward : null;
   const dry = going ? 1 - smooth((t - going.at) / 2.6) : 1;
+  // (And as it dries it draws in onto the year it made, never left standing apart from it.)
+  const into = going ? smooth((t - going.at) / 1.1) : 0, edge = going ? barkOf(going.ring) : null;
   const pts = trail.map((q) => {
-    const [x, y] = at(v, q.a, q.r);
+    const [x, y] = at(v, q.a, edge ? q.r + (edge(q.a) - q.r) * into : q.r);
     return { x, y, life: Math.exp(-(t - q.t) / 3.5) * dry, q, nx: 0, ny: 0, hw: 0 };
   });
   const lap = (i: number) => Math.abs(trail[i].a - trail[i - 1].a) > 0.5;
@@ -1511,7 +1513,9 @@ function barkCss(v: View): number {
   if (!PRINT || !tree.rings.length) return 0;
   const R = (v.s * warpR(v.warp, meanR(tree.rings.length - 1))) / px;
   const [lo, k, hi] = SPEC[kind].barkCss;
-  return Math.max(lo, Math.min(hi, k * R));
+  // (A young tree's bark is thin, whatever its kind: it thickens over its first months.)
+  const young = 0.3 + 0.7 * smooth(tree.rings.length / 60);
+  return Math.max(lo, Math.min(hi, k * R)) * young;
 }
 
 function drawPrint(v: View): void {
@@ -1592,7 +1596,7 @@ function drawPrint(v: View): void {
       // (Pine's latewood is a crisp band of about a third; birch marks its year with only a thin line.)
       const w = wPx(i);
       const share = !ring && !conifer ? Math.min(0.5, Math.max(0.1, 1.5 / Math.max(1, w)))
-        : conifer ? Math.min(kind === 'redwood' ? 0.4 : 0.6, Math.max(kind === 'redwood' ? 0.18 : 0.3, 0.9 / Math.max(1, w) + (kind === 'redwood' ? 0.15 : 0.3)))
+        : conifer ? Math.min(kind === 'redwood' ? 0.35 : 0.5, Math.max(kind === 'redwood' ? 0.1 : 0.16, 0.9 / Math.max(1, w) + (kind === 'redwood' ? 0.08 : 0.14)))
         : Math.min(0.75, Math.max(0.45, 1.1 / Math.max(1, w) + 0.45));
       const bandIn = (a: number) => outer(a) - share * (outer(a) - inner(a));
       const tone = (1 - 0.16 * smooth((i - (n - 9)) / 8) * smooth((n - 12) / 8)) * sp.tone, fine = w < 6, mr = meanR(i);
@@ -1620,6 +1624,17 @@ function drawPrint(v: View): void {
         // (The ink a little starved now and then.)
         g.fillStyle = ink((0.8 + 0.2 * h1(seed * 0.37)) * tone); g.fill();
       };
+      // (A conifer's latewood comes on gradually through its year, as the cells thicken: a soft tone
+      // before the dark band, which the press breaks to a grain.)
+      if (conifer && w > 6 * px) {
+        const soft = (k2: number) => (a: number) => outer(a) - Math.min(0.9, share * k2) * (outer(a) - inner(a));
+        for (const [k2, al] of [[2.8, 0.3], [1.8, 0.5]] as [number, number][]) {
+          g.beginPath();
+          for (let q = 0; q <= K; q++) { const a = (q / K) * TAU, [x, y] = pt(a, bandIn(a)); if (q) g.lineTo(x, y); else g.moveTo(x, y); }
+          for (let q = K; q >= 0; q--) { const a = (q / K) * TAU, [x, y] = pt(a, soft(k2)(a)); g.lineTo(x, y); }
+          g.closePath(); g.fillStyle = ink(al * tone); g.fill();
+        }
+      }
       if (live.length < 2) brick(0, TAU, i * 101);
       else for (let j = 0; j < live.length; j++) {
         // (A ray wavers a little from ring to ring, as the grain does.)
@@ -2244,7 +2259,8 @@ function renderGrove(c: CanvasRenderingContext2D, cam: Cam): void {
   drawHill(c, W, H, px, height, w.seed);
   for (const t of [...groveLayout(cam).trees].sort((p, q) => p.y - q.y)) {
     if (t.x < -t.r * 2 || t.x > W + t.r * 2 || t.y < -t.r * 2 || t.y > H + t.r * 2) continue;
-    if (t.n < 30) { drawSeedling(c, t.x, t.y, Math.max(3 * px, t.r * 0.8), px); continue; }
+    // (A tree of a day or more is a crown, however small; only a seed just planted is a seedling.)
+    if (t.n < 1) { drawSeedling(c, t.x, t.y, Math.min(6 * px, Math.max(3 * px, t.r * 0.8)), px); continue; }
     drawCrown(c, t.x, t.y, t.r, t.sp, t.k, px);
     // (Coloured over the ink, by hand: today's still wet.)
     washCrown(c, t.x, t.y, t.r, t.sp, t.k, px, season, t.i < 0);
@@ -2298,12 +2314,12 @@ function drawFar(v: View): void {
   // Its own crown, drawn afresh at its size (sharp, however close), coming in round the slice.
   const own = smooth(far / 0.22) * (1 - rest), fx = X, fy = Y;
   if (own > 0.01) {
-    if (f.n >= 30) {
+    if (f.n >= 1) {
       drawCrown(g, fx, fy, fr * k, f.sp, f.k, px * Math.min(k, 2.2), own);
       // (The colour comes with the years: only as the view rises off the day.)
       const tint = smooth((far - 0.55) / 0.35);
       if (tint > 0.01) { g.save(); g.globalAlpha = tint * own; { const r0 = Math.min(fr * k, 0.5 * W), u0 = px * Math.min(k, 2.2) * (r0 / (fr * k)); washCrown(g, fx, fy, r0, f.sp, f.k, u0, seasonNow(), f.i < 0, (fr * k) / r0); } g.restore(); }
-    } else drawSeedling(g, fx, fy, Math.max(4 * px, fr * 0.8) * k, px, own);
+    } else drawSeedling(g, fx, fy, Math.min(8 * px, Math.max(4 * px, fr * 0.8) * k), px, own);
   }
   // The slice, settling to the cut face at its heart, and gone as the crown closes over.
   const fade = 1 - smooth((far - 0.35) / 0.25);
