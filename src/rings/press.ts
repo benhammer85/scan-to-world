@@ -699,7 +699,7 @@ function navAway(away: boolean): void {
 /** The fingers down (device px), a pinch in progress, and the touch that might be a tap. */
 const fingers = new Map<number, { x: number; y: number }>();
 let pinch: { d: number; mx: number; my: number } | null = null, pinched = false;
-let tapStart = { x: 0, y: 0, at: 0 }, lastTap = 0;
+let tapStart = { x: 0, y: 0, at: 0 }, lastTap = 0, lastFingerAt = 0;
 const spread = () => { const [a, b] = [...fingers.values()]; return { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 }; };
 
 /** Whether this touch came down on the slice (a tap there reads its day). */
@@ -707,6 +707,7 @@ let inside = false;
 canvas.addEventListener('pointerdown', (e) => {
   // (The opening, touched: let go of at once.)
   if (intro) { if (!intro.skip) intro.skip = clock(); return; }
+  lastFingerAt = clock();
   canvas.setPointerCapture(e.pointerId);
   if (fingers.size === 0) inside = false;
   fingers.set(e.pointerId, { x: e.clientX * px, y: e.clientY * px });
@@ -752,6 +753,7 @@ canvas.addEventListener('pointerdown', (e) => {
   }
 });
 canvas.addEventListener('pointermove', (e) => {
+  lastFingerAt = clock();
   const f = fingers.get(e.pointerId);
   if (f) {
     const x = e.clientX * px, y = e.clientY * px, dx = x - f.x, dy = y - f.y;
@@ -1367,7 +1369,7 @@ function hear(): void {
       // (The print as it was, kept, for the year to grow out from.)
       const was = printCaches.drawing;
       delete printCaches.drawing;
-      growing = was && was.key.startsWith(`${tree.rings.length - 1}|`) ? { ring: tree.rings.length - 1, at: clock(), was } : null;
+      growing = was && !closer() && was.key.startsWith(`${tree.rings.length - 1}|`) ? { ring: tree.rings.length - 1, at: clock(), was } : null;
     }
     makeRoom();
   }
@@ -2110,7 +2112,8 @@ function printFor(v: View, moving: boolean, slot = 'drawing', drift = false): { 
   // size, a few times a second, so it's never a blown-up bitmap.)
   // (And drifting slowly to make room, pressed again each second or so, so it's never soft, then sharp.)
   const off = same ? Math.abs(Math.log(v.s / pc.v.s)) + Math.hypot(v.cx - pc.v.cx, v.cy - pc.v.cy) / W : 0;
-  const far = same && ((moving && off > Math.log(1.25) && clock() - pc.at > 0.2) || (drift && !moving && off > 0.004 && clock() - pc.at > 0.8) || (!moving && !exact && !covers(pc, v) && clock() - pc.at > 0.25));
+  const still = fingers.size === 0 && !lookBack;
+  const far = same && ((still && !exact && !covers(pc, v)) || (moving && off > Math.log(1.25) && clock() - pc.at > 0.2) || (drift && !moving && off > 0.004 && clock() - pc.at > 0.8) || (!moving && !exact && !covers(pc, v) && clock() - pc.at > 0.25));
   if (!same || (!moving && !drift && !exact) || far) {
     const c = pc?.c.width === W && pc.c.height === H ? pc.c : document.createElement('canvas');
     c.width = W; c.height = H;
@@ -2548,59 +2551,92 @@ function demoGrove(count = 5): KeptTree[] {
  * `?intro` to see it there.)
  */
 const INTRO = GROWN && !CHILD && (params.has('intro') || (!navigator.webdriver && !matchMedia('(prefers-reduced-motion: reduce)').matches));
-const INTRO_GROW = 2.6, INTRO_HOLD = 0.35, INTRO_FADE = 0.8;
-let intro: { at: number; c: HTMLCanvasElement; rings: Float32Array[]; drawn: number; done: number; skip: number } | null = null;
+const INTRO_GROW = 2.6, INTRO_HOLD = 0.4, INTRO_FADE = 0.8;
+/**
+ * The tree pressed whole, once, before it's shown (heavy ink, as the slices print: each year's latewood a
+ * solid band at its outer edge, rough-edged; then the press, the ink broken along the grain and by the
+ * paper's tooth, starved here and there); then shown ring by ring out from the heart.
+ */
+let intro: { at: number; c: HTMLCanvasElement; rings: Float32Array[]; skip: number } | null = null;
 function startIntro(): void {
   if (!INTRO) return;
-  const c = document.createElement('canvas'); c.width = W; c.height = H;
-  const cx = W / 2, cy = Math.round(H * 0.47), far = Math.hypot(Math.max(cx, W - cx), Math.max(cy, H - cy)) * 1.04, N = 180;
+  // (Pressed at half the screen's pixels, so it's quick on a phone: the ink is heavy enough not to mind.)
+  const S = 0.5, cw = Math.ceil(W * S), ch = Math.ceil(H * S);
+  const c = document.createElement('canvas'); c.width = cw; c.height = ch;
+  const cx = W / 2, cy = Math.round(H * 0.47), far = Math.hypot(Math.max(cx, W - cx), Math.max(cy, H - cy)) * 1.04, N = 240;
   const rings: Float32Array[] = [], seed = Math.random() * 1000;
-  let prev = new Float32Array(N + 1).fill(2 * px), anomaly = new Float32Array(N + 1);
-  for (let i = 0; prev.reduce((m, r) => Math.min(m, r), Infinity) < far && i < 400; i++) {
-    // (Its width: a good year or a lean one, the young years wide; its shape: the last ring's, with a little
-    // of its own, low and slow round it.)
-    const year = (0.55 + 0.9 * h1(seed + i * 1.37) ** 1.5) * (1 + 2.2 * Math.exp(-i / 6)) * (far / 80);
+  let prev = new Float32Array(N + 1).fill(3 * px);
+  const anomaly = new Float32Array(N + 1);
+  rings.push(prev);
+  for (let i = 0; prev.reduce((m, r) => Math.min(m, r), Infinity) < far && i < 200; i++) {
+    // (Its width: a good year or a lean one, the young years wide; its shape: the last ring's, with a
+    // little of its own.)
+    const year = (0.55 + 0.9 * h1(seed + i * 1.37) ** 1.5) * (1 + 1.6 * Math.exp(-i / 5)) * (far / 34);
     const ph1 = h1(seed + i * 2.1) * TAU, ph2 = h1(seed + i * 3.3) * TAU, ring = new Float32Array(N + 1);
     for (let j = 0; j <= N; j++) {
       const a = (j / N) * TAU;
-      anomaly[j] = 0.88 * anomaly[j] + 0.12 * (0.5 * Math.sin(2 * a + ph1) + 0.3 * Math.sin(3 * a + ph2) + 0.4 * (vnoise(Math.cos(a) * 1.6 + seed + i * 0.21, Math.sin(a) * 1.6 + i * 0.13) - 0.5) * 2);
-      ring[j] = prev[j] + year * Math.max(0.25, 1 + 0.55 * anomaly[j]);
+      anomaly[j] = 0.86 * anomaly[j] + 0.14 * (0.5 * Math.sin(2 * a + ph1) + 0.3 * Math.sin(3 * a + ph2) + 0.4 * (vnoise(Math.cos(a) * 1.6 + seed + i * 0.21, Math.sin(a) * 1.6 + i * 0.13) - 0.5) * 2);
+      ring[j] = prev[j] + year * Math.max(0.3, 1 + 0.5 * anomaly[j]);
     }
     rings.push(ring); prev = ring;
   }
   const g2 = c.getContext('2d')!;
-  g2.drawImage(groundOf(), 0, 0);
-  g2.fillStyle = ink(0.9); g2.beginPath(); g2.arc(cx, cy, 2.2 * px, 0, TAU); g2.fill();
-  intro = { at: clock(), c, rings, drawn: 0, done: 0, skip: 0 };
+  g2.setTransform(S, 0, 0, S, 0, 0);
+  // The bands: each year's latewood, a share of its width at its outer edge, the edge rough.
+  g2.fillStyle = 'rgb(36,28,23)';
+  for (let i = 1; i < rings.length; i++) {
+    const o = rings[i], inn = rings[i - 1], share = 0.22 + 0.4 * h1(seed + i * 7.7) ** 1.3;
+    g2.beginPath();
+    for (let j = 0; j <= N; j++) { const a = (j / N) * TAU, r = o[j] + (h1(i * 13 + j * 3.1) - 0.5) * 1.2 * px; const x = cx + r * Math.cos(a), y = cy - r * Math.sin(a); if (j) g2.lineTo(x, y); else g2.moveTo(x, y); }
+    for (let j = N; j >= 0; j--) { const a = (j / N) * TAU, r = o[j] - share * (o[j] - inn[j]) + (h1(i * 17 + j * 5.3) - 0.5) * 1.6 * px; g2.lineTo(cx + r * Math.cos(a), cy - r * Math.sin(a)); }
+    g2.closePath(); g2.fill();
+  }
+  g2.beginPath(); g2.arc(cx, cy, 3 * px, 0, TAU); g2.fill();
+  // The press: the ink along the grain (streaks round the rings), the paper's tooth, starved patches.
+  // (In the half-size picture's own pixels: its centre, and a CSS px, halved.)
+  const img = g2.getImageData(0, 0, cw, ch), d = img.data, sea = wood.sea, P = [244, 239, 228];
+  const pxS = px * S, cyS = cy * S, cxS = cx * S;
+  {
+  for (let y = 0; y < ch; y++) {
+    const dy = y - cyS;
+    for (let x = 0; x < cw; x++) {
+      const k = (y * cw + x) * 4, inked = d[k + 3] > 0;
+      const dx = x - cxS, r = Math.sqrt(dx * dx + dy * dy), th = Math.atan2(dy, dx);
+      let ink = 0;
+      if (inked) {
+        const grain = 0.6 * vnoise(r / (0.9 * pxS), th * r / (14 * pxS)) + 0.4 * vnoise(r / (2.4 * pxS) + 31, th * r / (40 * pxS) + 7);
+        ink = 1.05 - 0.6 * Math.max(0, (grain - 0.62) / 0.3);
+        const starve = vnoise(x / (60 * pxS) + seed, y / (60 * pxS));
+        if (starve > 0.72) ink *= 1 - 0.7 * Math.min(1, (starve - 0.72) / 0.12) * (h1(x * 0.618 + y * 1.37) < 0.6 ? 1 : 0.3);
+        if (sea) ink *= 0.75 + 0.35 * sample(sea, (x / pxS) * 0.9 + seed, (y / pxS) * 0.9);
+      } else if (h1(x * 1.13 + y * 0.71 + seed) > 0.9993) ink = 0.7;   // (a speck of ink on the paper)
+      ink = Math.max(0, Math.min(1, ink)) ** 0.9;
+      const tooth = h1(x * 0.618 + y * 1.37) < 0.06 * ink ? 0.5 : 1;
+      for (let q = 0; q < 3; q++) d[k + q] = Math.round(P[q] + ([36, 28, 23][q] - P[q]) * ink * tooth);
+      d[k + 3] = 255;
+    }
+  } }
+  g2.putImageData(img, 0, 0);
   words.style.visibility = 'hidden';
+  intro = { at: clock(), c, rings, skip: 0 };
 }
 function drawIntro(t: number): void {
   if (!intro) return;
   const it = intro, n = it.rings.length, e = (t - it.at) / INTRO_GROW;
-  // (Quickly at first, the last few slower, as the sheet fills: eased out.)
-  const want = Math.min(n, Math.floor(n * (1 - (1 - Math.min(1, e)) ** 2.2)));
-  if (want > it.drawn) {
-    const g2 = it.c.getContext('2d')!, cx = W / 2, cy = Math.round(H * 0.47), N = it.rings[0].length - 1;
-    g2.lineJoin = 'round';
-    for (let i = it.drawn; i < want; i++) {
-      // (Pressed, not plotted: each ring's line swelling and thinning along it with the press, now and
-      // then starved to nothing; a year's latewood a heavier band.)
-      const ring = it.rings[i], late = h1(i * 5.1) < 0.22, base = (late ? 2.4 : 0.8 + 0.6 * h1(i * 3.7)) * px;
-      g2.strokeStyle = ink(late ? 0.88 : 0.78); g2.lineCap = 'round';
-      const pt = (j: number): [number, number] => { const a = (j / N) * TAU, r = ring[j] + (h1(i * 31 + j * 7.3) - 0.5) * 0.6 * px; return [cx + r * Math.cos(a), cy - r * Math.sin(a)]; };
-      for (let j = 0; j < N; j++) {
-        const a = (j / N) * TAU, press = vnoise(Math.cos(a) * 3 + i * 0.7, Math.sin(a) * 3 + i * 0.31);
-        if (!late && press < 0.18) continue;
-        g2.lineWidth = base * (0.45 + 1.1 * press);
-        g2.beginPath(); g2.moveTo(...pt(j)); g2.lineTo(...pt(j + 1)); g2.stroke();
-      }
-    }
-    it.drawn = want;
-  }
+  // (Quickly at first, the last few slower as the sheet fills: eased out. Shown out to the ring reached,
+  // and a little of the next coming.)
+  const reach = (n - 1) * (1 - (1 - Math.min(1, e)) ** 2.2), i = Math.floor(reach), f = reach - i;
   const end = it.skip || it.at + INTRO_GROW + INTRO_HOLD, fade = it.skip ? 0.35 : INTRO_FADE;
   const al = 1 - smooth((t - end) / fade);
   if (al <= 0) { intro = null; openedAt = clock(); idleSince = openedAt + OPEN; words.style.visibility = ''; return; }
-  g.save(); g.globalAlpha = al; g.drawImage(it.c, 0, 0); g.restore();
+  const cx = W / 2, cy = Math.round(H * 0.47), a0 = it.rings[Math.min(n - 1, i)], a1 = it.rings[Math.min(n - 1, i + 1)], N = a0.length - 1;
+  g.save(); g.globalAlpha = al;
+  g.drawImage(groundOf(), 0, 0);
+  g.beginPath();
+  for (let j = 0; j <= N; j++) { const a = (j / N) * TAU, r = a0[j] + (a1[j] - a0[j]) * f; const x = cx + r * Math.cos(a), y = cy - r * Math.sin(a); if (j) g.lineTo(x, y); else g.moveTo(x, y); }
+  g.closePath(); g.clip();
+  g.drawImage(it.c, 0, 0, W, H);
+  g.restore();
 }
 
 /** When the page opened: the slice paints itself in from the heart. */
@@ -2635,7 +2671,9 @@ function frame(): void {
   const restWanted = PRINT && !busy && t - idleSince > 1.4 && !!v.warp && v.warp.beta > 0;
   relax = restWanted ? Math.min(1, relax + dt / 0.9) : Math.max(0, relax - dt / 0.22);
   const moving = (!!ease && !GROWN) || !!lookBack || fingers.size >= 2, drift = !!ease && GROWN;
-  if (PRINT && growing && (growing.ring !== tree.rings.length - 1 || t - growing.at > SEASON)) growing = null;
+  if (PRINT && growing && (growing.ring !== tree.rings.length - 1 || t - growing.at > SEASON || closer())) growing = null;
+  // (A finger the phone never said was lifted (a pinch's, now and then): let go after a still second and a half.)
+  if (fingers.size && t - lastFingerAt > 1.5 && painter === null) { fingers.clear(); pinch = null; }
   breathe(t, dt);
   if (PRINT && growing) drawGrowing(v, t, moving, drift);
   else if (PRINT) {
