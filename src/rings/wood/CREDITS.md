@@ -61,7 +61,7 @@ Public domain.
 | `pine.png` | *Pinus resinosa*, seed and wing | the same |
 | `redwood.png` | *Sequoia sempervirens*, cone | the same |
 | `bristlecone.png` | *Pinus aristata*, cone (its top traced free of the needles over it) | the same |
-| `olive.png` | *Olea europaea*, fruit cut to show the stone | Le Maout & Decaisne, *A General System of Botany* (1873), p. 546 |
+| `olive.png` | *Olea europaea*, the fruit on its stalk (fig. f) | Duhamel du Monceau, *Traité des arbres et arbustes*, vol. 2 (1755), the Olea headpiece, p. 57 (BIU Santé scan, Internet Archive) |
 
 (Sargent's volumes are the Missouri Botanical Garden's scans on the Internet Archive.)
 
