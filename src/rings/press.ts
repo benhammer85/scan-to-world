@@ -1814,14 +1814,16 @@ function printYears(v: View, oak: Years): void {
   }
   // (Years too fine to print apart, a day's ring at the grown tree's scale: the wood, so many years to a
   // pixel, would print solid; so it prints at about half its tone, and as many of its years as the screen
-  // can part (one every 2.4 px or so) print as a line at their edge, as the drawn woods' fine years do.)
+  // can part (one every 3 to 5 px, never evenly) print as a line at their edge, as the drawn woods' fine years do.)
   const thin = new Float32Array(n), edge = new Uint8Array(n);
   if (!spans) {
     let lastR = scr(meanR(-1));
     for (let i = 0; i < n; i++) {
       thin[i] = 1 - smooth((widthAt(i) - 1.2 * px) / (3 * px));
       const R = scr(meanR(i));
-      if (thin[i] > 0 && R - lastR >= 2.4 * px) { edge[i] = 1; lastR = R; }
+      // (Never a regular comb of lines, which would beat against the screen's pixels in waves: as far apart
+      // as a hand would rule them, each its own distance.)
+      if (thin[i] > 0 && R - lastR >= (3.2 + 1.4 * h1(i * 1.37 + 0.5)) * px) { edge[i] = 1; lastR = R; }
     }
   }
   // (The sapwood, paler, fading into the heartwood over some eight years: a year added shifts it by a hair.)
@@ -1871,7 +1873,15 @@ function printYears(v: View, oak: Years): void {
       let ink = sample(L, (((a / TAU) * reps[i] * W0 + off[i] + wob * reps[i] * 0.15 + day * 37.3) * L.w) / W0, yy * rows + inDay * rows, yy * rows, rows) * tone(i);
       if (!heart && thin[i] > 0) {
         ink *= 1 - 0.45 * thin[i];
-        if (edge[i] && rout - r < 1.1 * px) ink = Math.max(ink, 0.85 * thin[i]);
+        // (Its line on the year's edge, drawn smooth across the pixels, a little heavier or lighter
+        // than the next, and its weight wandering with the press.)
+        const lineAt = (j: number, dist: number) => {
+          if (j < 0 || !edge[j]) return 0;
+          const half = (0.35 + 0.3 * h1(j * 3.7 + 1.1)) * px;
+          return Math.max(0, Math.min(1, (half + 0.5 * px - dist) / px)) * thin[j];
+        };
+        const cov = Math.max(lineAt(i, rout - r), lineAt(i - 1, r - rin)) * (0.75 + 0.35 * vnoise(dx * 0.11 + i, dy * 0.11));
+        if (cov > 0) ink = Math.max(ink, 0.85 * cov);
       }
       if (sp) {
         // (Where in their year: lighter after the birthday, darker and denser toward the next; strongly in
