@@ -240,7 +240,6 @@ let kind: Kind = asKind(params.get('tree')) ?? 'oak';
 let tree = new TreeSim(Number(params.get('seed')) || 1 + Math.floor(Math.random() * 1e6), DAILY);
 /** The day each ring was drawn (local, as 2026-10-11). */
 let days: string[] = [];
-const daysDrawn = () => new Set(days).size;
 
 const paper = new Paper(512);
 // (The season's colour stays, half settled into the wood: green and gold to rust and violet, in oak.)
@@ -339,7 +338,7 @@ function kept(): KeptTree {
  * drawing back stops it where it is.
  */
 let ease: { from: number; at: number } | null = null;
-const EASE = 3, EASE_GROWN = 90;
+const EASE = 3, EASE_GROWN = 3.5;
 /** Where the seed was planted (shares of the sheet), if it has been (the practice, printed). */
 let seedAt: [number, number] | null = null;
 /** The fisheye for the tree now (none where the tree grows true to scale). */
@@ -363,9 +362,10 @@ function baseNow(t = clock()): View {
   if (!view && GROWN) {
     // The bark and the year to come always the same size, in the middle of the sheet, a little high: the
     // day's loop the same size round it every day, and the year it makes growing out to the same place.
-    // (A seedling's years are wide beside it, so in its first days the seed sits small in the middle,
-    // coming out to meet the loop as the tree grows.)
-    const s = (BARK * roomNow()) / (barkMax() + tree.wRef);
+    // (From the first ring on, the bark exactly that size, every day, so the loop is drawn in the same
+    // place every day; the years before tighten in toward the heart. Before it, the seed in the middle,
+    // the first loop drawn the same distance out.)
+    const s = (BARK * roomNow()) / (tree.rings.length ? barkMax() : barkMax() + tree.wRef);
     view = { cx: W / 2, cy: Math.round(H * 0.47), s, turn: 0, px, warp: undefined };
     ease = null;
   }
@@ -416,6 +416,7 @@ function zoomAbout(x: number, y: number, f: number): void {
   if (far >= 1 && !farTo && (f > 1 || groveCam)) { zoomGrove(x, y, f); return; }
   if (canPull() && (far > 0 || (!closer() && f < 1))) {
     farTo = null; farPull = Math.max(0, Math.min(1, farPull - Math.log(f) / 1.4)); far = farPull;
+    if (far >= 1) tellGrove();
     return;
   }
   const v = viewNow(), k = Math.max(1, Math.min(closest(), look.k * f)), g2 = k / look.k, b = baseNow();
@@ -706,7 +707,7 @@ canvas.addEventListener('pointerdown', (e) => {
   // on a bare sheet, a tap plants the seed: see the tap, below.)
   if (tree.rings.length && brushAt(tree, viewNow(), 0, e.clientX * px, e.clientY * px).u < 0) inside = true;
   if (CHILD) hideNote();
-  if (closer() || far > 0 || visit || run.over || (GROWN && !seedAt) || (CHILD && (!child || looking !== 'year'))) return;
+  if ((closer() && inside) || far > 0 || visit || run.over || (GROWN && !seedAt) || (CHILD && (!child || looking !== 'year'))) return;
   words.classList.remove('shown');
   const x = e.clientX * px, y = e.clientY * px;
   holdView();
@@ -2160,7 +2161,7 @@ function drawEdition(v: View, t: number, dt: number): void {
 /** What the edition says, left and middle (the right is the tree's name, or the child's). */
 let printing = false;
 function editionWords(date: string): [string, string] {
-  if (!CHILD || !child) return [String(daysDrawn()), date];
+  if (!CHILD || !child) return [String(tree.rings.length), date];
   const fmt = (d: Date) => d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }), b = dayDate(child.birth);
   if (looking === 'life') return [ageWords(dayOf()), `born ${fmt(b)}`];
   const age = typeof looking === 'number' ? years[looking].age : age0;
@@ -2174,6 +2175,7 @@ let editionY = -1e9, stampAt: [number, number] = [-1e9, -1e9], onStamp = false;
 /** Asked plainly, once confirmed: the tree is let go, and the sheet is bare again for a new seed. */
 function plantAgain(): void {
   if (painter !== null) { tree.cancel(); trail = []; painter = null; }
+  if (visit) unvisit();
   fingers.clear();
   const n = tree.rings.length;
   if (!window.confirm(n ? 'Plant a new tree? This one will stand in your grove.' : 'Plant a new tree?')) return;
@@ -2209,7 +2211,7 @@ interface Cam { S: number; X0: number; Y0: number }
 let groveCam: Cam | null = null;
 const GROVE_CLOSEST = 8;
 /** The land, every tree on it (world units), and the view of the whole of it, kept until a tree changes. */
-let worldKey = '', world: { hills: Hill[]; seed: number; trees: Omit<Stand, 'x' | 'y' | 'r'>[]; whole: Cam; box: [number, number, number, number] } | null = null;
+let worldKey = '', world: { hills: Hill[]; seed: number; trees: Omit<Stand, 'x' | 'y' | 'r'>[]; next: { wx: number; wy: number }; whole: Cam; box: [number, number, number, number] } | null = null;
 function worldOf() {
   const mine = visit ? visit.stash : { tree, days, kind };
   const all = [
@@ -2220,12 +2222,14 @@ function worldOf() {
   if (world && worldKey === key) return world;
   const L = land(all.length, seed);
   const trees = all.map((a, j) => ({ ...a, wx: L.places[j].x, wy: L.places[j].y, wr: 1.4 * L.places[j].scale * crownSize(a.sp, a.n) }));
+  // (And where the next will stand, when it's planted.)
+  const nx = land(all.length + 1, seed).places[all.length], next = { wx: nx.x, wy: nx.y };
   // (The whole of it in view, the trees and a little ground round them; never so close a crown fills the sheet.)
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-  for (const t of trees) { x0 = Math.min(x0, t.wx - 1.6); x1 = Math.max(x1, t.wx + 1.6); y0 = Math.min(y0, t.wy - 1.6); y1 = Math.max(y1, t.wy + 1.6); }
+  for (const t of [...trees, { ...next, wr: 0 }]) { x0 = Math.min(x0, t.wx - 1.6); x1 = Math.max(x1, t.wx + 1.6); y0 = Math.min(y0, t.wy - 1.6); y1 = Math.max(y1, t.wy + 1.6); }
   const S = Math.min((W * 0.86) / (x1 - x0), (H * 0.5) / (y1 - y0), W * 0.12);
   const whole = { S, X0: W / 2 - ((x0 + x1) / 2) * S, Y0: H * 0.46 - ((y0 + y1) / 2) * S };
-  worldKey = key; world = { hills: L.hills, seed, trees, whole, box: [x0, y0, x1, y1] };
+  worldKey = key; world = { hills: L.hills, seed, trees, next, whole, box: [x0, y0, x1, y1] };
   return world;
 }
 const camNow = (): Cam => groveCam ?? worldOf().whole;
@@ -2250,6 +2254,15 @@ function panGrove(dx: number, dy: number): void {
   groveMoved = clock();
 }
 let groveMoved = 0;
+/** Said once, the first time in the grove: how a new tree is begun. */
+let groveTold = false;
+try { groveTold = !!localStorage.getItem('annulus.grove1'); } catch { /* not known */ }
+function tellGrove(): void {
+  if (groveTold) return;
+  groveTold = true;
+  try { localStorage.setItem('annulus.grove1', '1'); } catch { /* said again next time, then */ }
+  say('Touch the empty circle to plant a new tree.', 6);
+}
 /** The land and its trees, drawn for a view: inked and coloured (slow: drawn when the view is still). */
 function renderGrove(c: CanvasRenderingContext2D, cam: Cam): void {
   const w = worldOf(), season = seasonNow();
@@ -2257,6 +2270,12 @@ function renderGrove(c: CanvasRenderingContext2D, cam: Cam): void {
   const height = (x: number, y: number) => heightAt((x - cam.X0) / cam.S, (y - cam.Y0) / cam.S, w.hills, w.seed);
   washHill(c, W, H, px, height, w.seed, season, cam.S);
   drawHill(c, W, H, px, height, w.seed);
+  // The ground for the next tree: a faint pencil ring, to be touched when one is wanted.
+  {
+    const x = cam.X0 + w.next.wx * cam.S, y = cam.Y0 + w.next.wy * cam.S, r = Math.max(7 * px, 0.45 * cam.S);
+    c.save(); c.strokeStyle = 'rgba(92,88,84,0.5)'; c.lineWidth = 0.8 * px; c.setLineDash([2.5 * px, 2.5 * px]);
+    c.beginPath(); c.arc(x, y, r, 0, TAU); c.stroke(); c.restore();
+  }
   for (const t of [...groveLayout(cam).trees].sort((p, q) => p.y - q.y)) {
     if (t.x < -t.r * 2 || t.x > W + t.r * 2 || t.y < -t.r * 2 || t.y > H + t.r * 2) continue;
     // (A tree of a day or more is a crown, however small; only a seed just planted is a seedling.)
@@ -2333,7 +2352,9 @@ function drawFar(v: View): void {
 }
 /** Touched in the grove: an older tree opens to its slice; today's comes home. */
 function tapGrove(x: number, y: number): void {
-  const L = groveLayout();
+  const L = groveLayout(), w = worldOf();
+  // (The next tree's ground: a new tree, if they say so.)
+  if (!visit && Math.hypot(x - (L.cam.X0 + w.next.wx * L.cam.S), y - (L.cam.Y0 + w.next.wy * L.cam.S)) < Math.max(22 * px, 0.6 * L.cam.S)) { plantAgain(); return; }
   let hit: Stand | null = null, best = Infinity;
   for (const t of L.trees) { const d = Math.hypot(x - t.x, y - t.y) / Math.max(t.r * 1.15, 20 * px); if (d < 1 && d < best) { best = d; hit = t; } }
   if (!hit) return;
@@ -2388,7 +2409,7 @@ function frame(): void {
   if (farTo) {
     const p = smooth((t - farTo.at) / 1.1);
     far = farTo.from + (farTo.to - farTo.from) * p; farPull = far;
-    if (p >= 1) { const to = farTo.to; farTo = null; if (to === 1 && visit) unvisit(); }
+    if (p >= 1) { const to = farTo.to; farTo = null; if (to === 1 && visit) unvisit(); if (to === 1) tellGrove(); }
   }
   const v = viewNow(t);
   // The ring just closed blooms, then is done (and on the iPhone app, a faint touch as it settles).
@@ -2486,7 +2507,7 @@ void (async () => {
   else if (GROWN && !tree.rings.length) say(seedAt ? 'Draw a loop around the seed. One ring a day.' : 'Choose a seed.', 1e5);
   // (Words only where they're needed: before the first ring. After that, the tree says it.)
   else if (!tree.rings.length) say('Draw a circle around this one. One ring a day.', 8);
-  Object.assign(window, { press: { get tree() { return tree; }, get phase() { return settle.ring >= 0 ? 'settling' : 'trace'; }, get easing() { return !!ease; }, get view() { return viewNow(); }, get days() { return days; }, get run() { return run; }, get kind() { return kind; }, get far() { return far; }, get visiting() { return visit?.i ?? null; }, grove: () => groveLayout().trees.map((t) => ({ sp: t.sp, n: t.n, i: t.i, x: t.x / px, y: t.y / px, r: t.r / px })), get editionY() { return editionY; }, get stampAt() { return stampAt; }, target: (a: number) => target.r(a), look: (to: 'year' | 'life' | number) => lookAt(to), print: async () => (await yearPrint()).toDataURL('image/png'), words: async () => (await yearWords()).toDataURL('image/png'), block: async () => (await yearBlock()).toDataURL('image/png') } });
+  Object.assign(window, { press: { get tree() { return tree; }, get phase() { return settle.ring >= 0 ? 'settling' : 'trace'; }, get easing() { return !!ease; }, get view() { return viewNow(); }, get days() { return days; }, get run() { return run; }, get kind() { return kind; }, get far() { return far; }, get visiting() { return visit?.i ?? null; }, groveNext: () => { const c = camNow(), w = worldOf(); return { x: (c.X0 + w.next.wx * c.S) / px, y: (c.Y0 + w.next.wy * c.S) / px }; }, grove: () => groveLayout().trees.map((t) => ({ sp: t.sp, n: t.n, i: t.i, x: t.x / px, y: t.y / px, r: t.r / px })), get editionY() { return editionY; }, get stampAt() { return stampAt; }, target: (a: number) => target.r(a), look: (to: 'year' | 'life' | number) => lookAt(to), print: async () => (await yearPrint()).toDataURL('image/png'), words: async () => (await yearWords()).toDataURL('image/png'), block: async () => (await yearBlock()).toDataURL('image/png') } });
   // (The real wood: once it's come, the print is pressed again with it.)
   if (PRINT) loadWood(() => { for (const k in printCaches) delete printCaches[k]; });
   requestAnimationFrame(frame);
