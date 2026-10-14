@@ -2088,12 +2088,32 @@ function drawPrintCached(v: View, moving: boolean, slot = 'drawing', alpha = 1, 
     const home = printFor(baseNow(), true, 'home', true), k = (v.s / pc.v.s) * grow;
     const ox = v.cx - pc.v.cx * k, oy = v.cy - pc.v.cy * k;
     if (ox > 0.5 || oy > 0.5 || ox + W * k < W - 0.5 || oy + H * k < H - 0.5) {
-      g.save(); g.beginPath(); g.rect(0, 0, W, H); g.rect(ox + 1, oy + 1, W * k - 2, H * k - 2); g.clip('evenodd');
+      // (The whole slice beneath; the sharper picture over it, faded out softly toward its own edges, so
+      // the two never meet in a line: no square seen in the slice as it's pinched.)
       drawKept(home, v, alpha, grow);
-      g.restore();
+      g.save(); g.globalAlpha = alpha; g.drawImage(feathered(pc.c), ox, oy, W * k, H * k); g.restore();
+      return;
     }
   }
   drawKept(pc, v, alpha, grow);
+}
+/** A kept picture, its edges faded out over some 40 px (made once for each picture pressed). */
+let featherC: HTMLCanvasElement | null = null, featherOf: HTMLCanvasElement | null = null, featherAt = -1;
+function feathered(src: HTMLCanvasElement): HTMLCanvasElement {
+  const at = (Object.values(printCaches).find((p) => p.c === src) as { at: number } | undefined)?.at ?? 0;
+  if (featherC && featherOf === src && featherAt === at) return featherC;
+  featherC ??= document.createElement('canvas');
+  featherC.width = src.width; featherC.height = src.height; featherOf = src; featherAt = at;
+  const c = featherC.getContext('2d')!, w = src.width, h = src.height, f = 40 * px;
+  c.drawImage(src, 0, 0);
+  c.globalCompositeOperation = 'destination-out';
+  const edge = (x0: number, y0: number, x1: number, y1: number, rx: number, ry: number, rw: number, rh: number) => {
+    const gr = c.createLinearGradient(x0, y0, x1, y1); gr.addColorStop(0, 'rgba(0,0,0,1)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+    c.fillStyle = gr; c.fillRect(rx, ry, rw, rh);
+  };
+  edge(0, 0, f, 0, 0, 0, f, h); edge(w, 0, w - f, 0, w - f, 0, f, h); edge(0, 0, 0, f, 0, 0, w, f); edge(0, h, 0, h - f, 0, h - f, w, f);
+  c.globalCompositeOperation = 'source-over';
+  return featherC;
 }
 
 /**
