@@ -305,7 +305,7 @@ async function recall(): Promise<void> {
     if (params.has('demo')) demoChild();
     return;
   }
-  if (params.has('demo')) { demoYear(); return; }
+  if (params.has('demo')) { demoYear(Math.max(1, Number(params.get('demo')) || 365)); return; }
   if (params.has('fresh')) return;
   const k = await recallTree(DIARY), t = k && treeFrom(k, DAILY);
   if (!k || !t) return;
@@ -748,6 +748,7 @@ canvas.addEventListener('pointermove', (e) => {
     }
     if (closer() && painter === null && fingers.size === 1) { look.ox += dx; look.oy += dy; return; }
     if (far >= 1 && painter === null && fingers.size === 1) { panGrove(dx, dy); return; }
+    if (choosing() && painter === null && fingers.size === 1) { choiceTo = null; choiceDx += dx; return; }
   }
   if (e.pointerId !== painter || !strokeView) return;
   const evs = typeof e.getCoalescedEvents === 'function' ? e.getCoalescedEvents() : [];
@@ -777,6 +778,11 @@ canvas.addEventListener('pointermove', (e) => {
 for (const type of ['pointerup', 'pointercancel'] as const) canvas.addEventListener(type, (e) => {
   fingers.delete(e.pointerId);
   if (fingers.size < 2) pinch = null;
+  // (A swipe let go: on to the next, or back.)
+  if (choosing() && fingers.size === 0 && Math.abs(choiceDx) > 2 * px && !choiceTo) {
+    if (Math.abs(choiceDx) > W * 0.12) turnChoice(choiceDx < 0 ? 1 : -1);
+    else choiceTo = { from: choiceDx, to: 0, at: clock() };
+  }
   // (Let go part way back: on to the grove, or home to today.)
   if (fingers.size === 0 && far > 0 && far < 1 && !farTo) settleFar();
   navAway(false);
@@ -808,9 +814,13 @@ for (const type of ['pointerup', 'pointercancel'] as const) canvas.addEventListe
       // changes. The child's tree is an oak.)
       if (!CHILD) {
         const v = viewNow(), x = e.clientX * px, y = e.clientY * px;
-        const near = seedSpots(v).find((q) => Math.hypot(q.x - x, q.y - y) < 46 * px);
-        if (!seedAt && !near) return;
-        if (near && !seedAt) kind = near.sp;
+        // (The slice shown, touched: its seed. A touch either side of it turns to the next.)
+        if (!seedAt) {
+          if (Math.abs(choiceDx) > 2 * px || choiceTo) return;
+          const D = sliceD();
+          if (Math.hypot(x - v.cx, y - v.cy) > D / 2) { if (y > v.cy - D / 2 && y < v.cy + D / 2 + 80 * px) turnChoice(x < v.cx ? -1 : 1); return; }
+          kind = SEEDS[choice]; folding = { sp: kind };
+        }
       }
       plant(W / 2, H * 0.47);
       return;
@@ -833,6 +843,8 @@ canvas.addEventListener('wheel', (e) => {
   clearTimeout(wheelT); wheelT = window.setTimeout(() => { if (far > 0 && far < 1 && fingers.size === 0 && !farTo) settleFar(); }, 220);
 }, { passive: false });
 let wheelT = 0;
+// (On a computer, the arrow keys turn through the woods.)
+window.addEventListener('keydown', (e) => { if (choosing() && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) turnChoice(e.key === 'ArrowLeft' ? -1 : 1); });
 /** When the line was let go to rest (a line left resting a while fades away: no stray marks). */
 let restAt = 0;
 
@@ -1029,19 +1041,75 @@ function drawSeedOf(sp: Kind, x: number, y: number, k = 1, z = 1, standing = fal
 }
 /** The seed, planted: the one chosen, at the heart, settling in as it lands. */
 function drawSeed(v: View, t: number): void {
-  const k = smooth((t - plantedAt) / 0.7);
-  drawSeedOf(kind, v.cx, v.cy, k, 1.4 + 0.3 * (1 - k));
+  // (Chosen from its slice: the slice draws in, ring by ring, back to its heart, and is its seed.)
+  const fold = folding && folding.sp === kind ? smooth((t - plantedAt) / 1.3) : 1, art = sliceArt(kind);
+  if (fold < 1 && art) {
+    const D = sliceD(), h = (D * art.height) / Math.max(art.width, art.height), w = (D * art.width) / Math.max(art.width, art.height);
+    const r = (Math.max(w, h) / 2) * (1 - fold) ** 1.4, sk = 1 - 0.35 * fold;
+    g.save(); g.globalAlpha = 1 - smooth((fold - 0.75) / 0.25);
+    g.beginPath(); g.arc(v.cx, v.cy, Math.max(0.1, r), 0, TAU); g.clip();
+    g.drawImage(art, v.cx - (w * sk) / 2, v.cy - (h * sk) / 2, w * sk, h * sk);
+    g.restore();
+  }
+  const k = smooth((t - plantedAt - (fold < 1 ? 0.9 : 0)) / 0.7);
+  if (k > 0) drawSeedOf(kind, v.cx, v.cy, k, 1.4 + 0.3 * (1 - k));
 }
-/** On a bare sheet, the seeds to choose from, each named beneath in pencil; where each lies. */
+/**
+ * On a bare sheet, the woods to choose from, one at a time: a slice of each, as some two months of a
+ * practice would make it (pressed by the app itself, src/rings/slices/), large, its name beneath in
+ * pencil, a row of dots for where it is among them. A finger swipes from one to the next, as the pages of
+ * a specimen book are turned; touched, it's chosen, and draws in to its seed.
+ */
 const SEEDS: Kind[] = ['oak', 'ash', 'cherry', 'maple', 'birch', 'pine', 'redwood', 'bristlecone', 'olive'];
-const seedSpots = (v: View) => SEEDS.map((sp, i) => ({ sp, x: v.cx + ((i % 3) - 1) * Math.min(110 * px, W * 0.3), y: v.cy + (Math.floor(i / 3) - 1) * Math.min(120 * px, H * 0.17) }));
+const SLICE_ART: Partial<Record<Kind, HTMLImageElement>> = {}, sliceAsked = new Set<Kind>();
+function sliceArt(sp: Kind): HTMLImageElement | undefined {
+  if (!sliceAsked.has(sp)) {
+    sliceAsked.add(sp);
+    const im = new Image(); im.onload = () => { SLICE_ART[sp] = im; };
+    im.src = new URL(`./slices/${sp}.png`, import.meta.url).href;
+  }
+  return SLICE_ART[sp];
+}
+/** The slice shown as large as the tree will be on the sheet. */
+const sliceD = () => 2 * BARK * roomNow() * 1.05;
+let choice = 0, choiceDx = 0, choiceTo: { from: number; to: number; at: number } | null = null, folding: { sp: Kind } | null = null;
+const choosing = () => GROWN && !CHILD && !tree.rings.length && !seedAt;
+/** Turned on by one, either way (wrapping round). */
+function turnChoice(dir: number): void {
+  choice = (choice + dir + SEEDS.length) % SEEDS.length;
+  choiceTo = { from: choiceDx + dir * W, to: 0, at: clock() };
+  choiceDx = choiceTo.from;
+}
 function drawSeedChoice(v: View, t: number): void {
-  const k = smooth((t - openedAt) / 1.2);
-  g.save();
-  for (const { sp, x, y } of seedSpots(v)) {
-    drawSeedOf(sp, x, y + 26 * px, k, 2, true);
-    g.globalAlpha = k * 0.75; g.fillStyle = 'rgba(92,88,84,0.85)'; g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.font = `italic ${14 * px}px Newsreader, "Iowan Old Style", Georgia, serif`; g.fillText(sp, x, y + 40 * px);
+  if (choiceTo) {
+    const p = smooth((t - choiceTo.at) / 0.45);
+    choiceDx = choiceTo.from + (choiceTo.to - choiceTo.from) * p;
+    if (p >= 1) choiceTo = null;
+  }
+  const k = smooth((t - openedAt) / 1.2), D = sliceD();
+  // (This one, and the next coming in from the side it's swiped toward.)
+  for (const off of [-1, 0, 1]) {
+    const x = v.cx + choiceDx + off * W;
+    if (x < -D || x > W + D) continue;
+    const sp = SEEDS[(choice + off + SEEDS.length) % SEEDS.length], art = sliceArt(sp);
+    // (The neighbours of whichever is coming, asked for ahead.)
+    sliceArt(SEEDS[(choice + 2 * off + SEEDS.length * 2) % SEEDS.length]);
+    const al = k * (1 - 0.6 * Math.min(1, Math.abs(x - v.cx) / W));
+    g.save(); g.globalAlpha = al;
+    if (art) {
+      const s2 = D / Math.max(art.width, art.height), w = art.width * s2, h = art.height * s2;
+      g.drawImage(art, x - w / 2, v.cy - h / 2, w, h);
+    } else drawSeedOf(sp, x, v.cy, 1, 2);
+    g.fillStyle = 'rgba(92,88,84,0.85)'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.font = `italic ${16 * px}px Newsreader, "Iowan Old Style", Georgia, serif`; g.fillText(sp, x, v.cy + D / 2 + 34 * px);
+    g.restore();
+  }
+  // Where it is among them: a row of small dots, this one inked.
+  g.save(); g.globalAlpha = k;
+  const y = v.cy + D / 2 + 64 * px, gap = 11 * px;
+  for (let i = 0; i < SEEDS.length; i++) {
+    g.fillStyle = i === choice ? 'rgba(60,52,46,0.8)' : 'rgba(92,88,84,0.28)';
+    g.beginPath(); g.arc(v.cx + (i - (SEEDS.length - 1) / 2) * gap, y, (i === choice ? 2.6 : 2) * px, 0, TAU); g.fill();
   }
   g.restore();
 }
@@ -2513,10 +2581,10 @@ void (async () => {
     } else if (!tree.rings.length && !seedAt) say(`Tap where ${c.name}’s tree should grow.`, 1e5);
     else say(days.includes(today) ? `${c.name}’s day is drawn. Draw another if you like.` : question(), 10);
   }
-  else if (GROWN && !tree.rings.length) say(seedAt ? 'Draw a loop around the seed. One ring a day.' : 'Choose a seed.', 1e5);
+  else if (GROWN && !tree.rings.length) say(seedAt ? 'Draw a loop around the seed. One ring a day.' : 'Swipe through the woods. Touch one to plant it.', 1e5);
   // (Words only where they're needed: before the first ring. After that, the tree says it.)
   else if (!tree.rings.length) say('Draw a circle around this one. One ring a day.', 8);
-  Object.assign(window, { press: { get tree() { return tree; }, get phase() { return settle.ring >= 0 ? 'settling' : 'trace'; }, get easing() { return !!ease; }, get view() { return viewNow(); }, get days() { return days; }, get run() { return run; }, get kind() { return kind; }, get far() { return far; }, get visiting() { return visit?.i ?? null; }, groveNext: () => { const c = camNow(), w = worldOf(); return { x: (c.X0 + w.next.wx * c.S) / px, y: (c.Y0 + w.next.wy * c.S) / px }; }, grove: () => groveLayout().trees.map((t) => ({ sp: t.sp, n: t.n, i: t.i, x: t.x / px, y: t.y / px, r: t.r / px })), get editionY() { return editionY; }, get stampAt() { return stampAt; }, target: (a: number) => target.r(a), look: (to: 'year' | 'life' | number) => lookAt(to), print: async () => (await yearPrint()).toDataURL('image/png'), words: async () => (await yearWords()).toDataURL('image/png'), block: async () => (await yearBlock()).toDataURL('image/png') } });
+  Object.assign(window, { press: { get tree() { return tree; }, get phase() { return settle.ring >= 0 ? 'settling' : 'trace'; }, get easing() { return !!ease; }, get view() { return viewNow(); }, get days() { return days; }, get run() { return run; }, get kind() { return kind; }, get choice() { return SEEDS[choice]; }, get far() { return far; }, get visiting() { return visit?.i ?? null; }, groveNext: () => { const c = camNow(), w = worldOf(); return { x: (c.X0 + w.next.wx * c.S) / px, y: (c.Y0 + w.next.wy * c.S) / px }; }, grove: () => groveLayout().trees.map((t) => ({ sp: t.sp, n: t.n, i: t.i, x: t.x / px, y: t.y / px, r: t.r / px })), get editionY() { return editionY; }, get stampAt() { return stampAt; }, target: (a: number) => target.r(a), look: (to: 'year' | 'life' | number) => lookAt(to), print: async () => (await yearPrint()).toDataURL('image/png'), words: async () => (await yearWords()).toDataURL('image/png'), block: async () => (await yearBlock()).toDataURL('image/png') } });
   // (The real wood: once it's come, the print is pressed again with it.)
   if (PRINT) loadWood(() => { for (const k in printCaches) delete printCaches[k]; });
   requestAnimationFrame(frame);
