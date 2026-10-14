@@ -3690,6 +3690,8 @@ const SETTINGS: Record<string, { now: () => string; set: (v: string) => void; an
   haptics: { now: () => (remembered('volcano.haptics') === 'off' ? 'off' : 'on'), set: (v) => remember('volcano.haptics', v), anew: false },
   motion: { now: () => (remembered('volcano.motion') === 'still' ? 'still' : 'phone'), set: (v) => remember('volcano.motion', v), anew: true },
   ink: { now: () => (remembered('volcano.ink') === 'quiet' ? 'quiet' : 'water'), set: (v) => remember('volcano.ink', v), anew: true },
+  // (Each world's opening, shown on the world before the fire begins: the first time it's played (and after it's lost), or every time.)
+  openings: { now: () => (remembered('volcano.openings') === 'always' ? 'always' : 'first'), set: (v) => remember('volcano.openings', v), anew: false },
 };
 let settingsChanged = false;
 function showSettings(): void {
@@ -4033,7 +4035,7 @@ function sceneLook(): void {
   if (!openingDecided && begun && !lapsing() && !replaying) {
     openingDecided = true;
     const o = OPENINGS[WORLD.id];
-    if (o && remembered(OPENING_KEY) !== 'seen') {
+    if (o && (remembered(OPENING_KEY) !== 'seen' || remembered('volcano.openings') === 'always')) {
       remember(OPENING_KEY, 'seen');
       if (o.words) announce(o.words());
       if (!STILL) showing = { ...o, kind: 'open', at0: seconds, from: null, to: null };

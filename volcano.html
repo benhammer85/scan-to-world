@@ -90,7 +90,7 @@
       #title .row .label { font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.7; }
       #title .row .opts { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; }
       #title .row .opts button { font-size: 16px; opacity: 0.72; padding: 6px 10px; min-height: 40px; }
-      #title .row .opts button + button::before { content: '·'; margin-right: 12px; opacity: 0.6; }
+      #title .row .opts button + button::before { content: '·'; margin-right: 12px; opacity: 0.6; display: inline-block; } /* (inline-block: the chosen word's underline doesn't run under the dot) */
       #title .row .opts button.on { opacity: 1; text-decoration: underline; text-underline-offset: 6px; }
       #title .note { font-size: 13px; font-style: italic; opacity: 0.72; margin: 0; min-height: 1.2em; text-align: center; }
       body.titled #begin, body.titled #worlds { opacity: 0 !important; pointer-events: none; }
@@ -279,6 +279,7 @@
       <div class="settings" hidden>
         <div class="row" data-row="haptics"><span class="label">Vibration</span><span class="opts" role="group" aria-label="Vibration"><button data-v="on">on</button><button data-v="off">off</button></span></div>
         <div class="row" data-row="motion"><span class="label">Motion</span><span class="opts" role="group" aria-label="Motion"><button data-v="phone">normal</button><button data-v="still">reduced</button></span></div>
+        <div class="row" data-row="openings"><span class="label">Openings</span><span class="opts" role="group" aria-label="Openings"><button data-v="first">first time</button><button data-v="always">every time</button></span></div>
         <div class="row" data-row="ink"><span class="label">Ink</span><span class="opts" role="group" aria-label="Ink"><button data-v="water">watercolour</button><button data-v="quiet">quiet print</button></span></div>
         <p class="note"></p>
         <button class="back">done</button>

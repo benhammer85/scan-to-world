@@ -904,3 +904,7 @@ On the six worlds whose goal is hardest to see from where you start (Mars, Mercu
 - With less motion asked for: the words alone.
 
 The other ten worlds have openings and wins too, each opening saying the goal and the one rule that decides it. Moon, Drying Seas: once round (every crater; all the sea). Venus, Hollow World: the vent on the top edge, side-on (domes; the mountain). Earth's First Water, Surtsey, Rogue Planet: close on the volcano. Orange Earth, Ocean World, Red Giant: pulled back (the sky; the line; the Sun). Wins: once round over what was made (Moon, Venus, Orange Earth, Ocean World, Drying Seas, Rogue Planet), side-on (Red Giant, Surtsey, Hollow World), or close on the ponds (Earth's First Water). On the worlds that begin with a time-lapse, the opening follows it.
+
+### Openings: first time, or every time
+
+Settings has an **Openings** row: "first time" (the default: a world's opening shows the first time it's played, and again after it's lost) or "every time". (Also: the dot between two choices was underlined with the second when it was chosen; it no longer is.)
