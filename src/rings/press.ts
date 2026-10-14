@@ -231,9 +231,35 @@ const SPEC: Record<Kind, {
   pine: { family: 'conifer', bark: PLATES, barkCss: [3.5, 0.055, 11], amp: 1, width: 1, even: 1, line: 0.7, tone: 1, resin: true },
   redwood: { family: 'conifer', bark: { lumps: 220, plate: false, mean: 4, deep: [0.3, 0.6, 1], wide: 0.7 }, barkCss: [5, 0.08, 16], amp: 0.7, width: 1.3, even: 1.2, line: 0.6, tone: 0.9, resin: false },
   bristlecone: { family: 'conifer', bark: { ...PLATES, lumps: 60, mean: 15 }, barkCss: [2, 0.03, 6], amp: 1.8, width: 0.45, even: 0.3, line: 0.75, tone: 1, resin: true },
-  olive: { family: 'diffuse', bark: { lumps: 160, plate: false, mean: 11, deep: [0.1, 0.4, 1], wide: 1 }, barkCss: [1.5, 0.02, 4], amp: 2.2, width: 0.8, even: 0.4, line: 0.45, tone: 0.85, resin: false },
+  olive: { family: 'diffuse', bark: { lumps: 160, plate: false, mean: 11, deep: [0.1, 0.4, 1], wide: 1 }, barkCss: [1.5, 0.02, 4], amp: 2.2, width: 0.8, even: 0.15, line: 0.45, tone: 0.85, resin: false },
 };
 const KINDS = Object.keys(SPEC) as Kind[];
+/**
+ * Each wood's temperament, said in pencil beneath it when choosing: how it answers the same loop. The
+ * olive keeps every crooked day (its line barely smoothed, hardly evened out); the conifers' latewood
+ * darkens and widens with an unhurried hand (the ring's calm, as drawn: see `calmOf`).
+ */
+const TEMPER: Record<Kind, string> = {
+  oak: 'patient; evens out a crooked day',
+  ash: 'open-grained, quick to grow',
+  cherry: 'fine and close',
+  maple: 'fine, pale and even',
+  birch: 'light, quick, and faint',
+  pine: 'slow days print dark',
+  redwood: 'broad and calm; slow days print dark',
+  bristlecone: 'slow, enduring; outlives its own bark',
+  olive: 'keeps every crooked day',
+};
+/** How smoothly the hand's line becomes the ring (the low-pass round it): the olive's, hardly at all. */
+const SMOOTH: Partial<Record<Kind, number>> = { olive: (3.5 * Math.PI) / 180 };
+/** How calmly ring i was drawn, 0 hurried to 1 unhurried (its tone, as the tree kept it). */
+function calmOf(i: number): number {
+  const t = tree.tones[i];
+  if (!t || !t.length) return 0.5;
+  let s = 0;
+  for (let j = 0; j < t.length; j++) s += t[j];
+  return s / t.length;
+}
 const fam = () => SPEC[kind].family;
 const asKind = (k: unknown): Kind | null => (KINDS.includes(k as Kind) ? (k as Kind) : null);
 let kind: Kind = asKind(params.get('tree')) ?? 'oak';
@@ -1102,11 +1128,12 @@ function drawSeedChoice(v: View, t: number): void {
     } else drawSeedOf(sp, x, v.cy, 1, 2);
     g.fillStyle = 'rgba(92,88,84,0.85)'; g.textAlign = 'center'; g.textBaseline = 'middle';
     g.font = `italic ${16 * px}px Newsreader, "Iowan Old Style", Georgia, serif`; g.fillText(sp, x, v.cy + D / 2 + 34 * px);
+    g.fillStyle = 'rgba(92,88,84,0.6)'; g.font = `italic ${13 * px}px Newsreader, "Iowan Old Style", Georgia, serif`; g.fillText(TEMPER[sp], x, v.cy + D / 2 + 56 * px);
     g.restore();
   }
   // Where it is among them: a row of small dots, this one inked.
   g.save(); g.globalAlpha = k;
-  const y = v.cy + D / 2 + 64 * px, gap = 11 * px;
+  const y = v.cy + D / 2 + 84 * px, gap = 11 * px;
   for (let i = 0; i < SEEDS.length; i++) {
     g.fillStyle = i === choice ? 'rgba(60,52,46,0.8)' : 'rgba(92,88,84,0.28)';
     g.beginPath(); g.arc(v.cx + (i - (SEEDS.length - 1) / 2) * gap, y, (i === choice ? 2.6 : 2) * px, 0, TAU); g.fill();
@@ -1652,7 +1679,9 @@ function drawPrint(v: View): void {
       const share = !ring && !conifer ? Math.min(0.5, Math.max(0.1, 1.5 / Math.max(1, w)))
         : conifer ? Math.min(kind === 'redwood' ? 0.35 : 0.5, Math.max(kind === 'redwood' ? 0.1 : 0.16, 0.9 / Math.max(1, w) + (kind === 'redwood' ? 0.08 : 0.14)))
         : Math.min(0.75, Math.max(0.45, 1.1 / Math.max(1, w) + 0.45));
-      const bandIn = (a: number) => outer(a) - share * (outer(a) - inner(a));
+      // (A conifer's latewood: wider and darker for an unhurried day, thin and pale for a hurried one.)
+      const calm = conifer ? calmOf(i) : 0.5, cshare = conifer ? Math.min(0.85, share * (0.35 + 1.3 * calm)) : share;
+      const bandIn = (a: number) => outer(a) - cshare * (outer(a) - inner(a));
       const tone = (1 - 0.16 * smooth((i - (n - 9)) / 8) * smooth((n - 12) / 8)) * sp.tone, fine = w < 6, mr = meanR(i);
       // The rays crossing this ring: the broad ones always (hairlines); among fine rings, the fine ones too
       // (oak's mosaic); never two closer than 5 px round it.
@@ -1676,7 +1705,7 @@ function drawPrint(v: View): void {
         }
         g.closePath();
         // (The ink a little starved now and then.)
-        g.fillStyle = ink((0.8 + 0.2 * h1(seed * 0.37)) * tone); g.fill();
+        g.fillStyle = ink((0.8 + 0.2 * h1(seed * 0.37)) * tone * (conifer ? 0.5 + 0.5 * calm : 1)); g.fill();
       };
       if (live.length < 2) brick(0, TAU, i * 101);
       else for (let j = 0; j < live.length; j++) {
@@ -2475,6 +2504,8 @@ const SLOW = Number(params.get('slow')) || 1, OPEN = 1.8 * SLOW, BLOOM = 1.1 * S
 
 function frame(): void {
   const t = clock(), dt = 1 / 60;
+  // (The wood's own way with the hand's line.)
+  if (GROWN) { const sm = SMOOTH[kind] ?? DAILY.smooth; if (tree.k.smooth !== sm) (tree.k as { smooth: number }).smooth = sm; }
   if (farTo) {
     const p = smooth((t - farTo.at) / 1.1);
     far = farTo.from + (farTo.to - farTo.from) * p; farPull = far;
