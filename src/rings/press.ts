@@ -1142,7 +1142,7 @@ let plantedAt = 0;
 function plant(x: number, y: number): void {
   seedAt = [x / W, y / H]; view = null; plantedAt = clock();
   keep();
-  if (!(CHILD && child)) { say('Now draw a loop around it. One ring a day.', 9); return; }
+  if (!(CHILD && child)) { say('Now draw a loop around it.', 9); return; }
   say(`${question()} Draw a loop around the seed: loose for an easy day, close for a hard one.`, 9);
 }
 
@@ -2751,9 +2751,9 @@ void (async () => {
     else say(days.includes(today) ? `${c.name}’s day is drawn. Draw another if you like.` : question(), 10);
   }
   else if (GROWN && !tree.rings.length && finishedYear) say('A year. It stands in your grove. Choose the next.', 1e5);
-  else if (GROWN && !tree.rings.length) say(seedAt ? 'Draw a loop around the seed. One ring a day.' : 'Swipe through the woods. Touch one to plant it.', 1e5);
+  else if (GROWN && !tree.rings.length) say(seedAt ? 'Draw a loop around the seed.' : 'Swipe through the woods. Touch one to plant it.', 1e5);
   // (Words only where they're needed: before the first ring. After that, the tree says it.)
-  else if (!tree.rings.length) say('Draw a circle around this one. One ring a day.', 8);
+  else if (!tree.rings.length) say('Draw a circle around this one.', 8);
   Object.assign(window, { press: { get tree() { return tree; }, get phase() { return settle.ring >= 0 ? 'settling' : 'trace'; }, get easing() { return !!ease; }, get view() { return viewNow(); }, get days() { return days; }, get run() { return run; }, get kind() { return kind; }, get choice() { return SEEDS[choice]; }, get far() { return far; }, get visiting() { return visit?.i ?? null; }, groveNext: () => { const c = camNow(), w = worldOf(); return { x: (c.X0 + w.next.wx * c.S) / px, y: (c.Y0 + w.next.wy * c.S) / px }; }, grove: () => groveLayout().trees.map((t) => ({ sp: t.sp, n: t.n, i: t.i, x: t.x / px, y: t.y / px, r: t.r / px })), get editionY() { return editionY; }, get stampAt() { return stampAt; }, target: (a: number) => target.r(a), look: (to: 'year' | 'life' | number) => lookAt(to), print: async () => (await yearPrint()).toDataURL('image/png'), words: async () => (await yearWords()).toDataURL('image/png'), block: async () => (await yearBlock()).toDataURL('image/png') } });
   // (The real wood: once it's come, the print is pressed again with it.)
   if (PRINT) loadWood(() => { for (const k in printCaches) delete printCaches[k]; });
