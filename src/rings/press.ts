@@ -32,7 +32,7 @@ import { Ear } from './ear';
 import { TYPICAL, ageOn as ageOf, ageWords as ageSaid, dayDate, dayOf, grewIn as grewOf, question as askOf, yearSpans as spansOf } from './child';
 import { climate, growth as growthOf, season } from './growing';
 import { RINGS, overlap, percent, shapeFor } from './puzzle';
-import { crownSize, drawCrown, drawHill, drawSeedling, places, seasonOf, washCrown, washHill, type Season } from './grove';
+import { crownSize, drawCrown, drawHill, drawSeedling, heightAt, land, seasonOf, washCrown, washHill, type Hill, type Season } from './grove';
 import { holdStill, steadySize } from './steady';
 import { forgetTree, grove, keepInGrove, keepRun, keepTree, recallTree, runs, snapshotTree, treeFrom, type KeptTree, type Run } from './save';
 
@@ -413,6 +413,7 @@ function zoomAbout(x: number, y: number, f: number): void {
   // (The puzzle is looked at whole: the outline and the slice together, never closer.)
   if (PUZZLE) return;
   // (Drawn back past the slice as it is: toward the grove, slowly, a pinch to a quarter or so.)
+  if (far >= 1 && !farTo && (f > 1 || groveCam)) { zoomGrove(x, y, f); return; }
   if (canPull() && (far > 0 || (!closer() && f < 1))) {
     farTo = null; farPull = Math.max(0, Math.min(1, farPull - Math.log(f) / 1.4)); far = farPull;
     return;
@@ -745,6 +746,7 @@ canvas.addEventListener('pointermove', (e) => {
       return;
     }
     if (closer() && painter === null && fingers.size === 1) { look.ox += dx; look.oy += dy; return; }
+    if (far >= 1 && painter === null && fingers.size === 1) { panGrove(dx, dy); return; }
   }
   if (e.pointerId !== painter || !strokeView) return;
   const evs = typeof e.getCoalescedEvents === 'function' ? e.getCoalescedEvents() : [];
@@ -783,7 +785,13 @@ for (const type of ['pointerup', 'pointercancel'] as const) canvas.addEventListe
   if (tap) {
     const t = clock();
     // (In the grove: a tree touched opens; today's, home.)
-    if (far > 0) { if (far >= 0.99 && !farTo) tapGrove(e.clientX * px, e.clientY * px); return; }
+    if (far > 0) {
+      // (A double tap on the ground, home to today.)
+      if (far >= 0.99 && !farTo && t - lastTap < 0.35) { lastTap = 0; groveCam = null; farTo = { from: far, to: 0, at: t }; return; }
+      lastTap = t;
+      if (far >= 0.99 && !farTo) tapGrove(e.clientX * px, e.clientY * px);
+      return;
+    }
     // (An older tree's slice, double-tapped: back out to the grove.)
     if (visit && !closer() && t - lastTap < 0.35) { farTo = { from: 0, to: 1, at: t }; lastTap = 0; return; }
     if (closer() && t - lastTap < 0.35) { lookBack = { ...look, at: t }; lastTap = 0; return; }
@@ -2166,48 +2174,94 @@ let far = 0, farPull = 0, farTo: { from: number; to: number; at: number } | null
 let visit: { i: number; stash: { tree: TreeSim; days: string[]; kind: Kind } } | null = null;
 const canPull = () => GROWN && !CHILD && (tree.rings.length > 0 || (!!seedAt && groveKept.length > 0));
 const settleFar = () => { farTo = { from: far, to: far > 0.45 ? 1 : 0, at: clock() }; };
-interface Stand { sp: Kind; n: number; i: number; k: number; x: number; y: number; r: number }
-/** The hill's middle and size, and where each tree stands on it (device px). */
-function groveLayout(): { cx: number; cy: number; R: number; seed: number; trees: Stand[] } {
-  const mine = visit ? visit.stash : { tree, days, kind };
-  const all = [
-    ...groveKept.map((k, i) => ({ sp: asKind(k.tree) ?? 'oak', n: ((k.sim.rings as unknown[] | undefined) ?? []).length, i, k: k.seed })),
-    { sp: mine.kind, n: mine.tree.rings.length, i: -1, k: mine.tree.seed },
-  ];
-  const cx = W / 2, cy = Math.round(H * 0.44), R = Math.min(W, H) * 0.56, seed = groveKept[0]?.seed ?? mine.tree.seed;
-  const at = places(all.length, seed);
-  return { cx, cy, R, seed, trees: all.map((a, j) => ({ ...a, k: (a.k % 9973) + 11, x: cx + at[j].x * R, y: cy + at[j].y * R, r: at[j].scale * R * crownSize(a.sp, a.n) })) };
-}
-/** The hill, inked once for the sheet as it is (the grove's trees drawn over it). */
-let hillC: HTMLCanvasElement | null = null, hillKey = '';
+interface Stand { sp: Kind; n: number; i: number; k: number; wx: number; wy: number; wr: number; x: number; y: number; r: number }
 /** The season washed into the grove: today's (`?season=winter` and so on, to look). */
 const SEASONS: Season[] = ['spring', 'summer', 'autumn', 'winter'];
 const seasonNow = (): Season => SEASONS.find((x) => x === params.get('season')) ?? seasonOf();
-function hillOf(L: ReturnType<typeof groveLayout>): HTMLCanvasElement {
-  const key = `${W}x${H}:${L.seed}:${seasonNow()}`;
-  if (hillC && hillKey === key) return hillC;
-  hillC ??= document.createElement('canvas'); hillC.width = W; hillC.height = H; hillKey = key;
-  const hc = hillC.getContext('2d')!;
-  hc.clearRect(0, 0, W, H);
-  washHill(hc, W, H, L.cx, L.cy, L.R, px, L.seed, seasonNow());
-  drawHill(hc, W, H, L.cx, L.cy, L.R, px, L.seed);
-  return hillC;
+/** A view of the land: world (x, y) shows at (X0 + x·S, Y0 + y·S) on the sheet. */
+interface Cam { S: number; X0: number; Y0: number }
+/** Looked about in the grove: closer than the whole, and moved (null: the whole of it in view). */
+let groveCam: Cam | null = null;
+const GROVE_CLOSEST = 8;
+/** The land, every tree on it (world units), and the view of the whole of it, kept until a tree changes. */
+let worldKey = '', world: { hills: Hill[]; seed: number; trees: Omit<Stand, 'x' | 'y' | 'r'>[]; whole: Cam; box: [number, number, number, number] } | null = null;
+function worldOf() {
+  const mine = visit ? visit.stash : { tree, days, kind };
+  const all = [
+    ...groveKept.map((k, i) => ({ sp: asKind(k.tree) ?? 'oak', n: ((k.sim.rings as unknown[] | undefined) ?? []).length, i, k: (k.seed % 9973) + 11 })),
+    { sp: mine.kind, n: mine.tree.rings.length, i: -1, k: (mine.tree.seed % 9973) + 11 },
+  ];
+  const seed = groveKept[0]?.seed ?? mine.tree.seed, key = `${W}x${H}:${seed}:${all.map((t) => `${t.sp}${t.n}`).join(',')}`;
+  if (world && worldKey === key) return world;
+  const L = land(all.length, seed);
+  const trees = all.map((a, j) => ({ ...a, wx: L.places[j].x, wy: L.places[j].y, wr: 1.4 * L.places[j].scale * crownSize(a.sp, a.n) }));
+  // (The whole of it in view, the trees and a little ground round them; never so close a crown fills the sheet.)
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const t of trees) { x0 = Math.min(x0, t.wx - 1.6); x1 = Math.max(x1, t.wx + 1.6); y0 = Math.min(y0, t.wy - 1.6); y1 = Math.max(y1, t.wy + 1.6); }
+  const S = Math.min((W * 0.86) / (x1 - x0), (H * 0.5) / (y1 - y0), W * 0.12);
+  const whole = { S, X0: W / 2 - ((x0 + x1) / 2) * S, Y0: H * 0.46 - ((y0 + y1) / 2) * S };
+  worldKey = key; world = { hills: L.hills, seed, trees, whole, box: [x0, y0, x1, y1] };
+  return world;
 }
-/** The grove (hill and trees) for the sheet, kept until a tree changes; drawn back to, it's only scaled. */
-let groveC: HTMLCanvasElement | null = null, groveKey = '';
-function groveOf(L: ReturnType<typeof groveLayout>): HTMLCanvasElement {
-  const key = `${W}x${H}:${L.seed}:${seasonNow()}:${L.trees.map((t) => `${t.sp}${t.n}`).join(',')}`;
-  if (groveC && groveKey === key) return groveC;
-  groveC ??= document.createElement('canvas'); groveC.width = W; groveC.height = H; groveKey = key;
-  const c = groveC.getContext('2d')!;
-  c.clearRect(0, 0, W, H); c.drawImage(hillOf(L), 0, 0);
-  for (const t of [...L.trees].sort((p, q) => p.y - q.y)) {
-    if (t.n < 30) drawSeedling(c, t.x, t.y, Math.max(4 * px, t.r * 0.8), px);
-    else drawCrown(c, t.x, t.y, t.r, t.sp, t.k, px);
+const camNow = (): Cam => groveCam ?? worldOf().whole;
+/** Where each tree stands on the sheet, in a view (the grove's as it is, unless another is given). */
+function groveLayout(cam = camNow()): { trees: Stand[]; cam: Cam } {
+  const w = worldOf();
+  return { cam, trees: w.trees.map((t) => ({ ...t, x: cam.X0 + t.wx * cam.S, y: cam.Y0 + t.wy * cam.S, r: t.wr * cam.S })) };
+}
+/** Closer or further in the grove, about (x, y) (device px): back to the whole of it, no further. */
+function zoomGrove(x: number, y: number, f: number): void {
+  const w = worldOf(), c = camNow(), S = Math.max(w.whole.S, Math.min(w.whole.S * GROVE_CLOSEST, c.S * f)), q = S / c.S;
+  groveCam = S <= w.whole.S * 1.001 ? null : { S, X0: x - (x - c.X0) * q, Y0: y - (y - c.Y0) * q };
+  if (groveCam) panGrove(0, 0);
+  groveMoved = clock();
+}
+/** Moved about in the grove, never so far its trees leave the sheet. */
+function panGrove(dx: number, dy: number): void {
+  if (!groveCam) return;
+  const [x0, y0, x1, y1] = worldOf().box, c = groveCam;
+  c.X0 = Math.min(W * 0.8 - x0 * c.S, Math.max(W * 0.2 - x1 * c.S, c.X0 + dx));
+  c.Y0 = Math.min(H * 0.8 - y0 * c.S, Math.max(H * 0.2 - y1 * c.S, c.Y0 + dy));
+  groveMoved = clock();
+}
+let groveMoved = 0;
+/** The land and its trees, drawn for a view: inked and coloured (slow: drawn when the view is still). */
+function renderGrove(c: CanvasRenderingContext2D, cam: Cam): void {
+  const w = worldOf(), season = seasonNow();
+  c.clearRect(0, 0, W, H);
+  const height = (x: number, y: number) => heightAt((x - cam.X0) / cam.S, (y - cam.Y0) / cam.S, w.hills, w.seed);
+  washHill(c, W, H, px, height, w.seed, season, cam.S);
+  drawHill(c, W, H, px, height, w.seed);
+  for (const t of [...groveLayout(cam).trees].sort((p, q) => p.y - q.y)) {
+    if (t.x < -t.r * 2 || t.x > W + t.r * 2 || t.y < -t.r * 2 || t.y > H + t.r * 2) continue;
+    if (t.n < 30) { drawSeedling(c, t.x, t.y, Math.max(3 * px, t.r * 0.8), px); continue; }
+    drawCrown(c, t.x, t.y, t.r, t.sp, t.k, px);
     // (Coloured over the ink, by hand: today's still wet.)
-    if (t.n >= 30) washCrown(c, t.x, t.y, t.r, t.sp, t.k, px, seasonNow(), t.i < 0);
+    washCrown(c, t.x, t.y, t.r, t.sp, t.k, px, season, t.i < 0);
   }
-  return groveC;
+}
+/** The grove drawn for the whole view (kept, to lay under any other while it moves), and for the view now. */
+const seasonKey = () => `${worldKey}:${seasonNow()}`;
+let baseG: { c: HTMLCanvasElement; cam: Cam; key: string } | null = null, sharpG: { c: HTMLCanvasElement; cam: Cam; key: string } | null = null;
+function layGrove(cam: Cam, still: boolean): void {
+  const w = worldOf(), key = seasonKey();
+  if (!baseG || baseG.key !== key) {
+    baseG ??= { c: document.createElement('canvas'), cam: w.whole, key };
+    baseG.c.width = W; baseG.c.height = H; baseG.cam = w.whole; baseG.key = key;
+    renderGrove(baseG.c.getContext('2d')!, w.whole);
+  }
+  const same = (a: Cam, b: Cam) => Math.abs(a.S - b.S) < 1e-3 * b.S && Math.abs(a.X0 - b.X0) < 0.5 && Math.abs(a.Y0 - b.Y0) < 0.5;
+  const lay = (from: { c: HTMLCanvasElement; cam: Cam }) => { const q = cam.S / from.cam.S; g.drawImage(from.c, cam.X0 - from.cam.X0 * q, cam.Y0 - from.cam.Y0 * q, W * q, H * q); };
+  if (same(cam, w.whole)) { g.drawImage(baseG.c, 0, 0); return; }
+  if (still && (!sharpG || sharpG.key !== key || !same(sharpG.cam, cam))) {
+    sharpG ??= { c: document.createElement('canvas'), cam, key };
+    sharpG.c.width = W; sharpG.c.height = H; sharpG.cam = { ...cam }; sharpG.key = key;
+    renderGrove(sharpG.c.getContext('2d')!, cam);
+  }
+  // (Still, the view drawn for itself; moving, the whole laid under, and the last drawn over it.)
+  if (sharpG && sharpG.key === key && same(sharpG.cam, cam)) { lay(sharpG); return; }
+  lay(baseG);
+  if (sharpG && sharpG.key === key) lay(sharpG);
 }
 let snapC: HTMLCanvasElement | null = null;
 function drawFar(v: View): void {
@@ -2220,27 +2274,27 @@ function drawFar(v: View): void {
   g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(groundOf(), 0, 0);
   const L = groveLayout(), f = L.trees.find((t) => t.i === (visit ? visit.i : -1)) ?? L.trees[L.trees.length - 1];
   // The camera: at first close over the tree, its crown about the slice; rising (evenly, as a scale is
-  // felt) until the whole hill is in view.
+  // felt) until the grove is in view as it was left.
   const Rs = Math.max(8 * px, v.s * warpR(v.warp, barkMax()) + barkCss(v) * px), fr = Math.max(f.r, 3 * px);
   const k0 = Math.min(Rs / (0.3 * fr), (0.46 * W) / fr), q = smooth((far - 0.2) / 0.8), k = Math.exp(Math.log(k0) * (1 - q));
   const X = v.cx + (f.x - v.cx) * q, Y = v.cy + (f.y - v.cy) * q;
-  const at = (x: number, y: number): [number, number] => [X + (x - f.x) * k, Y + (y - f.y) * k];
+  const cam: Cam = { S: L.cam.S * k, X0: X + (L.cam.X0 - f.x) * k, Y0: Y + (L.cam.Y0 - f.y) * k };
   // The grove, coming in as the view rises.
   const rest = smooth((far - 0.45) / 0.4);
   if (rest > 0.01) {
-    const [gx, gy] = at(0, 0);
-    g.save(); g.globalAlpha = rest; g.drawImage(groveOf(L), gx, gy, W * k, H * k); g.restore();
+    const still = far >= 1 && !farTo && fingers.size === 0 && clock() - groveMoved > 0.18;
+    g.save(); g.globalAlpha = rest; layGrove(cam, still); g.restore();
   }
   // Its own crown, drawn afresh at its size (sharp, however close), coming in round the slice.
-  const own = smooth(far / 0.22), [fx, fy] = at(f.x, f.y);
-  // (Drawn as the grove's own crown magnified: its pen with it, up to a broad nib.)
-  if (f.n >= 30) {
-    drawCrown(g, fx, fy, fr * k, f.sp, f.k, px * Math.min(k, 2.2), own);
-    // (The colour comes with the years: only as the view rises off the day.)
-    const tint = smooth((far - 0.55) / 0.35) * (1 - rest);  // (then the grove's own, its wash with it)
-    if (tint > 0.01) { g.save(); g.globalAlpha = tint; { const r0 = Math.min(fr * k, 0.5 * W), u0 = px * Math.min(k, 2.2) * (r0 / (fr * k)); washCrown(g, fx, fy, r0, f.sp, f.k, u0, seasonNow(), f.i < 0, (fr * k) / r0); } g.restore(); }
+  const own = smooth(far / 0.22) * (1 - rest), fx = X, fy = Y;
+  if (own > 0.01) {
+    if (f.n >= 30) {
+      drawCrown(g, fx, fy, fr * k, f.sp, f.k, px * Math.min(k, 2.2), own);
+      // (The colour comes with the years: only as the view rises off the day.)
+      const tint = smooth((far - 0.55) / 0.35);
+      if (tint > 0.01) { g.save(); g.globalAlpha = tint * own; { const r0 = Math.min(fr * k, 0.5 * W), u0 = px * Math.min(k, 2.2) * (r0 / (fr * k)); washCrown(g, fx, fy, r0, f.sp, f.k, u0, seasonNow(), f.i < 0, (fr * k) / r0); } g.restore(); }
+    } else drawSeedling(g, fx, fy, Math.max(4 * px, fr * 0.8) * k, px, own);
   }
-  else drawSeedling(g, fx, fy, Math.max(4 * px, fr * 0.8) * k, px, own);
   // The slice, settling to the cut face at its heart, and gone as the crown closes over.
   const fade = 1 - smooth((far - 0.35) / 0.25);
   if (fade > 0.01) {
@@ -2250,14 +2304,6 @@ function drawFar(v: View): void {
     g.translate(fx, fy); g.scale(sk, sk); g.drawImage(snapC, -v.cx, -v.cy);
     g.restore();
   }
-  // (And when, in pencil, below the hill.)
-  if (q > 0.6) {
-    const first = (groveKept[0]?.days?.[0] ?? (visit ? visit.stash.days : days)[0] ?? dayOf()).slice(0, 4), last = dayOf().slice(0, 4);
-    g.save(); g.globalAlpha = smooth((q - 0.6) / 0.4) * 0.75; g.fillStyle = 'rgba(92,88,84,0.85)'; g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.font = `italic ${14 * px}px Newsreader, "Iowan Old Style", Georgia, serif`;
-    g.fillText(first === last ? first : `${first} – ${last}`, W / 2, Math.min(L.cy + L.R * 0.78, H - 150 * px));
-    g.restore();
-  }
 }
 /** Touched in the grove: an older tree opens to its slice; today's comes home. */
 function tapGrove(x: number, y: number): void {
@@ -2265,7 +2311,7 @@ function tapGrove(x: number, y: number): void {
   let hit: Stand | null = null, best = Infinity;
   for (const t of L.trees) { const d = Math.hypot(x - t.x, y - t.y) / Math.max(t.r * 1.15, 20 * px); if (d < 1 && d < best) { best = d; hit = t; } }
   if (!hit) return;
-  if (hit.i < 0) { farTo = { from: far, to: 0, at: clock() }; return; }
+  if (hit.i < 0) { groveCam = null; farTo = { from: far, to: 0, at: clock() }; return; }
   const k = groveKept[hit.i], t2 = treeFrom(k, DAILY);
   if (!t2) return;
   if (!visit) visit = { i: hit.i, stash: { tree, days, kind } };
@@ -2285,17 +2331,24 @@ function lookAfresh(): void {
   warp = warpNow(); view = null; ease = null; lookBack = null; look = { k: 1, ox: 0, oy: 0 }; growing = null; trail = []; inward = null;
   for (const k in printCaches) delete printCaches[k];
 }
-/** For trying (`?grove`): a grove already grown, of years drawn by a hand calm some days and loose on others. */
-function demoGrove(): KeptTree[] {
+/**
+ * For trying (`?grove`, or `?grove=100`): a grove already grown, of years drawn by a hand calm some days
+ * and loose on others. (Past six, the trees share the first six's years, each its own kind.)
+ */
+function demoGrove(count = 5): KeptTree[] {
   const was = { tree, days, kind }, out: KeptTree[] = [];
-  const plan: [Kind, number, string][] = [['oak', 365, '2021-03-01'], ['ash', 330, '2022-03-04'], ['pine', 365, '2023-02-27'], ['olive', 160, '2024-04-02'], ['maple', 260, '2025-03-05']];
+  const plan: [Kind, number, string][] = [['oak', 365, '2021-03-01'], ['ash', 330, '2022-03-04'], ['pine', 365, '2023-02-27'], ['olive', 160, '2024-04-02'], ['maple', 260, '2025-03-05'], ['birch', 300, '2025-09-01']];
   try {
-    for (const [i, [sp, count, from]] of plan.entries()) {
+    for (const [i, [sp, n, from]] of plan.slice(0, Math.min(count, plan.length)).entries()) {
       kind = sp; tree = new TreeSim(1 + (i + 3) * 7919, DAILY); days = [];
-      demoYear(count, dayDate(from));
+      demoYear(n, dayDate(from));
       out.push({ tree: sp, seed: tree.seed, wander: false, turn: 0, sim: snapshotTree(tree), days: days.slice() });
     }
   } finally { ({ tree, days, kind } = was); }
+  for (let i = out.length; i < count; i++) {
+    const like = out[i % out.length];
+    out.push({ ...like, tree: KINDS[(i * 7 + (i >> 2)) % KINDS.length], seed: like.seed + i * 104729 });
+  }
   return out;
 }
 
@@ -2384,7 +2437,7 @@ function frame(): void {
 void (async () => {
   await recall();
   if (GROWN && !CHILD) {
-    groveKept = params.has('grove') ? demoGrove() : await grove();
+    groveKept = params.has('grove') ? demoGrove(Math.max(1, Number(params.get('grove')) || 5)) : await grove();
   }
   warp = warpNow(); paper.fit(warp, warp.R); paper.bake(tree);
   fit(); view = null; openedAt = clock(); idleSince = openedAt + OPEN;

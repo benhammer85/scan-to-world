@@ -70,6 +70,15 @@ export function drawCrown(g: CanvasRenderingContext2D, x: number, y: number, r: 
   if (r < 0.5) return;
   const h = habit(sp), E = edgeOf(sp, k), sx = x + r * 0.4 * h.tall, sy = y + r * 0.32 * h.tall;
   g.save(); g.globalAlpha *= alpha; g.lineCap = 'round';
+  if (r < 7 * U) {
+    // (Far off, a crown is a dab: its shadow a tone, the crown paper ringed in ink, a mark or two.)
+    path(g, sx, sy, r * 0.96, edgeOf(sp, k + 3)); g.fillStyle = ink(0.32); g.fill();
+    path(g, x, y, r, E); g.fillStyle = PAPER; g.fill();
+    g.strokeStyle = ink(0.9); g.lineWidth = Math.min(1, r / (4 * U)) * 0.8 * U; g.stroke();
+    if (r > 3 * U) { g.fillStyle = ink(0.8); g.beginPath(); g.arc(x + r * 0.3, y + r * 0.3, 0.5 * U, 0, TAU); g.arc(x + r * 0.05, y + r * 0.45, 0.4 * U, 0, TAU); g.fill(); }
+    g.restore();
+    return;
+  }
   // Its shadow on the ground, hatched.
   g.save(); path(g, sx, sy, r * 0.96, edgeOf(sp, k + 3)); g.clip();
   g.strokeStyle = ink(0.7); g.lineWidth = 0.7 * U; g.beginPath();
@@ -134,22 +143,48 @@ export function drawSeedling(g: CanvasRenderingContext2D, x: number, y: number, 
   g.stroke(); g.fillStyle = ink(1); g.beginPath(); g.arc(x, y, 1.1 * U, 0, TAU); g.fill(); g.restore();
 }
 
-/** The hill's height at (x, y), its lie its own (`seed`). */
-function hillHeight(x: number, y: number, cx: number, cy: number, R: number, seed: number): number {
-  const s1 = h1(seed * 0.013), s2 = h1(seed * 0.029), s3 = h1(seed * 0.047), ox = 30 * s1, oy = 30 * s2;
-  const dx = (x - cx) / R, dy = (y - cy) / R;
-  let z = Math.exp(-(dx * dx * 1.1 + dy * dy * 1.5) * 1.7);
-  z += 0.45 * Math.exp(-((dx + 0.55 - 0.3 * s3) ** 2 * 3 + (dy - 0.35 + 0.2 * s1) ** 2 * 4));
-  z += 0.3 * Math.exp(-((dx - 0.6 + 0.2 * s2) ** 2 * 5 + (dy + 0.4) ** 2 * 5));
-  z += 0.12 * (vn(x / (R * 0.35) + ox, y / (R * 0.35) + oy) - 0.5) + 0.05 * (vn(x / (R * 0.12) + 9 + ox, y / (R * 0.12)) - 0.5);
-  return z;
+// ---------------------------------------------------------------- the land
+/**
+ * The land, in world units (a full-grown oak's crown 1 across): a tree keeps its place and its size, and
+ * the land grows to hold them. Each hill holds `PER_HILL` trees, the first planted at its top and the rest
+ * spiralling out from it, as rings grow (the golden angle, so none ever falls in line); when one is full,
+ * the next rises beside it, the hills themselves spiralling out from the first. A hill is as wide as its
+ * trees need.
+ */
+export const PER_HILL = 20;
+const SPACING = 1.4, GOLD = Math.PI * (3 - Math.sqrt(5));
+export interface Hill { x: number; y: number; R: number; n: number }
+export interface Place { x: number; y: number; hill: number; scale: number }
+export function land(count: number, seed: number): { hills: Hill[]; places: Place[] } {
+  const hills: Hill[] = [], places: Place[] = [], a0 = h1(seed * 0.71) * TAU;
+  for (let h = 0; h * PER_HILL < Math.max(1, count); h++) {
+    const n = Math.min(PER_HILL, count - h * PER_HILL), a = a0 + h * 2.4 + 0.6 * (h1(h * 5.3 + seed) - 0.5), d = h ? 15 * Math.sqrt(h) * (0.92 + 0.16 * h1(h * 3.1 + seed)) : 0;
+    hills.push({ x: Math.cos(a) * d, y: Math.sin(a) * d * 0.9, R: 4 + SPACING * Math.sqrt(Math.max(1, n) + 0.5) * 1.3, n });
+  }
+  for (let i = 0; i < count; i++) {
+    const h = Math.floor(i / PER_HILL), j = i % PER_HILL, H = hills[h], a = a0 + h * 1.3 + j * GOLD;
+    const d = SPACING * Math.sqrt(j + 0.04) * (1 + 0.2 * (h1(i * 3 + seed) - 0.5));
+    places.push({ x: H.x + Math.cos(a) * d, y: H.y + Math.sin(a) * d * 0.88, hill: h, scale: 0.85 + 0.3 * h1(i * 7.7 + seed) });
+  }
+  return { hills, places };
+}
+/** The land's height at a world point: its hills, and the lie of the ground between. */
+export function heightAt(x: number, y: number, hills: Hill[], seed: number): number {
+  const ox = 30 * h1(seed * 0.013), oy = 30 * h1(seed * 0.029);
+  let z = 0;
+  for (const [i, H] of hills.entries()) {
+    const dx = (x - H.x) / H.R, dy = (y - H.y) / H.R;
+    // (Each a little lopsided, its own way: a spur, a shoulder.)
+    const sa = h1(i * 2.7 + seed) * TAU, sx = Math.cos(sa) * 0.5, sy = Math.sin(sa) * 0.5;
+    z = Math.max(z, Math.exp(-(dx * dx * 1.1 + dy * dy * 1.4) * 1.7) + 0.35 * Math.exp(-((dx - sx) ** 2 * 4 + (dy - sy) ** 2 * 4)));
+  }
+  return z + 0.12 * (vn(x / 5 + ox, y / 5 + oy) - 0.5) + 0.05 * (vn(x / 1.6 + 9 + ox, y / 1.6) - 0.5);
 }
 /**
- * The hill in contours, drawn by hand (the pen's weight wandering, now and then lifting), centred on
- * (cx, cy), `R` across, its lie its own (`seed`), on a canvas `w` × `h`.
+ * The land in contours, drawn by hand (the pen's weight wandering, now and then lifting), its height given
+ * at each screen point by `height`, on a canvas `w` × `h` (`seed` for the wander of the pen).
  */
-export function drawHill(g: CanvasRenderingContext2D, w: number, h: number, cx: number, cy: number, R: number, U: number, seed: number): void {
-  const height = (x: number, y: number) => hillHeight(x, y, cx, cy, R, seed);
+export function drawHill(g: CanvasRenderingContext2D, w: number, h: number, U: number, height: (x: number, y: number) => number, seed: number): void {
   const step = 3 * U, nx = Math.ceil(w / step) + 1, ny = Math.ceil(h / step) + 1, Z = new Float32Array(nx * ny);
   for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) Z[j * nx + i] = height(i * step, j * step);
   const SEG: Record<number, [number, number][]> = { 1: [[3, 0]], 2: [[0, 1]], 3: [[3, 1]], 4: [[1, 2]], 5: [[3, 0], [1, 2]], 6: [[0, 2]], 7: [[3, 2]], 8: [[2, 3]], 9: [[0, 2]], 10: [[0, 1], [2, 3]], 11: [[1, 2]], 12: [[1, 3]], 13: [[0, 1]], 14: [[0, 3]] };
@@ -174,19 +209,6 @@ export function drawHill(g: CanvasRenderingContext2D, w: number, h: number, cx: 
     }
   }
   g.restore();
-}
-
-/**
- * Where each tree stands, the first planted in the middle and the rest spiralling out from it, as rings
- * grow (the golden angle, so none ever falls in line), the spiral drawn in to fit however many there are.
- * In shares of `R` about the hill's middle, and each crown's size as a share of `R`.
- */
-export function places(count: number, seed: number): { x: number; y: number; scale: number }[] {
-  const gold = Math.PI * (3 - Math.sqrt(5)), sp = Math.min(0.24, 0.66 / Math.sqrt(count + 0.3)), a0 = h1(seed * 0.71) * TAU;
-  return Array.from({ length: count }, (_, i) => {
-    const a = a0 + i * gold, d = sp * Math.sqrt(i + 0.04) * (1 + 0.2 * (h1(i * 3 + seed) - 0.5));
-    return { x: Math.cos(a) * d - 0.04, y: Math.sin(a) * d * 0.85 - 0.04, scale: sp * 0.86 * (0.85 + 0.3 * h1(i * 7.7 + seed)) };
-  });
 }
 
 // ---------------------------------------------------------------- the wash
@@ -250,17 +272,17 @@ function washOf(r: number, sp: string, k: number, U: number, season: Season, wet
   return out;
 }
 /** The hill's wash: pale, pooling darker in its folds, fading out into the paper at its foot. */
-export function washHill(g: CanvasRenderingContext2D, w: number, h: number, cx: number, cy: number, R: number, U: number, seed: number, season: Season): void {
+export function washHill(g: CanvasRenderingContext2D, w: number, h: number, U: number, height: (x: number, y: number) => number, seed: number, season: Season, scale = 1): void {
   const col: [number, number, number] = season === 'winter' ? [176, 172, 150] : season === 'autumn' ? [184, 168, 112] : season === 'spring' ? [168, 182, 122] : [150, 166, 106];
   const step = 4 * U, nx = Math.ceil(w / step) + 1, ny = Math.ceil(h / step) + 1;
   const c = document.createElement('canvas'); c.width = nx; c.height = ny;
   const cx2 = c.getContext('2d')!, img = cx2.createImageData(nx, ny), d = img.data;
   for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
-    const x = i * step, y = j * step, z = hillHeight(x, y, cx, cy, R, seed);
+    const x = i * step, y = j * step, z = height(x, y);
     if (z < 0.1) continue;
     // (Pooled in the folds: where the ground turns, a little darker; thin on the tops.)
-    const zx = hillHeight(x + step, y, cx, cy, R, seed) - z, zy = hillHeight(x, y + step, cx, cy, R, seed) - z, slope = Math.min(1, Math.hypot(zx, zy) * 9);
-    let al = 0.2 * Math.min(1, (z - 0.1) / 0.25) * (0.6 + 0.6 * slope) * (0.7 + 0.6 * vn(x / (60 * U) + seed % 50, y / (60 * U)));
+    const zx = height(x + step, y) - z, zy = height(x, y + step) - z, slope = Math.min(1, (Math.hypot(zx, zy) * 9 * 58) / Math.max(1, scale));
+    let al = 0.2 * Math.min(1, (z - 0.1) / 0.25) * (0.6 + 0.6 * slope) * (0.7 + 0.6 * vn(x / (60 * U) + (seed % 50), y / (60 * U)));
     al *= 0.93 + 0.14 * vn(x / (14 * U), y / (14 * U));
     const o = (j * nx + i) * 4;
     d[o] = col[0]; d[o + 1] = col[1]; d[o + 2] = col[2]; d[o + 3] = Math.round(255 * al);
