@@ -34,7 +34,7 @@ import { climate, growth as growthOf, season } from './growing';
 import { RINGS, overlap, percent, shapeFor } from './puzzle';
 import { crownSize, drawCrown, drawHill, drawSeedling, heightAt, land, seasonOf, washCrown, washHill, type Hill, type Season } from './grove';
 import { holdStill, steadySize } from './steady';
-import { forgetTree, grove, keepInGrove, keepRun, keepTree, recallTree, runs, snapshotTree, treeFrom, type KeptTree, type Run } from './save';
+import { forgetTree, fromText, grove, keepInGrove, keepRun, keepTree, recallTree, runs, setGrove, snapshotTree, toText, treeFrom, type KeptTree, type Run } from './save';
 
 const TAU = Math.PI * 2, PAPER = '#f4efe4';
 /**
@@ -329,7 +329,13 @@ async function recall(): Promise<void> {
     if (birthdays()) { seedAt = k.at ?? [0.5, 0.47]; keep(); newYear = true; }
   }
   while (days.length < t.rings.length) days.unshift(days[0] ?? dayOf());
+  // (The practice: a year from its first ring, the tree is finished, and stands in the grove.)
+  if (GROWN && !CHILD && days.length && dayOf() >= yearOn(days[0])) { await keepInGrove(kept()); finishedYear = true; tree = new TreeSim(1 + Math.floor(Math.random() * 1e6), DAILY); days = []; seedAt = null; keep(); }
 }
+/** A day a year on from the given one (as 2027-10-14). */
+const yearOn = (d: string) => { const x = dayDate(d); x.setFullYear(x.getFullYear() + 1); return dayOf(x); };
+/** Whether, opening, a year's tree was found finished (and stood in the grove). */
+let finishedYear = false;
 function keep(): void {
   if (params.has('demo') || GAME || visit) return;
   void keepTree(kept(), DIARY);
@@ -699,6 +705,8 @@ const spread = () => { const [a, b] = [...fingers.values()]; return { d: Math.hy
 /** Whether this touch came down on the slice (a tap there reads its day). */
 let inside = false;
 canvas.addEventListener('pointerdown', (e) => {
+  // (The opening, touched: let go of at once.)
+  if (intro) { if (!intro.skip) intro.skip = clock(); return; }
   canvas.setPointerCapture(e.pointerId);
   if (fingers.size === 0) inside = false;
   fingers.set(e.pointerId, { x: e.clientX * px, y: e.clientY * px });
@@ -787,6 +795,8 @@ canvas.addEventListener('pointermove', (e) => {
   hear();
 });
 for (const type of ['pointerup', 'pointercancel'] as const) canvas.addEventListener(type, (e) => {
+  // (A touch that only let the opening go: nothing more.)
+  if (!fingers.has(e.pointerId) && painter !== e.pointerId) return;
   fingers.delete(e.pointerId);
   if (fingers.size < 2) pinch = null;
   // (A swipe let go: on to the next, or back.)
@@ -885,7 +895,7 @@ function openSetup(): void {
 /** A copy of the tree, to keep somewhere safe: a small file, everything in it. */
 function keepCopy(): void {
   if (!child) { say('Plant their tree first.', 3); return; }
-  const blob = new Blob([JSON.stringify(kept())], { type: 'application/json' }), a = document.createElement('a');
+  const blob = new Blob([toText(kept())], { type: 'application/json' }), a = document.createElement('a');
   a.href = URL.createObjectURL(blob); a.download = `${child.name.replace(/[^\p{L}\p{N}]+/gu, '-')}-tree-${dayOf()}.json`;
   document.body.append(a); a.click(); a.remove();
   window.setTimeout(() => URL.revokeObjectURL(a.href), 4000);
@@ -896,7 +906,7 @@ function keepCopy(): void {
 async function restoreCopy(file: File | undefined): Promise<void> {
   if (!file) return;
   try {
-    const k = JSON.parse(await file.text()) as KeptTree;
+    const k = fromText(await file.text()) as KeptTree;
     if (!k.name || !k.birth || !treeFrom(k, DAILY)) throw new Error('not a tree');
     await keepTree(k, DIARY);
     location.reload();
@@ -2422,6 +2432,7 @@ function drawFar(v: View): void {
       if (tint > 0.01) { g.save(); g.globalAlpha = tint * own; { const r0 = Math.min(fr * k, 0.5 * W), u0 = px * Math.min(k, 2.2) * (r0 / (fr * k)); washCrown(g, fx, fy, r0, f.sp, f.k, u0, seasonNow(), f.i < 0, (fr * k) / r0); } g.restore(); }
     } else drawSeedling(g, fx, fy, Math.min(8 * px, Math.max(4 * px, fr * 0.8) * k), px, own);
   }
+  drawCopyWords(smooth((far - 0.9) / 0.1)); placeBackInput(far >= 0.99 && !farTo);
   // The slice, settling to the cut face at its heart, and gone as the crown closes over.
   const fade = 1 - smooth((far - 0.35) / 0.25);
   if (fade > 0.01) {
@@ -2432,8 +2443,56 @@ function drawFar(v: View): void {
     g.restore();
   }
 }
+/**
+ * A copy of everything (the grove, and today's tree), kept as a file somewhere safe; and one taken back.
+ * Pencilled small at the foot of the grove.
+ */
+const copyAt = () => ({ keep: [W / 2 - 52 * px, H - 44 * px] as [number, number], back: [W / 2 + 52 * px, H - 44 * px] as [number, number] });
+function drawCopyWords(al: number): void {
+  if (al <= 0.01 || visit) return;
+  const c = copyAt();
+  g.save(); g.globalAlpha = al * 0.7; g.fillStyle = 'rgba(92,88,84,0.85)'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.font = `italic ${13 * px}px Newsreader, "Iowan Old Style", Georgia, serif`;
+  g.fillText('keep a copy', ...c.keep); g.fillText('take one back', ...c.back);
+  g.restore();
+}
+async function keepGroveCopy(): Promise<void> {
+  const all = { wellRounded: 1, diary: kept(), grove: groveKept };
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([toText(all)], { type: 'application/json' })); a.download = `well-rounded-${dayOf()}.json`;
+  document.body.append(a); a.click(); a.remove();
+  window.setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  try { localStorage.setItem('annulus.copied', String(groveKept.length * 1000 + tree.rings.length)); } catch { /* not noted */ }
+  say('A copy is kept, as a file. Keep it somewhere safe.', 4);
+}
+/**
+ * (A file can only be asked for from a real touch on a real file button: one lies, unseen, over the
+ * pencilled words, there only while the grove is.)
+ */
+const backInput = (() => {
+  const i = document.createElement('input'); i.type = 'file'; i.accept = 'application/json,.json';
+  Object.assign(i.style, { position: 'fixed', opacity: '0', width: '120px', height: '36px', transform: 'translate(-50%, -50%)', display: 'none', zIndex: '5', cursor: 'pointer' });
+  i.onchange = () => { const f = i.files?.[0]; i.value = ''; if (f) void takeGroveCopy(f); };
+  document.body.append(i);
+  return i;
+})();
+function placeBackInput(on: boolean): void {
+  const show = on && !visit;
+  if (show) { const c = copyAt(); backInput.style.left = `${c.back[0] / px}px`; backInput.style.top = `${c.back[1] / px}px`; }
+  if ((backInput.style.display !== 'none') !== show) backInput.style.display = show ? 'block' : 'none';
+}
+async function takeGroveCopy(file: File): Promise<void> {
+  try {
+    const all = fromText(await file.text()) as { wellRounded?: number; diary?: KeptTree; grove?: KeptTree[] };
+    if (!all.wellRounded || !all.diary || !Array.isArray(all.grove) || !treeFrom(all.diary, DAILY) || all.grove.some((k) => !treeFrom(k, DAILY))) throw new Error('not a copy');
+    if (!window.confirm(`Take back this copy (${all.grove.length + 1} trees)? What's here now will be replaced.`)) return;
+    await setGrove(all.grove); await keepTree(all.diary, DIARY);
+    location.reload();
+  } catch { say('That file isn’t a copy of a grove.', 4); }
+}
 /** Touched in the grove: an older tree opens to its slice; today's comes home. */
 function tapGrove(x: number, y: number): void {
+  { const c = copyAt(); if (!visit && y > c.keep[1] - 18 * px && y < c.keep[1] + 18 * px) { if (Math.abs(x - c.keep[0]) < 50 * px) { void keepGroveCopy(); return; } if (Math.abs(x - c.back[0]) < 56 * px) return; } }
   const L = groveLayout(), w = worldOf();
   // (The next tree's ground: a new tree, if they say so.)
   if (!visit && Math.hypot(x - (L.cam.X0 + w.next.wx * L.cam.S), y - (L.cam.Y0 + w.next.wy * L.cam.S)) < Math.max(22 * px, 0.6 * L.cam.S)) { plantAgain(); return; }
@@ -2479,6 +2538,69 @@ function demoGrove(count = 5): KeptTree[] {
     out.push({ ...like, tree: KINDS[(i * 7 + (i >> 2)) % KINDS.length], seed: like.seed + i * 104729 });
   }
   return out;
+}
+
+/**
+ * The opening: a tree's rings grow out from its heart, quickly, year on year, until they fill the sheet;
+ * then it fades, and today's slice paints itself in. Each ring is the last one's shape carried on (a tree
+ * remembers its lumps) with a little of its own, its width a good year or a lean one, its edge a line of
+ * ink, the late ones heavier. A touch skips it. (Never under a test, or for those who'd rather less motion;
+ * `?intro` to see it there.)
+ */
+const INTRO = GROWN && !CHILD && (params.has('intro') || (!navigator.webdriver && !matchMedia('(prefers-reduced-motion: reduce)').matches));
+const INTRO_GROW = 2.6, INTRO_HOLD = 0.35, INTRO_FADE = 0.8;
+let intro: { at: number; c: HTMLCanvasElement; rings: Float32Array[]; drawn: number; done: number; skip: number } | null = null;
+function startIntro(): void {
+  if (!INTRO) return;
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const cx = W / 2, cy = Math.round(H * 0.47), far = Math.hypot(Math.max(cx, W - cx), Math.max(cy, H - cy)) * 1.04, N = 180;
+  const rings: Float32Array[] = [], seed = Math.random() * 1000;
+  let prev = new Float32Array(N + 1).fill(2 * px), anomaly = new Float32Array(N + 1);
+  for (let i = 0; prev.reduce((m, r) => Math.min(m, r), Infinity) < far && i < 400; i++) {
+    // (Its width: a good year or a lean one, the young years wide; its shape: the last ring's, with a little
+    // of its own, low and slow round it.)
+    const year = (0.55 + 0.9 * h1(seed + i * 1.37) ** 1.5) * (1 + 2.2 * Math.exp(-i / 6)) * (far / 80);
+    const ph1 = h1(seed + i * 2.1) * TAU, ph2 = h1(seed + i * 3.3) * TAU, ring = new Float32Array(N + 1);
+    for (let j = 0; j <= N; j++) {
+      const a = (j / N) * TAU;
+      anomaly[j] = 0.88 * anomaly[j] + 0.12 * (0.5 * Math.sin(2 * a + ph1) + 0.3 * Math.sin(3 * a + ph2) + 0.4 * (vnoise(Math.cos(a) * 1.6 + seed + i * 0.21, Math.sin(a) * 1.6 + i * 0.13) - 0.5) * 2);
+      ring[j] = prev[j] + year * Math.max(0.25, 1 + 0.55 * anomaly[j]);
+    }
+    rings.push(ring); prev = ring;
+  }
+  const g2 = c.getContext('2d')!;
+  g2.drawImage(groundOf(), 0, 0);
+  g2.fillStyle = ink(0.9); g2.beginPath(); g2.arc(cx, cy, 2.2 * px, 0, TAU); g2.fill();
+  intro = { at: clock(), c, rings, drawn: 0, done: 0, skip: 0 };
+  words.style.visibility = 'hidden';
+}
+function drawIntro(t: number): void {
+  if (!intro) return;
+  const it = intro, n = it.rings.length, e = (t - it.at) / INTRO_GROW;
+  // (Quickly at first, the last few slower, as the sheet fills: eased out.)
+  const want = Math.min(n, Math.floor(n * (1 - (1 - Math.min(1, e)) ** 2.2)));
+  if (want > it.drawn) {
+    const g2 = it.c.getContext('2d')!, cx = W / 2, cy = Math.round(H * 0.47), N = it.rings[0].length - 1;
+    g2.lineJoin = 'round';
+    for (let i = it.drawn; i < want; i++) {
+      // (Pressed, not plotted: each ring's line swelling and thinning along it with the press, now and
+      // then starved to nothing; a year's latewood a heavier band.)
+      const ring = it.rings[i], late = h1(i * 5.1) < 0.22, base = (late ? 2.4 : 0.8 + 0.6 * h1(i * 3.7)) * px;
+      g2.strokeStyle = ink(late ? 0.88 : 0.78); g2.lineCap = 'round';
+      const pt = (j: number): [number, number] => { const a = (j / N) * TAU, r = ring[j] + (h1(i * 31 + j * 7.3) - 0.5) * 0.6 * px; return [cx + r * Math.cos(a), cy - r * Math.sin(a)]; };
+      for (let j = 0; j < N; j++) {
+        const a = (j / N) * TAU, press = vnoise(Math.cos(a) * 3 + i * 0.7, Math.sin(a) * 3 + i * 0.31);
+        if (!late && press < 0.18) continue;
+        g2.lineWidth = base * (0.45 + 1.1 * press);
+        g2.beginPath(); g2.moveTo(...pt(j)); g2.lineTo(...pt(j + 1)); g2.stroke();
+      }
+    }
+    it.drawn = want;
+  }
+  const end = it.skip || it.at + INTRO_GROW + INTRO_HOLD, fade = it.skip ? 0.35 : INTRO_FADE;
+  const al = 1 - smooth((t - end) / fade);
+  if (al <= 0) { intro = null; openedAt = clock(); idleSince = openedAt + OPEN; words.style.visibility = ''; return; }
+  g.save(); g.globalAlpha = al; g.drawImage(it.c, 0, 0); g.restore();
 }
 
 /** When the page opened: the slice paints itself in from the heart. */
@@ -2560,14 +2682,16 @@ function frame(): void {
   drawBrush(g, v, t);
   drawKnots(shownOf(v), t);
   if (far > 0) drawFar(v);
-  else drawEdition(shownOf(v), t, dt);
+  else { placeBackInput(false); drawEdition(shownOf(v), t, dt); }
   drawPaper(g, W, H);
+  drawIntro(t);
   requestAnimationFrame(frame);
 }
 
 void (async () => {
   await recall();
   if (GROWN && !CHILD) {
+    void navigator.storage?.persist?.().catch(() => false);
     groveKept = params.has('grove') ? demoGrove(Math.max(1, Number(params.get('grove')) || 5)) : await grove();
   }
   warp = warpNow(); paper.fit(warp, warp.R); paper.bake(tree);
@@ -2588,11 +2712,13 @@ void (async () => {
     } else if (!tree.rings.length && !seedAt) say(`Tap where ${c.name}’s tree should grow.`, 1e5);
     else say(days.includes(today) ? `${c.name}’s day is drawn. Draw another if you like.` : question(), 10);
   }
+  else if (GROWN && !tree.rings.length && finishedYear) say('A year. It stands in your grove. Choose the next.', 1e5);
   else if (GROWN && !tree.rings.length) say(seedAt ? 'Draw a loop around the seed. One ring a day.' : 'Swipe through the woods. Touch one to plant it.', 1e5);
   // (Words only where they're needed: before the first ring. After that, the tree says it.)
   else if (!tree.rings.length) say('Draw a circle around this one. One ring a day.', 8);
   Object.assign(window, { press: { get tree() { return tree; }, get phase() { return settle.ring >= 0 ? 'settling' : 'trace'; }, get easing() { return !!ease; }, get view() { return viewNow(); }, get days() { return days; }, get run() { return run; }, get kind() { return kind; }, get choice() { return SEEDS[choice]; }, get far() { return far; }, get visiting() { return visit?.i ?? null; }, groveNext: () => { const c = camNow(), w = worldOf(); return { x: (c.X0 + w.next.wx * c.S) / px, y: (c.Y0 + w.next.wy * c.S) / px }; }, grove: () => groveLayout().trees.map((t) => ({ sp: t.sp, n: t.n, i: t.i, x: t.x / px, y: t.y / px, r: t.r / px })), get editionY() { return editionY; }, get stampAt() { return stampAt; }, target: (a: number) => target.r(a), look: (to: 'year' | 'life' | number) => lookAt(to), print: async () => (await yearPrint()).toDataURL('image/png'), words: async () => (await yearWords()).toDataURL('image/png'), block: async () => (await yearBlock()).toDataURL('image/png') } });
   // (The real wood: once it's come, the print is pressed again with it.)
   if (PRINT) loadWood(() => { for (const k in printCaches) delete printCaches[k]; });
+  startIntro();
   requestAnimationFrame(frame);
 })();

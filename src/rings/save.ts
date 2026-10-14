@@ -107,14 +107,47 @@ export async function runs(): Promise<Run[]> {
   try { return ((await run('readonly', (s) => s.get(RUNS))) as Run[] | undefined) ?? []; } catch { return []; }
 }
 
-/** The grove: each tree of the practice, once finished (a new one planted), kept standing, oldest first. */
+/**
+ * The grove: each tree of the practice, once finished, kept standing, oldest first: each its own record
+ * (`grove/<n>`), with a list of them (`grove`), so a write touches one tree and a failed one loses none.
+ * (Kept before as one list of trees: moved over the first time it's read.)
+ */
+const GROVE_PREFIX = 'grove/';
+async function groveKeys(): Promise<string[]> {
+  const got = (await run('readonly', (s) => s.get(GROVE))) as unknown;
+  if (Array.isArray(got) && got.length && typeof got[0] !== 'string') {
+    // (The old way: the trees themselves in the list.)
+    const keys: string[] = [];
+    for (const [i, k] of (got as KeptTree[]).entries()) { const key = `${GROVE_PREFIX}${Date.now()}-${i}`; await run('readwrite', (s) => s.put(k, key)); keys.push(key); }
+    await run('readwrite', (s) => s.put(keys, GROVE));
+    return keys;
+  }
+  return (got as string[] | undefined) ?? [];
+}
 export async function keepInGrove(k: KeptTree): Promise<void> {
   try {
-    const all = ((await run('readonly', (s) => s.get(GROVE))) as KeptTree[] | undefined) ?? [];
-    all.push(k);
-    await run('readwrite', (s) => s.put(all, GROVE));
+    const keys = await groveKeys(), key = `${GROVE_PREFIX}${Date.now()}`;
+    await run('readwrite', (s) => s.put(k, key));
+    await run('readwrite', (s) => s.put([...keys, key], GROVE));
   } catch { /* not kept, and that's all */ }
 }
 export async function grove(): Promise<KeptTree[]> {
-  try { return ((await run('readonly', (s) => s.get(GROVE))) as KeptTree[] | undefined) ?? []; } catch { return []; }
+  try {
+    const out: KeptTree[] = [];
+    for (const key of await groveKeys()) { const k = (await run('readonly', (s) => s.get(key))) as KeptTree | undefined; if (k) out.push(k); }
+    return out;
+  } catch { return []; }
 }
+/** The grove replaced whole (a copy taken back). */
+export async function setGrove(all: KeptTree[]): Promise<void> {
+  const keys: string[] = [];
+  for (const [i, k] of all.entries()) { const key = `${GROVE_PREFIX}${Date.now()}-${i}`; await run('readwrite', (s) => s.put(k, key)); keys.push(key); }
+  await run('readwrite', (s) => s.put(keys, GROVE));
+}
+
+/**
+ * A kept tree as text, for a copy kept as a file: its typed arrays written out as lists and read back as
+ * typed arrays (JSON alone would turn them into plain objects).
+ */
+export const toText = (x: unknown): string => JSON.stringify(x, (_k, v) => (v instanceof Float32Array ? { f32: Array.from(v) } : v instanceof Uint8Array ? { u8: Array.from(v) } : v));
+export const fromText = (t: string): unknown => JSON.parse(t, (_k, v) => (v && typeof v === 'object' && !Array.isArray(v) ? (Array.isArray(v.f32) && Object.keys(v).length === 1 ? Float32Array.from(v.f32) : Array.isArray(v.u8) && Object.keys(v).length === 1 ? Uint8Array.from(v.u8) : v) : v));
