@@ -2115,7 +2115,9 @@ function printFor(v: View, moving: boolean, slot = 'drawing', drift = false): { 
   const still = fingers.size === 0 && !lookBack;
   // (Moving and no longer covering the sheet, or looked into by a quarter: pressed again at once, at half
   // the pixels so it keeps up with the fingers; never a blown-up bitmap at the edges.)
-  const quick = same && moving && clock() - pc.at > 0.05 && (!covers(pc, v) || off > Math.log(1.25));
+  // (And whatever the fingers are doing, held still or not, a picture that doesn't cover the sheet is never
+  // shown with the blown-up whole round it for more than a frame or two.)
+  const quick = same && clock() - pc.at > 0.03 && (!covers(pc, v) || (moving && off > Math.log(1.25)));
   const far = same && ((still && !exact && !covers(pc, v)) || (drift && !moving && off > 0.004 && clock() - pc.at > 0.8) || (!moving && !exact && !covers(pc, v) && clock() - pc.at > 0.25));
   if (!same || (!moving && !drift && !exact) || far || quick) {
     const S = quick && !far ? 0.5 : 1, cw = Math.ceil(W * S), ch = Math.ceil(H * S);
