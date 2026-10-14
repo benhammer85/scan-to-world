@@ -32,7 +32,7 @@ import { Ear } from './ear';
 import { TYPICAL, ageOn as ageOf, ageWords as ageSaid, dayDate, dayOf, grewIn as grewOf, question as askOf, yearSpans as spansOf } from './child';
 import { climate, growth as growthOf, season } from './growing';
 import { RINGS, overlap, percent, shapeFor } from './puzzle';
-import { crownSize, drawCrown, drawHill, drawSeedling, places } from './grove';
+import { crownSize, drawCrown, drawHill, drawSeedling, places, seasonOf, washCrown, washHill, type Season } from './grove';
 import { holdStill, steadySize } from './steady';
 import { forgetTree, grove, keepInGrove, keepRun, keepTree, recallTree, runs, snapshotTree, treeFrom, type KeptTree, type Run } from './save';
 
@@ -2174,23 +2174,29 @@ function groveLayout(): { cx: number; cy: number; R: number; seed: number; trees
     ...groveKept.map((k, i) => ({ sp: asKind(k.tree) ?? 'oak', n: ((k.sim.rings as unknown[] | undefined) ?? []).length, i, k: k.seed })),
     { sp: mine.kind, n: mine.tree.rings.length, i: -1, k: mine.tree.seed },
   ];
-  const cx = W / 2, cy = Math.round(H * 0.46), R = Math.min(W, H) * 0.62, seed = groveKept[0]?.seed ?? mine.tree.seed;
+  const cx = W / 2, cy = Math.round(H * 0.44), R = Math.min(W, H) * 0.56, seed = groveKept[0]?.seed ?? mine.tree.seed;
   const at = places(all.length, seed);
   return { cx, cy, R, seed, trees: all.map((a, j) => ({ ...a, k: (a.k % 9973) + 11, x: cx + at[j].x * R, y: cy + at[j].y * R, r: at[j].scale * R * crownSize(a.sp, a.n) })) };
 }
 /** The hill, inked once for the sheet as it is (the grove's trees drawn over it). */
 let hillC: HTMLCanvasElement | null = null, hillKey = '';
+/** The season washed into the grove: today's (`?season=winter` and so on, to look). */
+const SEASONS: Season[] = ['spring', 'summer', 'autumn', 'winter'];
+const seasonNow = (): Season => SEASONS.find((x) => x === params.get('season')) ?? seasonOf();
 function hillOf(L: ReturnType<typeof groveLayout>): HTMLCanvasElement {
-  const key = `${W}x${H}:${L.seed}`;
+  const key = `${W}x${H}:${L.seed}:${seasonNow()}`;
   if (hillC && hillKey === key) return hillC;
   hillC ??= document.createElement('canvas'); hillC.width = W; hillC.height = H; hillKey = key;
-  drawHill(hillC.getContext('2d')!, W, H, L.cx, L.cy, L.R, px, L.seed);
+  const hc = hillC.getContext('2d')!;
+  hc.clearRect(0, 0, W, H);
+  washHill(hc, W, H, L.cx, L.cy, L.R, px, L.seed, seasonNow());
+  drawHill(hc, W, H, L.cx, L.cy, L.R, px, L.seed);
   return hillC;
 }
 /** The grove (hill and trees) for the sheet, kept until a tree changes; drawn back to, it's only scaled. */
 let groveC: HTMLCanvasElement | null = null, groveKey = '';
 function groveOf(L: ReturnType<typeof groveLayout>): HTMLCanvasElement {
-  const key = `${W}x${H}:${L.seed}:${L.trees.map((t) => `${t.sp}${t.n}`).join(',')}`;
+  const key = `${W}x${H}:${L.seed}:${seasonNow()}:${L.trees.map((t) => `${t.sp}${t.n}`).join(',')}`;
   if (groveC && groveKey === key) return groveC;
   groveC ??= document.createElement('canvas'); groveC.width = W; groveC.height = H; groveKey = key;
   const c = groveC.getContext('2d')!;
@@ -2198,6 +2204,8 @@ function groveOf(L: ReturnType<typeof groveLayout>): HTMLCanvasElement {
   for (const t of [...L.trees].sort((p, q) => p.y - q.y)) {
     if (t.n < 30) drawSeedling(c, t.x, t.y, Math.max(4 * px, t.r * 0.8), px);
     else drawCrown(c, t.x, t.y, t.r, t.sp, t.k, px);
+    // (Coloured over the ink, by hand: today's still wet.)
+    if (t.n >= 30) washCrown(c, t.x, t.y, t.r, t.sp, t.k, px, seasonNow(), t.i < 0);
   }
   return groveC;
 }
@@ -2226,7 +2234,12 @@ function drawFar(v: View): void {
   // Its own crown, drawn afresh at its size (sharp, however close), coming in round the slice.
   const own = smooth(far / 0.22), [fx, fy] = at(f.x, f.y);
   // (Drawn as the grove's own crown magnified: its pen with it, up to a broad nib.)
-  if (f.n >= 30) drawCrown(g, fx, fy, fr * k, f.sp, f.k, px * Math.min(k, 2.2), own);
+  if (f.n >= 30) {
+    drawCrown(g, fx, fy, fr * k, f.sp, f.k, px * Math.min(k, 2.2), own);
+    // (The colour comes with the years: only as the view rises off the day.)
+    const tint = smooth((far - 0.55) / 0.35) * (1 - rest);  // (then the grove's own, its wash with it)
+    if (tint > 0.01) { g.save(); g.globalAlpha = tint; { const r0 = Math.min(fr * k, 0.5 * W), u0 = px * Math.min(k, 2.2) * (r0 / (fr * k)); washCrown(g, fx, fy, r0, f.sp, f.k, u0, seasonNow(), f.i < 0, (fr * k) / r0); } g.restore(); }
+  }
   else drawSeedling(g, fx, fy, Math.max(4 * px, fr * 0.8) * k, px, own);
   // The slice, settling to the cut face at its heart, and gone as the crown closes over.
   const fade = 1 - smooth((far - 0.35) / 0.25);
@@ -2242,7 +2255,7 @@ function drawFar(v: View): void {
     const first = (groveKept[0]?.days?.[0] ?? (visit ? visit.stash.days : days)[0] ?? dayOf()).slice(0, 4), last = dayOf().slice(0, 4);
     g.save(); g.globalAlpha = smooth((q - 0.6) / 0.4) * 0.75; g.fillStyle = 'rgba(92,88,84,0.85)'; g.textAlign = 'center'; g.textBaseline = 'middle';
     g.font = `italic ${14 * px}px Newsreader, "Iowan Old Style", Georgia, serif`;
-    g.fillText(first === last ? first : `${first} – ${last}`, W / 2, H - 64 * px);
+    g.fillText(first === last ? first : `${first} – ${last}`, W / 2, Math.min(L.cy + L.R * 0.78, H - 150 * px));
     g.restore();
   }
 }

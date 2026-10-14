@@ -93,7 +93,7 @@ export function drawCrown(g: CanvasRenderingContext2D, x: number, y: number, r: 
   for (let i = 0; i < N; i++) {
     const a = h1(k * 7 + i * 1.37) * TAU, rr = r * Math.sqrt(h1(k * 3 + i * 2.17)), px = x + Math.cos(a) * rr, py = y + Math.sin(a) * rr;
     const s = Math.max(0, Math.min(1, 0.4 + 0.6 * (((px - x) / r) * 0.6 + ((py - y) / r) * 0.8)));
-    if (h1(i * 5.1 + k) > s * s * 1.25) continue;
+    if (h1(i * 5.1 + k) > (0.12 + s) ** 2 * 1.1) continue;
     g.beginPath();
     if (CONIFER.has(sp)) {
       const ra = Math.atan2(py - y, px - x) + (h1(i) - 0.5) * 0.9, L = U * (1.6 + 2.2 * h1(i * 3));
@@ -104,13 +104,13 @@ export function drawCrown(g: CanvasRenderingContext2D, x: number, y: number, r: 
     } else if (sp === 'birch') {
       const d = (0.35 + 0.3 * h1(i)) * U; g.arc(px, py, d, 0, TAU); g.fill();
     } else {
-      const cr = U * (sp === 'oak' ? 1.4 + 1.6 * h1(i * 3) : 1 + 1.1 * h1(i * 3)), tilt = (h1(i * 7) - 0.5) * 0.8;
-      g.lineWidth = (0.45 + 0.4 * s) * U; g.arc(px, py, cr, 0.15 * Math.PI + tilt, 0.95 * Math.PI + tilt); g.stroke();
+      const cr = U * (sp === 'oak' ? 0.9 + 1 * h1(i * 3) : 0.7 + 0.7 * h1(i * 3)), tilt = (h1(i * 7) - 0.5) * 0.8;
+      g.lineWidth = (0.35 + 0.35 * s) * U; g.arc(px, py, cr, 0.15 * Math.PI + tilt, 0.95 * Math.PI + tilt); g.stroke();
     }
   }
   // (An oak's crown is many crowns: the edges of its big clumps, a few arcs within it.)
   if (sp === 'oak') {
-    g.strokeStyle = ink(0.8); g.lineWidth = 0.75 * U;
+    g.strokeStyle = ink(0.35); g.lineWidth = 0.5 * U;
     for (let i = 0; i < 5; i++) { const a = h1(k + i * 3.3) * TAU, rr = r * (0.25 + 0.3 * h1(k * 2 + i)); g.beginPath(); g.arc(x + Math.cos(a) * rr, y + Math.sin(a) * rr, r * (0.3 + 0.1 * h1(i + k)), 0.1 * Math.PI, 0.85 * Math.PI); g.stroke(); }
   }
   g.restore();
@@ -120,7 +120,7 @@ export function drawCrown(g: CanvasRenderingContext2D, x: number, y: number, r: 
   for (let j = 0; j < M; j++) {
     const a = (j / M) * TAU, b = ((j + 1) / M) * TAU, sh = 0.5 + 0.5 * Math.cos(a - 0.9);
     if (sh < 0.25 && h1(j * 0.31 + k) < 0.35) continue;
-    g.lineWidth = U * (0.45 + 1.1 * sh) * light;
+    g.lineWidth = U * (0.35 + 0.8 * sh) * light;
     g.beginPath(); g.moveTo(x + Math.cos(a) * E[j] * r, y + Math.sin(a) * E[j] * r); g.lineTo(x + Math.cos(b) * E[j + 1] * r, y + Math.sin(b) * E[j + 1] * r); g.stroke();
   }
   g.restore();
@@ -134,29 +134,31 @@ export function drawSeedling(g: CanvasRenderingContext2D, x: number, y: number, 
   g.stroke(); g.fillStyle = ink(1); g.beginPath(); g.arc(x, y, 1.1 * U, 0, TAU); g.fill(); g.restore();
 }
 
+/** The hill's height at (x, y), its lie its own (`seed`). */
+function hillHeight(x: number, y: number, cx: number, cy: number, R: number, seed: number): number {
+  const s1 = h1(seed * 0.013), s2 = h1(seed * 0.029), s3 = h1(seed * 0.047), ox = 30 * s1, oy = 30 * s2;
+  const dx = (x - cx) / R, dy = (y - cy) / R;
+  let z = Math.exp(-(dx * dx * 1.1 + dy * dy * 1.5) * 1.7);
+  z += 0.45 * Math.exp(-((dx + 0.55 - 0.3 * s3) ** 2 * 3 + (dy - 0.35 + 0.2 * s1) ** 2 * 4));
+  z += 0.3 * Math.exp(-((dx - 0.6 + 0.2 * s2) ** 2 * 5 + (dy + 0.4) ** 2 * 5));
+  z += 0.12 * (vn(x / (R * 0.35) + ox, y / (R * 0.35) + oy) - 0.5) + 0.05 * (vn(x / (R * 0.12) + 9 + ox, y / (R * 0.12)) - 0.5);
+  return z;
+}
 /**
  * The hill in contours, drawn by hand (the pen's weight wandering, now and then lifting), centred on
  * (cx, cy), `R` across, its lie its own (`seed`), on a canvas `w` × `h`.
  */
 export function drawHill(g: CanvasRenderingContext2D, w: number, h: number, cx: number, cy: number, R: number, U: number, seed: number): void {
-  const s1 = h1(seed * 0.013), s2 = h1(seed * 0.029), s3 = h1(seed * 0.047);
-  const ox = 30 * s1, oy = 30 * s2;
-  const height = (x: number, y: number) => {
-    const dx = (x - cx) / R, dy = (y - cy) / R;
-    let z = Math.exp(-(dx * dx * 1.1 + dy * dy * 1.5) * 1.7);
-    z += 0.45 * Math.exp(-((dx + 0.55 - 0.3 * s3) ** 2 * 3 + (dy - 0.35 + 0.2 * s1) ** 2 * 4));
-    z += 0.3 * Math.exp(-((dx - 0.6 + 0.2 * s2) ** 2 * 5 + (dy + 0.4) ** 2 * 5));
-    z += 0.12 * (vn(x / (R * 0.35) + ox, y / (R * 0.35) + oy) - 0.5) + 0.05 * (vn(x / (R * 0.12) + 9 + ox, y / (R * 0.12)) - 0.5);
-    return z;
-  };
+  const height = (x: number, y: number) => hillHeight(x, y, cx, cy, R, seed);
   const step = 3 * U, nx = Math.ceil(w / step) + 1, ny = Math.ceil(h / step) + 1, Z = new Float32Array(nx * ny);
   for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) Z[j * nx + i] = height(i * step, j * step);
   const SEG: Record<number, [number, number][]> = { 1: [[3, 0]], 2: [[0, 1]], 3: [[3, 1]], 4: [[1, 2]], 5: [[3, 0], [1, 2]], 6: [[0, 2]], 7: [[3, 2]], 8: [[2, 3]], 9: [[0, 2]], 10: [[0, 1], [2, 3]], 11: [[1, 2]], 12: [[1, 3]], 13: [[0, 1]], 14: [[0, 3]] };
   g.save(); g.lineCap = 'round';
   let li = 0;
-  for (let L = 0.12; L < 1.2; L += 0.075, li++) {
+  for (let L = 0.14; L < 1.2; L += 0.09 + 0.05 * h1(li * 3.7 + seed), li++) {
     const major = li % 4 === 3;
-    g.strokeStyle = ink(major ? 0.62 : 0.4);
+    // (Light, and fainter toward the hill's foot, where it runs out into the field.)
+    g.strokeStyle = ink((major ? 0.42 : 0.26) * (0.45 + 0.55 * Math.min(1, (L - 0.1) / 0.35)));
     for (let j = 0; j < ny - 1; j++) for (let i = 0; i < nx - 1; i++) {
       const a = Z[j * nx + i], b = Z[j * nx + i + 1], c = Z[(j + 1) * nx + i + 1], d = Z[(j + 1) * nx + i];
       const idx = (a > L ? 1 : 0) | (b > L ? 2 : 0) | (c > L ? 4 : 0) | (d > L ? 8 : 0);
@@ -166,7 +168,7 @@ export function drawHill(g: CanvasRenderingContext2D, w: number, h: number, cx: 
       for (const [p, q] of SEG[idx]) {
         const mx = (e[p][0] + e[q][0]) / 2, my = (e[p][1] + e[q][1]) / 2;
         if (vn(mx / (40 * U) + li * 7, my / (40 * U)) < (major ? 0.12 : 0.2)) continue;
-        g.lineWidth = U * (major ? 1 : 0.6) * (0.75 + 0.5 * vn(mx / (25 * U), my / (25 * U) + li));
+        g.lineWidth = U * (major ? 0.8 : 0.5) * (0.75 + 0.5 * vn(mx / (25 * U), my / (25 * U) + li));
         g.beginPath(); g.moveTo(e[p][0], e[p][1]); g.lineTo(e[q][0], e[q][1]); g.stroke();
       }
     }
@@ -180,9 +182,89 @@ export function drawHill(g: CanvasRenderingContext2D, w: number, h: number, cx: 
  * In shares of `R` about the hill's middle, and each crown's size as a share of `R`.
  */
 export function places(count: number, seed: number): { x: number; y: number; scale: number }[] {
-  const gold = Math.PI * (3 - Math.sqrt(5)), sp = Math.min(0.28, 0.82 / Math.sqrt(count + 0.3)), a0 = h1(seed * 0.71) * TAU;
+  const gold = Math.PI * (3 - Math.sqrt(5)), sp = Math.min(0.24, 0.66 / Math.sqrt(count + 0.3)), a0 = h1(seed * 0.71) * TAU;
   return Array.from({ length: count }, (_, i) => {
-    const a = a0 + i * gold, d = sp * Math.sqrt(i + 0.3) * (1 + 0.15 * (h1(i * 3 + seed) - 0.5));
-    return { x: Math.cos(a) * d - 0.05, y: Math.sin(a) * d * 0.85 - 0.05, scale: sp * 0.74 };
+    const a = a0 + i * gold, d = sp * Math.sqrt(i + 0.04) * (1 + 0.2 * (h1(i * 3 + seed) - 0.5));
+    return { x: Math.cos(a) * d - 0.04, y: Math.sin(a) * d * 0.85 - 0.04, scale: sp * 0.86 * (0.85 + 0.3 * h1(i * 7.7 + seed)) };
   });
+}
+
+// ---------------------------------------------------------------- the wash
+/**
+ * Watercolour, over the ink, as an estate map is coloured by hand: ink for what stays, colour for what
+ * changes. Each crown a wash of its kind in the season (from the date: spring's fresh green, summer's deep,
+ * autumn's turning, winter bare but for the evergreens), laid a little off the ink as a hand lays it,
+ * granulating, darker where it dried at its edge. Today's still wet: brighter, a bloom at its edge.
+ */
+export type Season = 'spring' | 'summer' | 'autumn' | 'winter';
+export const seasonOf = (d = new Date()): Season => (['winter', 'winter', 'spring', 'spring', 'spring', 'summer', 'summer', 'summer', 'autumn', 'autumn', 'autumn', 'winter'] as Season[])[d.getMonth()];
+const EVER = new Set(['pine', 'redwood', 'bristlecone', 'olive']);
+const AUTUMN: Record<string, [number, number, number]> = {
+  oak: [158, 104, 58], ash: [196, 166, 82], maple: [192, 86, 52], cherry: [172, 78, 62], birch: [208, 174, 78],
+};
+function pigment(sp: string, season: Season): [number, number, number] | null {
+  if (EVER.has(sp)) return sp === 'olive' ? [138, 146, 112] : sp === 'redwood' ? [92, 112, 84] : [96, 122, 90];
+  if (season === 'winter') return null;
+  if (season === 'autumn') return AUTUMN[sp] ?? AUTUMN.oak;
+  return season === 'spring' ? [154, 178, 112] : [104, 136, 86];
+}
+/** A crown's wash, laid over its ink (multiplied, as watercolour over a print): `wet` for today's. */
+export function washCrown(g: CanvasRenderingContext2D, x: number, y: number, r: number, sp: string, k: number, U: number, season: Season, wet = false, scale = 1): void {
+  const w = washOf(r, sp, k, U, season, wet);
+  if (!w) return;
+  g.save(); g.globalCompositeOperation = 'multiply';
+  g.drawImage(w.c, x + (w.ox - w.m) * scale, y + (w.oy - w.m) * scale, w.c.width * scale, w.c.height * scale);
+  g.restore();
+}
+/** A crown's wash, painted once (kept for the last few asked for), to be laid at any size. */
+const washes = new Map<string, { c: HTMLCanvasElement; m: number; ox: number; oy: number }>();
+function washOf(r: number, sp: string, k: number, U: number, season: Season, wet: boolean) {
+  const col = pigment(sp, season);
+  if (!col || r < 2) return null;
+  const key = `${sp}${k}:${Math.round(r)}:${U}:${season}:${wet}`, got = washes.get(key);
+  if (got) return got;
+  const E = edgeOf(sp, k + 17), N = E.length - 1, m = Math.ceil(r * 1.5 + 6 * U), size = m * 2;
+  const ox = (h1(k * 1.3) - 0.5) * 3 * U, oy = (h1(k * 2.9) - 0.5) * 3 * U;
+  const c = document.createElement('canvas'); c.width = size; c.height = size;
+  const cx = c.getContext('2d')!, img = cx.createImageData(size, size), d = img.data;
+  const base = wet ? 0.5 : 0.36;
+  for (let py = 0; py < size; py++) for (let px = 0; px < size; px++) {
+    const dx = px - m, dy = py - m, rho = Math.hypot(dx, dy), a = ((Math.atan2(dy, dx) % TAU) + TAU) % TAU;
+    const j = (a / TAU) * N, j0 = Math.floor(j), f = j - j0, e = (E[j0] * (1 - f) + E[Math.min(N, j0 + 1)] * f) * r * (0.97 + 0.06 * vn(a * 4 + k, 1));
+    if (rho > e) continue;
+    const inEdge = e - rho;
+    // (Dried darker at its edge; granulating; thinner where the brush ran dry.)
+    let al = base * (0.7 + 0.5 * vn((px + k) / (9 * U), py / (9 * U))) * (0.75 + 0.5 * vn(px / (1.1 * U) + k, py / (1.1 * U)));
+    al *= 1 + (wet ? 0.9 : 0.55) * Math.max(0, 1 - inEdge / (2.2 * U));
+    // (Light falls from the upper left: the wash a touch thinner there.)
+    al *= 0.82 + 0.3 * Math.max(0, Math.min(1, 0.5 + 0.5 * ((dx / r) * 0.6 + (dy / r) * 0.8)));
+    const o = (py * size + px) * 4;
+    d[o] = col[0]; d[o + 1] = col[1]; d[o + 2] = col[2]; d[o + 3] = Math.round(255 * Math.min(0.85, al));
+  }
+  cx.putImageData(img, 0, 0);
+  // (Still wet: a bloom, where the water crept back and pushed the pigment out.)
+  if (wet) { cx.strokeStyle = `rgba(${col[0]},${col[1]},${col[2]},0.35)`; cx.lineWidth = 1.4 * U; path(cx, m, m, Math.min(r * 1.08, m - U), edgeOf(sp, k + 29)); cx.stroke(); }
+  const out = { c, m, ox, oy };
+  washes.set(key, out);
+  if (washes.size > 40) washes.delete(washes.keys().next().value!);
+  return out;
+}
+/** The hill's wash: pale, pooling darker in its folds, fading out into the paper at its foot. */
+export function washHill(g: CanvasRenderingContext2D, w: number, h: number, cx: number, cy: number, R: number, U: number, seed: number, season: Season): void {
+  const col: [number, number, number] = season === 'winter' ? [176, 172, 150] : season === 'autumn' ? [184, 168, 112] : season === 'spring' ? [168, 182, 122] : [150, 166, 106];
+  const step = 4 * U, nx = Math.ceil(w / step) + 1, ny = Math.ceil(h / step) + 1;
+  const c = document.createElement('canvas'); c.width = nx; c.height = ny;
+  const cx2 = c.getContext('2d')!, img = cx2.createImageData(nx, ny), d = img.data;
+  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+    const x = i * step, y = j * step, z = hillHeight(x, y, cx, cy, R, seed);
+    if (z < 0.1) continue;
+    // (Pooled in the folds: where the ground turns, a little darker; thin on the tops.)
+    const zx = hillHeight(x + step, y, cx, cy, R, seed) - z, zy = hillHeight(x, y + step, cx, cy, R, seed) - z, slope = Math.min(1, Math.hypot(zx, zy) * 9);
+    let al = 0.2 * Math.min(1, (z - 0.1) / 0.25) * (0.6 + 0.6 * slope) * (0.7 + 0.6 * vn(x / (60 * U) + seed % 50, y / (60 * U)));
+    al *= 0.93 + 0.14 * vn(x / (14 * U), y / (14 * U));
+    const o = (j * nx + i) * 4;
+    d[o] = col[0]; d[o + 1] = col[1]; d[o + 2] = col[2]; d[o + 3] = Math.round(255 * al);
+  }
+  cx2.putImageData(img, 0, 0);
+  g.save(); g.globalCompositeOperation = 'multiply'; g.imageSmoothingEnabled = true; g.drawImage(c, 0, 0, nx * step, ny * step); g.restore();
 }
