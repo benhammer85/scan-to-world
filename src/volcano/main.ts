@@ -3993,6 +3993,16 @@ const OPENINGS: Partial<Record<WorldId, ShowLook>> = {
   europa: { len: 4.5, zoom: 0.72, words: () => `Goal: crack the ice in ${FIELDS} places. Under it is an ocean: erupt when the circle around the volcano is full` },
   tonga: { len: 4.6, zoom: 0.85, dir: ventDir, at: HORIZON, turn: [1.2, 2.2, 1.2], words: () => `Goal: ${RINGS} giant waves. Erupt with the top of the volcano just under the sea` },
   first: { len: 4.5, zoom: 1.5, words: () => 'Goal: grow the planet by catching stones in the gold ring. Keep away from red stones, too big to hold. Grow big enough, and Theia comes' },
+  moon: { len: 5, zoom: 1.25, round: true, words: () => 'Goal: fill every dotted crater with lava. Lava poured on the striped high ground runs off and is wasted' },
+  venus: { len: 4.6, zoom: 0.9, dir: ventDir, at: HORIZON, turn: [1.2, 2.2, 1.2], words: () => `Goal: ${DOMES} lava domes, each in a different place. Pour about two seconds at a time: pouring too long makes a dome sag` },
+  comets: { len: 4.5, zoom: 0.85, words: () => `Goal: melt ${WATER} icy comets into water. A comet melts only if it lands on fresh lava or on the volcano` },
+  archean: { len: 4.5, zoom: 1.35, words: () => 'Goal: make enough oxygen to turn the orange sky blue. Pour lava into the sea to make shallows: life grows there and makes oxygen. Eruptions use it up' },
+  ocean: { len: 4.5, zoom: 1.3, words: () => `Goal: ${CHAIN.stretches} separate islands along the dotted line. The volcano moves along it: pour, then stop to leave a gap` },
+  drying: { len: 5, zoom: 1.3, round: true, words: () => `Goal: keep ${Math.round(SEA_KEEP * 100)}% of the planet under sea until the volcano runs out of heat. The sea dries a little every second. Ash from eruptions shades it and slows the drying; lava poured in it turns sea into land` },
+  giant: { len: 4.5, zoom: 1.35, words: () => `Goal: keep a mountain ${HEIGHT.target} km tall on the dark side until the volcano runs out of heat. The planet turns by itself, and the sunny side melts whatever is on it` },
+  surtsey: { len: 4.5, zoom: 0.72, words: () => `Goal: an island where ${NESTS} seabirds nest at once. Birds nest only on cooled lava; ash builds land fast but the sea washes it away` },
+  hollow: { len: 4.6, zoom: 0.95, dir: ventDir, at: HORIZON, turn: [1.2, 2.2, 1.2], words: () => `Goal: a mountain ${HEIGHT.target} km tall. Pour a little, then stop: if cracks appear around the volcano, wait for them to fade, or the top caves in` },
+  rogue: { len: 4.5, zoom: 0.85, words: () => 'Goal: keep a large area of life alive. Life grows along the edges of fresh lava and dies under it, so pour next to the green, never on it' },
 };
 const WINS: Partial<Record<WorldId, ShowLook>> = {
   mars: { len: 6, zoom: 0.9, dir: ventDir, at: HORIZON, turn: [2, 4, 0] },
@@ -4001,6 +4011,16 @@ const WINS: Partial<Record<WorldId, ShowLook>> = {
   europa: { len: 6, zoom: 1.3, round: true },
   tonga: { len: 6, zoom: 1.15, dir: antiVent, at: TOWARD_US, turn: [5, 1, 0] }, // (after the last wave, round to where it meets itself)
   first: { len: 6, zoom: 1.6, round: true },
+  moon: { len: 6, zoom: 1.25, round: true }, // (every crater, filled)
+  venus: { len: 6, zoom: 1.2, round: true }, // (every dome)
+  comets: { len: 6, zoom: 0.8 }, // (close on the ponds, round the volcano)
+  archean: { len: 6, zoom: 1.35, round: true }, // (the sky turned blue, all round)
+  ocean: { len: 6, zoom: 1.3, round: true }, // (the chain of islands)
+  drying: { len: 6, zoom: 1.3, round: true }, // (the sea kept)
+  giant: { len: 6, zoom: 0.9, dir: ventDir, at: HORIZON, turn: [2, 4, 0] }, // (the mountain, side-on, still standing)
+  surtsey: { len: 6, zoom: 0.85, dir: ventDir, at: HORIZON, turn: [2, 4, 0] }, // (the new island, side-on, with its nests)
+  hollow: { len: 6, zoom: 0.9, dir: ventDir, at: HORIZON, turn: [2, 4, 0] },
+  rogue: { len: 6, zoom: 1.25, round: true }, // (the warm patches of life, all round)
 };
 /** How long a win is shown before the chart. */
 const WIN_FOR = WINS[WORLD.id] && !STILL ? 6 : 4;
