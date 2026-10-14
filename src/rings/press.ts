@@ -234,23 +234,7 @@ const SPEC: Record<Kind, {
   olive: { family: 'diffuse', bark: { lumps: 160, plate: false, mean: 11, deep: [0.1, 0.4, 1], wide: 1 }, barkCss: [1.5, 0.02, 4], amp: 2.2, width: 0.8, even: 0.15, line: 0.45, tone: 0.85, resin: false },
 };
 const KINDS = Object.keys(SPEC) as Kind[];
-/**
- * Each wood's temperament, said in pencil beneath it when choosing: true of the tree itself (how it
- * answers the same loop is left to be found). The
- * olive keeps every crooked day (its line barely smoothed, hardly evened out); the conifers' latewood
- * darkens and widens with an unhurried hand (the ring's calm, as drawn: see `calmOf`).
- */
-const TEMPER: Record<Kind, string> = {
-  oak: 'patient; slow to grow',
-  ash: 'open-grained, quick to grow',
-  cherry: 'fine and close',
-  maple: 'fine, pale and even',
-  birch: 'light, quick, and faint',
-  pine: 'dark latewood, as growth slows',
-  redwood: 'broad and calm',
-  bristlecone: 'slow, enduring; outlives its own bark',
-  olive: 'keeps every crooked day',
-};
+/** (Each wood answers the same loop its own way, never said: found by drawing.) */
 /** How smoothly the hand's line becomes the ring (the low-pass round it): the olive's, hardly at all. */
 const SMOOTH: Partial<Record<Kind, number>> = { olive: (3.5 * Math.PI) / 180 };
 /** How calmly ring i was drawn, 0 hurried to 1 unhurried (its tone, as the tree kept it). */
@@ -1129,12 +1113,11 @@ function drawSeedChoice(v: View, t: number): void {
     } else drawSeedOf(sp, x, v.cy, 1, 2);
     g.fillStyle = 'rgba(92,88,84,0.85)'; g.textAlign = 'center'; g.textBaseline = 'middle';
     g.font = `italic ${16 * px}px Newsreader, "Iowan Old Style", Georgia, serif`; g.fillText(sp, x, v.cy + D / 2 + 34 * px);
-    g.fillStyle = 'rgba(92,88,84,0.6)'; g.font = `italic ${13 * px}px Newsreader, "Iowan Old Style", Georgia, serif`; g.fillText(TEMPER[sp], x, v.cy + D / 2 + 56 * px);
     g.restore();
   }
   // Where it is among them: a row of small dots, this one inked.
   g.save(); g.globalAlpha = k;
-  const y = v.cy + D / 2 + 84 * px, gap = 11 * px;
+  const y = v.cy + D / 2 + 64 * px, gap = 11 * px;
   for (let i = 0; i < SEEDS.length; i++) {
     g.fillStyle = i === choice ? 'rgba(60,52,46,0.8)' : 'rgba(92,88,84,0.28)';
     g.beginPath(); g.arc(v.cx + (i - (SEEDS.length - 1) / 2) * gap, y, (i === choice ? 2.6 : 2) * px, 0, TAU); g.fill();
