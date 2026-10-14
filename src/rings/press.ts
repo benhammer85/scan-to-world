@@ -910,8 +910,7 @@ function breathe(t: number, dt: number): void {
   // (In: eased swell; out: a long, slow ebb.)
   const c = (t - stillSince - 3) % (IN + OUT);
   breathNow = c < IN ? smooth(c / IN) : 1 - smooth((c - IN) / OUT);
-  // (The first time it breathes, at the start of an in-breath, it's said once what it's doing.)
-  if (breathShown > 0.5 && c < 0.3 && !words.classList.contains('shown')) tellBreath();
+  // (It breathes without being told: the slice says it.)
 }
 /** How much larger the slice is drawn now, breathing (about one part in sixty at the full in-breath). */
 const breathGrow = () => 1 + 0.016 * breathShown * breathNow;
@@ -928,16 +927,6 @@ function drawBreath(v: View, _t: number, _dt: number): void {
     g.stroke();
   }
   g.restore();
-}
-let breathTold = false;
-try { breathTold = !!localStorage.getItem('annulus.breath2'); } catch { /* not known */ }
-/** Said once only, the first time it breathes: what it's doing. */
-function tellBreath(): boolean {
-  if (!BREATH || breathTold || far > 0 || visit) return false;
-  breathTold = true;
-  try { localStorage.setItem('annulus.breath2', '1'); } catch { /* said again next time, then */ }
-  say('Leave it still, and it breathes: in as it swells, out as it settles.', 9);
-  return true;
 }
 
 /**
