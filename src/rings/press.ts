@@ -1661,7 +1661,8 @@ function drawPrint(v: View): void {
       for (let k = i; k <= j; k++) {
         const R = scr(meanR(k));
         if (R - lastR < (ring ? 1.9 : 2.6 + 1.2 * h1(k * 1.37 + 0.5)) * px * Z) continue;
-        g.lineWidth = (conifer ? 1.9 : 1.75) * (0.8 + 0.4 * h1(k * 3.7)) * px * Z;
+        // (As dark as the wide years: each line some three-fifths of the space it stands for.)
+        g.lineWidth = 0.6 * (R - lastR) * (0.85 + 0.3 * h1(k * 3.7));
         lastR = R; ringPath(v, barkOf(k)); g.stroke();
       }
       i = j;
@@ -1905,7 +1906,7 @@ function printYears(v: View, oak: Years): void {
   // (Years too fine to print apart, a day's ring at the grown tree's scale: the wood, so many years to a
   // pixel, would print solid; so it prints at about half its tone, and as many of its years as the screen
   // can part (one every 3 to 5 px, never evenly) print as a line at their edge, as the drawn woods' fine years do.)
-  const thin = new Float32Array(n), edge = new Uint8Array(n);
+  const thin = new Float32Array(n), edge = new Uint8Array(n), gapOf = new Float32Array(n);
   if (!spans) {
     let lastR = scr(meanR(-1));
     for (let i = 0; i < n; i++) {
@@ -1913,9 +1914,13 @@ function printYears(v: View, oak: Years): void {
       const R = scr(meanR(i));
       // (Never a regular comb of lines, which would beat against the screen's pixels in waves: as far apart
       // as a hand would rule them, each its own distance.)
-      if (thin[i] > 0 && R - lastR >= (3.2 + 1.4 * h1(i * 1.37 + 0.5)) * px * Z) { edge[i] = 1; lastR = R; }
+      if (thin[i] > 0 && R - lastR >= (3.2 + 1.4 * h1(i * 1.37 + 0.5)) * px * Z) { edge[i] = 1; gapOf[i] = R - lastR; lastR = R; }
     }
   }
+  // (A line is wider than the years it lies among: each ring knows the nearest lines in and out.)
+  const edgeIn = new Int32Array(n).fill(-1), edgeOut = new Int32Array(n).fill(-1);
+  for (let i = 0, e = -1; i < n; i++) { edgeIn[i] = e; if (edge[i]) e = i; }
+  for (let i = n - 1, e = -1; i >= 0; i--) { if (edge[i]) e = i; edgeOut[i] = e; }
   // (The sapwood, paler, fading into the heartwood over some eight years: a year added shifts it by a hair.)
   const tone = (i: number) => (spans ? 1 : 1 - 0.16 * smooth((i - (n - 9)) / 8) * smooth((n - 12) / 8));
   let rmax = 0;
@@ -1962,16 +1967,18 @@ function printYears(v: View, oak: Years): void {
       const day = sp ? (sp.whole ? Math.floor(across * cyc) : i) : 0, yy = sp ? ((sp.y * 5) % oak.n + oak.n) % oak.n : year;
       let ink = sample(L, (((a / TAU) * reps[i] * W0 + off[i] + wob * reps[i] * 0.15 + day * 37.3) * L.w) / W0, yy * rows + inDay * rows, yy * rows, rows) * tone(i);
       if (!heart && thin[i] > 0) {
-        ink *= 1 - 0.45 * thin[i];
+        // (As dark as the wide years: lines as wide as some three-fifths of the space they stand for.)
+        ink *= 1 - 0.5 * thin[i];
         // (Its line on the year's edge, drawn smooth across the pixels, a little heavier or lighter
         // than the next, and its weight wandering with the press.)
         const lineAt = (j: number, dist: number) => {
           if (j < 0 || !edge[j]) return 0;
-          const half = (0.35 + 0.3 * h1(j * 3.7 + 1.1)) * px * Z;
+          const half = 0.3 * gapOf[j] * (0.85 + 0.3 * h1(j * 3.7 + 1.1));
           return Math.max(0, Math.min(1, (half + 0.5 * px - dist) / px)) * thin[j];
         };
-        const cov = Math.max(lineAt(i, rout - r), lineAt(i - 1, r - rin)) * (0.75 + 0.35 * vnoise(dx * 0.11 + i, dy * 0.11));
-        if (cov > 0) ink = Math.max(ink, 0.85 * cov);
+        const jo = edgeOut[i], ji = edgeIn[i];
+        const cov = Math.max(jo < 0 ? 0 : lineAt(jo, at(jo, b, f) - r), ji < 0 ? 0 : lineAt(ji, r - at(ji, b, f))) * (0.75 + 0.35 * vnoise(dx * 0.11 + i, dy * 0.11));
+        if (cov > 0) ink = Math.max(ink, 0.95 * cov);
       }
       if (sp) {
         // (Where in their year: lighter after the birthday, darker and denser toward the next; strongly in
