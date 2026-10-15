@@ -908,3 +908,12 @@ The other ten worlds have openings and wins too, each opening saying the goal an
 ### Openings: first time, or every time
 
 Settings has an **Openings** row: "first time" (the default: a world's opening shows the first time it's played, and again after it's lost) or "every time". (Also: the dot between two choices was underlined with the second when it was chosen; it no longer is.)
+
+### Balance check across all 16 worlds
+
+Every world played by the bots in hand mode (as the game is played: hold to pour, tap to erupt), four styles on two seeds, then more seeds where something looked wrong. Careful play wins and careless play loses on most worlds. Fixed:
+
+- **Earth's First Water:** careful play won only 2 games in 6. Arrivals slow as the heat runs down, and a run of rocky stones (six in a row on one seed) left too few comets to reach five, however well played. Now never three of a kind in a row, arrivals a little more often (every 9 to 14 s, was 11 to 17), and heat 360 (was 320). Careful play: every test seed won; careless: none.
+- **Ocean World:** past the end of the dotted line no island can count, but the fire went on (one game ran 19 minutes at 4 of 5). Now the fire ends there, and the game says so a little before ("build the last island now"); and the line is a little longer (0.33 of the way round, was 0.3), as careful play often ran out of line for the fifth island. Careful play: 12 of 12 won; careless: none.
+
+Left as is: Mars, where aimless play reaches the height too but ends with too little heat for the heat star (12 to 19% left, against 25 to 35% played carefully); and Hunga Tonga, where aimless play won once, with 2% heat left.

@@ -779,6 +779,8 @@ export class Planet {
   private seed: number;
   private slowIn = 0;
   private impactIn: number;
+  /** Earth's first water: whether each of the last two to fall was an icy comet. */
+  private lastKinds: boolean[] = [];
   private began = false;
   private seedIn = 0;
   private arriveIn = 0;
@@ -2813,7 +2815,12 @@ export class Planet {
     if (this.impactIn > 0) return;
     this.impactIn = this.between(this.k.impactEvery);
     // Half of them fall near the plume, where they matter; the rest anywhere.
-    const p = this.topo.basePositions, icyNext = this.k.icy > 0 && this.rand() < this.k.icy; // (decided once: chosen afresh at each try, an icy comet's narrower ring lost it to stones nearly every time)
+    // (Decided once: chosen afresh at each try, an icy comet's narrower ring lost it to stones nearly every time. And
+    // never three of a kind in a row: a run of six stones left too few comets to reach the aim, however well played.)
+    const p = this.topo.basePositions, run = this.lastKinds;
+    let icyNext = this.k.icy > 0 && this.rand() < this.k.icy;
+    if (this.k.icy > 0 && run.length >= 2 && run[run.length - 1] === run[run.length - 2]) icyNext = !run[run.length - 1];
+    if (this.k.icy > 0) { run.push(icyNext); if (run.length > 2) run.shift(); }
     for (let tries = 0; tries < 200; tries++) {
       const v = Math.floor(this.rand() * this.rock.length);
       const d = Math.hypot(p[v * 3] - this.plume.x, p[v * 3 + 1] - this.plume.y, p[v * 3 + 2] - this.plume.z);

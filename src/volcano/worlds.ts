@@ -327,8 +327,8 @@ export const WORLDS: World[] = [
       terrain: 'young', basins: 0, craters: 25, floor: 0.06, rough: 0.02,
       waves: 0, rain: 0, sink: 0, swell: 0, life: false,
       talus: 2.2, flow: 10, channel: 2, coolLand: 0.2,
-      drift: 0, rises: 0.035, heat: 320, rising: 1.0, steady: true, // (the volcano moves to whatever is at the top: turn the world to move it)
-      impactEvery: [11, 17], impactWarning: 16, impactHeat: 6, caught: 3, impactNear: 0.75, crater: 0.06, craterDepth: 0.05,
+      drift: 0, rises: 0.035, heat: 360, rising: 1.0, steady: true, // (the volcano moves to whatever is at the top: turn the world to move it)
+      impactEvery: [9, 14], impactWarning: 16, impactHeat: 6, caught: 3, impactNear: 0.75, crater: 0.06, craterDepth: 0.05,
       icy: 0.55, iceCool: 22, iceWarmFor: 45, // (comets fall near enough to pour out to, and lava stays warm for them a while: see sim.ts)
     },
     palette: {

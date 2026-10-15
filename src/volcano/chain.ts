@@ -14,8 +14,8 @@ import type { Planet } from './sim';
 export const CHAIN = {
   /** Separate islands to raise. */
   stretches: 5,
-  /** How far round the world the line runs (a share of the way round). */
-  arc: 0.3,
+  /** How far round the world the line runs (a share of the way round). (0.3 left too little line for a fifth island, played well.) */
+  arc: 0.33,
   /** How near the path (as the sine of an angle from its circle) an island must come to be on it. */
   near: 0.14,
   /** Land on fewer vertices than this (on a planet of the drawn detail) is a rock, not an island of the chain. */

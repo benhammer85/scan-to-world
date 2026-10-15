@@ -1825,7 +1825,7 @@ const HOLD = COMPUTER ? 'Hold the mouse button down on the world' : 'Hold a fing
 const LEARNED = { hold: remembered('volcano.learned.hold') === '1', drag: remembered('volcano.learned.drag') === '1' };
 const POUR = LEARNED.hold ? '' : `${HOLD} to pour lava.`;
 const TIP: Record<string, string> = {
-  ring: `${POUR} The volcano slowly moves along the dotted line. Pour to build an island, then stop and let the volcano move on before you start the next one, so the islands stay separate. The volcano reaches the end of the line after about two and a half minutes.`,
+  ring: `${POUR} The volcano slowly moves along the dotted line. Pour to build an island, then stop and let the volcano move on before you start the next one, so the islands stay separate. The volcano reaches the end of the line after nearly three minutes, and the fire ends there.`,
   basins: `Turn the planet so a dotted crater is just below the volcano. ${HOLD} to pour lava into it. Avoid the striped high ground: lava poured there runs off and is wasted.`,
   height: `${HOLD} to pour lava. Lava flows down the screen, so turn the planet between pours to build up every side.`,
   cover: `${POUR} The water freezes into new white ice. Only your biggest single sheet counts, so grow it outward from its edge: turn the planet so the edge is just below the volcano.`,
@@ -2558,7 +2558,7 @@ function words$(text: string): string {
   return text;
 }
 /** In watercolour, only what asks something of the player is said while it's played (and the lessons, for a player's first games). */
-const ACTION_WORDS = /^(A stone is coming|The ground is sinking|The heat is nearly|A dust storm|Held too long|Missed|High tide|The fire is out)/;
+const ACTION_WORDS = /^(The volcano is near the end|The volcano has passed|A stone is coming|The ground is sinking|The heat is nearly|A dust storm|Held too long|Missed|High tide|The fire is out)/;
 /**
  * The lines that say why something counted or didn't: said in every way of drawing. (In watercolour, only the few
  * above were said, and nearly every world's own word on what had just happened, a crack too late, a comet frozen, a
@@ -3034,10 +3034,17 @@ function markTheWin(): void {
 let ending: { from: number; shown: boolean; at: number; info: ChartInfo | null; turned: number; won: boolean } | null = null;
 let wonSeen = -1;
 const wonAt = () => (wonSeen < 0 ? (wonSeen = seconds) : wonSeen);
-let metInFreePlay = false;
+let metInFreePlay = false, lineEndSaid = false;
 function theEnd(): void {
   // In free play, the aim met is said, and the fire goes on.
   if (FREE && !ending && begun && won() && !metInFreePlay) { metInFreePlay = true; announce(`${GOAL_WORDS[WORLD.goal].done}. Play on as long as you like`); feel([30, 50, 30]); }
+  // The chain of islands: past the end of the dotted line no island can count, so the fire ends there; and is said
+  // a little before, while there's still line for the last one.
+  if (!ending && begun && chain && WORLD.goal === 'ring' && !FREE && !won()) {
+    const r = chain.where(planet.plume).round;
+    if (r > CHAIN.arc + 0.02 && r < 0.8) { planet.reserve = 0; planet.pressure = 0; announce('The volcano has passed the end of the dotted line'); }
+    else if (r > CHAIN.arc - 0.05 && r < 0.8 && !lineEndSaid) { lineEndSaid = true; announce('The volcano is near the end of the dotted line: build the last island now'); }
+  }
   // Done: the aim met, while the fire still burns; or not, and the fire out.
   if (!ending && begun && won() && !FREE) {
     ending = { from: planet.seconds, shown: false, at: 0, info: null, turned: 0, won: true };
