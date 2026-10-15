@@ -34,7 +34,7 @@ import { climate, growth as growthOf, season } from './growing';
 import { RINGS, overlap, percent, shapeFor } from './puzzle';
 import { crownSize, drawCrown, drawHill, drawSeedling, heightAt, land, seasonOf, washCrown, washHill, type Hill, type Season } from './grove';
 import { holdStill, steadySize } from './steady';
-import { forgetTree, fromText, grove, keepInGrove, keepRun, keepTree, recallTree, runs, setGrove, snapshotTree, toText, treeFrom, type KeptTree, type Run } from './save';
+import { fromText, grove, keepInGrove, keepRun, keepTree, recallTree, runs, setGrove, snapshotTree, toText, treeFrom, type KeptTree, type Run } from './save';
 
 const TAU = Math.PI * 2, PAPER = '#f4efe4';
 /**
@@ -337,7 +337,7 @@ const yearOn = (d: string) => { const x = dayDate(d); x.setFullYear(x.getFullYea
 /** Whether, opening, a year's tree was found finished (and stood in the grove). */
 let finishedYear = false;
 function keep(): void {
-  if (params.has('demo') || GAME || visit) return;
+  if (params.has('demo') || GAME || visit || parting) return;
   void keepTree(kept(), DIARY);
 }
 /** The tree as kept (and as a copy is kept). */
@@ -431,6 +431,8 @@ function zoomAbout(x: number, y: number, f: number): void {
   if (PUZZLE) return;
   // (Drawn back past the slice as it is: toward the grove, slowly, a pinch to a quarter or so.)
   if (far >= 1 && !farTo && (f > 1 || groveCam)) { zoomGrove(x, y, f); return; }
+  // (Choosing a new seed, and drawn back: not yet, after all; the tree as it was, and back to the grove.)
+  if (parting && f < 1 && !closer()) unpart();
   if (canPull() && (far > 0 || (!closer() && f < 1))) {
     farTo = null; farPull = Math.max(0, Math.min(1, farPull - Math.log(f) / 1.4)); far = farPull;
     if (far >= 1) tellGrove();
@@ -1141,7 +1143,15 @@ function drawSeedChoice(v: View, t: number): void {
 let plantedAt = 0;
 function plant(x: number, y: number): void {
   seedAt = [x / W, y / H]; view = null; plantedAt = clock();
-  keep();
+  // (A new seed chosen while the last tree waited: now it stands in the grove, and this one is kept.)
+  if (parting) {
+    const was = parting.k, grown = parting.tree.rings.length > 0;
+    void (async () => {
+      if (grown && !params.has('demo')) await keepInGrove(was);
+      if (grown) groveKept = [...groveKept, was];
+      parting = null; worldKey = ''; keep();
+    })();
+  } else keep();
   if (!(CHILD && child)) { say('Now draw a loop around it.', 9); return; }
   say(`${question()} Draw a loop around the seed: loose for an easy day, close for a hard one.`, 9);
 }
@@ -2264,18 +2274,24 @@ function editionWords(date: string): [string, string] {
 
 /** Where the pencilled line is, and its maker's mark (device px); and whether this touch began on the mark. */
 let editionY = -1e9, stampAt: [number, number] = [-1e9, -1e9], onStamp = false;
-/** Asked plainly, once confirmed: the tree is let go, and the sheet is bare again for a new seed. */
+/**
+ * A new tree: straight to the seeds, nothing asked. The tree drawn so far waits, kept as it was, until a
+ * seed is touched (then it stands in the grove); drawn back to the grove instead, it's as it was.
+ */
+let parting: { k: KeptTree; tree: TreeSim; days: string[]; kind: Kind; seedAt: [number, number] | null } | null = null;
 function plantAgain(): void {
   if (painter !== null) { tree.cancel(); trail = []; painter = null; }
   if (visit) unvisit();
   fingers.clear();
-  const n = tree.rings.length;
-  if (!window.confirm(n ? 'Plant a new tree? This one will stand in your grove.' : 'Plant a new tree?')) return;
-  void (async () => {
-    if (n && !params.has('demo')) await keepInGrove(kept());
-    await forgetTree(DIARY);
-    location.replace(location.pathname);
-  })();
+  if (parting) return;
+  parting = { k: kept(), tree, days, kind, seedAt };
+  tree = new TreeSim(1 + Math.floor(Math.random() * 1e6), DAILY); days = []; seedAt = null; folding = null;
+  lookAfresh(); groveCam = null; farTo = { from: far, to: 0, at: clock() };
+}
+function unpart(): void {
+  if (!parting) return;
+  ({ tree, days, kind, seedAt } = parting); parting = null;
+  lookAfresh();
 }
 
 // ---------------------------------------------------------------- the grove
@@ -2751,7 +2767,7 @@ void (async () => {
   else if (GROWN && !tree.rings.length) say(seedAt ? 'Draw a loop around the seed.' : 'Swipe through the woods. Touch one to plant it.', 1e5);
   // (Words only where they're needed: before the first ring. After that, the tree says it.)
   else if (!tree.rings.length) say('Draw a circle around this one.', 8);
-  Object.assign(window, { press: { get tree() { return tree; }, get phase() { return settle.ring >= 0 ? 'settling' : 'trace'; }, get easing() { return !!ease; }, get view() { return viewNow(); }, get days() { return days; }, get run() { return run; }, get kind() { return kind; }, get choice() { return SEEDS[choice]; }, get far() { return far; }, get visiting() { return visit?.i ?? null; }, groveNext: () => { const c = camNow(), w = worldOf(); return { x: (c.X0 + w.next.wx * c.S) / px, y: (c.Y0 + w.next.wy * c.S) / px }; }, grove: () => groveLayout().trees.map((t) => ({ sp: t.sp, n: t.n, i: t.i, x: t.x / px, y: t.y / px, r: t.r / px })), get editionY() { return editionY; }, get stampAt() { return stampAt; }, target: (a: number) => target.r(a), look: (to: 'year' | 'life' | number) => lookAt(to), print: async () => (await yearPrint()).toDataURL('image/png'), words: async () => (await yearWords()).toDataURL('image/png'), block: async () => (await yearBlock()).toDataURL('image/png') } });
+  Object.assign(window, { press: { get tree() { return tree; }, get phase() { return settle.ring >= 0 ? 'settling' : 'trace'; }, get easing() { return !!ease; }, get view() { return viewNow(); }, get days() { return days; }, get run() { return run; }, get kind() { return kind; }, get choice() { return SEEDS[choice]; }, get far() { return far; }, get visiting() { return visit?.i ?? null; }, get parting() { return !!parting; }, groveNext: () => { const c = camNow(), w = worldOf(); return { x: (c.X0 + w.next.wx * c.S) / px, y: (c.Y0 + w.next.wy * c.S) / px }; }, grove: () => groveLayout().trees.map((t) => ({ sp: t.sp, n: t.n, i: t.i, x: t.x / px, y: t.y / px, r: t.r / px })), get editionY() { return editionY; }, get stampAt() { return stampAt; }, target: (a: number) => target.r(a), look: (to: 'year' | 'life' | number) => lookAt(to), print: async () => (await yearPrint()).toDataURL('image/png'), words: async () => (await yearWords()).toDataURL('image/png'), block: async () => (await yearBlock()).toDataURL('image/png') } });
   // (The real wood: once it's come, the print is pressed again with it.)
   if (PRINT) loadWood(() => { for (const k in printCaches) delete printCaches[k]; });
   startIntro();
