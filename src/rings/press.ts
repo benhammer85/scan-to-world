@@ -1601,7 +1601,10 @@ function barkCss(v: View): number {
 
 function drawPrint(v: View): void {
   const n = tree.rings.length;
-  const wPx = (i: number) => (v.s * (warpR(v.warp, meanR(i)) - warpR(v.warp, meanR(i - 1)))) / px;
+  // (Looked at closer, the same print magnified: which rings print as lines, and how heavy a band is, are
+  // decided at the slice's own scale, `Z` times smaller than now, never anew for every zoom.)
+  const Z = Math.max(1, look.k);
+  const wPx = (i: number) => (v.s * (warpR(v.warp, meanR(i)) - warpR(v.warp, meanR(i - 1)))) / px / Z;
   const scr = (r: number) => v.s * warpR(v.warp, r);
   // (A point at angle a, radius r (mm), and dr device px further out: roughness is on the screen, so the
   // fisheye never magnifies it into spikes.)
@@ -1657,8 +1660,8 @@ function drawPrint(v: View): void {
       let lastR = scr(meanR(i - 1));
       for (let k = i; k <= j; k++) {
         const R = scr(meanR(k));
-        if (R - lastR < (ring ? 1.9 : 2.8 + 1.4 * h1(k * 1.37 + 0.5)) * px) continue;
-        g.lineWidth = (conifer ? 0.9 : 0.7) * (0.8 + 0.4 * h1(k * 3.7)) * px;
+        if (R - lastR < (ring ? 1.9 : 2.8 + 1.4 * h1(k * 1.37 + 0.5)) * px * Z) continue;
+        g.lineWidth = (conifer ? 0.9 : 0.7) * (0.8 + 0.4 * h1(k * 3.7)) * px * Z;
         lastR = R; ringPath(v, barkOf(k)); g.stroke();
       }
       i = j;
@@ -1861,7 +1864,7 @@ function drawPrint(v: View): void {
  * do). Fine rings take a smaller copy of the year, so they never shimmer.
  */
 function printYears(v: View, oak: Years): void {
-  const n = tree.rings.length, c = g.canvas as HTMLCanvasElement, B = 720;
+  const n = tree.rings.length, c = g.canvas as HTMLCanvasElement, B = 720, Z = Math.max(1, look.k);
   const scr = (r: number) => v.s * warpR(v.warp, r);
   // The rings' radii on the screen, round the slice (ring -1 the heart).
   const rad = new Float32Array((n + 1) * (B + 1));
@@ -1905,11 +1908,11 @@ function printYears(v: View, oak: Years): void {
   if (!spans) {
     let lastR = scr(meanR(-1));
     for (let i = 0; i < n; i++) {
-      thin[i] = 1 - smooth((widthAt(i) - 1.2 * px) / (3 * px));
+      thin[i] = 1 - smooth((widthAt(i) / Z - 1.2 * px) / (3 * px));
       const R = scr(meanR(i));
       // (Never a regular comb of lines, which would beat against the screen's pixels in waves: as far apart
       // as a hand would rule them, each its own distance.)
-      if (thin[i] > 0 && R - lastR >= (3.2 + 1.4 * h1(i * 1.37 + 0.5)) * px) { edge[i] = 1; lastR = R; }
+      if (thin[i] > 0 && R - lastR >= (3.2 + 1.4 * h1(i * 1.37 + 0.5)) * px * Z) { edge[i] = 1; lastR = R; }
     }
   }
   // (The sapwood, paler, fading into the heartwood over some eight years: a year added shifts it by a hair.)
@@ -1963,7 +1966,7 @@ function printYears(v: View, oak: Years): void {
         // than the next, and its weight wandering with the press.)
         const lineAt = (j: number, dist: number) => {
           if (j < 0 || !edge[j]) return 0;
-          const half = (0.35 + 0.3 * h1(j * 3.7 + 1.1)) * px;
+          const half = (0.35 + 0.3 * h1(j * 3.7 + 1.1)) * px * Z;
           return Math.max(0, Math.min(1, (half + 0.5 * px - dist) / px)) * thin[j];
         };
         const cov = Math.max(lineAt(i, rout - r), lineAt(i - 1, r - rin)) * (0.75 + 0.35 * vnoise(dx * 0.11 + i, dy * 0.11));
