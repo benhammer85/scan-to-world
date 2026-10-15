@@ -2096,47 +2096,56 @@ function inkGrain(c: HTMLCanvasElement, v: View): void {
 }
 
 /** The print, kept as a picture between changes; while the slice moves, the picture moves with it. */
-const printCaches: Record<string, { c: HTMLCanvasElement; key: string; v: View; at: number; half?: boolean }> = {};
+const printCaches: Record<string, { c: HTMLCanvasElement; key: string; v: View; at: number }> = {};
 /** Whether a kept picture, drawn for view `v`, still covers the whole screen. */
+/**
+ * A kept print's picture covers more than the sheet (`MARGIN` of it each way, so a pinch back out needs no
+ * new one), at a resolution fixed for the phone (`QUALITY`: two device pixels a CSS px at most, which the
+ * eye can't tell from three, and the same everywhere, never a blown-up copy). Where it lies for view `v`.
+ */
+const MARGIN = 1.5;
+const QUALITY = () => Math.min(1, 2 / Math.max(1, px));
+type Kept = { c: HTMLCanvasElement; key: string; v: View; at: number };
+function placeOf(pc: { v: View }, v: View, grow = 1): [number, number, number, number] {
+  const k = (v.s / pc.v.s) * grow, x0 = (-W * (MARGIN - 1)) / 2, y0 = (-H * (MARGIN - 1)) / 2;
+  return [v.cx + (x0 - pc.v.cx) * k, v.cy + (y0 - pc.v.cy) * k, W * MARGIN * k, H * MARGIN * k];
+}
 function covers(pc: { v: View }, v: View): boolean {
-  const k = v.s / pc.v.s, ox = v.cx - pc.v.cx * k, oy = v.cy - pc.v.cy * k;
-  return ox <= 0.5 && oy <= 0.5 && ox + W * k >= W - 0.5 && oy + H * k >= H - 0.5;
+  const [ox, oy, w, h] = placeOf(pc, v);
+  return ox <= 0.5 && oy <= 0.5 && ox + w >= W - 0.5 && oy + h >= H - 0.5;
 }
 /** The print for view `v`, kept in `slot`: pressed again only when it must be. */
-function printFor(v: View, moving: boolean, slot = 'drawing', drift = false): { c: HTMLCanvasElement; key: string; v: View; at: number; half?: boolean } {
+function printFor(v: View, moving: boolean, slot = 'drawing', drift = false): Kept {
   const key = `${tree.rings.length}|${v.warp?.R ?? 0}|${v.warp?.beta ?? 0}|${W}x${H}`;
   let pc = printCaches[slot];
   const same = pc && pc.key === key;
-  const exact = same && !pc.half && pc.v.s === v.s && pc.v.cx === v.cx && pc.v.cy === v.cy;
-  // (Moving, the picture is moved; but looked into by more than a quarter, it's pressed again at the new
-  // size, a few times a second, so it's never a blown-up bitmap.)
-  // (And drifting slowly to make room, pressed again each second or so, so it's never soft, then sharp.)
+  const exact = same && pc.v.s === v.s && pc.v.cx === v.cx && pc.v.cy === v.cy;
+  // (Moving, the picture is moved and scaled; it's pressed again only when the fingers have gone past its
+  // margin, or looked in half again closer; still, at once, at the view as it is.)
   const off = same ? Math.abs(Math.log(v.s / pc.v.s)) + Math.hypot(v.cx - pc.v.cx, v.cy - pc.v.cy) / W : 0;
   const still = fingers.size === 0 && !lookBack;
-  // (Moving and no longer covering the sheet, or looked into by a quarter: pressed again at once, at half
-  // the pixels so it keeps up with the fingers; never a blown-up bitmap at the edges.)
-  // (And whatever the fingers are doing, held still or not, a picture that doesn't cover the sheet is never
-  // shown with the blown-up whole round it for more than a frame or two.)
-  const quick = same && clock() - pc.at > 0.03 && (!covers(pc, v) || (moving && off > Math.log(1.25)));
-  const far = same && ((still && !exact && !covers(pc, v)) || (drift && !moving && off > 0.004 && clock() - pc.at > 0.8) || (!moving && !exact && !covers(pc, v) && clock() - pc.at > 0.25));
+  const quick = same && clock() - pc.at > 0.03 && (!covers(pc, v) || (moving && v.s / pc.v.s > 1.5));
+  const far = same && ((still && !exact && off > 0.002) || (drift && !moving && off > 0.004 && clock() - pc.at > 0.8));
   if (!same || (!moving && !drift && !exact) || far || quick) {
-    const S = quick && !far ? 0.5 : 1, cw = Math.ceil(W * S), ch = Math.ceil(H * S);
-    const c = pc?.c.width === cw && pc.c.height === ch ? pc.c : document.createElement('canvas');
-    c.width = cw; c.height = ch;
-    const was = { g, px, W, H };
-    g = c.getContext('2d')!;
-    const vs = S === 1 ? v : { ...v, cx: v.cx * S, cy: v.cy * S, s: v.s * S, px: v.px * S };
-    if (S !== 1) { px *= S; W = cw; H = ch; }
+    const Q = QUALITY(), cw = Math.ceil(W * MARGIN * Q), ch = Math.ceil(H * MARGIN * Q);
+    // (One picture a slot, its memory kept and drawn over: the phone's browser allows only so much, and a
+    // picture made anew each time soon runs past it, after which nothing more is drawn.)
+    let c = pc?.c;
+    if (!c || c.width !== cw || c.height !== ch) { if (c) { c.width = 0; c.height = 0; } c = document.createElement('canvas'); c.width = cw; c.height = ch; }
+    const was = { g, px, W, H }, mx = (W * (MARGIN - 1)) / 2, my = (H * (MARGIN - 1)) / 2;
+    const vs: View = { ...v, cx: (v.cx + mx) * Q, cy: (v.cy + my) * Q, s: v.s * Q, px: v.px * Q };
+    g = c.getContext('2d')!; g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, cw, ch);
+    px *= Q; W = cw; H = ch;
     try { drawPrint(vs); inkGrain(c, vs); } finally { g = was.g; px = was.px; W = was.W; H = was.H; }
-    pc = printCaches[slot] = { c, key, v: { ...v }, at: clock(), half: S !== 1 };
+    pc = printCaches[slot] = { c, key, v: { ...v }, at: clock() };
   }
   return pc;
 }
 /** A kept print drawn for view `v` (moved and scaled to it), `grow` times larger about the slice's heart. */
 function drawKept(pc: { c: HTMLCanvasElement; v: View }, v: View, alpha = 1, grow = 1): void {
-  const k = (v.s / pc.v.s) * grow, ox = v.cx - pc.v.cx * k, oy = v.cy - pc.v.cy * k;
+  const [ox, oy, w, h] = placeOf(pc, v, grow);
   g.globalAlpha = alpha;
-  g.drawImage(pc.c, ox, oy, W * k, H * k);
+  g.drawImage(pc.c, ox, oy, w, h);
   g.globalAlpha = 1;
 }
 /**
@@ -2162,42 +2171,7 @@ function drawGrowing(v: View, t: number, moving: boolean, drift: boolean): void 
 }
 function drawPrintCached(v: View, moving: boolean, slot = 'drawing', alpha = 1, drift = false, grow = 1): void {
   const pc = printFor(v, moving, slot, drift);
-  // (Looking closer, the picture kept holds only what was on the screen: pinching back out, the whole
-  // slice, kept at its own size, shows beneath wherever that picture doesn't reach, never a cut edge.)
-  if (slot === 'drawing' && (closer() || lookBack || pinch)) {
-    const home = printFor(baseNow(), true, 'home', true), k = (v.s / pc.v.s) * grow;
-    const ox = v.cx - pc.v.cx * k, oy = v.cy - pc.v.cy * k;
-    if (ox > 0.5 || oy > 0.5 || ox + W * k < W - 0.5 || oy + H * k < H - 0.5) {
-      // (The whole slice beneath; the sharper picture over it, faded out softly toward its own edges, so
-      // the two never meet in a line: no square seen in the slice as it's pinched.)
-      // (Beneath only out where the sharper picture fades: never showing through its paper.)
-      const f = 40 * px * k;
-      g.save(); g.beginPath(); g.rect(0, 0, W, H); g.rect(ox + f, oy + f, Math.max(0, W * k - 2 * f), Math.max(0, H * k - 2 * f)); g.clip('evenodd');
-      drawKept(home, v, alpha, grow);
-      g.restore();
-      g.save(); g.globalAlpha = alpha; g.drawImage(feathered(pc.c), ox, oy, W * k, H * k); g.restore();
-      return;
-    }
-  }
   drawKept(pc, v, alpha, grow);
-}
-/** A kept picture, its edges faded out over some 40 px (made once for each picture pressed). */
-let featherC: HTMLCanvasElement | null = null, featherOf: HTMLCanvasElement | null = null, featherAt = -1;
-function feathered(src: HTMLCanvasElement): HTMLCanvasElement {
-  const at = (Object.values(printCaches).find((p) => p.c === src) as { at: number } | undefined)?.at ?? 0;
-  if (featherC && featherOf === src && featherAt === at) return featherC;
-  featherC ??= document.createElement('canvas');
-  featherC.width = src.width; featherC.height = src.height; featherOf = src; featherAt = at;
-  const c = featherC.getContext('2d')!, w = src.width, h = src.height, f = 40 * px;
-  c.drawImage(src, 0, 0);
-  c.globalCompositeOperation = 'destination-out';
-  const edge = (x0: number, y0: number, x1: number, y1: number, rx: number, ry: number, rw: number, rh: number) => {
-    const gr = c.createLinearGradient(x0, y0, x1, y1); gr.addColorStop(0, 'rgba(0,0,0,1)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
-    c.fillStyle = gr; c.fillRect(rx, ry, rw, rh);
-  };
-  edge(0, 0, f, 0, 0, 0, f, h); edge(w, 0, w - f, 0, w - f, 0, f, h); edge(0, 0, 0, f, 0, 0, w, f); edge(0, h, 0, h - f, 0, h - f, w, f);
-  c.globalCompositeOperation = 'source-over';
-  return featherC;
 }
 
 /**
