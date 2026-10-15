@@ -1622,7 +1622,7 @@ function drawPrint(v: View): void {
   // The heart: the seedling's first growth, printed as a ring is (an inked band at its edge, paper within),
   // and a dark dot at its very centre: a small dot when the tree is grown, never a black disc when it's young.
   // (Oak's real wood prints its heart as its first year: see printYears.)
-  if (!(fam() === 'ring' && wood.years[kind] && n) && !(GROWN && !n)) {
+  if (!(realYears() && n) && !(GROWN && !n)) {
     // (Never a ruled circle: its edges wander a little, as a seedling's first wood does, and its band
     // thickens and thins.)
     const hr = barkOf(-1), band = Math.min(0.4, (3 * px) / Math.max(1, scr(meanR(-1))));
@@ -1645,7 +1645,7 @@ function drawPrint(v: View): void {
   const begun = PRINT_RAYS.filter((r) => r.from < Rb && r.to > meanR(0));
   const rays = begun.slice(0, Math.max(6, Math.min(begun.length, Math.round(around / 4)))).sort((x, y) => x.a - y.a);
   // Oak, once its real wood has come: the years of a red oak, pressed (see printYears).
-  const real = fam() === 'ring' ? wood.years[kind] : undefined;
+  const real = realYears();
   if (real) {
     printYears(v, real);
     g.beginPath(); g.arc(v.cx, v.cy, 1.4 * px, 0, TAU); g.fillStyle = ink(0.8); g.fill();
@@ -2038,6 +2038,12 @@ function vnoise(x: number, y: number): number {
 }
 
 /**
+ * The real oak's years, pressed from a scan (see printYears): the child's tree only. The practice draws
+ * oak and ash in heavy ink as every other wood is, their pores and all, so the nine print as one set.
+ */
+const realYears = () => (CHILD && fam() === 'ring' ? wood.years[kind] : undefined);
+
+/**
  * The ink's grain: printed from wood, ink lies in the grain's fine streaks along each ring, heavier and
  * lighter, starved to the paper here and there, its edges breaking a little. Laid into the ink (dark
  * pixels only; paper-coloured marks left as they are) of a canvas `c` holding the slice drawn for view `v`.
@@ -2056,7 +2062,7 @@ function inkGrain(c: HTMLCanvasElement, v: View): void {
   const Z = Math.max(1, look.k), fine = 1 / (0.8 * px * Z), along = 1 / (12 * px * Z), speck = 1 / (0.8 * px * Z), streak = 1 / (5 * px * Z);
   // (Oak's real wood carries its own grain: only its bark takes this. Pine's grain is its real fibre.)
   let inside = 0;
-  if (fam() === 'ring' && wood.years[kind] && last) { inside = Infinity; for (let i = 0; i < K; i += 4) inside = Math.min(inside, v.s * warpR(v.warp, last[i]) - 1); }
+  if (realYears() && last) { inside = Infinity; for (let i = 0; i < K; i += 4) inside = Math.min(inside, v.s * warpR(v.warp, last[i]) - 1); }
   const fib = fam() !== 'ring' ? wood.fibre[kind] : undefined, perMm = 20 / v.s;
   // The press: the paper's tooth (some 0.12 mm, never finer than a pixel), the pressure wandering
   // across the block, and the saw's marks, faint arcs from a far-off blade (seen only looking close).
@@ -2573,63 +2579,32 @@ const INTRO_GROW = 2.6, INTRO_HOLD = 0.4, INTRO_FADE = 0.8;
 let intro: { at: number; c: HTMLCanvasElement; rings: Float32Array[]; skip: number } | null = null;
 function startIntro(): void {
   if (!INTRO) return;
-  // (Pressed at half the screen's pixels, so it's quick on a phone: the ink is heavy enough not to mind.)
-  const S = 0.5, cw = Math.ceil(W * S), ch = Math.ceil(H * S);
-  const c = document.createElement('canvas'); c.width = cw; c.height = ch;
+  // (A tree of the wood today's is, grown out of sight in a moment, a couple of months of days: then
+  // printed as the slice itself is, the same press, so the opening is the practice's own ink.)
+  const was = { tree, days, kind, look, g, px, W, H }, sp: Kind = KINDS.includes(kind) ? kind : 'oak';
+  let rings: Float32Array[] = [], c: HTMLCanvasElement;
   const cx = W / 2, cy = Math.round(H * 0.47), far = Math.hypot(Math.max(cx, W - cx), Math.max(cy, H - cy)) * 1.04, N = 240;
-  const rings: Float32Array[] = [], seed = Math.random() * 1000;
-  let prev = new Float32Array(N + 1).fill(3 * px);
-  const anomaly = new Float32Array(N + 1);
-  rings.push(prev);
-  for (let i = 0; prev.reduce((m, r) => Math.min(m, r), Infinity) < far && i < 200; i++) {
-    // (Its width: a good year or a lean one, the young years wide; its shape: the last ring's, with a
-    // little of its own.)
-    const year = (0.55 + 0.9 * h1(seed + i * 1.37) ** 1.5) * (1 + 1.6 * Math.exp(-i / 5)) * (far / 34);
-    const ph1 = h1(seed + i * 2.1) * TAU, ph2 = h1(seed + i * 3.3) * TAU, ring = new Float32Array(N + 1);
-    for (let j = 0; j <= N; j++) {
-      const a = (j / N) * TAU;
-      anomaly[j] = 0.86 * anomaly[j] + 0.14 * (0.5 * Math.sin(2 * a + ph1) + 0.3 * Math.sin(3 * a + ph2) + 0.4 * (vnoise(Math.cos(a) * 1.6 + seed + i * 0.21, Math.sin(a) * 1.6 + i * 0.13) - 0.5) * 2);
-      ring[j] = prev[j] + year * Math.max(0.3, 1 + 0.5 * anomaly[j]);
+  try {
+    kind = sp; look = { k: 1, ox: 0, oy: 0 }; tree = new TreeSim(1 + Math.floor(Math.random() * 1e6), DAILY); days = [];
+    demoYear(56);
+    const n = tree.rings.length;
+    if (!n) return;
+    // (The bark just past the sheet's farthest corner: the rings fill it.)
+    let least = Infinity;
+    for (let j = 0; j < N; j++) least = Math.min(least, barkOf(n - 1)((j / N) * TAU));
+    const s = far / least;
+    for (let i = -1; i < n; i++) {
+      const ring = new Float32Array(N + 1), r = barkOf(i);
+      for (let j = 0; j <= N; j++) ring[j] = s * r((j / N) * TAU);
+      rings.push(ring);
     }
-    rings.push(ring); prev = ring;
-  }
-  const g2 = c.getContext('2d')!;
-  g2.setTransform(S, 0, 0, S, 0, 0);
-  // The bands: each year's latewood, a share of its width at its outer edge, the edge rough.
-  g2.fillStyle = 'rgb(36,28,23)';
-  for (let i = 1; i < rings.length; i++) {
-    const o = rings[i], inn = rings[i - 1], share = 0.22 + 0.4 * h1(seed + i * 7.7) ** 1.3;
-    g2.beginPath();
-    for (let j = 0; j <= N; j++) { const a = (j / N) * TAU, r = o[j] + (h1(i * 13 + j * 3.1) - 0.5) * 1.2 * px; const x = cx + r * Math.cos(a), y = cy - r * Math.sin(a); if (j) g2.lineTo(x, y); else g2.moveTo(x, y); }
-    for (let j = N; j >= 0; j--) { const a = (j / N) * TAU, r = o[j] - share * (o[j] - inn[j]) + (h1(i * 17 + j * 5.3) - 0.5) * 1.6 * px; g2.lineTo(cx + r * Math.cos(a), cy - r * Math.sin(a)); }
-    g2.closePath(); g2.fill();
-  }
-  g2.beginPath(); g2.arc(cx, cy, 3 * px, 0, TAU); g2.fill();
-  // The press: the ink along the grain (streaks round the rings), the paper's tooth, starved patches.
-  // (In the half-size picture's own pixels: its centre, and a CSS px, halved.)
-  const img = g2.getImageData(0, 0, cw, ch), d = img.data, sea = wood.sea, P = [244, 239, 228];
-  const pxS = px * S, cyS = cy * S, cxS = cx * S;
-  {
-  for (let y = 0; y < ch; y++) {
-    const dy = y - cyS;
-    for (let x = 0; x < cw; x++) {
-      const k = (y * cw + x) * 4, inked = d[k + 3] > 0;
-      const dx = x - cxS, r = Math.sqrt(dx * dx + dy * dy), th = Math.atan2(dy, dx);
-      let ink = 0;
-      if (inked) {
-        const grain = 0.6 * vnoise(r / (0.9 * pxS), th * r / (14 * pxS)) + 0.4 * vnoise(r / (2.4 * pxS) + 31, th * r / (40 * pxS) + 7);
-        ink = 1.05 - 0.6 * Math.max(0, (grain - 0.62) / 0.3);
-        const starve = vnoise(x / (60 * pxS) + seed, y / (60 * pxS));
-        if (starve > 0.72) ink *= 1 - 0.7 * Math.min(1, (starve - 0.72) / 0.12) * (h1(x * 0.618 + y * 1.37) < 0.6 ? 1 : 0.3);
-        if (sea) ink *= 0.75 + 0.35 * sample(sea, (x / pxS) * 0.9 + seed, (y / pxS) * 0.9);
-      } else if (h1(x * 1.13 + y * 0.71 + seed) > 0.9993) ink = 0.7;   // (a speck of ink on the paper)
-      ink = Math.max(0, Math.min(1, ink)) ** 0.9;
-      const tooth = h1(x * 0.618 + y * 1.37) < 0.06 * ink ? 0.5 : 1;
-      for (let q = 0; q < 3; q++) d[k + q] = Math.round(P[q] + ([36, 28, 23][q] - P[q]) * ink * tooth);
-      d[k + 3] = 255;
-    }
-  } }
-  g2.putImageData(img, 0, 0);
+    // (Pressed at some 1.25 to a CSS px (half the screen's pixels at most), so it's quick on a phone.)
+    const S = Math.min(0.5, 1.25 / was.px);
+    c = document.createElement('canvas'); c.width = Math.ceil(W * S); c.height = Math.ceil(H * S);
+    g = c.getContext('2d')!; px = was.px * S; W = c.width; H = c.height;
+    const v: View = { cx: cx * S, cy: cy * S, s: s * S, turn: 0, px, warp: undefined };
+    drawPrint(v); inkGrain(c, v);
+  } finally { ({ tree, days, kind, look, g, px, W, H } = was); }
   words.style.visibility = 'hidden';
   intro = { at: clock(), c, rings, skip: 0 };
 }
