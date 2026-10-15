@@ -1692,9 +1692,9 @@ function drawPrint(v: View): void {
       for (const r of pool) if (!live.length || r.a - live[live.length - 1].a > least) live.push(r);
       if (live.length > 1 && live[0].a + TAU - live[live.length - 1].a < least) live.pop();
       const gapOf = (r: typeof pool[0]) => ((r.k >= 5000 ? 0.65 : 0.9) * px) / Math.max(1, R);
-      const rough = 0.28 * px;
+      const rough = 0.28 * px * Z;
       const brick = (a0: number, a1: number, seed: number) => {
-        const steps = Math.max(2, Math.ceil(((a1 - a0) * R) / (4 * px)));
+        const steps = Math.max(2, Math.ceil(((a1 - a0) * R) / (4 * px * Z)));
         g.beginPath();
         for (let j = 0; j <= steps; j++) {
           const a = a0 + ((a1 - a0) * j) / steps, jit = (h1(seed + j * 3.1) - 0.5) * rough * 2;
@@ -1731,13 +1731,14 @@ function drawPrint(v: View): void {
       // year's start, in the springwood (two rows where it's wide).
       if (!ring && !conifer) {
         // Diffuse: fine pores scattered evenly through the year, a light stipple across the springwood.
-        const ew = (scr(bandIn(0)) - scr(inner(0))) / px;
+        // (Counted and sized at the unzoomed print's scale: looked into, the same pores, larger.)
+        const ew = (scr(bandIn(0)) - scr(inner(0))) / px / Z;
         if (ew >= 2) {
-          const count = Math.round((TAU * scr(mr) * ew) / (16 * px));
+          const count = Math.round((TAU * scr(mr) * ew) / (16 * px * Z));
           g.fillStyle = ink(0.42 * tone); g.beginPath();
           for (let q = 0; q < count; q++) {
             const a = h1(i * 3.1 + q * 0.917) * TAU, r0 = scr(inner(a)), r1 = scr(bandIn(a));
-            const at = r0 + (r1 - r0) * (0.12 + 0.76 * h1(q * 2.7 + i)), d = (0.3 + 0.35 * h1(q * 4.9 + i)) * px;
+            const at = r0 + (r1 - r0) * (0.12 + 0.76 * h1(q * 2.7 + i)), d = (0.3 + 0.35 * h1(q * 4.9 + i)) * px * Z;
             const t = a + v.turn, x = v.cx + at * Math.cos(t), y = v.cy - at * Math.sin(t);
             g.moveTo(x + d, y); g.arc(x, y, d, 0, TAU);
           }
@@ -2040,18 +2041,20 @@ function inkGrain(c: HTMLCanvasElement, v: View): void {
   const w = Math.min(c.width, Math.ceil(v.cx + R)) - x0, h = Math.min(c.height, Math.ceil(v.cy + R)) - y0;
   if (w <= 0 || h <= 0) return;
   const ctx = c.getContext('2d')!, img = ctx.getImageData(x0, y0, w, h), d = img.data;
-  const fine = 1 / (0.8 * px), along = 1 / (12 * px), speck = 1 / (0.8 * px), streak = 1 / (5 * px);
+  // (The grain and the starved streaks belong to the wood, set at the unzoomed print's scale: looked into,
+  // they grow with it and stay where they were, never a fresh scatter.)
+  const Z = Math.max(1, look.k), fine = 1 / (0.8 * px * Z), along = 1 / (12 * px * Z), speck = 1 / (0.8 * px * Z), streak = 1 / (5 * px * Z);
   // (Oak's real wood carries its own grain: only its bark takes this. Pine's grain is its real fibre.)
   let inside = 0;
   if (fam() === 'ring' && wood.years[kind] && last) { inside = Infinity; for (let i = 0; i < K; i += 4) inside = Math.min(inside, v.s * warpR(v.warp, last[i]) - 1); }
   const fib = fam() !== 'ring' ? wood.fibre[kind] : undefined, perMm = 20 / v.s;
   // The press: the paper's tooth (some 0.12 mm, never finer than a pixel), the pressure wandering
   // across the block, and the saw's marks, faint arcs from a far-off blade (seen only looking close).
-  const tooth = 1 / Math.max((0.9 * px) / v.s, 0.12), low = 1 / 45, SAW = 1.8;
+  const tooth = 1 / Math.max((0.9 * px * Z) / v.s, 0.12), low = 1 / 45, SAW = 1.8;
   // (How the ink took, from a real print: Munch's, 1898, about a quarter mm to a texel, never finer than a
   // pixel; his sea's mottle and sparse specks, his field's grain and streaks over it, the two at their own
   // scales and turned to each other, so neither repeats in step.)
-  const sea = wood.sea, field = wood.field, perTex = 1 / Math.max(px / v.s, 0.24), close = Math.max(0, Math.min(1, (0.24 / (px / v.s) - 1) / 2));
+  const sea = wood.sea, field = wood.field, perTex = 1 / Math.max((px * Z) / v.s, 0.24), close = Math.max(0, Math.min(1, (0.24 / ((px * Z) / v.s) - 1) / 2));
   const fc = Math.cos(0.5 + h1(tree.seed * 0.29)), fs = Math.sin(0.5 + h1(tree.seed * 0.29));
   const sawK = 0.07 * Math.max(0, Math.min(1, (SAW * v.s - 3 * px) / (4 * px))), sa = h1(tree.seed * 0.61) * TAU;
   const sx = 900 * Math.cos(sa), sy = 900 * Math.sin(sa);
@@ -2096,7 +2099,7 @@ function inkGrain(c: HTMLCanvasElement, v: View): void {
         const u = mx * perTex, w = my * perTex;
         took = val * (0.35 + 0.7 * tile(sea, u + 17, w + 31) * (0.55 + 0.45 * tile(field, (u * fc - w * fs) * 0.8, (u * fs + w * fc) * 0.8)));
         // (Looked at closer than the print's own grain: finer grain, at the screen's scale, so it stays crisp.)
-        if (close > 0) took *= 1 + close * 0.22 * (vnoise(x * 0.9 + 3.3, y * 0.9 + 7.1) - 0.5);
+        if (close > 0) took *= 1 + close * 0.22 * (vnoise((dx / Z) * 0.9 + 3.3, (dy / Z) * 0.9 + 7.1) - 0.5);
       }
       const thr = 0.5 + (sea ? 0.35 : 0.95) * (t1 - 0.5) + 0.2 * (vnoise(mx * low + 40, my * low + 11) - 0.5) + saw;
       const e = Math.max(0, Math.min(1, (took - thr + 0.07) / 0.14));
