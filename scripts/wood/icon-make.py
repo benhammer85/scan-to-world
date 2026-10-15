@@ -1,4 +1,4 @@
-# Well Rounded's icon (src/rings/icon/): python3 scripts/wood/icon-make.py 3 edge icon  (or 'fill' for the full-bleed one)
+# Well Rounded's icon (src/rings/icon/): python3 scripts/wood/icon-make.py 3 fill icon 34
 # each year's latewood a solid, rough-edged band, the ink broken along the grain and by the paper's tooth.
 import numpy as np, sys
 from PIL import Image, ImageDraw, ImageFilter
@@ -14,7 +14,11 @@ cx,cy=S*0.5,S*0.5
 hx,hy=S*0.5-30,S*0.5+22
 lean=np.cos(a-0.6)*0.32
 rings=[]; r=np.full(N,16.0); anomaly=np.zeros(N)
-years=[70,58,34,50,28,42,30]+([36,26,40,24,32,22,30] if FILL else [])
+MANY=len(sys.argv)>4
+if MANY:
+    n=int(sys.argv[4]); years=[float(28*np.exp(-i/9)+9+10*rng.random()**1.6) for i in range(n)]
+else:
+    years=[70,58,34,50,28,42,30]+([36,26,40,24,32,22,30] if FILL else [])
 for i,yw in enumerate(years):
     anomaly=0.7*anomaly+0.3*smooth_noise(6,0.45)
     r=r+yw*(1+lean+anomaly)*(0.85+0.3*rng.random())
@@ -23,12 +27,12 @@ for i,yw in enumerate(years):
 outer=rings[-1]; xs=hx+outer*np.cos(a); ys=hy-outer*np.sin(a)
 k=min((S*0.44)/max(np.abs(xs-cx).max(),1), (S*0.44)/max(np.abs(ys-cy).max(),1))
 if FILL:
-    o7=rings[6]; k=(S*0.58)/np.min(np.maximum(np.abs(hx+o7*np.cos(a)-cx),np.abs(hy-o7*np.sin(a)-cy)))*0.62
+    o7=rings[min(len(rings)-1, int(len(rings)*0.55))] if MANY else rings[6]; k=(S*0.58)/np.min(np.maximum(np.abs(hx+o7*np.cos(a)-cx),np.abs(hy-o7*np.sin(a)-cy)))*0.62
 rings=[rr*k for rr in rings]
 img=Image.new('L',(S,S),0); d=ImageDraw.Draw(img)
 prev=np.full(N,16.0*k)
 for i,o in enumerate(rings):
-    share=0.32+0.28*rng.random() if i<len(rings)-1 else 0.55
+    share=(0.25+0.3*rng.random()**1.5 if MANY else 0.32+0.28*rng.random()) if i<len(rings)-1 else 0.55
     jit_o=o+smooth_noise(40,2.5)+nd.gaussian_filter1d(rng.normal(0,1.0,N),1.5,mode='wrap'); inn=o-share*(o-prev)+smooth_noise(40,3.5)+nd.gaussian_filter1d(rng.normal(0,1.4,N),1.5,mode='wrap')
     band=Image.new('L',(S,S),0); bd=ImageDraw.Draw(band)
     bd.polygon([(hx+jit_o[j]*np.cos(a[j]),hy-jit_o[j]*np.sin(a[j])) for j in range(N)],fill=255)
