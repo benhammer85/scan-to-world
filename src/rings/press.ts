@@ -14,27 +14,21 @@
  *             touching wet paint, while the slice draws back slowly to make room; the next ring can be
  *             begun at once
  *
- * The challenge (challenge.html, the same drawing): ten rings a run on a new tree, each as close to the
- * last as you dare, and quick, scored for both; each touch on the last ring's edge costs 30 and leaves a knot in the wood.
- * Nothing eased toward round, nothing kept in the diary; the best score is kept (`annulus.challenge`).
- *
  * On opening, the slice paints itself in from the heart. Each ring is eased a little toward round (the
  * way a tree evens out), so the slice stays organic, never a lump. `?demo` shows a year already drawn.
  */
 import '../volcano/fonts.css';
-import { wood, sample, tile, loadWood, type Years } from './wood';
+import { wood, sample, tile, loadWood } from './wood';
 import { NATIVE, tap } from '../volcano/native';
 import { K, OAK, TreeSim, noise } from './tree';
 import { brushAt, radiusAt, scaleFor, unwarpR, warpFor, warpR, type View, type Warp } from './hand';
 import { at, drawPaper } from './draw';
 import { Paper } from './paint';
-import { Ear } from './ear';
-import { TYPICAL, ageOn as ageOf, ageWords as ageSaid, dayDate, dayOf, grewIn as grewOf, question as askOf, yearSpans as spansOf } from './child';
+import { dayDate, dayOf } from './days';
 import { climate, growth as growthOf, season } from './growing';
-import { RINGS, overlap, percent, shapeFor } from './puzzle';
 import { crownSize, drawCrown, drawHill, drawSeedling, heightAt, land, seasonOf, washCrown, washHill, type Hill, type Season } from './grove';
 import { holdStill, steadySize } from './steady';
-import { fromText, grove, keepInGrove, keepRun, keepTree, recallTree, runs, setGrove, snapshotTree, toText, treeFrom, type KeptTree, type Run } from './save';
+import { fromText, grove, keepInGrove, keepTree, recallTree, setGrove, snapshotTree, toText, treeFrom, type KeptTree } from './save';
 
 const TAU = Math.PI * 2, PAPER = '#f4efe4';
 /**
@@ -73,10 +67,6 @@ const QUICK = 0.4, STEADY_T = 1, SLOW_T = 3.5;
 // (so the first days aren't hairlines); the tree never grows old.
 // No line to keep to and no wood to run out of: wherever the circle is drawn, round the slice, is the
 // year's edge (a loose, wide circle a wide year; a close one, a narrow year).
-/** The challenge (challenge.html) rather than the daily practice. */
-const CHALLENGE = document.body.dataset.mode === 'challenge';
-/** The puzzle (puzzle.html): grow a tree to fill an outline, in eight rings. Like the challenge, a game. */
-const PUZZLE = document.body.dataset.mode === 'puzzle', GAME = CHALLENGE || PUZZLE;
 // The tree starts from a small heart (2 mm: a 6 mm one was a third of a young slice), and each ring's edge is
 // smoothed over a wider arc (12°), so a hand's wobble becomes a gentle swell, as real rings are.
 const DAILY = { yearsPerRing: 1, crown: OAK.crown / 5, crownYears: 6, oldFrom: 1e6, oldTo: 2e6, ink: 1e6, pith: 2, smooth: (12 * Math.PI) / 180 };
@@ -93,7 +83,7 @@ function brushPoint(v: View, x: number, y: number): [number, number] {
   return [v.cx + dx * k, v.cy + dy * k];
 }
 /** How far each ring is eased toward round (a tree evens out its lumps over the years). */
-const ROUND = GAME ? 0 : PRINT ? 0.15 : 0.3;
+const ROUND = PRINT ? 0.15 : 0.3;
 /**
  * The practice, printed, grows as a tree does: from a seed planted on a bare sheet. The loop is always
  * the same size on the screen, day after day, a ritual's: the bark is always shown at the same size
@@ -101,9 +91,9 @@ const ROUND = GAME ? 0 : PRINT ? 0.15 : 0.3;
  * toward the heart; growth shows as the rings' density, as a real slice's age does. The loop is drawn at the hand's size, wherever is comfortable round
  * the slice: how loose it is sets how wide the year is (`STEADY` CSS px out from the bark a steady year;
  * from `LEAST` to `LOOSEST` of one), its wobble how the year swells and thins round the tree; then it
- * draws in onto the slice as the year. (The watercolour and the challenge keep the hand's own scale.)
+ * draws in onto the slice as the year. (The watercolour keeps the hand's own scale.)
  */
-const GROWN = PRINT && !GAME;
+const GROWN = PRINT;
 const BARK = 0.6, STEADY = 34, LEAST = 0.4, LOOSEST = 2.4;
 /** Where the finger puts the line (steady widths from the bark), eased a little toward round. */
 function rounded(a: number, u: number): number {
@@ -115,10 +105,8 @@ function rounded(a: number, u: number): number {
   // draws back the more for it.)
   const roomU = Math.max(LOOSEST, (roomNow() - v.s * tree.radius) / (SEED_K * STEADY * px));
   if (growingOut()) return Math.max(LEAST, Math.min(roomU, loose)) * (growth(a) / SPEC[kind].width) + evenUp(a);
-  // (A child's tree: the sound of the moment swells the day where it was loud, and pinches it where hushed.)
-  const heard = CHILD && ear.on ? 0.78 + 0.5 * ear.read() : 1;
   // (And the tree's own year: good, lean, now and then a hard one.)
-  return Math.max(LEAST, Math.min(roomU, loose)) * growth(a) * heard * climate(tree.seed, tree.rings.length) + evenUp(a);
+  return Math.max(LEAST, Math.min(roomU, loose)) * growth(a) * climate(tree.seed, tree.rings.length) + evenUp(a);
 }
 /**
  * A tree evens out its lumps, slowly: where it's short of round, a year a little wider (in proportion to
@@ -141,83 +129,18 @@ function alive(a: number, n = tree.rings.length): number {
 /**
  * A tree grows a little more on one side (toward the light, or downhill), year after year, so its heart
  * comes to sit off the middle: each ring a sixth wider on that side and as much narrower on the other.
- * The side is the tree's own (from its seed). Not in the challenge, where the line is exactly yours.
+ * The side is the tree's own (from its seed).
  */
-const ECCENTRIC = GAME ? 0 : 0.16;
+const ECCENTRIC = 0.16;
 function lean(a: number): number {
   const side = (Math.sin(tree.seed * 12.9898) * 43758.5453) % 1 * TAU;
   return 1 + ECCENTRIC * Math.cos(a - side);
 }
+const DIARY = 'diary', params = new URLSearchParams(location.search);
 /**
- * A child's tree (child.html): a ring for each year of a child's life, closing on their birthday, and in it
- * a fine line for each day a parent draws. Planted for them by name and birthday; the years before the
- * first day drawn grown as plain whole years. Kept apart from the practice's tree.
- */
-const CHILD = document.body.dataset.mode === 'child';
-const DIARY = CHILD ? 'child' : 'diary', params = new URLSearchParams(location.search);
-/**
- * The child (once planted for); how many of the shown tree's first rings are whole years (all of them,
- * looking at every year); their height at each birthday (cm, by age: 0 is at birth, if known); the years
- * finished, each its own tree; and this year's: their age in it, and the words kept with its days (`notes`).
- */
-interface YearKept { age: number; seed: number; sim: Record<string, unknown>; days: string[]; notes: (string | null)[] }
-let child: { name: string; birth: string; listen: boolean } | null = null, whole = 0, newYear = false;
-let heights: Record<number, number> = {}, years: YearKept[] = [], age0 = 0, notes: (string | null)[] = [];
-/** What's looked at: this year's tree, every year (the life tree), or a year finished (its index). */
-let looking: 'year' | 'life' | number = 'year';
-/** (The reckoning of a child's tree, for the child planted for: see `child.ts`.) */
-const ageOn = (day: string) => ageOf(child!.birth, day), ageWords = (day: string) => ageSaid(child!.birth, day);
-/** Where in its year of their life each ring of the tree shown lies. */
-const yearSpans = () => spansOf(child!.birth, days, tree.rings.length, whole);
-/** How much they grew in a year of their life (cm). */
-const grewIn = (age: number) => grewOf(heights, age);
-/**
- * Their life as a tree: a ring for each year of it, the year in progress as far as it's come. Each ring's
- * shape is that year's own tree's outline (its bark, carrying the year's swells and lean), where one was
- * drawn; its width, how much they grew (3 mm of wood to the cm), so a missed day never narrows a year.
- */
-function lifeTree(): { t: TreeSim; days: string[]; grew: number[]; drawn: boolean[] } {
-  const t = new TreeSim(tree.seed + 7, DAILY), out: string[] = [], grew: number[] = [], drawn: boolean[] = [];
-  if (!child) return { t, days: out, grew, drawn };
-  const b = dayDate(child.birth), now = ageOn(dayOf());
-  const outline = (sim: Record<string, unknown> | null, seed: number): Float32Array | null => {
-    const y = sim ? treeFrom({ tree: 'oak', seed, wander: false, turn: 0, sim }, DAILY) : null, last = y?.rings[y.rings.length - 1];
-    if (!last) return null;
-    let m = 0;
-    for (let i = 0; i < K; i++) m += last[i];
-    m /= K;
-    return last.map((r) => r / m);
-  };
-  let prev: Float32Array | null = null;
-  for (let age = 0; age <= now.years; age++) {
-    const kept = years.find((y) => y.age === age), here = age === now.years;
-    const shape = here ? outline(tree.rings.length ? snapshotTree(tree) : null, tree.seed) : kept ? outline(kept.sim, kept.seed) : null;
-    const share = here ? now.day / now.len : 1;
-    if (share <= 0) break;
-    const w = grewIn(age) * 3 * share, ring = new Float32Array(K);
-    for (let i = 0; i < K; i++) {
-      const a = (i / K) * TAU, inner = prev ? prev[i] : t.k.pith;
-      ring[i] = inner + w * (shape ? shape[i] : growth(a, age * 60));
-    }
-    t.rings.push(ring); prev = ring;
-    out.push(dayOf(new Date(b.getFullYear() + age, b.getMonth(), b.getDate())));
-    grew.push(here ? grewIn(age) * share : grewIn(age)); drawn.push(here ? tree.rings.length > 0 : !!kept);
-  }
-  return { t, days: out, grew, drawn };
-}
-/** A birthday since this year's tree was begun: it's finished and kept, and a new year's tree is begun. */
-function birthdays(): boolean {
-  if (!child) return false;
-  const now = ageOn(dayOf()).years;
-  if (now <= age0) return false;
-  if (tree.rings.length) years.push({ age: age0, seed: tree.seed, sim: snapshotTree(tree), days: days.slice(), notes: notes.slice() });
-  tree = new TreeSim(1 + Math.floor(Math.random() * 1e6), DAILY); days = []; notes = []; age0 = now;
-  return true;
-}/**
  * The kind of tree, which decides how its wood prints and how it grows (a tree keeps its kind; `?tree=ash`
  * and so on plants that kind when a tree is begun). Three families of wood:
- *   ring     ring-porous (oak, ash): each year opens with a row of large pores, printed from a real
- *            section's years (see printYears)
+ *   ring     ring-porous (oak, ash): each year opens with a row of large pores (oak's broad rays too)
  *   diffuse  diffuse-porous (cherry, maple, birch, olive): fine pores scattered evenly through the year,
  *            each year marked only by a thin line, the real wood's fibre in the ink
  *   conifer  (pine, redwood, bristlecone): no pores; each year's latewood a crisp dark band, resin canals
@@ -302,64 +225,29 @@ function demoYear(count = 365, start = (() => { const d = new Date(); d.setDate(
   tree.news.length = 0;
 }
 
-/** For trying (`?name=…&birth=…&demo`): each year of their life drawn on most days, a few words kept. */
-function demoChild(): void {
-  const b = dayDate(child!.birth), now = ageOn(dayOf());
-  const said = ['more moon', 'she laughed at the dog', 'first steps, to the window', '“again!”', 'slept through', 'rain on the tent', 'sang to the bath', 'her own shoes', 'a hard night', 'picked the blue one'];
-  let h = 50 + (tree.seed % 5);
-  heights = { 0: h };
-  for (let age = 0; age <= now.years; age++) {
-    tree = new TreeSim(tree.seed * 7 + age + 1, DAILY); days = [];
-    const from = new Date(b.getFullYear() + age, b.getMonth(), b.getDate());
-    demoYear(age === now.years ? now.day : 365, from);
-    notes = days.map((_, i) => (((i * 7919 + age * 31) % 23) === 0 ? said[(i + age * 3) % said.length] : null));
-    if (age < now.years) { years.push({ age, seed: tree.seed, sim: snapshotTree(tree), days: days.slice(), notes: notes.slice() }); h += TYPICAL[age] * (0.85 + 0.3 * ((age * 37) % 10) / 10); heights[age + 1] = Math.round(h * 2) / 2; }
-  }
-  age0 = now.years;
-}
-
 /** The kept tree, if there is one (`?fresh` begins another). */
 async function recall(): Promise<void> {
-  if (GAME) return;
-  // (For trying: `?name=Ada&birth=2023-05-02` plants for a child at once; with `?demo`, the days since
-  // their last birthday drawn too.)
-  if (CHILD && params.get('name') && params.get('birth')) {
-    child = { name: params.get('name')!, birth: params.get('birth')!, listen: false }; kind = 'oak'; seedAt = [0.5, 0.47];
-    age0 = ageOn(dayOf()).years;
-    if (params.has('demo')) demoChild();
-    return;
-  }
   if (params.has('demo')) { demoYear(Math.max(1, Number(params.get('demo')) || 365)); return; }
   if (params.has('fresh')) return;
   const k = await recallTree(DIARY), t = k && treeFrom(k, DAILY);
   if (!k || !t) return;
   tree = t; days = (k.days ?? []).slice(0, t.rings.length); kind = asKind(k.tree) ?? 'oak';
   seedAt = k.at ?? (t.rings.length ? [0.5, 0.47] : null);
-  if (CHILD && k.name && k.birth) {
-    child = { name: k.name, birth: k.birth, listen: k.listen ?? false }; kind = 'oak';
-    heights = k.heights ?? {}; years = k.years ?? []; notes = (k.notes ?? []).slice(0, t.rings.length); age0 = k.age ?? ageOn(dayOf()).years;
-    while (notes.length < t.rings.length) notes.push(null);
-    if (birthdays()) { seedAt = k.at ?? [0.5, 0.47]; keep(); newYear = true; }
-  }
   while (days.length < t.rings.length) days.unshift(days[0] ?? dayOf());
   // (The practice: a year from its first ring, the tree is finished, and stands in the grove.)
-  if (GROWN && !CHILD && days.length && dayOf() >= yearOn(days[0])) { await keepInGrove(kept()); finishedYear = true; tree = new TreeSim(1 + Math.floor(Math.random() * 1e6), DAILY); days = []; seedAt = null; keep(); }
+  if (GROWN && days.length && dayOf() >= yearOn(days[0])) { await keepInGrove(kept()); finishedYear = true; tree = new TreeSim(1 + Math.floor(Math.random() * 1e6), DAILY); days = []; seedAt = null; keep(); }
 }
 /** A day a year on from the given one (as 2027-10-14). */
 const yearOn = (d: string) => { const x = dayDate(d); x.setFullYear(x.getFullYear() + 1); return dayOf(x); };
 /** Whether, opening, a year's tree was found finished (and stood in the grove). */
 let finishedYear = false;
 function keep(): void {
-  if (params.has('demo') || GAME || visit || parting) return;
+  if (params.has('demo') || visit || parting) return;
   void keepTree(kept(), DIARY);
 }
 /** The tree as kept (and as a copy is kept). */
 function kept(): KeptTree {
-  const now = CHILD ? thisYear() : { tree, days, notes };
-  return {
-    tree: kind, seed: now.tree.seed, wander: false, turn: 0, sim: snapshotTree(now.tree), days: now.days.slice(), ...(seedAt ? { at: seedAt } : {}),
-    ...(child ? { name: child.name, birth: child.birth, listen: child.listen, heights, years, age: age0, notes: now.notes.slice() } : {}),
-  };
+  return { tree: kind, seed: tree.seed, wander: false, turn: 0, sim: snapshotTree(tree), days: days.slice(), ...(seedAt ? { at: seedAt } : {}) };
 }
 
 /**
@@ -372,7 +260,7 @@ const EASE = SLOW_T, EASE_GROWN = SLOW_T;
 /** Where the seed was planted (shares of the sheet), if it has been (the practice, printed). */
 let seedAt: [number, number] | null = null;
 /** The fisheye for the tree now (none where the tree grows true to scale). */
-const warpNow = (): Warp => (GROWN || PUZZLE ? { ...warpFor(tree), beta: 0 } : warpFor(tree));
+const warpNow = (): Warp => (GROWN ? { ...warpFor(tree), beta: 0 } : warpFor(tree));
 /** The room the slice has (device px of radius). */
 const roomNow = () => Math.max(40 * px, Math.min(W / 2 - 34 * px, H * 0.27));
 /** The outermost the bark reaches (mm). */
@@ -398,7 +286,7 @@ function fitScale(): number {
   return tree.rings.length ? Math.min((BARK * room) / (0.25 * barkMax() + 0.75 * barkMean()), (0.9 * room) / barkMax()) : (BARK * room) / (barkMax() + tree.wRef);
 }
 /** Whether the young tree is still growing out on the sheet, its rings where the hand put them. */
-const growingOut = () => GROWN && !CHILD && fitScale() > seedScale() * 1.001;
+const growingOut = () => GROWN && fitScale() > seedScale() * 1.001;
 function barkMean(): number {
   const last = tree.rings[tree.rings.length - 1];
   if (!last) return tree.k.pith;
@@ -413,12 +301,6 @@ function barkMax(): number {
   return r;
 }
 function baseNow(t = clock()): View {
-  if (!view && PUZZLE) {
-    // (The puzzle: true to scale, the target filling the room, still all the way through.)
-    const room = roomNow(), s = (0.86 * room) / (target.size * target.reach);
-    view = { cx: W / 2, cy: Math.round(H * 0.47), s, turn: 0, px, warp: undefined };
-    ease = null;
-  }
   if (!view && GROWN) {
     // The bark and the year to come always the same size, in the middle of the sheet, a little high: the
     // day's loop the same size round it every day, and the year it makes growing out to the same place.
@@ -468,14 +350,10 @@ function viewNow(t = clock()): View {
 /** How close one may look: three times; growing true to scale, until a year is some 12 px across. */
 function closest(): number {
   if (!GROWN || !tree.rings.length) return 3;
-  // (A child's tree: by its days, not its whole years.)
-  const n = tree.rings.length, from = CHILD ? Math.max(whole, n - 30) : 0;
-  const year = (baseNow().s * (meanR(n - 1) - meanR(from - 1))) / Math.max(1, n - from);
+  const n = tree.rings.length, year = (baseNow().s * (meanR(n - 1) - meanR(-1))) / n;
   return Math.max(3, Math.min(60, (12 * px) / Math.max(1e-3, year)));
 }
 function zoomAbout(x: number, y: number, f: number): void {
-  // (The puzzle is looked at whole: the outline and the slice together, never closer.)
-  if (PUZZLE) return;
   // (Drawn back past the slice as it is: toward the grove, slowly, a pinch to a quarter or so.)
   if (far >= 1 && !farTo && (f > 1 || groveCam)) { zoomGrove(x, y, f); return; }
   // (Choosing a new seed, and drawn back: not yet, after all; the tree as it was, and back to the grove.)
@@ -507,206 +385,6 @@ function holdView(): void {
   view = baseNow(); ease = null;
 }
 
-// ---------------------------------------------------------------- your runs
-/** The runs page (challenge only): every run kept, best first, each a picture of its slice and its score. */
-const runsEl = document.getElementById('runs');
-const dateOf = (when: number) => new Date(when).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
-async function openRuns(): Promise<void> {
-  if (!runsEl) return;
-  keepTheRun();
-  const all = (await runs()).slice().sort((a, b) => b.score - a.score || b.when - a.when);
-  const grid = runsEl.querySelector('.grid')!;
-  grid.replaceChildren();
-  runsEl.querySelector('.none')?.toggleAttribute('hidden', all.length > 0);
-  all.forEach((r: Run, i) => {
-    const card = document.createElement('button');
-    card.className = 'card';
-    const img = new Image(); img.src = r.image; img.alt = `The slice of a run: ${r.score} points`;
-    const score = document.createElement('b'); score.textContent = r.score.toLocaleString();
-    const meta = document.createElement('small'); meta.textContent = `${i === 0 ? 'Best · ' : ''}${dateOf(r.when)}`;
-    card.append(img, score, meta);
-    card.addEventListener('click', () => showRun(r));
-    grid.append(card);
-  });
-  runsEl.classList.add('open');
-}
-function showRun(r: Run): void {
-  const big = runsEl?.querySelector<HTMLElement>('.big');
-  if (!big) return;
-  big.querySelector('img')!.src = r.image;
-  big.querySelector('b')!.textContent = `${r.score.toLocaleString()} points`;
-  big.querySelector('small')!.textContent = `${r.rings} rings · ${dateOf(r.when)}`;
-  big.classList.add('open');
-}
-runsEl?.querySelector('.close')?.addEventListener('click', () => runsEl.classList.remove('open'));
-runsEl?.querySelector('.big')?.addEventListener('click', (e) => (e.currentTarget as HTMLElement).classList.remove('open'));
-document.getElementById('open-runs')?.addEventListener('click', (e) => { e.preventDefault(); void openRuns(); });
-
-// ---------------------------------------------------------------- the turn of a ring
-// ---------------------------------------------------------------- the challenge
-const scoreEl = document.getElementById('score');
-/** Rings in a run; and what a touch on the last ring's edge costs. */
-const RUN = 10, TOUCH = 30;
-/**
- * The run: its points and rings, whether it's done; and this ring's: closeness (CSS px outside the last
- * ring's edge, summed), when it began, its touches, whether the brush is over the edge now, and whether
- * it has yet been outside it (touches count only once it has: a finger set down near the edge, its brush
- * a little way in, hasn't touched anything).
- */
-let run = { score: 0, rings: 0, over: false, gapSum: 0, gapN: 0, began: 0, touches: 0, inside: false, out: false };
-/** Where the brush has touched an edge this run (a tree angle and radius, so they stay on the slice). */
-/** (And the ring being drawn when it touched.) */
-let marks: { a: number; r: number; at: number; ring: number }[] = [];
-/** When the run ended. */
-let endedAt = 0;
-const bestOf = () => { try { return Number(localStorage.getItem('annulus.challenge')) || 0; } catch { return 0; } };
-const plural = (n: number, one: string, many: string) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
-function showScore(): void {
-  if (!scoreEl) return;
-  if (PUZZLE) { scoreEl.textContent = run.over ? '' : `${target.shape.name} · ring ${Math.min(RINGS, run.rings + 1)} of ${RINGS}`; return; }
-  const best = bestOf();
-  scoreEl.textContent = run.rings || run.score ? `Ring ${Math.min(RUN, run.rings + 1)} of ${RUN} · ${plural(run.score, 'point', 'points')}` : best ? `Best: ${best.toLocaleString()}` : '';
-}
-/**
- * A ring's points: closeness (1 on the edge, a half at 5 px off, a sixth at 25; over the edge counts as
- * 10 px off, so hugging inside never pays) times pace (2 for a ring in 2 s or less, 1 at 4 s, a half at
- * 8), out of 200; less 30 a touch, never below nothing.
- */
-function ringPoints(): number {
-  const gap = run.gapN ? run.gapSum / run.gapN : 30, secs = Math.max(0.5, clock() - run.began);
-  return Math.max(0, Math.round(100 * (1 / (1 + gap / 5)) * Math.min(2, 4 / secs)) - TOUCH * run.touches);
-}
-/** The brush went over the last ring's edge: it costs, and leaves a knot there. */
-function touchEdge(a: number): void {
-  run.touches++;
-  marks.push({ a, r: radiusAt((i) => tree.inner(i), a), at: clock(), ring: tree.rings.length });
-  if (NATIVE) tap({ strength: 0.6, sharpness: 0.5 });
-}
-/**
- * A picture of the slice as it is (a square, JPEG): drawn afresh off the page, centred and whole, so
- * however it's being looked at, the picture is the same.
- */
-function picture(n = 640): string {
-  const off = document.createElement('canvas'); off.width = off.height = n;
-  const c = off.getContext('2d')!, was = { g, px };
-  let rmax = tree.k.pith;
-  const last = tree.rings[tree.rings.length - 1];
-  if (last) for (let i = 0; i < K; i++) rmax = Math.max(rmax, last[i]);
-  // (True to scale, as a plate is: no fisheye.)
-  const v: View = PRINT ? { cx: n / 2, cy: n / 2, s: (n * 0.4) / rmax, turn: 0, px: 2 } : { cx: n / 2, cy: n / 2, s: (n * 0.4) / warpR(warp, rmax), turn: 0, px: 2, warp };
-  g = c; px = 2;
-  try {
-    c.fillStyle = PAPER; c.fillRect(0, 0, n, n);
-    if (PRINT) {
-      // (On a layer of its own, so the grain thins the ink to the paper beneath, not to nothing.)
-      const lay = document.createElement('canvas'); lay.width = lay.height = n;
-      g = lay.getContext('2d')!; drawPrint(v); inkGrain(lay, v); g = c; c.drawImage(lay, 0, 0);
-    } else { paper.draw(c, v); drawLatewood(v); drawBark(v); }
-    drawKnots(v, Infinity); drawPaper(c, n, n);
-  } finally { g = was.g; px = was.px; }
-  return off.toDataURL('image/jpeg', 0.86);
-}
-/** The run just ended, to be kept with its picture (once its last ring has bloomed). */
-let toKeep: { score: number; rings: number; when: number } | null = null;
-function keepTheRun(): void {
-  if (!toKeep) return;
-  const r = toKeep; toKeep = null;
-  void keepRun({ ...r, image: picture() });
-}
-// ---------------------------------------------------------------- the puzzle
-/**
- * Today's target, as an outline round the heart: its shape, its mean radius (mm: what steady years would
- * reach in the rings given, and half again, so it has to be grown into), and how far its widest point
- * reaches beyond that.
- */
-const target = (() => {
-  const shape = shapeFor(dayOf(), params.get('shape'));
-  let R = DAILY.pith, reach = 1;
-  for (let y = 1; y <= RINGS; y++) R = Math.sqrt(R * R + (DAILY.crown * (1 - Math.exp(-((y / DAILY.crownYears) ** 1.4)))) / Math.PI);
-  for (let i = 0; i < 360; i++) reach = Math.max(reach, shape.r((i / 360) * TAU));
-  const size = 1.5 * R;
-  return { shape, size, reach, r: (a: number) => size * shape.r(a) };
-})();
-const shareWrap = document.getElementById('share-wrap');
-let puzzleScore = 0;
-/** The target, pencilled on the paper: a soft graphite line, broken here and there. */
-function drawTarget(v: View): void {
-  if (!PUZZLE) return;
-  // (Over the ink, a paler line beneath it, so it reads on the wood as on the paper.)
-  g.save(); g.setLineDash([7 * px, 3 * px]); ringPath(v, target.r, 0, K * 2);
-  g.lineWidth = 2.6 * px; g.strokeStyle = 'rgba(244,239,228,0.38)'; g.stroke();
-  g.lineWidth = 1.1 * px; g.strokeStyle = 'rgba(92,88,84,0.6)'; g.stroke(); g.restore();
-}
-const puzzleBest = () => { try { return Number(localStorage.getItem(`annulus.puzzle.${dayOf()}.${target.shape.id}`)) || 0; } catch { return 0; } };
-/** The eighth ring: how well it fills the outline, and the best today. */
-function endPuzzle(): void {
-  run.over = true; endedAt = clock();
-  const bark = barkOf(tree.rings.length - 1);
-  puzzleScore = overlap(bark, target.r);
-  const best = puzzleBest(), isBest = puzzleScore > best;
-  if (isBest) { try { localStorage.setItem(`annulus.puzzle.${dayOf()}.${target.shape.id}`, String(puzzleScore)); } catch { /* not kept */ } }
-  window.setTimeout(() => {
-    words.classList.add('over');
-    say([`${percent(puzzleScore)}.`, isBest ? (best ? 'Your best today.' : '') : `Best today: ${percent(best)}.`, 'Tap to try again.'].filter(Boolean).join(' '), 1e5);
-    showScore(); shareWrap?.toggleAttribute('hidden', false);
-  }, 1400);
-}
-/** The result, to share: the slice and the target, true to scale, and how well it filled it. */
-async function puzzleCard(): Promise<Blob | null> {
-  const Wc = 1080, Hc = 1350, c = document.createElement('canvas'); c.width = Wc; c.height = Hc;
-  const x = c.getContext('2d')!, was = { g, px };
-  try { await document.fonts?.ready; } catch { /* the serif it falls back to will do */ }
-  x.fillStyle = PAPER; x.fillRect(0, 0, Wc, Hc);
-  const v: View = { cx: Wc / 2, cy: Hc * 0.44, s: (Wc * 0.36) / (target.size * target.reach), turn: 0, px: 2 };
-  const lay = document.createElement('canvas'); lay.width = Wc; lay.height = Hc;
-  g = lay.getContext('2d')!; px = 2;
-  try { drawPrint(v); inkGrain(lay, v); g = x; x.drawImage(lay, 0, 0); drawTarget(v); } finally { g = was.g; px = was.px; }
-  x.fillStyle = '#2e2118'; x.textAlign = 'center';
-  x.font = `italic 64px Newsreader, "Iowan Old Style", Georgia, serif`; x.fillText(percent(puzzleScore), Wc / 2, Hc * 0.86);
-  x.globalAlpha = 0.6; x.font = `34px Newsreader, "Iowan Old Style", Georgia, serif`;
-  x.fillText(`${target.shape.name}, in ${RINGS} rings · ${new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}`, Wc / 2, Hc * 0.86 + 60);
-  x.fillText('Well Rounded', Wc / 2, Hc - 60); x.globalAlpha = 1;
-  drawPaper(x, Wc, Hc);
-  return new Promise((done) => c.toBlob(done, 'image/png'));
-}
-document.getElementById('share')?.addEventListener('click', (e) => {
-  e.preventDefault();
-  void puzzleCard().then(async (b) => {
-    if (!b) return;
-    const file = new File([b], `well-rounded-${dayOf()}-${target.shape.id}.png`, { type: 'image/png' });
-    try { if (navigator.canShare?.({ files: [file] })) { await navigator.share({ files: [file], text: `Well Rounded · ${target.shape.name} · ${percent(puzzleScore)}` }); return; } } catch { return; }
-    const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = file.name; document.body.append(a); a.click(); a.remove();
-    window.setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-  });
-});
-
-/** Ten rings drawn: the run's points, and the best. */
-function endRun(): void {
-  run.over = true; endedAt = clock();
-  let best = bestOf();
-  const isBest = run.score > best;
-  if (isBest) { best = run.score; try { localStorage.setItem('annulus.challenge', String(best)); } catch { /* not kept */ } }
-  toKeep = { score: run.score, rings: run.rings, when: Date.now() };
-  window.setTimeout(keepTheRun, 1500);
-  window.setTimeout(() => {
-    words.classList.add('over');
-    say(`Score: ${run.score.toLocaleString()}. ${isBest ? 'New best!' : `Best: ${best.toLocaleString()}.`} Tap to play again.`, 1e5);
-    if (scoreEl) scoreEl.textContent = '';
-  }, 1400);
-}
-/** A new run: a new seedling, a clean sheet. */
-function restart(): void {
-  if (!PUZZLE) keepTheRun();
-  tree = new TreeSim(1 + Math.floor(Math.random() * 1e6), DAILY);
-  days = []; trail = []; marks = []; settle = { ring: -1, at: 0 };
-  run = { score: 0, rings: 0, over: false, gapSum: 0, gapN: 0, began: 0, touches: 0, inside: false, out: false };
-  warp = warpNow(); paper.fit(warp, warp.R); paper.bake(tree); view = null; ease = null;
-  openedAt = clock();
-  words.classList.remove('over', 'shown');
-  if (PUZZLE) { shareWrap?.toggleAttribute('hidden', true); for (const k in printCaches) delete printCaches[k]; }
-  showScore();
-}
-
 /** The ring just closed, blooming (a look only: the next can be begun at once). */
 let settle = { ring: -1, at: 0 }, settleTap = 0;
 /** When the loop drawn was closed (growing true to scale: it dries where it was drawn). */
@@ -732,19 +410,6 @@ function say(text: string, fade = 10): void {
 }
 let sayT = 0;
 
-// Between the practice and the challenge: a line of two words at the foot, away while drawing.
-const nav = document.getElementById('nav');
-// (On the dev server the practice is press.html; published, it's the index.)
-if (import.meta.env.DEV) nav?.querySelector<HTMLAnchorElement>('a[data-page="practice"]')?.setAttribute('href', './press.html');
-// (In the watercolour, the other page opens in the watercolour too.)
-if (!PRINT) nav?.querySelectorAll<HTMLAnchorElement>('a[data-page]').forEach((a) => { a.href += `${a.href.includes('?') ? '&' : '?'}ink=water`; });
-let navT = 0;
-function navAway(away: boolean): void {
-  clearTimeout(navT);
-  if (away) nav?.classList.add('away');
-  else navT = window.setTimeout(() => nav?.classList.remove('away'), 1500);
-}
-
 /** The fingers down (device px), a pinch in progress, and the touch that might be a tap. */
 const fingers = new Map<number, { x: number; y: number }>();
 let pinch: { d: number; mx: number; my: number } | null = null, pinched = false;
@@ -768,13 +433,10 @@ canvas.addEventListener('pointerdown', (e) => {
     return;
   }
   if (fingers.size > 2 || painter !== null) return;
-  navAway(true);
-  // (The maker's mark, touched: a new tree, if they say so. Nothing is drawn from it.)
-  // (Looked at closely, or the run over: a finger moves the slice about, or taps; nothing is drawn. And
-  // on a bare sheet, a tap plants the seed: see the tap, below.)
+  // (Looked at closely: a finger moves the slice about, or taps; nothing is drawn. And on a bare sheet, a
+  // tap plants the seed: see the tap, below.)
   if (tree.rings.length && brushAt(tree, viewNow(), 0, e.clientX * px, e.clientY * px).u < 0) inside = true;
-  if (CHILD) hideNote();
-  if ((closer() && inside) || far > 0 || visit || run.over || (GROWN && !seedAt) || (CHILD && (!child || looking !== 'year'))) return;
+  if ((closer() && inside) || far > 0 || visit || (GROWN && !seedAt)) return;
   words.classList.remove('shown');
   const x = e.clientX * px, y = e.clientY * px;
   holdView();
@@ -792,10 +454,8 @@ canvas.addEventListener('pointerdown', (e) => {
   const b = brushAt(tree, v, 0, ...brushPoint(v, x, y));
   strokeView = v;
   if (GROWN) { trail = []; inward = null; }
-  if (CHILD && child?.listen) void ear.start();
   if (tree.begin(e.timeStamp / 1000, b.a, rounded(b.a, b.u))) {
     painter = e.pointerId; paper.begin(tree); trailAt(b.a, b.u);
-    run.gapSum = 0; run.gapN = 0; run.began = clock(); run.touches = 0; run.inside = false; run.out = false;
     loop = { x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, len: 0, closed: false };
   }
 });
@@ -822,15 +482,6 @@ canvas.addEventListener('pointermove', (e) => {
   const evs = typeof e.getCoalescedEvents === 'function' ? e.getCoalescedEvents() : [];
   for (const c of evs.length ? evs : [e]) {
     const bp = brushPoint(strokeView, c.clientX * px, c.clientY * px), b = brushAt(tree, strokeView, 0, ...bp);
-    if (CHALLENGE) {
-      // How far the brush is outside the last ring's edge, on the screen: below nothing, it's over it.
-      const sv = strokeView, edge = sv.s * warpR(sv.warp, radiusAt((i) => tree.inner(i), b.a));
-      const gap = (Math.hypot(bp[0] - sv.cx, bp[1] - sv.cy) - edge) / px - barkCss(sv);
-      if (gap >= 1) run.out = true;
-      if (gap < 0 && run.out) { if (!run.inside) touchEdge(b.a); run.inside = true; }
-      else if (gap >= 0) run.inside = false;
-      if (run.out) { run.gapSum += gap < 0 ? 10 : gap; run.gapN++; }
-    }
     tree.move(c.timeStamp / 1000, b.a, rounded(b.a, b.u));
     trailAt(b.a, b.u);
     if (!tree.stroke) break;
@@ -838,7 +489,7 @@ canvas.addEventListener('pointermove', (e) => {
     loop.len += Math.hypot(c.clientX - loop.x, c.clientY - loop.y); loop.x = c.clientX; loop.y = c.clientY;
     if (loop.len > 160 && Math.hypot(loop.x - loop.x0, loop.y - loop.y0) < Math.max(28, loop.len / 16)) {
       loop.closed = true;
-      if (tree.finish(GAME ? 0.9 : 0.5)) break;
+      if (tree.finish(0.5)) break;
     }
   }
   hear();
@@ -855,9 +506,7 @@ for (const type of ['pointerup', 'pointercancel'] as const) canvas.addEventListe
   }
   // (Let go part way back: on to the grove, or home to today.)
   if (fingers.size === 0 && far > 0 && far < 1 && !farTo) settleFar();
-  navAway(false);
-  // A tap (short, still, one finger): a double tap goes back from looking closer; after a run, a tap
-  // begins another.
+  // A tap (short, still, one finger): a double tap goes back from looking closer.
   const tap = type === 'pointerup' && !pinched && fingers.size === 0 && clock() - tapStart.at < 0.3 && Math.hypot(e.clientX - tapStart.x, e.clientY - tapStart.y) < 12;
   if (tap) {
     const t = clock();
@@ -873,23 +522,19 @@ for (const type of ['pointerup', 'pointercancel'] as const) canvas.addEventListe
     if (visit && !closer() && t - lastTap < 0.35) { farTo = { from: 0, to: 1, at: t }; lastTap = 0; return; }
     if (closer() && t - lastTap < 0.35) { lookBack = { ...look, at: t }; lastTap = 0; return; }
     lastTap = t;
-    if (run.over && !closer() && t - endedAt > 1.8) { restart(); return; }
     // A tap on the slice: the ring there, and its day.
-    if (inside && !GAME && painter === null) { readDay(shownOf(viewNow()), e.clientX * px, e.clientY * px); return; }
+    if (inside && painter === null) { readDay(shownOf(viewNow()), e.clientX * px, e.clientY * px); return; }
     // Before the first ring, a tap plants the seed there (or moves it).
-    if (GROWN && !tree.rings.length && !closer() && (!CHILD || child)) {
+    if (GROWN && !tree.rings.length && !closer()) {
       if (painter === e.pointerId) { tree.cancel(); trail = []; painter = null; }
-      // (The practice, on a bare sheet: the seed tapped is the tree; tapped again before the first ring, it
-      // changes. The child's tree is an oak.)
-      if (!CHILD) {
-        const v = viewNow(), x = e.clientX * px, y = e.clientY * px;
-        // (The slice shown, touched: its seed. A touch either side of it turns to the next.)
-        if (!seedAt) {
-          if (Math.abs(choiceDx) > 2 * px || choiceTo) return;
-          const D = sliceD();
-          if (Math.hypot(x - v.cx, y - v.cy) > D / 2) { if (y > v.cy - D / 2 && y < v.cy + D / 2 + 80 * px) turnChoice(x < v.cx ? -1 : 1); return; }
-          kind = SEEDS[choice]; folding = { sp: kind };
-        }
+      // (On a bare sheet: the seed tapped is the tree; tapped again before the first ring, it changes.)
+      const v = viewNow(), x = e.clientX * px, y = e.clientY * px;
+      // (The slice shown, touched: its seed. A touch either side of it turns to the next.)
+      if (!seedAt) {
+        if (Math.abs(choiceDx) > 2 * px || choiceTo) return;
+        const D = sliceD();
+        if (Math.hypot(x - v.cx, y - v.cy) > D / 2) { if (y > v.cy - D / 2 && y < v.cy + D / 2 + 80 * px) turnChoice(x < v.cx ? -1 : 1); return; }
+        kind = SEEDS[choice]; folding = { sp: kind };
       }
       plant(W / 2, H * 0.47);
       return;
@@ -897,9 +542,8 @@ for (const type of ['pointerup', 'pointercancel'] as const) canvas.addEventListe
   }
   if (e.pointerId !== painter) return;
   painter = null;
-  if (CHILD) ear.stop();
   // Let go most of the way round, the ring is closed for you; earlier, the line rests, to be taken up.
-  if (tree.finish(GAME ? 0.95 : 0.8)) hear();
+  if (tree.finish(0.8)) hear();
   // (A whole loop drawn, but not round the slice: let go, and said where, once the hand is off.)
   else if (loop.closed && tree.stroke) { tree.cancel(); say(GROWN ? (tree.rings.length ? 'Draw your loop around the tree.' : 'Draw your loop around the seed.') : 'Draw around the circle.', 4); }
   else { tree.lift(); restAt = clock(); }
@@ -917,70 +561,12 @@ window.addEventListener('keydown', (e) => { if (choosing() && (e.key === 'ArrowL
 /** When the line was let go to rest (a line left resting a while fades away: no stray marks). */
 let restAt = 0;
 
-// ---------------------------------------------------------------- a child's tree: planting for them, and a copy kept
-const setupEl = document.getElementById('setup') as HTMLFormElement | null;
-/** Asked for once: their name and birthday (or a copy kept before, restored). */
-function openSetup(): void {
-  if (!setupEl) return;
-  setupEl.hidden = false; nav?.classList.add('away');
-  const birth = setupEl.elements.namedItem('birth') as HTMLInputElement;
-  birth.max = dayOf();
-  setupEl.onsubmit = (e) => {
-    e.preventDefault();
-    const name = (setupEl.elements.namedItem('name') as HTMLInputElement).value.trim();
-    if (!name || !birth.value || birth.value > dayOf()) return;
-    const tall = Number((setupEl.elements.namedItem('height') as HTMLInputElement).value);
-    child = { name, birth: birth.value, listen: (setupEl.elements.namedItem('listen') as HTMLInputElement).checked }; kind = 'oak';
-    // (The question and the seed: that's all, at first.)
-    age0 = ageOn(dayOf()).years;
-    if (tall > 30) heights[age0] = tall;
-    setupEl.hidden = true; nav?.classList.remove('away'); views?.classList.remove('hidden');
-    keep();
-    say(`Tap where ${name}’s tree should grow.`, 1e5);
-  };
-  (setupEl.elements.namedItem('file') as HTMLInputElement).onchange = (e) => void restoreCopy((e.target as HTMLInputElement).files?.[0]);
-}
-/** A copy of the tree, to keep somewhere safe: a small file, everything in it. */
-function keepCopy(): void {
-  if (!child) { say('Plant their tree first.', 3); return; }
-  const blob = new Blob([toText(kept())], { type: 'application/json' }), a = document.createElement('a');
-  a.href = URL.createObjectURL(blob); a.download = `${child.name.replace(/[^\p{L}\p{N}]+/gu, '-')}-tree-${dayOf()}.json`;
-  document.body.append(a); a.click(); a.remove();
-  window.setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-  try { localStorage.setItem('annulus.child.copied', String(thisYear().days.length + years.reduce((n, y) => n + y.days.length, 0))); } catch { /* not noted */ }
-  say('A copy is kept, as a file. Keep it somewhere safe.', 4);
-}
-/** A copy kept before, taken back (only if it's whole: a child's tree that loads). */
-async function restoreCopy(file: File | undefined): Promise<void> {
-  if (!file) return;
-  try {
-    const k = fromText(await file.text()) as KeptTree;
-    if (!k.name || !k.birth || !treeFrom(k, DAILY)) throw new Error('not a tree');
-    await keepTree(k, DIARY);
-    location.reload();
-  } catch { say('That file isn’t a copy of a child’s tree.', 4); }
-}
-document.getElementById('keep-copy')?.addEventListener('click', (e) => { e.preventDefault(); keepCopy(); });
-/**
- * Keeping it safe: the browser asked to keep this site's storage rather than clear it when space is short
- * (Safari also clears a site's storage after some seven days unvisited, unless it's on the Home Screen).
- * And, quietly, once a month or so of days drawn since the last copy, a reminder to keep one.
- */
-function guardKept(): void {
-  void navigator.storage?.persist?.().catch(() => false);
-  let last = 0;
-  try { last = Number(localStorage.getItem('annulus.child.copied')) || 0; } catch { /* none kept */ }
-  const drawn = thisYear().days.length + years.reduce((n, y) => n + y.days.length, 0);
-  const home = matchMedia('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone;
-  if (drawn >= 7 && drawn - last >= 30) window.setTimeout(() => say(home ? 'It’s been a while: keep a copy, somewhere safe.' : 'Add this page to your Home Screen to keep it safe, and keep a copy now and then.', 6), 12000);
-}
-
 /**
  * A breath, in the paper (the practice only): left still a few seconds, a faint shade round the bark swells
  * and ebbs at six breaths a minute, four seconds in and six out (slow breathing, the out-breath long, is what
  * calms); a touch, and it's gone. Never a word about it but once.
  */
-const BREATH = PRINT && GROWN && !CHILD, IN = 4, OUT = 6;
+const BREATH = PRINT && GROWN, IN = 4, OUT = 6;
 let breathShown = 0, stillSince = 0, breathNow = 0;
 /** Where in the breath it is now, 0 (out) to 1 (in), and how present the breath is (0 to 1). */
 function breathe(t: number, dt: number): void {
@@ -1147,7 +733,7 @@ function sliceArt(sp: Kind): HTMLImageElement | undefined {
 /** The slice shown as large as the tree will be on the sheet. */
 const sliceD = () => 2 * BARK * roomNow() * 1.05;
 let choice = 0, choiceDx = 0, choiceTo: { from: number; to: number; at: number } | null = null, folding: { sp: Kind } | null = null;
-const choosing = () => GROWN && !CHILD && !tree.rings.length && !seedAt;
+const choosing = () => GROWN && !tree.rings.length && !seedAt;
 /** Turned on by one, either way (wrapping round). */
 function turnChoice(dir: number): void {
   choice = (choice + dir + SEEDS.length) % SEEDS.length;
@@ -1201,188 +787,16 @@ function plant(x: number, y: number): void {
       parting = null; worldKey = ''; keep();
     })();
   } else keep();
-  if (!(CHILD && child)) { say('Now draw a loop around it.', 9); return; }
-  say(`${question()} Draw a loop around the seed: loose for an easy day, close for a hard one.`, 9);
+  say('Now draw a loop around it.', 9);
 }
 
-// ---------------------------------------------------------------- a child's tree: the day's question, its words, its years
-/** The day's question (see `child.ts`). */
-const question = () => askOf(child!.name, child!.birth, dayOf());
-/** The few words a day's ring may keep, asked for once it's drawn; or, on a birthday, their height. */
-const noteEl = document.getElementById('note') as HTMLFormElement | null;
-const views = document.getElementById('views');
-let noteFor: { kind: 'words'; ring: number } | { kind: 'height'; age: number } | null = null, noteT = 0;
-function askNote(what: NonNullable<typeof noteFor>, placeholder: string): void {
-  if (!noteEl) return;
-  noteFor = what;
-  const input = noteEl.elements.namedItem('text') as HTMLInputElement;
-  input.value = ''; input.placeholder = placeholder;
-  input.inputMode = what.kind === 'height' ? 'decimal' : 'text';
-  noteEl.classList.add('shown');
-  clearTimeout(noteT); noteT = window.setTimeout(hideNote, what.kind === 'height' ? 60000 : 25000);
-}
-function hideNote(): void { noteEl?.classList.remove('shown'); noteFor = null; (document.activeElement as HTMLElement | null)?.blur?.(); }
-noteEl?.addEventListener('submit', (e) => {
-  e.preventDefault();
-  const text = (noteEl.elements.namedItem('text') as HTMLInputElement).value.trim();
-  if (noteFor?.kind === 'words' && text) { notes[noteFor.ring] = text; keep(); say('Kept with the day.', 2.5); }
-  if (noteFor?.kind === 'height') { const h = Number(text.replace(',', '.')); if (h > 30 && h < 230) { heights[noteFor.age] = h; keep(); say('Kept. It’s the width of their year.', 3); } }
-  hideNote();
-});
-/** The sound of the moment, heard while a day's loop is drawn (if they said so), never kept. */
-const ear = new Ear();
-document.addEventListener('visibilitychange', () => { if (document.hidden) ear.stop(); });
-
-/** Looking at this year's tree, every year (their life's), or a finished year: the tree shown changes. */
-let stash: { tree: TreeSim; days: string[]; notes: (string | null)[] } | null = null, life: ReturnType<typeof lifeTree> | null = null;
-function lookAt(to: typeof looking): void {
-  if (!child || to === looking) return;
-  if (stash) { tree = stash.tree; days = stash.days; notes = stash.notes; stash = null; }
-  whole = 0; looking = to; life = null;
-  if (to === 'life') {
-    life = lifeTree(); stash = { tree, days, notes };
-    tree = life.t; days = life.days; notes = []; whole = tree.rings.length;
-  } else if (typeof to === 'number') {
-    const y = years[to], t = treeFrom({ tree: 'oak', seed: y.seed, wander: false, turn: 0, sim: y.sim }, DAILY);
-    if (t) { stash = { tree, days, notes }; tree = t; days = y.days.slice(); notes = y.notes.slice(); }
-  }
-  warp = warpNow(); view = null; ease = null; lookBack = null; look = { k: 1, ox: 0, oy: 0 }; growing = null; trail = []; inward = null;
-  for (const k in printCaches) delete printCaches[k];
-  openedAt = clock(); idleSince = openedAt + OPEN; hideNote();
-  // (Only where one isn't: every year from this year, this year from anywhere else.)
-  views?.querySelectorAll('a[data-view]').forEach((a) => a.toggleAttribute('hidden', (a as HTMLElement).dataset.view === (to === 'year' ? 'year' : 'life')));
-  if (to === 'life') say(`Every year of ${child.name}’s, a ring each. Touch one to open it.`, 4);
-  else if (typeof to === 'number') say(`${child.name}’s year at ${years[to].age}.`, 3);
-}
-views?.querySelectorAll<HTMLAnchorElement>('a[data-view]').forEach((a) => a.addEventListener('click', (e) => { e.preventDefault(); lookAt(a.dataset.view === 'life' ? 'life' : 'year'); }));
-/**
- * The year's print, for printing on real paper: ink only. An 8 × 10 inch sheet at 300 dpi, white (the
- * paper, unprinted), the year's tree in ink a little above the middle, true to scale, and nothing else: no
- * printed paper, no lettering pretending to be pencil, no stamp pretending to be pressed. The name and year
- * are for the parent to pencil under it, by hand; the stamp, if any, pressed. (Of the year looked at, or
- * this one so far.)
- */
-const INK_PRINT = [24, 20, 18];
-async function yearPrint(): Promise<HTMLCanvasElement> {
-  const Wp = 2400, Hp = 3000, P = 4, out = document.createElement('canvas'); out.width = Wp; out.height = Hp;
-  const c = out.getContext('2d')!, was = { g, px, W, H };
-  c.fillStyle = '#ffffff'; c.fillRect(0, 0, Wp, Hp);
-  const R = barkMax(), v: View = { cx: Wp / 2, cy: Hp * 0.44, s: (Wp * 0.3) / Math.max(1e-6, R), turn: 0, px: P };
-  const lay = document.createElement('canvas'); lay.width = Wp; lay.height = Hp;
-  g = lay.getContext('2d')!; px = P; W = Wp; H = Hp;
-  try { if (tree.rings.length) { drawPrint(v); inkGrain(lay, v); } } finally { g = was.g; px = was.px; W = was.W; H = was.H; }
-  // (Ink only: whatever the slice laid in the paper's colour is no ink at all; the rest, one ink.)
-  const lc = lay.getContext('2d')!, img = lc.getImageData(0, 0, Wp, Hp), d = img.data;
-  for (let k = 0; k < d.length; k += 4) {
-    const lum = (d[k] + d[k + 1] + d[k + 2]) / 3, amount = (d[k + 3] / 255) * Math.max(0, Math.min(1, (232 - lum) / (232 - 36)));
-    d[k] = INK_PRINT[0]; d[k + 1] = INK_PRINT[1]; d[k + 2] = INK_PRINT[2]; d[k + 3] = Math.round(255 * amount);
-  }
-  lc.putImageData(img, 0, 0);
-  c.drawImage(lay, 0, 0);
-  return out;
-}
-/**
- * The year's words, for the back of the print (or a card tucked behind it): 5 × 7 inches at 300 dpi, ink
- * only. Set, plainly, as type: the name, the year's dates and its days, then every few words kept with its
- * days, each on its own line with its day.
- */
-async function yearWords(): Promise<HTMLCanvasElement> {
-  const Wc = 1500, Hc = 2100, out = document.createElement('canvas'); out.width = Wc; out.height = Hc;
-  const c = out.getContext('2d')!, ink = `rgb(${INK_PRINT.join(',')})`;
-  try { await document.fonts?.ready; } catch { /* the serif it falls back to will do */ }
-  c.fillStyle = '#ffffff'; c.fillRect(0, 0, Wc, Hc);
-  printing = true;
-  const [, span] = editionWords(dayOf());
-  printing = false;
-  c.fillStyle = ink; c.textAlign = 'center'; c.textBaseline = 'alphabetic';
-  c.font = `italic 64px Newsreader, "Iowan Old Style", Georgia, serif`; c.fillText(child?.name ?? '', Wc / 2, 230);
-  c.font = `40px Newsreader, "Iowan Old Style", Georgia, serif`; c.fillText(span, Wc / 2, 300);
-  c.fillText(`${new Set(days).size} days`, Wc / 2, 356);
-  const kept = notes.map((n, i) => (n ? { n, day: days[i] } : null)).filter((x): x is { n: string; day: string } => !!x);
-  const fmt = (d: string) => dayDate(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
-  let y = 500;
-  c.textAlign = 'left';
-  for (const { n, day } of kept) {
-    if (y > Hc - 160) break;
-    c.font = `30px Newsreader, "Iowan Old Style", Georgia, serif`; c.globalAlpha = 0.6; c.fillText(fmt(day), 210, y);
-    c.font = `italic 38px Newsreader, "Iowan Old Style", Georgia, serif`; c.globalAlpha = 1; c.fillText(n.replace(/^[“"]+|[”"]+$/g, ''), 420, y);
-    y += 74;
-  }
-  return out;
-}
-/**
- * The year's block, for engraving into wood to print from by hand: the print's own ink, but as a laser
- * cutter wants it. Mirrored (a block prints reversed, so it's cut reversed); black where the wood is burned
- * away (the paper between the inked wood), white where it stands to take the ink; hard-edged, no greys; at
- * 600 dpi on a 9 in square (a 10 in block with a margin); and a hairline square round it to cut the block's
- * edge to, if it's cut from a plank.
- */
-async function yearBlock(): Promise<HTMLCanvasElement> {
-  const ink = await yearPrint(), DPI = 600, S = 9 * DPI, out = document.createElement('canvas'); out.width = out.height = S;
-  const c = out.getContext('2d')!;
-  // (The slice, from the print: its ink found, cropped round, set in the square, mirrored.)
-  const src = ink.getContext('2d')!.getImageData(0, 0, ink.width, ink.height).data;
-  let x0 = ink.width, y0 = ink.height, x1 = 0, y1 = 0;
-  for (let y = 0; y < ink.height; y += 2) for (let x = 0; x < ink.width; x += 2) if (src[(y * ink.width + x) * 4] < 200) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
-  const side = Math.max(x1 - x0, y1 - y0) + 20, k = (S - 0.6 * DPI) / Math.max(1, side);
-  c.fillStyle = '#000'; c.fillRect(0, 0, S, S);
-  c.save(); c.translate(S, 0); c.scale(-1, 1);
-  c.imageSmoothingQuality = 'high';
-  // (Ink white, so it stands; the rest black, burned away.)
-  c.filter = 'invert(1)';
-  c.drawImage(ink, x0 - 10, y0 - 10, side, side, (S - side * k) / 2, (S - side * k) / 2, side * k, side * k);
-  c.restore();
-  const img = c.getImageData(0, 0, S, S), d = img.data;
-  for (let i = 0; i < d.length; i += 4) { const v = d[i] > 127 ? 255 : 0; d[i] = d[i + 1] = d[i + 2] = v; d[i + 3] = 255; }
-  c.putImageData(img, 0, 0);
-  c.strokeStyle = '#ff0000'; c.lineWidth = 2; c.strokeRect(1, 1, S - 2, S - 2);
-  return out;
-}
-/** Hand a canvas over as a PNG file to keep. */
-function saveCanvas(cv: HTMLCanvasElement, name: string): Promise<void> {
-  return new Promise((done) => cv.toBlob((b) => {
-    if (b) { const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = name; document.body.append(a); a.click(); a.remove(); window.setTimeout(() => URL.revokeObjectURL(a.href), 4000); }
-    done();
-  }, 'image/png'));
-}
-document.getElementById('print-year')?.addEventListener('click', (e) => {
-  e.preventDefault();
-  if (!child || looking === 'life') { say('Open a year to print it: this year, or one from every year.', 4); return; }
-  say('Pressing the print…', 3);
-  const age = typeof looking === 'number' ? years[looking].age : age0, base = `${child.name.replace(/[^\p{L}\p{N}]+/gu, '-')}-the-year-at-${age}`;
-  void (async () => {
-    await saveCanvas(await yearPrint(), `${base}.png`);
-    await new Promise((r) => window.setTimeout(r, 600));
-    await saveCanvas(await yearWords(), `${base}-words.png`);
-    await new Promise((r) => window.setTimeout(r, 600));
-    await saveCanvas(await yearBlock(), `${base}-block.png`);
-    say('Saved: the print (ink only, 8 × 10 in), its words (5 × 7 in, for the back), and its block (to engrave into wood, mirrored, 600 dpi).', 8);
-  })();
-});
-
-/** (The tree being drawn, this year's, wherever one is looking.) */
-const thisYear = () => stash ?? { tree, days, notes };
-
-/** A touch inside the slice: the ring under it, lit for a moment, and the day it was drawn. */
+/** A touch inside the slice: the ring under it, lit for a moment (no dates, no counting). */
 let lit = -1, litAt = 0;
 function readDay(v: View, x: number, y: number): void {
   const dx = x - v.cx, dy = v.cy - y, a = (((Math.atan2(dy, dx) - v.turn) % TAU) + TAU) % TAU;
   const r = unwarpR(v.warp, Math.hypot(dx, dy) / v.s);
   const i = tree.rings.findIndex((ring) => r <= radiusAt(ring, a));
-  if (i < 0 || !days[i]) return;
-  const [yy, mm, dd] = days[i].split('-').map(Number), when = new Date(yy, mm - 1, dd);
-  if (CHILD && child) {
-    if (looking === 'life' && life) {
-      // (Every year: touched, that year opens, and how much they grew in it is said.)
-      const open = years.findIndex((y) => y.age === i), here = i === age0, grew = life.grew[i];
-      const words = `${i === 0 ? `${child.name}’s first year` : `${child.name} at ${i}`}, ${when.getFullYear()}–${String(when.getFullYear() + 1).slice(2)} · grew ${grew.toFixed(grew < 10 ? 1 : 0)} cm`;
-      if (open >= 0 || here) { lookAt(here ? 'year' : open); say(words, 4); } else say(`${words} · before the tree was planted`, 4);
-    } else {
-      const note = notes[i];
-      say(`${when.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} · ${ageWords(days[i])}${note ? ` · “${note}”` : ''}`, note ? 5 : 3);
-    }
-  }
-  // (The practice: the ring touched is lit a moment; no dates, no counting.)
+  if (i < 0) return;
   lit = i; litAt = clock();
 }
 
@@ -1409,17 +823,8 @@ function hear(): void {
     // The day's ring, kept; the first of the day is counted, quietly, once it has settled.
     const today = dayOf(), first = !days.includes(today);
     days.push(today);
-    if (CHILD) { notes.push(null); ear.stop(); window.setTimeout(() => { if (painter === null) askNote({ kind: 'words', ring: tree.rings.length - 1 }, 'A few words, if you like'); }, 2600); }
     keep();
-    if (PUZZLE) {
-      run.rings++; showScore();
-      if (run.rings >= RINGS) endPuzzle();
-    } else if (CHALLENGE) {
-      const pts = ringPoints(), touches = run.touches;
-      run.score += pts; run.rings++; showScore();
-      window.setTimeout(() => say(`+${pts}${touches ? `  (touched the edge: −${TOUCH * touches})` : ''}`, 1.4), 150);
-      if (run.rings >= RUN) endRun();
-    } else if (first) editionAt = clock() + (GROWN ? SEASON : 1.6);
+    if (first) editionAt = clock() + (GROWN ? SEASON : 1.6);
     // (The ring is done: it settles into the paper and the slice draws back to make room, while the
     // next can be begun as soon as the finger comes down again.)
     painter = null;
@@ -1601,59 +1006,6 @@ function drawBrush(g: CanvasRenderingContext2D, v: View, t: number): void {
   }
 }
 
-/**
- * Where the brush touched the edge, printed: a split in the wood. It opens at the bark where the touch
- * was, then over some nine seconds creeps in toward the heart and widens, wandering with the grain; and
- * every ring grown after splits too, as a split tree's new wood does, so a run's touches stay with the
- * slice as the cracks through it. (Watercolour: a knot.)
- */
-function drawSplits(v: View, t: number): void {
-  const n = tree.rings.length, bark = n ? barkOf(n - 1) : null;
-  if (!bark) return;
-  const T = barkCss(v) * px, main = g.canvas === canvas;
-  for (const m of marks) {
-    const q = m.at * 0.731 + m.a * 3.7, grow = smooth((t - m.at) / 9), since = Math.max(0, n - m.ring);
-    const deep = Math.min(0.8, 0.08 + 0.42 * grow + 0.05 * since + 0.1 * h1(q));
-    const wide = Math.min(6 * px, (0.5 + 2.6 * grow + 0.35 * since) * px * (0.7 + 0.6 * h1(q + 1.1)));
-    const rIn = m.r * (1 - deep), steps = 30;
-    const left: [number, number][] = [], right: [number, number][] = [];
-    let a = m.a;
-    for (let j = 0; j <= steps; j++) {
-      const f = j / steps, rOut = bark(a), rr = rOut + (rIn - rOut) * f, out = j === 0 ? T + 2 * px : 0;
-      const R = Math.max(1, v.s * warpR(v.warp, rr) + out), hw = (wide * (1 - f) ** 1.4 + 0.3 * px) * (0.75 + 0.5 * h1(q * 3 + j * 0.71));
-      const t0 = a + v.turn, da = hw / R;
-      left.push([v.cx + R * Math.cos(t0 + da), v.cy - R * Math.sin(t0 + da)]);
-      right.push([v.cx + R * Math.cos(t0 - da * (0.6 + 0.8 * h1(q + j * 1.37))), v.cy - R * Math.sin(t0 - da * (0.6 + 0.8 * h1(q + j * 1.37)))]);
-      a += (noise(q * 9 + f * 3) - 0.5) * 0.05 + (h1(q * 5 + j) > 0.86 ? (h1(q * 7 + j) - 0.5) * 0.06 : 0);
-    }
-    g.save();
-    g.beginPath(); g.moveTo(...left[0]);
-    for (const p of left) g.lineTo(...p);
-    for (let j = right.length - 1; j >= 0; j--) g.lineTo(...right[j]);
-    g.closePath(); g.clip();
-    // (The bare sheet shows through it.)
-    if (main) g.drawImage(groundOf(), 0, 0); else { g.fillStyle = PAPER; g.fillRect(0, 0, g.canvas.width, g.canvas.height); }
-    g.restore();
-  }
-}
-/** Where the brush has touched an edge this run, in the watercolour: a small knot in the wood, kept on the slice. */
-function drawKnots(v: View, t: number): void {
-  if (PRINT) { drawSplits(v, t); return; }
-  for (const m of marks) {
-    const [mx, my] = at(v, m.a, m.r), k = smooth((t - m.at) / 0.8), tang = -(m.a + v.turn) + Math.PI / 2;
-    g.save();
-    g.translate(mx, my); g.rotate(tang); g.scale(1, 0.5);
-    const r = (2.5 + 2.5 * k) * px;
-    const bloom = g.createRadialGradient(0, 0, r * 0.8, 0, 0, r * 1.9);
-    bloom.addColorStop(0, 'rgba(250,244,230,0)'); bloom.addColorStop(0.6, `rgba(250,244,230,${(0.14 * k).toFixed(3)})`); bloom.addColorStop(1, 'rgba(250,244,230,0)');
-    g.fillStyle = bloom; g.beginPath(); g.arc(0, 0, r * 1.9, 0, TAU); g.fill();
-    const knot = g.createRadialGradient(0, 0, 0, 0, 0, r);
-    knot.addColorStop(0, `rgba(80,50,30,${(0.5 * k).toFixed(3)})`); knot.addColorStop(0.5, `rgba(106,70,44,${(0.32 * k).toFixed(3)})`); knot.addColorStop(1, 'rgba(120,80,50,0)');
-    g.fillStyle = knot; g.beginPath(); g.arc(0, 0, r, 0, TAU); g.fill();
-    g.restore();
-  }
-}
-
 // ---------------------------------------------------------------- the relief print (?ink=print)
 /**
  * The slice as a relief print, as a slice of oak inked and pressed prints itself: each year's latewood
@@ -1724,7 +1076,7 @@ function drawPrint(v: View): void {
   // The heart: the seedling's first growth, printed as a ring is (an inked band at its edge, paper within),
   // and a dark dot at its very centre: a small dot when the tree is grown, never a black disc when it's young.
   // (Oak's real wood prints its heart as its first year: see printYears.)
-  if (!(realYears() && n) && !(GROWN && !n)) {
+  if (!(GROWN && !n)) {
     // (Never a ruled circle: its edges wander a little, as a seedling's first wood does, and its band
     // thickens and thins.)
     const hr = barkOf(-1), band = Math.min(0.4, (3 * px * Z) / Math.max(1, scr(meanR(-1))));
@@ -1746,154 +1098,148 @@ function drawPrint(v: View): void {
   const Rb = meanR(n - 1), around = (TAU * scr(Rb)) / px / Math.max(1, look.k);
   const begun = PRINT_RAYS.filter((r) => r.from < Rb && r.to > meanR(0));
   const rays = begun.slice(0, Math.max(6, Math.min(begun.length, Math.round(around / 4)))).sort((x, y) => x.a - y.a);
-  // Oak, once its real wood has come: the years of a red oak, pressed (see printYears).
-  const real = realYears();
-  if (real) {
-    printYears(v, real);
-    g.beginPath(); g.arc(v.cx, v.cy, 1.4 * px * Z, 0, TAU); g.fillStyle = ink(0.8); g.fill();
-  } else {
-    // Rings too fine to print apart (anywhere: a seedling's first years are wide, the next fine) print as
-    // single lines, as many as the screen can part. (Oak's rays break up the pattern of its fine rings; pine's
-    // and birch's plain bands, squeezed under 3 px, shimmer into moiré, so theirs are a soft tone with faint
-    // lines over it: strong lines, each a hand's wobble of its own, cross into a fingerprint.)
-    // (Oak: only the fine heart before its first printable ring, since among fine rings its rays do the work.)
-    const ring = fam() === 'ring', conifer = fam() === 'conifer', sp = SPEC[kind];
-    const fineAt = ring ? 1.6 : 3;
-    let heartEnd = 0;
-    while (heartEnd < n - 1 && wPx(heartEnd) < fineAt) heartEnd++;
-    const dense = Array.from({ length: n }, (_, i) => i < n - 1 && (ring ? i < heartEnd : wPx(i) < fineAt));
-    for (let i = 0; i < n; i++) {
-      if (!dense[i]) continue;
-      let j = i;
-      while (j + 1 < n && dense[j + 1]) j++;
-      // (Lines only, never a grey tone, which the press breaks into smudges; as far apart as a hand would
-      // rule them, each its own distance and weight, so they never beat into waves.)
-      g.strokeStyle = ink(sp.line);
-      let lastR = scr(meanR(i - 1));
-      for (let k = i; k <= j; k++) {
-        const R = scr(meanR(k));
-        if (R - lastR < (ring ? 1.9 : 2.6 + 1.2 * h1(k * 1.37 + 0.5)) * px * Z) continue;
-        // (As dark as the wide years: each line some three-fifths of the space it stands for.)
-        g.lineWidth = 0.6 * (R - lastR) * (0.85 + 0.3 * h1(k * 3.7));
-        lastR = R; ringPath(v, barkOf(k)); g.stroke();
-      }
-      i = j;
+  // Rings too fine to print apart (anywhere: a seedling's first years are wide, the next fine) print as
+  // single lines, as many as the screen can part. (Oak's rays break up the pattern of its fine rings; pine's
+  // and birch's plain bands, squeezed under 3 px, shimmer into moiré, so theirs are a soft tone with faint
+  // lines over it: strong lines, each a hand's wobble of its own, cross into a fingerprint.)
+  // (Oak: only the fine heart before its first printable ring, since among fine rings its rays do the work.)
+  const ring = fam() === 'ring', conifer = fam() === 'conifer', sp = SPEC[kind];
+  const fineAt = ring ? 1.6 : 3;
+  let heartEnd = 0;
+  while (heartEnd < n - 1 && wPx(heartEnd) < fineAt) heartEnd++;
+  const dense = Array.from({ length: n }, (_, i) => i < n - 1 && (ring ? i < heartEnd : wPx(i) < fineAt));
+  for (let i = 0; i < n; i++) {
+    if (!dense[i]) continue;
+    let j = i;
+    while (j + 1 < n && dense[j + 1]) j++;
+    // (Lines only, never a grey tone, which the press breaks into smudges; as far apart as a hand would
+    // rule them, each its own distance and weight, so they never beat into waves.)
+    g.strokeStyle = ink(sp.line);
+    let lastR = scr(meanR(i - 1));
+    for (let k = i; k <= j; k++) {
+      const R = scr(meanR(k));
+      if (R - lastR < (ring ? 1.9 : 2.6 + 1.2 * h1(k * 1.37 + 0.5)) * px * Z) continue;
+      // (As dark as the wide years: each line some three-fifths of the space it stands for.)
+      g.lineWidth = 0.6 * (R - lastR) * (0.85 + 0.3 * h1(k * 3.7));
+      lastR = R; ringPath(v, barkOf(k)); g.stroke();
     }
-    // The broad rays in play.
-    // (All of them begun inside the bark: as a real oak's, they crowd the slice as it grows, the newest
-    // short, by the bark.)
-    const broad = kind !== 'oak' ? [] : BROAD.filter((r) => r.from < Rb).sort((x, y) => x.a - y.a);
-    // The sapwood: once there's heartwood to tell it from (past 16 years), the last eight print a little paler.
-    for (let i = 0; i < n; i++) {
-      if (dense[i]) continue;
-      const outer = barkOf(i), inner = barkOf(i - 1);
-      // How much of the year takes the ink (its latewood): about half; never under a pixel.
-      // (Pine's latewood is a crisp band of about a third; birch marks its year with only a thin line.)
-      const w = wPx(i);
-      // (Heavy ink, as the real woods print: most of each year takes the ink, the paper only the gap between.)
-      const share = !ring && !conifer ? Math.min(0.78, Math.max(0.55, 1.1 / Math.max(1, w) + 0.55))
-        : conifer ? Math.min(0.78, Math.max(0.5, 1.1 / Math.max(1, w) + 0.5))
-        : Math.min(0.75, Math.max(0.45, 1.1 / Math.max(1, w) + 0.45));
-      // (A conifer's latewood: wider and darker for an unhurried day, thin and pale for a hurried one.)
-      const calm = conifer ? calmOf(i) : 0.5, cshare = conifer ? Math.min(0.88, share * (0.6 + 0.8 * calm)) : share;
-      const bandIn = (a: number) => outer(a) - cshare * (outer(a) - inner(a));
-      const tone = (1 - 0.16 * smooth((i - (n - 9)) / 8) * smooth((n - 12) / 8)) * sp.tone, fine = w < 6, mr = meanR(i);
-      // The rays crossing this ring: the broad ones always (hairlines); among fine rings, the fine ones too
-      // (oak's mosaic); never two closer than 5 px round it.
-      const R = scr(mr), least = (5 * px * Z) / Math.max(1, R);
-      // (Oak's only: an ash's rays are too fine to see.)
-      const pool = kind !== 'oak' ? [] : (fine ? [...broad, ...rays].sort((x, y) => x.a - y.a) : broad).filter((r) => r.from < mr && r.to > mr);
-      const live: typeof pool = [];
-      for (const r of pool) if (!live.length || r.a - live[live.length - 1].a > least) live.push(r);
-      if (live.length > 1 && live[0].a + TAU - live[live.length - 1].a < least) live.pop();
-      const gapOf = (r: typeof pool[0]) => ((r.k >= 5000 ? 0.65 : 0.9) * px * Z) / Math.max(1, R);
-      const rough = 0.28 * px * Z;
-      const brick = (a0: number, a1: number, seed: number) => {
-        const steps = Math.max(2, Math.ceil(((a1 - a0) * R) / (4 * px * Z)));
-        g.beginPath();
-        for (let j = 0; j <= steps; j++) {
-          const a = a0 + ((a1 - a0) * j) / steps, jit = (h1(seed + j * 3.1) - 0.5) * rough * 2;
-          const [x, y] = pt(a, outer(a), jit); if (j) g.lineTo(x, y); else g.moveTo(x, y);
-        }
-        for (let j = steps; j >= 0; j--) {
-          const a = a0 + ((a1 - a0) * j) / steps, jit = (h1(seed + j * 5.3 + 1.7) - 0.5) * rough * 2;
-          const [x, y] = pt(a, bandIn(a), jit); g.lineTo(x, y);
-        }
-        g.closePath();
-        // (The ink a little starved now and then.)
-        g.fillStyle = ink((0.8 + 0.2 * h1(seed * 0.37)) * tone * (conifer ? 0.75 + 0.25 * calm : 1)); g.fill();
-      };
-      if (live.length < 2) brick(0, TAU, i * 101);
-      else for (let j = 0; j < live.length; j++) {
-        // (A ray wavers a little from ring to ring, as the grain does.)
-        const wav = (r: typeof pool[0]) => r.a + ((h1(r.k * 13.1 + i * 0.7) - 0.5) * 0.8 * px * Z) / Math.max(1, R);
-        const nx = j + 1 < live.length ? live[j + 1] : live[0];
-        const a0 = wav(live[j]) + gapOf(live[j]), a1 = wav(nx) + (j + 1 < live.length ? 0 : TAU) - gapOf(nx);
-        if (a1 > a0) brick(a0, a1, i * 1013 + live[j].k * 7);
+    i = j;
+  }
+  // The broad rays in play.
+  // (All of them begun inside the bark: as a real oak's, they crowd the slice as it grows, the newest
+  // short, by the bark.)
+  const broad = kind !== 'oak' ? [] : BROAD.filter((r) => r.from < Rb).sort((x, y) => x.a - y.a);
+  // The sapwood: once there's heartwood to tell it from (past 16 years), the last eight print a little paler.
+  for (let i = 0; i < n; i++) {
+    if (dense[i]) continue;
+    const outer = barkOf(i), inner = barkOf(i - 1);
+    // How much of the year takes the ink (its latewood): about half; never under a pixel.
+    // (Pine's latewood is a crisp band of about a third; birch marks its year with only a thin line.)
+    const w = wPx(i);
+    // (Heavy ink, as the real woods print: most of each year takes the ink, the paper only the gap between.)
+    const share = !ring && !conifer ? Math.min(0.78, Math.max(0.55, 1.1 / Math.max(1, w) + 0.55))
+      : conifer ? Math.min(0.78, Math.max(0.5, 1.1 / Math.max(1, w) + 0.5))
+      : Math.min(0.75, Math.max(0.45, 1.1 / Math.max(1, w) + 0.45));
+    // (A conifer's latewood: wider and darker for an unhurried day, thin and pale for a hurried one.)
+    const calm = conifer ? calmOf(i) : 0.5, cshare = conifer ? Math.min(0.88, share * (0.6 + 0.8 * calm)) : share;
+    const bandIn = (a: number) => outer(a) - cshare * (outer(a) - inner(a));
+    const tone = (1 - 0.16 * smooth((i - (n - 9)) / 8) * smooth((n - 12) / 8)) * sp.tone, fine = w < 6, mr = meanR(i);
+    // The rays crossing this ring: the broad ones always (hairlines); among fine rings, the fine ones too
+    // (oak's mosaic); never two closer than 5 px round it.
+    const R = scr(mr), least = (5 * px * Z) / Math.max(1, R);
+    // (Oak's only: an ash's rays are too fine to see.)
+    const pool = kind !== 'oak' ? [] : (fine ? [...broad, ...rays].sort((x, y) => x.a - y.a) : broad).filter((r) => r.from < mr && r.to > mr);
+    const live: typeof pool = [];
+    for (const r of pool) if (!live.length || r.a - live[live.length - 1].a > least) live.push(r);
+    if (live.length > 1 && live[0].a + TAU - live[live.length - 1].a < least) live.pop();
+    const gapOf = (r: typeof pool[0]) => ((r.k >= 5000 ? 0.65 : 0.9) * px * Z) / Math.max(1, R);
+    const rough = 0.28 * px * Z;
+    const brick = (a0: number, a1: number, seed: number) => {
+      const steps = Math.max(2, Math.ceil(((a1 - a0) * R) / (4 * px * Z)));
+      g.beginPath();
+      for (let j = 0; j <= steps; j++) {
+        const a = a0 + ((a1 - a0) * j) / steps, jit = (h1(seed + j * 3.1) - 0.5) * rough * 2;
+        const [x, y] = pt(a, outer(a), jit); if (j) g.lineTo(x, y); else g.moveTo(x, y);
       }
-      // The fine rays, in a wide band: short pale flecks across it, a few px apart (oak's; the others' can't be seen).
-      if (!fine && kind === 'oak') {
-        const count = Math.round((TAU * R * SPARSE) / (16 * px * Z));
-        g.strokeStyle = 'rgba(244,239,228,0.38)'; g.lineWidth = 0.4 * px * Z; g.lineCap = 'round'; g.beginPath();
+      for (let j = steps; j >= 0; j--) {
+        const a = a0 + ((a1 - a0) * j) / steps, jit = (h1(seed + j * 5.3 + 1.7) - 0.5) * rough * 2;
+        const [x, y] = pt(a, bandIn(a), jit); g.lineTo(x, y);
+      }
+      g.closePath();
+      // (The ink a little starved now and then.)
+      g.fillStyle = ink((0.8 + 0.2 * h1(seed * 0.37)) * tone * (conifer ? 0.75 + 0.25 * calm : 1)); g.fill();
+    };
+    if (live.length < 2) brick(0, TAU, i * 101);
+    else for (let j = 0; j < live.length; j++) {
+      // (A ray wavers a little from ring to ring, as the grain does.)
+      const wav = (r: typeof pool[0]) => r.a + ((h1(r.k * 13.1 + i * 0.7) - 0.5) * 0.8 * px * Z) / Math.max(1, R);
+      const nx = j + 1 < live.length ? live[j + 1] : live[0];
+      const a0 = wav(live[j]) + gapOf(live[j]), a1 = wav(nx) + (j + 1 < live.length ? 0 : TAU) - gapOf(nx);
+      if (a1 > a0) brick(a0, a1, i * 1013 + live[j].k * 7);
+    }
+    // The fine rays, in a wide band: short pale flecks across it, a few px apart (oak's; the others' can't be seen).
+    if (!fine && kind === 'oak') {
+      const count = Math.round((TAU * R * SPARSE) / (16 * px * Z));
+      g.strokeStyle = 'rgba(244,239,228,0.38)'; g.lineWidth = 0.4 * px * Z; g.lineCap = 'round'; g.beginPath();
+      for (let q = 0; q < count; q++) {
+        const a = h1(i * 7.7 + q * 1.31) * TAU, lo = bandIn(a), hi = outer(a), band = hi - lo, tilt = (h1(q * 5.9 + i) - 0.5) * 0.6 * px * Z / Math.max(1, R);
+        const r0 = lo + band * (0.15 + 0.5 * h1(q * 2.9 + i)), r1 = r0 + band * (0.12 + 0.3 * h1(q * 4.1 + i * 3));
+        const [x0, y0] = pt(a, r0), [x1, y1] = pt(a + tilt, Math.min(hi, r1)); g.moveTo(x0, y0); g.lineTo(x1, y1);
+      }
+      g.stroke();
+    }
+    // The pores: oak begins each year with a row of large open vessels, a stipple of dots just inside the
+    // year's start, in the springwood (two rows where it's wide).
+    if (!ring && !conifer) {
+      // Diffuse: fine pores scattered evenly through the year, a light stipple across the springwood.
+      // (Counted and sized at the unzoomed print's scale: looked into, the same pores, larger.)
+      const ew = (scr(bandIn(0)) - scr(inner(0))) / px / Z;
+      if (ew >= 2) {
+        const count = Math.round((TAU * scr(mr) * ew * SPARSE) / (16 * px * Z));
+        g.fillStyle = ink(0.42 * tone); g.beginPath();
         for (let q = 0; q < count; q++) {
-          const a = h1(i * 7.7 + q * 1.31) * TAU, lo = bandIn(a), hi = outer(a), band = hi - lo, tilt = (h1(q * 5.9 + i) - 0.5) * 0.6 * px * Z / Math.max(1, R);
-          const r0 = lo + band * (0.15 + 0.5 * h1(q * 2.9 + i)), r1 = r0 + band * (0.12 + 0.3 * h1(q * 4.1 + i * 3));
-          const [x0, y0] = pt(a, r0), [x1, y1] = pt(a + tilt, Math.min(hi, r1)); g.moveTo(x0, y0); g.lineTo(x1, y1);
+          const a = h1(i * 3.1 + q * 0.917) * TAU, r0 = scr(inner(a)), r1 = scr(bandIn(a));
+          const at = r0 + (r1 - r0) * (0.12 + 0.76 * h1(q * 2.7 + i)), d = (0.3 + 0.35 * h1(q * 4.9 + i)) * px * Z;
+          const t = a + v.turn, x = v.cx + at * Math.cos(t), y = v.cy - at * Math.sin(t);
+          g.moveTo(x + d, y); g.arc(x, y, d, 0, TAU);
         }
-        g.stroke();
+        g.fill();
       }
-      // The pores: oak begins each year with a row of large open vessels, a stipple of dots just inside the
-      // year's start, in the springwood (two rows where it's wide).
-      if (!ring && !conifer) {
-        // Diffuse: fine pores scattered evenly through the year, a light stipple across the springwood.
-        // (Counted and sized at the unzoomed print's scale: looked into, the same pores, larger.)
-        const ew = (scr(bandIn(0)) - scr(inner(0))) / px / Z;
-        if (ew >= 2) {
-          const count = Math.round((TAU * scr(mr) * ew * SPARSE) / (16 * px * Z));
-          g.fillStyle = ink(0.42 * tone); g.beginPath();
-          for (let q = 0; q < count; q++) {
-            const a = h1(i * 3.1 + q * 0.917) * TAU, r0 = scr(inner(a)), r1 = scr(bandIn(a));
-            const at = r0 + (r1 - r0) * (0.12 + 0.76 * h1(q * 2.7 + i)), d = (0.3 + 0.35 * h1(q * 4.9 + i)) * px * Z;
-            const t = a + v.turn, x = v.cx + at * Math.cos(t), y = v.cy - at * Math.sin(t);
-            g.moveTo(x + d, y); g.arc(x, y, d, 0, TAU);
-          }
-          g.fill();
+    } else if (conifer) {
+      // A conifer: resin canals, here and there in the latewood, as small dark dots ringed with paper.
+      const lw = (scr(outer(0)) - scr(bandIn(0))) / px / Z;
+      // (In the wood's own place and size, so looking closer never adds more or blows them up into
+      // rings: a few to a ring, each a small dark fleck in the latewood, a share of its width.)
+      if (lw >= 3 && sp.resin) {
+        const count = Math.min(40, Math.round(TAU * mr * 0.35));
+        g.fillStyle = ink(0.95 * tone);
+        for (let q = 0; q < count; q++) {
+          const a = h1(i * 5.3 + q * 1.37) * TAU, r0 = scr(bandIn(a)), r1 = scr(outer(a));
+          const at = r0 + (r1 - r0) * (0.3 + 0.4 * h1(q * 6.1 + i)), d = (r1 - r0) * (0.12 + 0.08 * h1(q * 3.3 + i));
+          if (d < 0.5 * px * Z) continue;
+          const t = a + v.turn, x = v.cx + at * Math.cos(t), y = v.cy - at * Math.sin(t);
+          g.beginPath(); g.ellipse(x, y, d, d * 0.75, -t, 0, TAU); g.fill();
         }
-      } else if (conifer) {
-        // A conifer: resin canals, here and there in the latewood, as small dark dots ringed with paper.
-        const lw = (scr(outer(0)) - scr(bandIn(0))) / px / Z;
-        // (In the wood's own place and size, so looking closer never adds more or blows them up into
-        // rings: a few to a ring, each a small dark fleck in the latewood, a share of its width.)
-        if (lw >= 3 && sp.resin) {
-          const count = Math.min(40, Math.round(TAU * mr * 0.35));
-          g.fillStyle = ink(0.95 * tone);
-          for (let q = 0; q < count; q++) {
-            const a = h1(i * 5.3 + q * 1.37) * TAU, r0 = scr(bandIn(a)), r1 = scr(outer(a));
-            const at = r0 + (r1 - r0) * (0.3 + 0.4 * h1(q * 6.1 + i)), d = (r1 - r0) * (0.12 + 0.08 * h1(q * 3.3 + i));
-            if (d < 0.5 * px * Z) continue;
-            const t = a + v.turn, x = v.cx + at * Math.cos(t), y = v.cy - at * Math.sin(t);
-            g.beginPath(); g.ellipse(x, y, d, d * 0.75, -t, 0, TAU); g.fill();
-          }
+      }
+    } else {
+      // Oak's pores: the large open vessels each year opens with didn't take the ink, so in the print
+      // they're small, uneven holes along the inner edge of the year's band, crowding and thinning.
+      const lw = (scr(outer(0)) - scr(bandIn(0))) / px / Z;
+      if (lw >= 2.2) {
+        const count = Math.round((TAU * scr(meanR(i - 1)) * SPARSE) / (2.6 * px * Z));
+        g.fillStyle = 'rgba(244,239,228,0.92)'; g.beginPath();
+        for (let q = 0; q < count; q++) {
+          if (h1(q * 0.37 + i * 1.7) < 0.28) continue;
+          const a = ((q + h1(q * 3.7 + i)) / count) * TAU, r0 = scr(bandIn(a)), r1 = scr(outer(a));
+          const at = r0 + (r1 - r0) * (0.04 + 0.16 * h1(q * 5.3 + i) ** 2), d = Math.min((r1 - r0) * 0.16, (0.35 + 0.7 * h1(q * 1.1 + i * 2) ** 2) * px * Z);
+          const t = a + v.turn, x = v.cx + at * Math.cos(t), y = v.cy - at * Math.sin(t);
+          g.moveTo(x + d, y); g.ellipse(x, y, d, d * (0.6 + 0.5 * h1(q * 8.3)), -t, 0, TAU);
         }
-      } else {
-        // Oak's pores: the large open vessels each year opens with didn't take the ink, so in the print
-        // they're small, uneven holes along the inner edge of the year's band, crowding and thinning.
-        const lw = (scr(outer(0)) - scr(bandIn(0))) / px / Z;
-        if (lw >= 2.2) {
-          const count = Math.round((TAU * scr(meanR(i - 1)) * SPARSE) / (2.6 * px * Z));
-          g.fillStyle = 'rgba(244,239,228,0.92)'; g.beginPath();
-          for (let q = 0; q < count; q++) {
-            if (h1(q * 0.37 + i * 1.7) < 0.28) continue;
-            const a = ((q + h1(q * 3.7 + i)) / count) * TAU, r0 = scr(bandIn(a)), r1 = scr(outer(a));
-            const at = r0 + (r1 - r0) * (0.04 + 0.16 * h1(q * 5.3 + i) ** 2), d = Math.min((r1 - r0) * 0.16, (0.35 + 0.7 * h1(q * 1.1 + i * 2) ** 2) * px * Z);
-            const t = a + v.turn, x = v.cx + at * Math.cos(t), y = v.cy - at * Math.sin(t);
-            g.moveTo(x + d, y); g.ellipse(x, y, d, d * (0.6 + 0.5 * h1(q * 8.3)), -t, 0, TAU);
-          }
-          g.fill();
-        }
+        g.fill();
       }
     }
   }
+
   const bk = SPEC[kind].bark;
   if (bk === 'papery') drawBirchBark(v, pt, scr(Rb));
   else {
@@ -1930,7 +1276,7 @@ function drawPrint(v: View): void {
   // The checks: as a cut slice dries it splits, from the bark in toward the heart, a few cracks opening
   // and running deeper as the years go on (from about the fortieth), each its own way, wandering with the
   // rays and jagged at the edges, widest at the bark. (The practice only: they belong to an old slice.)
-  if (GROWN && !CHILD && n >= 40) {
+  if (GROWN && n >= 40) {
     const bark = barkOf(n - 1), T = barkCss(v) * px, count = Math.min(5, 1 + Math.floor((n - 40) / 70));
     g.save(); g.globalCompositeOperation = 'destination-out'; g.fillStyle = '#000';
     for (let c = 0; c < count; c++) {
@@ -1973,146 +1319,6 @@ function drawPrint(v: View): void {
   }
 }
 
-/**
- * Oak's years from the real thing: each ring of the slice takes one year of a red oak's cross-section
- * (Hough's, 1888; see wood/CREDITS.md), straightened and turned to ink, stretched to fit the ring from
- * its inner edge to its outer, so its pores open where its year begins, its rays cross it, its latewood
- * prints heavy. Round the ring the wood repeats seamlessly; a run of years shares one scale round, so the
- * rays run on from year to year, and where the slice has doubled in size, a new run begins (as new rays
- * do). Fine rings take a smaller copy of the year, so they never shimmer.
- */
-function printYears(v: View, oak: Years): void {
-  const n = tree.rings.length, c = g.canvas as HTMLCanvasElement, B = 720, Z = Math.max(1, look.k);
-  const scr = (r: number) => v.s * warpR(v.warp, r);
-  // The rings' radii on the screen, round the slice (ring -1 the heart).
-  const rad = new Float32Array((n + 1) * (B + 1));
-  for (let i = -1; i < n; i++) { const r = barkOf(i); for (let b = 0; b <= B; b++) rad[(i + 1) * (B + 1) + b] = scr(r((b / B) * TAU)); }
-  // Each ring's year, scale round and where round it starts; its mip level from its width on the screen.
-  // (Round the ring, the wood keeps its own proportions: as many texels to the mm as across the run's
-  // years, so a pore stays round and a ray fine.)
-  // (A child's tree: each day is a year of the oak, as the practice's are, its pores its fine line; a whole
-  // year grown before the days were drawn is made of its days just the same (365 of them across it); and
-  // across each year of their life, the days after a birthday print lighter, those before the next darker
-  // and denser, so each birthday closes a ring. The run of rays is the year's.)
-  const spans = CHILD ? yearSpans() : null, share = (i: number) => (spans?.[i].whole ? 1 / 365 : 1);
-  const monthStart = spans ? days.map((d, i) => !spans[i]?.whole && i > 0 && !!days[i - 1] && d.slice(0, 7) !== days[i - 1].slice(0, 7)) : [];
-  const W0 = oak.levels[0].w, runOf = (i: number) => (spans ? spans[i].y : Math.floor(Math.log2(Math.max(1, meanR(i) / 3))));
-  // (On the screen, as the fisheye widens a ring without lengthening it.)
-  // (Each run's scale is set by its first year, so a year added never changes the years before it.)
-  const runs = new Map<number, { w: number; R: number; k: number }>();
-  for (let i = 0; i < n; i++) if (!runs.has(runOf(i))) runs.set(runOf(i), { w: (scr(meanR(i)) - scr(meanR(i - 1))) * share(i), R: scr((meanR(i) + meanR(i - 1)) / 2), k: 1 });
-  const reps = new Float32Array(n), off = new Float32Array(n), yr = new Int32Array(n), lvl = new Int32Array(n), runR = new Float32Array(n);
-  const widthAt = (i: number) => (scr(meanR(i)) - scr(meanR(i - 1))) * share(i);
-  for (let i = 0; i < n; i++) {
-    const run = runOf(i), q = runs.get(run)!;
-    // (The practice: each year's scale from its own place and the last few years' widths, so the wood's
-    // grain changes size smoothly out from the heart, never in a step where the slice has doubled; and only
-    // from the years before, so a year added never changes them.)
-    let wAvg = 0, k = 0;
-    for (let j = Math.max(0, i - 8); j <= i; j++) { wAvg += widthAt(j); k++; }
-    const R = spans ? q.R / q.k : scr((meanR(i) + meanR(i - 1)) / 2), perPx = oak.year / Math.max(0.5, spans ? q.w / q.k : wAvg / k);
-    reps[i] = Math.max(1, Math.round((TAU * R * perPx) / W0)); runR[i] = R;
-    // (Its rays: mostly the last year's, drifting a little; now and then a fresh set, as rays end and begin.)
-    const fresh = i === 0 || (spans ? runOf(i - 1) !== run : reps[i] !== reps[i - 1] && h1(i * 1.9) < 0.5) || (!spans && h1(i * 3.71 + tree.seed * 0.013) < 0.3);
-    off[i] = fresh ? h1(i * 7.3 + tree.seed * 0.01) * W0 : off[i - 1] + (h1(i * 5.9) - 0.5) * 0.06 * W0;
-    yr[i] = ((spans ? i * 3 + run * 5 : i * 3) % oak.n + oak.n) % oak.n;
-    const w = (scr(meanR(i)) - scr(meanR(i - 1))) * share(i);
-    lvl[i] = Math.max(0, Math.min(oak.levels.length - 1, Math.ceil(Math.log2(oak.year / Math.max(0.5, w)))));
-  }
-  // (Years too fine to print apart, a day's ring at the grown tree's scale: the wood, so many years to a
-  // pixel, would print solid; so it prints at about half its tone, and as many of its years as the screen
-  // can part (one every 3 to 5 px, never evenly) print as a line at their edge, as the drawn woods' fine years do.)
-  const thin = new Float32Array(n), edge = new Uint8Array(n), gapOf = new Float32Array(n);
-  if (!spans) {
-    let lastR = scr(meanR(-1));
-    for (let i = 0; i < n; i++) {
-      thin[i] = 1 - smooth((widthAt(i) / Z - 1.2 * px) / (3 * px));
-      const R = scr(meanR(i));
-      // (Never a regular comb of lines, which would beat against the screen's pixels in waves: as far apart
-      // as a hand would rule them, each its own distance.)
-      if (thin[i] > 0 && R - lastR >= (3.2 + 1.4 * h1(i * 1.37 + 0.5)) * px * Z) { edge[i] = 1; gapOf[i] = R - lastR; lastR = R; }
-    }
-  }
-  // (A line is wider than the years it lies among: each ring knows the nearest lines in and out.)
-  const edgeIn = new Int32Array(n).fill(-1), edgeOut = new Int32Array(n).fill(-1);
-  for (let i = 0, e = -1; i < n; i++) { edgeIn[i] = e; if (edge[i]) e = i; }
-  for (let i = n - 1, e = -1; i >= 0; i--) { if (edge[i]) e = i; edgeOut[i] = e; }
-  // (The sapwood, paler, fading into the heartwood over some eight years: a year added shifts it by a hair.)
-  const tone = (i: number) => (spans ? 1 : 1 - 0.16 * smooth((i - (n - 9)) / 8) * smooth((n - 12) / 8));
-  let rmax = 0;
-  for (let b = 0; b <= B; b++) rmax = Math.max(rmax, rad[n * (B + 1) + b]);
-  const x0 = Math.max(0, Math.floor(v.cx - rmax - 1)), y0 = Math.max(0, Math.floor(v.cy - rmax - 1));
-  const w = Math.min(c.width, Math.ceil(v.cx + rmax + 1)) - x0, h = Math.min(c.height, Math.ceil(v.cy + rmax + 1)) - y0;
-  if (w <= 0 || h <= 0) return;
-  const ctx = c.getContext('2d')!, img = ctx.getImageData(x0, y0, w, h), d = img.data;
-  const at = (i: number, b: number, f: number) => { const k = (i + 1) * (B + 1) + b; return rad[k] + (rad[k + 1] - rad[k]) * f; };
-  // (Never ruled: the wood wanders a little, here and there, every ring with its neighbours, as grain
-  // swells round a knot or a bit of reaction wood: a shift of the rings, a fifth of a year or so, over a
-  // few mm, in the wood's own place (so it stays put as the slice is looked into), fading out at the bark.)
-  const yearMm = n ? meanR(n - 1) / n : 1, wA = 0.22 * yearMm * v.s, wL = 1 / (Math.max(2.2, 3 * yearMm) * v.s), wL2 = wL * 2.7;
-  for (let y = 0; y < h; y++) {
-    const dy = v.cy - (y + y0);
-    for (let x = 0; x < w; x++) {
-      const dx = x + x0 - v.cx;
-      let r = Math.sqrt(dx * dx + dy * dy);
-      if (r > rmax) continue;
-      let a = Math.atan2(dy, dx) - v.turn;
-      a = ((a % TAU) + TAU) % TAU;
-      const fb = (a / TAU) * B, b = Math.min(B - 1, Math.floor(fb)), f = fb - b;
-      if (wA > 0.3 && r < at(n - 1, b, f)) {
-        const fade = smooth((at(n - 1, b, f) - r) / (3 * wA)) * smooth(r / (6 * wA + 1));
-        r += fade * wA * (1.4 * (vnoise(dx * wL + 13.1, dy * wL + 7.7) - 0.5) + 0.6 * (vnoise(dx * wL2 + 3.3, dy * wL2 + 41.9) - 0.5));
-      }
-      if (r >= at(n - 1, b, f)) continue;
-      // (Which ring: the first whose outer edge lies beyond; inside the first, the heart, the seedling's
-      // first year, from the pith out, its rays the first ring's run on in.)
-      let lo = 0, hi = n - 1;
-      while (lo < hi) { const m = (lo + hi) >> 1; if (at(m, b, f) > r) hi = m; else lo = m + 1; }
-      const heart = r < at(-1, b, f), i = heart ? 0 : lo, rin = heart ? 0 : at(i - 1, b, f), rout = heart ? at(-1, b, f) : at(i, b, f);
-      const across = (r - rin) / Math.max(1e-3, rout - rin), year = heart ? (yr[0] + oak.n - 1) % oak.n : yr[i];
-      // (Never evenly round: a gentle stretch and squeeze round each ring, its own, so the rays fall
-      // unevenly and bend a little from year to year. The heart, soft: a blurred year, no rays meeting.)
-      // (Toward the middle, a ring's wood is drawn in ever tighter round: there it takes a softer copy, so
-      // it never gathers into a star.)
-      const tight = r < runR[i] ? Math.ceil(Math.log2(runR[i] / Math.max(1, r))) : 0;
-      const L = oak.levels[Math.min(oak.levels.length - 1, lvl[i] + tight + (heart ? 3 : 0))], rows = L.rows;
-      const wob = (0.09 * Math.sin(2 * a + i * 1.7) + 0.06 * Math.sin(3 * a + i * 2.9 + 1) + 0.04 * Math.sin(5 * a + i * 0.6)) * W0;
-      const sp = spans && !heart ? spans[i] : null, cyc = sp?.whole ? 365 : 1, inDay = (across * cyc) % 1;
-      // (The days of a year of their life all the one year of the oak, each set round by its own amount: told
-      // apart by their own fine lines, never by a shift in tone from one to the next, which would shimmer.)
-      const day = sp ? (sp.whole ? Math.floor(across * cyc) : i) : 0, yy = sp ? ((sp.y * 5) % oak.n + oak.n) % oak.n : year;
-      let ink = sample(L, (((a / TAU) * reps[i] * W0 + off[i] + wob * reps[i] * 0.15 + day * 37.3) * L.w) / W0, yy * rows + inDay * rows, yy * rows, rows) * tone(i);
-      if (!heart && thin[i] > 0) {
-        // (As dark as the wide years: lines as wide as some three-fifths of the space they stand for.)
-        ink *= 1 - 0.5 * thin[i];
-        // (Its line on the year's edge, drawn smooth across the pixels, a little heavier or lighter
-        // than the next, and its weight wandering with the press.)
-        const lineAt = (j: number, dist: number) => {
-          if (j < 0 || !edge[j]) return 0;
-          const half = 0.3 * gapOf[j] * (0.85 + 0.3 * h1(j * 3.7 + 1.1));
-          return Math.max(0, Math.min(1, (half + 0.5 * px - dist) / px)) * thin[j];
-        };
-        const jo = edgeOut[i], ji = edgeIn[i];
-        const cov = Math.max(jo < 0 ? 0 : lineAt(jo, at(jo, b, f) - r), ji < 0 ? 0 : lineAt(ji, r - at(ji, b, f))) * (0.75 + 0.35 * vnoise(dx * 0.11 + i, dy * 0.11));
-        if (cov > 0) ink = Math.max(ink, 0.95 * cov);
-      }
-      if (sp) {
-        // (Where in their year: lighter after the birthday, darker and denser toward the next; strongly in
-        // their life's tree, where it's what marks a birthday, gently in a year's own, so the year reads.)
-        const f = sp.whole ? across : sp.f0 + across * (sp.f1 - sp.f0), strong = sp.whole;
-        ink = ink * (strong ? 0.7 + 0.3 * smooth((f - 0.04) / 0.5) : 0.86 + 0.1 * smooth(f / 0.8));
-        if (strong) ink += (1 - ink) * 0.55 * smooth((f - 0.72) / 0.26);
-        // (A month begun: its first day's springwood opens wide and pale, so a year's tree reads as its
-        // twelve months, the days fine within them.)
-        else if (monthStart[i] && inDay < 0.42) ink *= 0.22 + 0.78 * smooth((inDay - 0.28) / 0.14);
-      }
-      const k = (y * w + x) * 4;
-      d[k] = INK[0]; d[k + 1] = INK[1]; d[k + 2] = INK[2]; d[k + 3] = Math.round(255 * Math.min(1, ink));
-    }
-  }
-  ctx.putImageData(img, x0, y0);
-}
-
 /** Birch's bark: thin, pale and papery, a fine dark line within it, flecked with short dark lenticels. */
 function drawBirchBark(v: View, pt: (a: number, r: number, dr?: number) => [number, number], Rpx: number): void {
   const bark = barkOf(tree.rings.length - 1), T = barkCss(v) * px;
@@ -2143,12 +1349,6 @@ function vnoise(x: number, y: number): number {
 }
 
 /**
- * The real oak's years, pressed from a scan (see printYears): the child's tree only. The practice draws
- * oak and ash in heavy ink as every other wood is, their pores and all, so the nine print as one set.
- */
-const realYears = () => (CHILD && fam() === 'ring' ? wood.years[kind] : undefined);
-
-/**
  * The ink's grain: printed from wood, ink lies in the grain's fine streaks along each ring, heavier and
  * lighter, starved to the paper here and there, its edges breaking a little. Laid into the ink (dark
  * pixels only; paper-coloured marks left as they are) of a canvas `c` holding the slice drawn for view `v`.
@@ -2171,7 +1371,6 @@ function inkGrain(c: HTMLCanvasElement, v: View, band?: [number, number]): void 
   const Z = Math.max(1, look.k), fine = 1 / (0.8 * px * Z), along = 1 / (12 * px * Z), speck = 1 / (0.8 * px * Z), streak = 1 / (5 * px * Z);
   // (Oak's real wood carries its own grain: only its bark takes this. Pine's grain is its real fibre.)
   let inside = 0;
-  if (realYears() && last) { inside = Infinity; for (let i = 0; i < K; i += 4) inside = Math.min(inside, v.s * warpR(v.warp, last[i]) - 1); }
   const fib = fam() !== 'ring' ? wood.fibre[kind] : undefined, perMm = 20 / v.s;
   // The press: the paper's tooth (some 0.12 mm, never finer than a pixel), the pressure wandering
   // across the block, and the saw's marks, faint arcs from a far-off blade (seen only looking close).
@@ -2317,7 +1516,7 @@ function drawPrintCached(v: View, moving: boolean, slot = 'drawing', alpha = 1, 
  * At rest, true to scale. While drawing, the slice's outer rings are magnified (a fisheye) to give the
  * newest ring room under the finger, which squeezes the old ones toward the heart; left a moment, the
  * slice settles into true scale, its years evenly spaced, the bark where it was; a touch brings the
- * magnifier back. (In the print; and in the challenge only once the run is over.)
+ * magnifier back. (In the print.)
  */
 let relax = 0, idleSince = 0;
 function restOf(v: View): View {
@@ -2329,84 +1528,45 @@ function restOf(v: View): View {
 const shownOf = (v: View) => (relax > 0.5 ? restOf(v) : v);
 
 /**
- * The edition, pencilled under the print as a printmaker signs and numbers one: how many days drawn on
- * the left, the day's date in the middle, the tree on the right; beside it a blind stamp, a small ring
- * slice pressed into the paper with no ink (the maker's mark). Away while a finger is down; written in
- * again, left to right, when a new day's ring has bloomed. (The practice only: the challenge keeps its score.)
+ * The tree's name, pencilled under the print, and beside it a blind stamp, a small ring slice pressed into
+ * the paper with no ink (the maker's mark): only when a tree is shown whole (for a few moments on opening,
+ * and an older tree opened from the grove); growing, nothing under the tree. No dates, no counting. Away
+ * while a finger is down; written in, left to right, once a new day's ring has bloomed.
  */
 let editionAt = 0, editionShown = 0;
 function drawEdition(v: View, t: number, dt: number): void {
-  if (GAME || !tree.rings.length) return;
+  if (!tree.rings.length) return;
   const away = fingers.size > 0 || !!tree.stroke;
   editionShown = away ? Math.max(0, editionShown - dt / QUICK) : Math.min(1, editionShown + dt / STEADY_T);
-  if (editionShown <= 0.01) return;
+  stampAt = [-1e9, -1e9];
+  const whole = visit ? 1 : 1 - smooth((t - (openedAt + OPEN + 3)) / STEADY_T);
+  if (editionShown <= 0.01 || whole <= 0.01) return;
   const last = tree.rings[tree.rings.length - 1];
   let rmax = 0;
   for (let i = 0; i < K; i++) rmax = Math.max(rmax, v.s * warpR(v.warp, last[i]));
-  // (Never narrower than its words need, however small the slice; and kept on the sheet.)
-  const y = v.cy + rmax + (barkCss(v) + 30) * px, half = Math.min(Math.max(rmax, (CHILD ? 150 : 112) * px), W / 2 - 24 * px);
+  const y = v.cy + rmax + (barkCss(v) + 30) * px, half = Math.min(Math.max(rmax, 112 * px), W / 2 - 24 * px);
   editionY = y;
-  v = { ...v, cx: Math.max(half + 30 * px, Math.min(W - half - 30 * px, v.cx)) };
-  const [yy, mm, dd] = (days[days.length - 1] ?? dayOf()).split('-').map(Number);
-  const date = new Date(yy, mm - 1, dd).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
   // (Written in, left to right, once a new day's ring has bloomed.)
   const w = t < editionAt ? 0 : smooth((t - editionAt) / STEADY_T);
   g.save();
   g.beginPath(); g.rect(v.cx - half - 40 * px, y - 30 * px, (2 * half + 80 * px) * (editionAt ? w : 1), 60 * px); g.clip();
-  g.globalAlpha = editionShown;
+  g.globalAlpha = editionShown * whole;
   // Graphite: a soft grey, its grain the paper's own (laid over it after).
   g.fillStyle = 'rgba(92,88,84,0.78)'; g.font = `italic ${13 * px}px Newsreader, "Iowan Old Style", Georgia, serif`; g.textBaseline = 'middle';
-  const [left, mid] = editionWords(date);
-  const right = CHILD && child ? child.name : kind;
-  // (The practice: no dates, no counting. Growing, nothing under the tree; shown whole (on opening, for a
-  // few moments, and an older tree opened from the grove), only its wood's name and the maker's mark.)
-  const whole = CHILD ? 1 : visit ? 1 : 1 - smooth((t - (openedAt + OPEN + 3)) / STEADY_T);
-  stampAt = [-1e9, -1e9];
-  if (whole <= 0.01) { g.restore(); return; }
-  g.globalAlpha = editionShown * whole;
-  if (!CHILD) {
-    const nw = g.measureText(right).width, x0 = v.cx - (nw + 22 * px) / 2;
-    g.textAlign = 'left'; g.fillText(right, x0, y);
-    const sx = x0 + nw + 16 * px;
-    if (whole > 0.5) stampAt = [sx, y];
-    for (const [dx, dy, col] of [[-0.7, -0.7, 'rgba(255,253,246,0.95)'], [0.7, 0.7, 'rgba(96,74,52,0.28)']] as [number, number, string][]) {
-      g.strokeStyle = col; g.fillStyle = col; g.lineWidth = 0.9 * px;
-      for (const r of [7, 4.6, 2.4]) { g.beginPath(); g.arc(sx + dx * px, y + dy * px, r * px, 0, TAU); g.stroke(); }
-      g.beginPath(); g.arc(sx + dx * px, y + dy * px, 0.9 * px, 0, TAU); g.fill();
-    }
-    g.restore();
-    return;
-  }
-  // (The date in the middle, or nudged left of a long name, as a hand would leave it room.)
-  const midW = g.measureText(mid).width, room = v.cx + half - 22 * px - g.measureText(right).width - 12 * px;
-  const midX = Math.max(v.cx - half + g.measureText(left).width + 12 * px + midW / 2, Math.min(v.cx, room - midW / 2));
-  g.textAlign = 'left'; g.fillText(left, v.cx - half, y);
-  if (printing || CHILD) { g.textAlign = 'center'; g.fillText(mid, midX, y); }
-  g.textAlign = 'right'; g.fillText(right, v.cx + half - 22 * px, y);
+  const nw = g.measureText(kind).width, x0 = v.cx - (nw + 22 * px) / 2;
+  g.textAlign = 'left'; g.fillText(kind, x0, y);
   // The blind stamp: three rings and a heart, pressed in (a highlight above, a shadow below, no ink).
-  const sx = v.cx + half - 6 * px, sy = y;
-  if (whole > 0.5) stampAt = [sx, sy];
+  const sx = x0 + nw + 16 * px;
+  if (whole > 0.5) stampAt = [sx, y];
   for (const [dx, dy, col] of [[-0.7, -0.7, 'rgba(255,253,246,0.95)'], [0.7, 0.7, 'rgba(96,74,52,0.28)']] as [number, number, string][]) {
     g.strokeStyle = col; g.fillStyle = col; g.lineWidth = 0.9 * px;
-    for (const r of [7, 4.6, 2.4]) { g.beginPath(); g.arc(sx + dx * px, sy + dy * px, r * px, 0, TAU); g.stroke(); }
-    g.beginPath(); g.arc(sx + dx * px, sy + dy * px, 0.9 * px, 0, TAU); g.fill();
+    for (const r of [7, 4.6, 2.4]) { g.beginPath(); g.arc(sx + dx * px, y + dy * px, r * px, 0, TAU); g.stroke(); }
+    g.beginPath(); g.arc(sx + dx * px, y + dy * px, 0.9 * px, 0, TAU); g.fill();
   }
   g.restore();
 }
 
-/** What the edition says, left and middle (the right is the tree's name, or the child's). */
-let printing = false;
-function editionWords(date: string): [string, string] {
-  if (!CHILD || !child) return [String(tree.rings.length), date];
-  const fmt = (d: Date) => d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }), b = dayDate(child.birth);
-  if (looking === 'life') return [ageWords(dayOf()), `born ${fmt(b)}`];
-  const age = typeof looking === 'number' ? years[looking].age : age0;
-  const from = new Date(b.getFullYear() + age, b.getMonth(), b.getDate()), to = new Date(b.getFullYear() + age + 1, b.getMonth(), b.getDate() - 1);
-  // (On the sheet, this year's day; a finished year, and the print, its dates.)
-  return typeof looking === 'number' || printing ? [`the year at ${age}`, `${fmt(from)} – ${fmt(to)}`] : [ageWords(days[days.length - 1] ?? dayOf()), date];
-}
-
-/** Where the pencilled line is, and its maker's mark (device px); and whether this touch began on the mark. */
+/** Where the pencilled line is, and its maker's mark (device px). */
 let editionY = -1e9, stampAt: [number, number] = [-1e9, -1e9];
 /**
  * A new tree: straight to the seeds, nothing asked. The tree drawn so far waits, kept as it was, until a
@@ -2441,7 +1601,7 @@ let groveKept: KeptTree[] = [];
 let far = 0, farPull = 0, farTo: { from: number; to: number; at: number } | null = null;
 /** An older tree looked at, and today's, kept aside meanwhile. */
 let visit: { i: number; stash: { tree: TreeSim; days: string[]; kind: Kind } } | null = null;
-const canPull = () => GROWN && !CHILD && (tree.rings.length > 0 || (!!seedAt && groveKept.length > 0));
+const canPull = () => GROWN && (tree.rings.length > 0 || (!!seedAt && groveKept.length > 0));
 const settleFar = () => { farTo = { from: far, to: far > 0.45 ? 1 : 0, at: clock() }; };
 interface Stand { sp: Kind; n: number; i: number; k: number; wx: number; wy: number; wr: number; x: number; y: number; r: number }
 /** The season washed into the grove: today's (`?season=winter` and so on, to look). */
@@ -2709,7 +1869,7 @@ function demoGrove(count = 5): KeptTree[] {
  * ink, the late ones heavier. A touch skips it. (Never under a test, or for those who'd rather less motion;
  * `?intro` to see it there.)
  */
-const INTRO = GROWN && !CHILD && (params.has('intro') || (!navigator.webdriver && !matchMedia('(prefers-reduced-motion: reduce)').matches));
+const INTRO = GROWN && (params.has('intro') || (!navigator.webdriver && !matchMedia('(prefers-reduced-motion: reduce)').matches));
 /** Pores and flecks pressed: all of them (1), or, for the opening, seen only for a moment, a scatter. */
 let SPARSE = 1;
 const INTRO_GROW = 1.4, INTRO_HOLD = 0.25, INTRO_PULL = STEADY_T, INTRO_FADE = QUICK;
@@ -2874,8 +2034,8 @@ function frame(): void {
   // (The wood's own way with the hand's line.)
   if (GROWN) { const sm = SMOOTH[kind] ?? DAILY.smooth; if (tree.k.smooth !== sm) (tree.k as { smooth: number }).smooth = sm; }
   // (The practice: the wood is as much as the hand draws, so the ink lasts all the way round and the ring
-  // closes where the hand closes it. The child's tree keeps its ration until it's grown out on the sheet.)
-  if (GROWN && !tree.stroke) tree.free = !CHILD || growingOut();
+  // closes where the hand closes it.)
+  if (GROWN && !tree.stroke) tree.free = true;
   if (farTo) {
     const p = smooth((t - farTo.at) / STEADY_T);
     far = farTo.from + (farTo.to - farTo.from) * p; farPull = far;
@@ -2897,11 +2057,11 @@ function frame(): void {
   // today's slice is pressed in its still moment, before it fades.)
   if (introCovers(t)) { drawIntro(t); drawPaper(g, W, H); requestAnimationFrame(frame); return; }
   // At rest, or drawing: the one eased into the other (slowly to rest, quickly back).
-  const busy = fingers.size > 0 || !!tree.stroke || !!ease || settle.ring >= 0 || (GAME && !run.over);
+  const busy = fingers.size > 0 || !!tree.stroke || !!ease || settle.ring >= 0;
   if (busy) idleSince = t;
   const restWanted = PRINT && !busy && t - idleSince > 1.4 && !!v.warp && v.warp.beta > 0;
   // (Left a while on the slice, the grove is drawn ready, out of sight, so drawing back to it never stalls.)
-  if (GROWN && !CHILD && far === 0 && !intro && !busy && t - idleSince > 2.5 && t - groveWarmAt > 5 && canPull()) { groveWarmAt = t; groveBase(); }
+  if (GROWN && far === 0 && !intro && !busy && t - idleSince > 2.5 && t - groveWarmAt > 5 && canPull()) { groveWarmAt = t; groveBase(); }
   relax = restWanted ? Math.min(1, relax + dt / STEADY_T) : Math.max(0, relax - dt / 0.22);
   const moving = (!!ease && !GROWN) || !!lookBack || fingers.size >= 2, drift = !!ease && GROWN;
   if (PRINT && growing && (growing.ring !== tree.rings.length - 1 || t - growing.at > SEASON || closer())) growing = null;
@@ -2951,11 +2111,9 @@ function frame(): void {
   // The ink: a brush's line, wet at first, then drying into bristle-streaks and evaporating. (It's on the
   // slice, so it draws back with it.)
   if (GROWN && !n && seedAt) drawSeed(v, t);
-  if (GROWN && !CHILD && !n && !seedAt) drawSeedChoice(v, t);
+  if (GROWN && !n && !seedAt) drawSeedChoice(v, t);
   drawBreath(shownOf(v), t, dt);
-  drawTarget(v);
   drawBrush(g, v, t);
-  drawKnots(shownOf(v), t);
   if (far > 0) drawFar(v);
   else { placeBackInput(false); drawEdition(shownOf(v), t, dt); }
   // (The paper's tooth over everything, the opening too, so it's printed on the same sheet.)
@@ -2966,33 +2124,17 @@ function frame(): void {
 
 void (async () => {
   await recall();
-  if (GROWN && !CHILD) {
+  if (GROWN) {
     void navigator.storage?.persist?.().catch(() => false);
     groveKept = params.has('grove') ? demoGrove(Math.max(1, Number(params.get('grove')) || 5)) : await grove();
   }
   warp = warpNow(); paper.fit(warp, warp.R); paper.bake(tree);
   fit(); view = null; openedAt = clock(); idleSince = openedAt + OPEN;
-  const today = dayOf();
-  showScore();
-  if (PUZZLE) say(`Grow your tree to fill the outline: ${target.shape.name}, in ${RINGS} rings. Draw each ring wider where it needs to reach.`, 9);
-  else if (CHALLENGE) say('Draw around the circle. Get close, but don’t touch it. Faster scores more.', 8);
-  else if (CHILD) {
-    // (Recalled above, so read afresh here.)
-    const c = child as { name: string; birth: string } | null;
-    if (c) guardKept();
-    if (!c) { openSetup(); views?.classList.add('hidden'); }
-    else if (newYear) {
-      // (A birthday since: last year's tree finished and kept, a new seed planted; their height asked.)
-      say(`${c.name} is ${age0} today. Last year’s tree is finished, in every year; this one begins.`, 10);
-      askNote({ kind: 'height', age: age0 }, `How tall is ${c.name} now? (cm)`);
-    } else if (!tree.rings.length && !seedAt) say(`Tap where ${c.name}’s tree should grow.`, 1e5);
-    else say(days.includes(today) ? `${c.name}’s day is drawn. Draw another if you like.` : question(), 10);
-  }
-  else if (GROWN && !tree.rings.length && finishedYear) say('A year. It stands in your grove. Choose the next.', 1e5);
+  if (GROWN && !tree.rings.length && finishedYear) say('A year. It stands in your grove. Choose the next.', 1e5);
   else if (GROWN && !tree.rings.length) say(seedAt ? 'Draw a loop around the seed.' : 'Swipe through the woods. Touch one to plant it.', 1e5);
   // (Words only where they're needed: before the first ring. After that, the tree says it.)
   else if (!tree.rings.length) say('Draw a circle around this one.', 8);
-  Object.assign(window, { press: { get tree() { return tree; }, get phase() { return settle.ring >= 0 ? 'settling' : 'trace'; }, get easing() { return !!ease; }, get view() { return viewNow(); }, get days() { return days; }, get run() { return run; }, get kind() { return kind; }, get choice() { return SEEDS[choice]; }, get far() { return far; }, get visiting() { return visit?.i ?? null; }, get parting() { return !!parting; }, groveNext: () => { const c = camNow(), w = worldOf(); return { x: (c.X0 + w.next.wx * c.S) / px, y: (c.Y0 + w.next.wy * c.S) / px }; }, grove: () => groveLayout().trees.map((t) => ({ sp: t.sp, n: t.n, i: t.i, x: t.x / px, y: t.y / px, r: t.r / px })), get editionY() { return editionY; }, get stampAt() { return stampAt; }, target: (a: number) => target.r(a), look: (to: 'year' | 'life' | number) => lookAt(to), print: async () => (await yearPrint()).toDataURL('image/png'), words: async () => (await yearWords()).toDataURL('image/png'), block: async () => (await yearBlock()).toDataURL('image/png') } });
+  Object.assign(window, { press: { get tree() { return tree; }, get phase() { return settle.ring >= 0 ? 'settling' : 'trace'; }, get easing() { return !!ease; }, get view() { return viewNow(); }, get days() { return days; }, get kind() { return kind; }, get choice() { return SEEDS[choice]; }, get far() { return far; }, get visiting() { return visit?.i ?? null; }, get parting() { return !!parting; }, groveNext: () => { const c = camNow(), w = worldOf(); return { x: (c.X0 + w.next.wx * c.S) / px, y: (c.Y0 + w.next.wy * c.S) / px }; }, grove: () => groveLayout().trees.map((t) => ({ sp: t.sp, n: t.n, i: t.i, x: t.x / px, y: t.y / px, r: t.r / px })), get editionY() { return editionY; }, get stampAt() { return stampAt; }, } });
   // (The real wood: once it's come, the print is pressed again with it.)
   if (PRINT) loadWood(() => { for (const k in printCaches) delete printCaches[k]; });
   startIntro();

@@ -7,7 +7,7 @@ export default defineConfig({
     outDir: 'dist',
     rollupOptions: {
       // Atlas Minor, and the volcano and tree-ring prototypes beside it (volcano.html, rings.html).
-      input: { main: resolve(__dirname, 'index.html'), volcano: resolve(__dirname, 'volcano.html'), rings: resolve(__dirname, 'rings.html'), press: resolve(__dirname, 'press.html'), challenge: resolve(__dirname, 'challenge.html'), child: resolve(__dirname, 'child.html'), puzzle: resolve(__dirname, 'puzzle.html') },
+      input: { main: resolve(__dirname, 'index.html'), volcano: resolve(__dirname, 'volcano.html'), rings: resolve(__dirname, 'rings.html'), press: resolve(__dirname, 'press.html') },
     },
   },
 });

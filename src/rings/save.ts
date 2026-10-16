@@ -8,7 +8,7 @@ import { restoreInto, snapshotOf } from '../volcano/save';
 import { TreeSim, type Rules } from './tree';
 
 // (The store keeps the game's first name, so trees and plates kept before it was Well Rounded still load.)
-const DB = 'annulus', STORE = 'kept', CURRENT = 'current', PLATES = 'plates', RUNS = 'runs', GROVE = 'grove';
+const DB = 'annulus', STORE = 'kept', CURRENT = 'current', PLATES = 'plates', GROVE = 'grove';
 
 function open(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -90,21 +90,6 @@ export async function keepPlate(p: Plate): Promise<void> {
 }
 export async function plates(): Promise<Plate[]> {
   try { return ((await run('readonly', (s) => s.get(PLATES))) as Plate[] | undefined) ?? []; } catch { return []; }
-}
-
-/** A run of the challenge, kept: its points and rings, when, and a picture of its slice. The last 200 kept. */
-export interface Run { score: number; rings: number; when: number; image: string }
-
-export async function keepRun(r: Run): Promise<void> {
-  try {
-    const all = ((await run('readonly', (s) => s.get(RUNS))) as Run[] | undefined) ?? [];
-    all.push(r);
-    while (all.length > 200) all.shift();
-    await run('readwrite', (s) => s.put(all, RUNS));
-  } catch { /* not kept, and that's all */ }
-}
-export async function runs(): Promise<Run[]> {
-  try { return ((await run('readonly', (s) => s.get(RUNS))) as Run[] | undefined) ?? []; } catch { return []; }
 }
 
 /**
