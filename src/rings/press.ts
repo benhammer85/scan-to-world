@@ -363,6 +363,13 @@ const warpNow = (): Warp => (GROWN || PUZZLE ? { ...warpFor(tree), beta: 0 } : w
 /** The room the slice has (device px of radius). */
 const roomNow = () => Math.max(40 * px, Math.min(W / 2 - 34 * px, H * 0.27));
 /** The outermost the bark reaches (mm). */
+/** The scale the seed is shown at, its first loop the bark's size: the same for every wood (a fresh tree's). */
+let seedScaleOf = { key: '', s: 1 };
+function seedScale(): number {
+  const key = `${tree.seed}|${W}|${H}|${px}`;
+  if (seedScaleOf.key !== key) { const t = new TreeSim(tree.seed, DAILY); seedScaleOf = { key, s: (BARK * roomNow()) / (t.k.pith + t.wRef) }; }
+  return seedScaleOf.s;
+}
 function barkMax(): number {
   const last = tree.rings[tree.rings.length - 1];
   let r = tree.k.pith;
@@ -382,7 +389,9 @@ function baseNow(t = clock()): View {
     // (From the first ring on, the bark exactly that size, every day, so the loop is drawn in the same
     // place every day; the years before tighten in toward the heart. Before it, the seed in the middle,
     // the first loop drawn the same distance out.)
-    const s = (BARK * roomNow()) / (tree.rings.length ? barkMax() : barkMax() + tree.wRef);
+    // (Never closer than the seed was shown: the young tree grows out on the sheet, day by day, until its
+    // bark reaches that size; only then does the view draw back, never in and then out again.)
+    const s = Math.min(seedScale(), (BARK * roomNow()) / (tree.rings.length ? barkMax() : barkMax() + tree.wRef));
     view = { cx: W / 2, cy: Math.round(H * 0.47), s, turn: 0, px, warp: undefined };
     ease = null;
   }
@@ -975,8 +984,9 @@ function drawBreath(v: View, _t: number, _dt: number): void {
 /**
  * The seeds as printed: each a figure cut whole from a real plate (Faxon's, for Sargent's Silva of North
  * America; the olive Le Maout and Decaisne's) and pressed as the slices are (scripts/wood/seeds-press.py;
- * src/rings/seeds/). Their heights (CSS px at z = 1/0.35) keep their true proportion to each other; until
- * one has loaded, its seed is drawn as below.
+ * src/rings/seeds/). Each is shown at the one size (an acorn's), whatever its true size, so every tree
+ * begins alike, a long one never longer than a share more (`ART_H` keeps only the names); until one has
+ * loaded, its seed is drawn as below.
  */
 const ART_H: Record<Kind, number> = { oak: 84, ash: 112, cherry: 62, maple: 92, birch: 52, pine: 64, redwood: 72, bristlecone: 118, olive: 66 };
 const SEED_ART: Partial<Record<Kind, HTMLImageElement>> = {};
@@ -990,7 +1000,11 @@ function drawSeedOf(sp: Kind, x: number, y: number, k = 1, z = 1, standing = fal
   // (Printed, from its plate: centred at (x, y), or standing on it.)
   const art = SEED_ART[sp];
   if (art) {
-    const h = ART_H[sp] * 0.35 * z * px, w = (h * art.width) / art.height;
+    // (As large as an acorn's figure, measured by its area; never longer than 40 px.)
+    const T = 24 * z * px, asp = art.width / art.height;
+    let h = T / Math.sqrt(asp), w = h * asp;
+    const over = Math.max(h, w) / (40 * z * px);
+    if (over > 1) { h /= over; w /= over; }
     g.save(); g.globalAlpha = k; g.drawImage(art, x - w / 2, standing ? y - h : y - h / 2, w, h); g.restore();
     return;
   }
