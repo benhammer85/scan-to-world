@@ -2488,8 +2488,11 @@ function drawFar(v: View): void {
   if (fade > 0.01) {
     const toR = 0.3 * fr * k, sR = Rs + (toR - Rs) * smooth(far / 0.3), sk = sR / Rs;
     g.save(); g.globalAlpha = fade;
-    g.beginPath(); g.arc(fx, fy, sR * 1.08, 0, TAU); g.fillStyle = 'rgb(244,239,228)'; g.fill(); g.clip();
-    g.translate(fx, fy); g.scale(sk, sk); g.drawImage(snapC, -v.cx, -v.cy);
+    // (Cut to the slice's own edge, its bark and all: never a round of the sheet's paper about it.)
+    g.translate(fx, fy); g.scale(sk, sk); g.translate(-v.cx, -v.cy);
+    if (tree.rings.length) { ringPath(v, barkOf(tree.rings.length - 1), barkCss(v) * 1.6 + 3); g.clip(); }
+    else { g.beginPath(); g.arc(v.cx, v.cy, Rs, 0, TAU); g.clip(); }
+    g.drawImage(snapC, 0, 0);
     g.restore();
   }
 }
