@@ -1378,7 +1378,8 @@ function readDay(v: View, x: number, y: number): void {
       const note = notes[i];
       say(`${when.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} · ${ageWords(days[i])}${note ? ` · “${note}”` : ''}`, note ? 5 : 3);
     }
-  } else say(when.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }), 3);
+  }
+  // (The practice: the ring touched is lit a moment; no dates, no counting.)
   lit = i; litAt = clock();
 }
 
@@ -1535,7 +1536,10 @@ function drawBrush(g: CanvasRenderingContext2D, v: View, t: number): void {
   const into = going ? smooth((t - going.at) / STEADY_T) : 0, edge = going ? barkOf(going.ring) : null;
   const pts = trail.map((q) => {
     const [x, y] = at(v, q.a, edge ? q.r + (edge(q.a) - q.r) * into : q.r);
-    return { x, y, life: Math.exp(-(t - q.t) / 3.5) * dry, q, nx: 0, ny: 0, hw: 0 };
+    // (Growing true to scale, the loop stays wet all the way round while it's drawn, however slow the
+    // hand, so the whole circle is there to close; it dries only once the ring is made.)
+    const life = GROWN ? (going ? dry : tree.stroke ? (tree.resting ? 1 - smooth((t - restAt - 4) / 2) : 1) : Math.exp(-(t - q.t) / 3.5)) : Math.exp(-(t - q.t) / 3.5) * dry;
+    return { x, y, life, q, nx: 0, ny: 0, hw: 0 };
   });
   const lap = (i: number) => Math.abs(trail[i].a - trail[i - 1].a) > 0.5;
   for (let i = 0; i < n; i++) {
@@ -1549,6 +1553,30 @@ function drawBrush(g: CanvasRenderingContext2D, v: View, t: number): void {
     g.lineTo(q.x + q.nx * k0 * q.hw, q.y + q.ny * k0 * q.hw); g.lineTo(p.x + p.nx * k0 * p.hw, p.y + p.ny * k0 * p.hw);
     g.closePath(); g.fill();
   };
+  if (GROWN) {
+    // (Growing true to scale, the line is one even ink along its length: laid as one shape, never in
+    // pieces whose joins would show.)
+    const life = pts[n - 1].life;
+    if (life < 0.02) return;
+    const wet = life * life;
+    const run = (from: number, to: number, k: number) => {
+      g.beginPath();
+      for (let i = from; i <= to; i++) { const p = pts[i]; if (i === from) g.moveTo(p.x + p.nx * k * p.hw, p.y + p.ny * k * p.hw); else g.lineTo(p.x + p.nx * k * p.hw, p.y + p.ny * k * p.hw); }
+      for (let i = to; i >= from; i--) { const p = pts[i]; g.lineTo(p.x - p.nx * k * p.hw, p.y - p.ny * k * p.hw); }
+      g.closePath(); g.fill();
+    };
+    let from = 0;
+    for (let i = 1; i <= n; i++) {
+      if (i < n && !lap(i)) continue;
+      if (i - 1 > from) {
+        g.fillStyle = `rgba(140,96,62,${(0.1 * wet).toFixed(3)})`; run(from, i - 1, 1.4);
+        g.fillStyle = ink(0.55 * life + 0.3 * wet); run(from, i - 1, 1);
+        g.fillStyle = ink(0.3 * wet); run(from, i - 1, 0.6);
+      }
+      from = i;
+    }
+    return;
+  }
   for (let i = 1; i < n; i++) {
     const p = pts[i - 1], q = pts[i], life = q.life;
     if (life < 0.02 || lap(i)) continue;
@@ -2327,16 +2355,25 @@ function drawEdition(v: View, t: number, dt: number): void {
   g.fillStyle = 'rgba(92,88,84,0.78)'; g.font = `italic ${13 * px}px Newsreader, "Iowan Old Style", Georgia, serif`; g.textBaseline = 'middle';
   const [left, mid] = editionWords(date);
   const right = CHILD && child ? child.name : kind;
-  // (Growing, only the count, small, beneath the tree's middle; the tree's name and the maker's mark only
-  // when a tree is shown whole: on opening, for a few moments, and an older tree opened from the grove.)
+  // (The practice: no dates, no counting. Growing, nothing under the tree; shown whole (on opening, for a
+  // few moments, and an older tree opened from the grove), only its wood's name and the maker's mark.)
   const whole = CHILD ? 1 : visit ? 1 : 1 - smooth((t - (openedAt + OPEN + 3)) / STEADY_T);
-  if (whole < 1) {
-    g.save(); g.globalAlpha = editionShown * (1 - whole) * 0.8; g.textAlign = 'center';
-    g.fillText(left, v.cx, y); g.restore();
-  }
   stampAt = [-1e9, -1e9];
   if (whole <= 0.01) { g.restore(); return; }
   g.globalAlpha = editionShown * whole;
+  if (!CHILD) {
+    const nw = g.measureText(right).width, x0 = v.cx - (nw + 22 * px) / 2;
+    g.textAlign = 'left'; g.fillText(right, x0, y);
+    const sx = x0 + nw + 16 * px;
+    if (whole > 0.5) stampAt = [sx, y];
+    for (const [dx, dy, col] of [[-0.7, -0.7, 'rgba(255,253,246,0.95)'], [0.7, 0.7, 'rgba(96,74,52,0.28)']] as [number, number, string][]) {
+      g.strokeStyle = col; g.fillStyle = col; g.lineWidth = 0.9 * px;
+      for (const r of [7, 4.6, 2.4]) { g.beginPath(); g.arc(sx + dx * px, y + dy * px, r * px, 0, TAU); g.stroke(); }
+      g.beginPath(); g.arc(sx + dx * px, y + dy * px, 0.9 * px, 0, TAU); g.fill();
+    }
+    g.restore();
+    return;
+  }
   // (The date in the middle, or nudged left of a long name, as a hand would leave it room.)
   const midW = g.measureText(mid).width, room = v.cx + half - 22 * px - g.measureText(right).width - 12 * px;
   const midX = Math.max(v.cx - half + g.measureText(left).width + 12 * px + midW / 2, Math.min(v.cx, room - midW / 2));
@@ -2630,7 +2667,6 @@ function tapGrove(x: number, y: number): void {
   tree = t2; days = (k.days ?? []).slice(0, t2.rings.length); kind = asKind(k.tree) ?? 'oak';
   lookAfresh(); openedAt = clock(); idleSince = openedAt + OPEN;
   farTo = { from: far, to: 0, at: clock() };
-  say(`${kind} · ${tree.rings.length} days · ${days[0]?.slice(0, 4) ?? ''}`, 4);
 }
 /** Back from an older tree to today's. */
 function unvisit(): void {
@@ -2834,8 +2870,9 @@ function frame(): void {
   const t = clock(), dt = 1 / 60;
   // (The wood's own way with the hand's line.)
   if (GROWN) { const sm = SMOOTH[kind] ?? DAILY.smooth; if (tree.k.smooth !== sm) (tree.k as { smooth: number }).smooth = sm; }
-  // (Growing out on the sheet, the young tree's wood is as much as the hand draws.)
-  if (GROWN && !tree.stroke) tree.free = growingOut();
+  // (The practice: the wood is as much as the hand draws, so the ink lasts all the way round and the ring
+  // closes where the hand closes it. The child's tree keeps its ration until it's grown out on the sheet.)
+  if (GROWN && !tree.stroke) tree.free = !CHILD || growingOut();
   if (farTo) {
     const p = smooth((t - farTo.at) / STEADY_T);
     far = farTo.from + (farTo.to - farTo.from) * p; farPull = far;
