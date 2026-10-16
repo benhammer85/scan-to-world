@@ -223,6 +223,8 @@ export class TreeSim {
   stroke: Stroke | null = null;
   /** The steady width (mm) the last ring dried to: its marks (below) stay till the next stroke, to be seen drying. */
   laidW = 0;
+  /** The wood unbounded: the line laid wherever it's drawn (a young tree growing out on the sheet). */
+  free = false;
   /** Each point's line as drawn (band units from the bark), its tone, how far round the stroke was, the wood left then; and its state (0 not yet, 1 drawn, 2 dead wood). After a ring closes, `hi` is its smoothed edge. */
   readonly lo = new Float32Array(K);
   readonly hi = new Float32Array(K);
@@ -455,6 +457,7 @@ export class TreeSim {
     this.inkAt[i] = Math.max(0, 1 - s.spent / cap);
     if (!this.alive[i]) { this.state[i] = 2; return; } // (dead wood takes none)
     u = Math.max(0, u);
+    if (this.free) { this.hi[i] = u; this.state[i] = 1; return; }
     // The wood is an area: once it's spent, the line trails on thin.
     if (s.spent >= cap) u = Math.min(u, this.k.dryTrail);
     else if (s.spent + u / K > cap) { u = Math.max(Math.min(u, this.k.dryTrail), (cap - s.spent) * K); s.spent = cap; }
