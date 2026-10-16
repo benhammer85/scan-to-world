@@ -370,6 +370,13 @@ function seedScale(): number {
   if (seedScaleOf.key !== key) { const t = new TreeSim(tree.seed, DAILY); seedScaleOf = { key, s: (BARK * roomNow()) / (t.k.pith + t.wRef) }; }
   return seedScaleOf.s;
 }
+function barkMean(): number {
+  const last = tree.rings[tree.rings.length - 1];
+  if (!last) return tree.k.pith;
+  let r = 0;
+  for (let i = 0; i < K; i++) r += last[i];
+  return r / K;
+}
 function barkMax(): number {
   const last = tree.rings[tree.rings.length - 1];
   let r = tree.k.pith;
@@ -391,7 +398,10 @@ function baseNow(t = clock()): View {
     // the first loop drawn the same distance out.)
     // (Never closer than the seed was shown: the young tree grows out on the sheet, day by day, until its
     // bark reaches that size; only then does the view draw back, never in and then out again.)
-    const s = Math.min(seedScale(), (BARK * roomNow()) / (tree.rings.length ? barkMax() : barkMax() + tree.wRef));
+    // (Fitted mostly to the bark's mean, a quarter to its widest: a lumpy wood, an olive's, a bristlecone's,
+    // never looks to shrink as its lobes grow; its widest never past nine-tenths of the room.)
+    const room = roomNow(), n0 = tree.rings.length;
+    const s = Math.min(seedScale(), n0 ? Math.min((BARK * room) / (0.25 * barkMax() + 0.75 * barkMean()), (0.9 * room) / barkMax()) : (BARK * room) / (barkMax() + tree.wRef));
     view = { cx: W / 2, cy: Math.round(H * 0.47), s, turn: 0, px, warp: undefined };
     ease = null;
   }
@@ -2062,13 +2072,17 @@ const realYears = () => (CHILD && fam() === 'ring' ? wood.years[kind] : undefine
  * lighter, starved to the paper here and there, its edges breaking a little. Laid into the ink (dark
  * pixels only; paper-coloured marks left as they are) of a canvas `c` holding the slice drawn for view `v`.
  */
-function inkGrain(c: HTMLCanvasElement, v: View): void {
+function inkGrain(c: HTMLCanvasElement, v: View, band?: [number, number]): void {
   const n = tree.rings.length, last = n ? tree.rings[n - 1] : null;
   let rmax = tree.k.pith;
   if (last) for (let i = 0; i < K; i++) rmax = Math.max(rmax, last[i]);
   const R = v.s * warpR(v.warp, rmax) + (barkCss(v) * 1.6 + 6) * px;
-  const x0 = Math.max(0, Math.floor(v.cx - R)), y0 = Math.max(0, Math.floor(v.cy - R));
-  const w = Math.min(c.width, Math.ceil(v.cx + R)) - x0, h = Math.min(c.height, Math.ceil(v.cy + R)) - y0;
+  const x0 = Math.max(0, Math.floor(v.cx - R));
+  let y0 = Math.max(0, Math.floor(v.cy - R));
+  const w = Math.min(c.width, Math.ceil(v.cx + R)) - x0;
+  let h = Math.min(c.height, Math.ceil(v.cy + R)) - y0;
+  // (Only these rows, if asked: the press done a band at a time.)
+  if (band) { const ya = Math.max(y0, Math.floor(band[0])), yb = Math.min(y0 + h, Math.ceil(band[1])); y0 = ya; h = yb - ya; }
   if (w <= 0 || h <= 0) return;
   const ctx = c.getContext('2d')!, img = ctx.getImageData(x0, y0, w, h), d = img.data;
   // (The grain and the starved streaks belong to the wood, set at the unzoomed print's scale: looked into,
@@ -2590,13 +2604,18 @@ const INTRO_GROW = 2.6, INTRO_HOLD = 0.4, INTRO_FADE = 0.8;
  * solid band at its outer edge, rough-edged; then the press, the ink broken along the grain and by the
  * paper's tooth, starved here and there); then shown ring by ring out from the heart.
  */
-let intro: { at: number; c: HTMLCanvasElement; rings: Float32Array[]; skip: number } | null = null;
+let intro: {
+  at: number; last: number; c: HTMLCanvasElement; rings: Float32Array[]; skip: number;
+  /** The press, a band of rows at a time out from the middle (canvas px pressed either side), so it starts at once. */
+  grain: { tree: TreeSim; kind: Kind; v: View; S: number; done: number; all: number } | null;
+} | null = null;
 function startIntro(): void {
   if (!INTRO) return;
   // (A tree of the wood today's is, grown out of sight in a moment, a couple of months of days: then
   // printed as the slice itself is, the same press, so the opening is the practice's own ink.)
   const was = { tree, days, kind, look, g, px, W, H }, sp: Kind = KINDS.includes(kind) ? kind : 'oak';
-  let rings: Float32Array[] = [], c: HTMLCanvasElement;
+  const rings: Float32Array[] = [];
+  let c: HTMLCanvasElement, grain: NonNullable<typeof intro>['grain'] = null;
   const cx = W / 2, cy = Math.round(H * 0.47), far = Math.hypot(Math.max(cx, W - cx), Math.max(cy, H - cy)) * 1.04, N = 240;
   try {
     kind = sp; look = { k: 1, ox: 0, oy: 0 }; tree = new TreeSim(1 + Math.floor(Math.random() * 1e6), DAILY); days = [];
@@ -2617,14 +2636,43 @@ function startIntro(): void {
     c = document.createElement('canvas'); c.width = Math.ceil(W * S); c.height = Math.ceil(H * S);
     g = c.getContext('2d')!; px = was.px * S; W = c.width; H = c.height;
     const v: View = { cx: cx * S, cy: cy * S, s: s * S, turn: 0, px, warp: undefined };
-    drawPrint(v); inkGrain(c, v);
+    drawPrint(v);
+    grain = { tree, kind: sp, v, S, done: 0, all: Math.max(v.cy, c.height - v.cy) };
   } finally { ({ tree, days, kind, look, g, px, W, H } = was); }
   words.style.visibility = 'hidden';
-  intro = { at: clock(), c, rings, skip: 0 };
+  intro = { at: clock(), last: clock(), c, rings, skip: 0, grain };
+}
+/** Press the opening's grain, out from the middle, for about `ms`. */
+function grainIntro(ms: number): void {
+  const gr = intro?.grain;
+  if (!gr) return;
+  const was = { tree, kind, look, px }, until = performance.now() + ms, step = 12, cy = gr.v.cy;
+  try {
+    tree = gr.tree; kind = gr.kind; look = { k: 1, ox: 0, oy: 0 }; px = gr.v.px;
+    while (gr.done < gr.all && performance.now() < until) {
+      inkGrain(intro!.c, gr.v, [cy - gr.done - step, cy - gr.done]);
+      inkGrain(intro!.c, gr.v, [cy + gr.done, cy + gr.done + step]);
+      gr.done += step;
+    }
+  } finally { ({ tree, kind, look, px } = was); }
+  if (gr.done >= gr.all) intro!.grain = null;
 }
 function drawIntro(t: number): void {
   if (!intro) return;
-  const it = intro, n = it.rings.length, e = (t - it.at) / INTRO_GROW;
+  const it = intro, n = it.rings.length;
+  // (The grain pressed a little more each frame; the rings wait for it, never shown unpressed.)
+  if (it.grain && !it.skip) {
+    grainIntro(10);
+    const gr = it.grain;
+    if (gr) {
+      const e0 = (t - it.at) / INTRO_GROW, r0 = (n - 1) * (1 - (1 - Math.min(1, e0)) ** 2.2), ring = it.rings[Math.min(n - 1, Math.ceil(r0) + 1)];
+      let most = 0;
+      for (let j = 0; j < ring.length; j++) most = Math.max(most, Math.abs(ring[j] * Math.sin((j / (ring.length - 1)) * TAU)));
+      if (most * gr.S > gr.done) it.at += t - it.last;
+    }
+  }
+  it.last = t;
+  const e = (t - it.at) / INTRO_GROW;
   // (Quickly at first, the last few slower as the sheet fills: eased out. Shown out to the ring reached,
   // and a little of the next coming.)
   const reach = (n - 1) * (1 - (1 - Math.min(1, e)) ** 2.2), i = Math.floor(reach), f = reach - i;
@@ -2667,6 +2715,9 @@ function frame(): void {
 
   g.setTransform(1, 0, 0, 1, 0, 0);
   g.drawImage(groundOf(), 0, 0);
+  // (While the opening grows, it covers the sheet: nothing under it is pressed yet, so it never stutters;
+  // today's slice is pressed in its still moment, before it fades.)
+  if (intro && !intro.skip && t < intro.at + INTRO_GROW) { drawIntro(t); requestAnimationFrame(frame); return; }
   // At rest, or drawing: the one eased into the other (slowly to rest, quickly back).
   const busy = fingers.size > 0 || !!tree.stroke || !!ease || settle.ring >= 0 || (GAME && !run.over);
   if (busy) idleSince = t;
