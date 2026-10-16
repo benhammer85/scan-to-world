@@ -86,7 +86,7 @@ const WIDEST = 6;
  * The brush is a little way in from the fingertip, toward the heart (CSS px): the finger rests just
  * outside the line, so the line, the bark and the gap between them are all in sight while drawing.
  */
-const REACH = 30;
+const REACH = 16;
 /** Where the brush is for a finger at (x, y) (device px). */
 function brushPoint(v: View, x: number, y: number): [number, number] {
   const dx = x - v.cx, dy = y - v.cy, d = Math.hypot(dx, dy) || 1, k = Math.max(0, d - REACH * px) / d;
@@ -111,14 +111,14 @@ function rounded(a: number, u: number): number {
   const v = strokeView ?? viewNow(), loose = (u * tree.wRef * v.s) / (STEADY * px);
   // (Growing out, the ring is where the hand puts it, as far as the room allows: the wood's own swells
   // round it, but no year good or lean of its own.)
-  if (growingOut()) {
-    const roomU = Math.max(LOOSEST, (roomNow() - v.s * tree.radius) / (STEADY * px));
-    return Math.max(LEAST, Math.min(roomU, loose)) * (growth(a) / SPEC[kind].width) + evenUp(a);
-  }
+  // (Never stopped short of the hand: a loop as wide as the room, however loose, is laid; the tree only
+  // draws back the more for it.)
+  const roomU = Math.max(LOOSEST, (roomNow() - v.s * tree.radius) / (SEED_K * STEADY * px));
+  if (growingOut()) return Math.max(LEAST, Math.min(roomU, loose)) * (growth(a) / SPEC[kind].width) + evenUp(a);
   // (A child's tree: the sound of the moment swells the day where it was loud, and pinches it where hushed.)
   const heard = CHILD && ear.on ? 0.78 + 0.5 * ear.read() : 1;
   // (And the tree's own year: good, lean, now and then a hard one.)
-  return Math.max(LEAST, Math.min(LOOSEST, loose)) * growth(a) * heard * climate(tree.seed, tree.rings.length) + evenUp(a);
+  return Math.max(LEAST, Math.min(roomU, loose)) * growth(a) * heard * climate(tree.seed, tree.rings.length) + evenUp(a);
 }
 /**
  * A tree evens out its lumps, slowly: where it's short of round, a year a little wider (in proportion to
@@ -383,9 +383,15 @@ function seedScale(): number {
   // first rings are where the hand put them, each a little larger round the last, until the bark fills
   // its room.)
   const key = `${tree.seed}|${W}|${H}|${px}`;
-  if (seedScaleOf.key !== key) { const t = new TreeSim(tree.seed, DAILY); seedScaleOf = { key, s: Math.min((STEADY * px) / t.wRef, (BARK * roomNow()) / (t.k.pith + t.wRef)) }; }
+  if (seedScaleOf.key !== key) { const t = new TreeSim(tree.seed, DAILY); seedScaleOf = { key, s: Math.min((SEED_K * STEADY * px) / t.wRef, (BARK * roomNow()) / (t.k.pith + t.wRef)) }; }
   return seedScaleOf.s;
 }
+/**
+ * How wide a young tree's ring is on the sheet, of the loop that draws it: some two-fifths, each year laid
+ * a little way inside the loop and a little larger round the last, so the tree grows out for a week or so
+ * before its bark fills the room.
+ */
+const SEED_K = 0.4;
 /** The scale that fits the bark to its room (the seed's first loop, before any ring). */
 function fitScale(): number {
   const room = roomNow();
@@ -764,8 +770,6 @@ canvas.addEventListener('pointerdown', (e) => {
   if (fingers.size > 2 || painter !== null) return;
   navAway(true);
   // (The maker's mark, touched: a new tree, if they say so. Nothing is drawn from it.)
-  onStamp = !GAME && !CHILD && !visit && far === 0 && editionShown > 0.5 && Math.hypot(e.clientX * px - stampAt[0], e.clientY * px - stampAt[1]) < 24 * px;
-  if (onStamp) return;
   // (Looked at closely, or the run over: a finger moves the slice about, or taps; nothing is drawn. And
   // on a bare sheet, a tap plants the seed: see the tap, below.)
   if (tree.rings.length && brushAt(tree, viewNow(), 0, e.clientX * px, e.clientY * px).u < 0) inside = true;
@@ -870,7 +874,6 @@ for (const type of ['pointerup', 'pointercancel'] as const) canvas.addEventListe
     if (closer() && t - lastTap < 0.35) { lookBack = { ...look, at: t }; lastTap = 0; return; }
     lastTap = t;
     if (run.over && !closer() && t - endedAt > 1.8) { restart(); return; }
-    if (onStamp) { onStamp = false; plantAgain(); return; }
     // A tap on the slice: the ring there, and its day.
     if (inside && !GAME && painter === null) { readDay(shownOf(viewNow()), e.clientX * px, e.clientY * px); return; }
     // Before the first ring, a tap plants the seed there (or moves it).
@@ -2404,7 +2407,7 @@ function editionWords(date: string): [string, string] {
 }
 
 /** Where the pencilled line is, and its maker's mark (device px); and whether this touch began on the mark. */
-let editionY = -1e9, stampAt: [number, number] = [-1e9, -1e9], onStamp = false;
+let editionY = -1e9, stampAt: [number, number] = [-1e9, -1e9];
 /**
  * A new tree: straight to the seeds, nothing asked. The tree drawn so far waits, kept as it was, until a
  * seed is touched (then it stands in the grove); drawn back to the grove instead, it's as it was.
@@ -2481,7 +2484,7 @@ function groveLayout(cam = camNow()): { trees: Stand[]; cam: Cam } {
 function zoomGrove(x: number, y: number, f: number): void {
   const w = worldOf(), c = camNow(), S = Math.max(w.whole.S, Math.min(w.whole.S * GROVE_CLOSEST, c.S * f)), q = S / c.S;
   groveCam = S <= w.whole.S * 1.001 ? null : { S, X0: x - (x - c.X0) * q, Y0: y - (y - c.Y0) * q };
-  if (groveCam) panGrove(0, 0);
+  if (groveCam) { panGrove(0, 0); words.classList.remove('shown'); }
   groveMoved = clock();
 }
 /** Moved about in the grove, never so far its trees leave the sheet. */

@@ -12,7 +12,7 @@ screenshots, e.g. `mkdir -p /tmp/wr && node test/browser/childflow.cjs /tmp/wr`.
 | `years.cjs` | the child's tree: this year, every year, opening a past year, the ink-only print and the words card |
 | `views.cjs` | the child's tree: which links show where; the microphone off by default |
 | `puzzle.cjs` | the puzzle: eight rings grown toward the target (`node test/browser/puzzle.cjs out lobes 1`; the last number how well the rings are judged), the score, the share card, a tap to try again |
-| `replant.cjs` | the practice: a tap on the maker's mark (shown on opening) or the grove's empty circle goes straight to the seeds, nothing asked; drawn back, the tree is as it was; a seed touched, the old tree stands in the grove; no daily words on reload |
+| `replant.cjs` | the practice: a tap on the grove's empty circle goes straight to the seeds, nothing asked; drawn back, the tree is as it was; a seed touched, the old tree stands in the grove; no daily words on reload |
 | `seeds.cjs` | the practice: choosing a seed (oak, pine, birch) on a bare sheet, then six loops (screenshots of the choice, the planted seed, the first year, the sixth) |
 | `pinch.cjs` | the practice: zoom in, then a two-finger pinch back out (screenshots mid-pinch: the whole slice, never a cut edge) |
 
