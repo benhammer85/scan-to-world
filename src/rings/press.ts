@@ -58,6 +58,13 @@ holdStill(canvas);
 addEventListener('resize', fit);
 const clock = () => performance.now() / 1000;
 const smooth = (x: number) => { const t = Math.max(0, Math.min(1, x)); return t * t * (3 - 2 * t); };
+/**
+ * The pace of everything that moves, three speeds and one curve (`smooth`), so it all feels one hand's:
+ * quick (a response: back from looking closer, a page turned, words away), steady (a change of place: to
+ * the grove and back, a ring's colour spreading, words written in, the opening drawn back), and slow (the
+ * slice making room for the next year, never seen to happen).
+ */
+const QUICK = 0.4, STEADY_T = 1, SLOW_T = 3.5;
 
 // ---------------------------------------------------------------- the tree, a ring a day
 // One ring is one year of the tree's, and one day of yours: the tree is kept between visits, and each
@@ -355,7 +362,7 @@ function kept(): KeptTree {
  * drawing back stops it where it is.
  */
 let ease: { from: number; at: number } | null = null;
-const EASE = 3, EASE_GROWN = 3.5;
+const EASE = SLOW_T, EASE_GROWN = SLOW_T;
 /** Where the seed was planted (shares of the sheet), if it has been (the practice, printed). */
 let seedAt: [number, number] | null = null;
 /** The fisheye for the tree now (none where the tree grows true to scale). */
@@ -429,7 +436,7 @@ const closer = () => look.k > 1.01;
 function viewNow(t = clock()): View {
   const v = baseNow(t);
   if (lookBack) {
-    const p = smooth((t - lookBack.at) / 0.45);
+    const p = smooth((t - lookBack.at) / QUICK);
     look = { k: lookBack.k + (1 - lookBack.k) * p, ox: lookBack.ox * (1 - p), oy: lookBack.oy * (1 - p) };
     if (p >= 1) { lookBack = null; look = { k: 1, ox: 0, oy: 0 }; }
   }
@@ -680,7 +687,7 @@ function restart(): void {
 }
 
 /** The ring just closed, blooming (a look only: the next can be begun at once). */
-let settle = { ring: -1, at: 0 };
+let settle = { ring: -1, at: 0 }, settleTap = 0;
 /** When the loop drawn was closed (growing true to scale: it dries where it was drawn). */
 let inward: { ring: number; at: number } | null = null;
 /**
@@ -1131,11 +1138,11 @@ function turnChoice(dir: number): void {
 }
 function drawSeedChoice(v: View, t: number): void {
   if (choiceTo) {
-    const p = smooth((t - choiceTo.at) / 0.45);
+    const p = smooth((t - choiceTo.at) / QUICK);
     choiceDx = choiceTo.from + (choiceTo.to - choiceTo.from) * p;
     if (p >= 1) choiceTo = null;
   }
-  const k = smooth((t - openedAt) / 1.2), D = sliceD();
+  const k = smooth((t - openedAt) / STEADY_T), D = sliceD();
   // (This one, and the next coming in from the side it's swiped toward.)
   for (const off of [-1, 0, 1]) {
     const x = v.cx + choiceDx + off * W;
@@ -1398,6 +1405,7 @@ function hear(): void {
     // next can be begun as soon as the finger comes down again.)
     painter = null;
     settle = { ring: tree.rings.length - 1, at: clock() };
+    settleTap = clock() + (GROWN && !closer() ? 0.8 * SEASON : BLOOM);
     if (GROWN) {
       inward = { ring: tree.rings.length - 1, at: clock() };
       // (The print as it was, kept, for the year to grow out from.)
@@ -1509,7 +1517,7 @@ function drawBrush(g: CanvasRenderingContext2D, v: View, t: number): void {
   const going = inward && inward.ring < tree.rings.length ? inward : null;
   const dry = going ? 1 - smooth((t - going.at) / 2.6) : 1;
   // (And as it dries it draws in onto the year it made, never left standing apart from it.)
-  const into = going ? smooth((t - going.at) / 1.1) : 0, edge = going ? barkOf(going.ring) : null;
+  const into = going ? smooth((t - going.at) / STEADY_T) : 0, edge = going ? barkOf(going.ring) : null;
   const pts = trail.map((q) => {
     const [x, y] = at(v, q.a, edge ? q.r + (edge(q.a) - q.r) * into : q.r);
     return { x, y, life: Math.exp(-(t - q.t) / 3.5) * dry, q, nx: 0, ny: 0, hw: 0 };
@@ -1752,7 +1760,7 @@ function drawPrint(v: View): void {
       }
       // The fine rays, in a wide band: short pale flecks across it, a few px apart (oak's; the others' can't be seen).
       if (!fine && ring) {
-        const count = Math.round((TAU * R) / (16 * px));
+        const count = Math.round((TAU * R * SPARSE) / (16 * px));
         g.strokeStyle = 'rgba(244,239,228,0.38)'; g.lineWidth = 0.4 * px; g.lineCap = 'round'; g.beginPath();
         for (let q = 0; q < count; q++) {
           const a = h1(i * 7.7 + q * 1.31) * TAU, lo = bandIn(a), hi = outer(a), band = hi - lo, tilt = (h1(q * 5.9 + i) - 0.5) * 0.6 * px / Math.max(1, R);
@@ -1768,7 +1776,7 @@ function drawPrint(v: View): void {
         // (Counted and sized at the unzoomed print's scale: looked into, the same pores, larger.)
         const ew = (scr(bandIn(0)) - scr(inner(0))) / px / Z;
         if (ew >= 2) {
-          const count = Math.round((TAU * scr(mr) * ew) / (16 * px * Z));
+          const count = Math.round((TAU * scr(mr) * ew * SPARSE) / (16 * px * Z));
           g.fillStyle = ink(0.42 * tone); g.beginPath();
           for (let q = 0; q < count; q++) {
             const a = h1(i * 3.1 + q * 0.917) * TAU, r0 = scr(inner(a)), r1 = scr(bandIn(a));
@@ -1799,7 +1807,7 @@ function drawPrint(v: View): void {
         // they're small, uneven holes along the inner edge of the year's band, crowding and thinning.
         const lw = (scr(outer(0)) - scr(bandIn(0))) / px;
         if (lw >= 2.2) {
-          const count = Math.round((TAU * scr(meanR(i - 1))) / (2.6 * px));
+          const count = Math.round((TAU * scr(meanR(i - 1)) * SPARSE) / (2.6 * px));
           g.fillStyle = 'rgba(244,239,228,0.92)'; g.beginPath();
           for (let q = 0; q < count; q++) {
             if (h1(q * 0.37 + i * 1.7) < 0.28) continue;
@@ -2257,7 +2265,7 @@ let editionAt = 0, editionShown = 0;
 function drawEdition(v: View, t: number, dt: number): void {
   if (GAME || !tree.rings.length) return;
   const away = fingers.size > 0 || !!tree.stroke;
-  editionShown = away ? Math.max(0, editionShown - dt / 0.3) : Math.min(1, editionShown + dt / 1.2);
+  editionShown = away ? Math.max(0, editionShown - dt / QUICK) : Math.min(1, editionShown + dt / STEADY_T);
   if (editionShown <= 0.01) return;
   const last = tree.rings[tree.rings.length - 1];
   let rmax = 0;
@@ -2269,7 +2277,7 @@ function drawEdition(v: View, t: number, dt: number): void {
   const [yy, mm, dd] = (days[days.length - 1] ?? dayOf()).split('-').map(Number);
   const date = new Date(yy, mm - 1, dd).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
   // (Written in, left to right, once a new day's ring has bloomed.)
-  const w = t < editionAt ? 0 : smooth((t - editionAt) / 1.1);
+  const w = t < editionAt ? 0 : smooth((t - editionAt) / STEADY_T);
   g.save();
   g.beginPath(); g.rect(v.cx - half - 40 * px, y - 30 * px, (2 * half + 80 * px) * (editionAt ? w : 1), 60 * px); g.clip();
   g.globalAlpha = editionShown;
@@ -2412,6 +2420,9 @@ function renderGrove(c: CanvasRenderingContext2D, cam: Cam): void {
   const height = (x: number, y: number) => heightAt((x - cam.X0) / cam.S, (y - cam.Y0) / cam.S, w.hills, w.seed);
   washHill(c, W, H, px, height, w.seed, season, cam.S);
   drawHill(c, W, H, px, height, w.seed);
+  // (Looked closer, the crowns are the same drawings magnified, nearly: their marks grow with the view,
+  // never multiplying into thousands, so a close look is drawn in a moment.)
+  const u = px * Math.pow(Math.max(1, cam.S / w.whole.S), 0.8);
   // The ground for the next tree: a faint pencil ring, to be touched when one is wanted.
   {
     const x = cam.X0 + w.next.wx * cam.S, y = cam.Y0 + w.next.wy * cam.S, r = Math.max(7 * px, 0.45 * cam.S);
@@ -2422,21 +2433,28 @@ function renderGrove(c: CanvasRenderingContext2D, cam: Cam): void {
     if (t.x < -t.r * 2 || t.x > W + t.r * 2 || t.y < -t.r * 2 || t.y > H + t.r * 2) continue;
     // (A tree of a day or more is a crown, however small; only a seed just planted is a seedling.)
     if (t.n < 1) { drawSeedling(c, t.x, t.y, Math.min(6 * px, Math.max(3 * px, t.r * 0.8)), px); continue; }
-    drawCrown(c, t.x, t.y, t.r, t.sp, t.k, px);
+    drawCrown(c, t.x, t.y, t.r, t.sp, t.k, u);
     // (Coloured over the ink, by hand: today's still wet.)
     washCrown(c, t.x, t.y, t.r, t.sp, t.k, px, season, t.i < 0);
   }
 }
 /** The grove drawn for the whole view (kept, to lay under any other while it moves), and for the view now. */
 const seasonKey = () => `${worldKey}:${seasonNow()}`;
+let groveWarmAt = -1e9;
 let baseG: { c: HTMLCanvasElement; cam: Cam; key: string } | null = null, sharpG: { c: HTMLCanvasElement; cam: Cam; key: string } | null = null;
-function layGrove(cam: Cam, still: boolean): void {
+/** The whole grove drawn, if it isn't already (as it is: its trees, its season, the sheet's size). */
+function groveBase(): NonNullable<typeof baseG> {
   const w = worldOf(), key = seasonKey();
-  if (!baseG || baseG.key !== key) {
+  if (!baseG || baseG.key !== key || baseG.c.width !== W || baseG.c.height !== H) {
     baseG ??= { c: document.createElement('canvas'), cam: w.whole, key };
     baseG.c.width = W; baseG.c.height = H; baseG.cam = w.whole; baseG.key = key;
     renderGrove(baseG.c.getContext('2d')!, w.whole);
   }
+  return baseG;
+}
+function layGrove(cam: Cam, still: boolean): void {
+  const w = worldOf(), key = seasonKey();
+  baseG = groveBase();
   const same = (a: Cam, b: Cam) => Math.abs(a.S - b.S) < 1e-3 * b.S && Math.abs(a.X0 - b.X0) < 0.5 && Math.abs(a.Y0 - b.Y0) < 0.5;
   const lay = (from: { c: HTMLCanvasElement; cam: Cam }) => { const q = cam.S / from.cam.S; g.drawImage(from.c, cam.X0 - from.cam.X0 * q, cam.Y0 - from.cam.Y0 * q, W * q, H * q); };
   if (same(cam, w.whole)) { g.drawImage(baseG.c, 0, 0); return; }
@@ -2601,49 +2619,59 @@ function demoGrove(count = 5): KeptTree[] {
  * `?intro` to see it there.)
  */
 const INTRO = GROWN && !CHILD && (params.has('intro') || (!navigator.webdriver && !matchMedia('(prefers-reduced-motion: reduce)').matches));
-const INTRO_GROW = 2.6, INTRO_HOLD = 0.4, INTRO_FADE = 0.8;
+/** Pores and flecks pressed: all of them (1), or, for the opening, seen only for a moment, a scatter. */
+let SPARSE = 1;
+const INTRO_GROW = 1.4, INTRO_HOLD = 0.25, INTRO_PULL = STEADY_T, INTRO_FADE = QUICK;
 /**
- * The tree pressed whole, once, before it's shown (heavy ink, as the slices print: each year's latewood a
- * solid band at its outer edge, rough-edged; then the press, the ink broken along the grain and by the
- * paper's tooth, starved here and there); then shown ring by ring out from the heart.
+ * The opening: today's own tree, if it has a few days, else one of today's wood grown in a moment. Pressed
+ * whole, once, by the slice's own press, so large its bark is past the sheet's corners; shown ring by ring
+ * out from the heart, the ink's edge ragged as it spreads; held a breath; then (today's own) drawn back in
+ * one movement to where it lives on the sheet, and handed over to it.
  */
 let intro: {
   at: number; last: number; c: HTMLCanvasElement; rings: Float32Array[]; skip: number;
+  /** Where the press's middle is on the sheet, the canvas's scale to it, and the scale drawn back to (1: none). */
+  cx: number; cy: number; S: number; to: number;
   /** The press, a band of rows at a time out from the middle (canvas px pressed either side), so it starts at once. */
-  grain: { tree: TreeSim; kind: Kind; v: View; S: number; done: number; all: number } | null;
+  grain: { tree: TreeSim; kind: Kind; v: View; done: number; all: number } | null;
 } | null = null;
 function startIntro(): void {
   if (!INTRO) return;
-  // (A tree of the wood today's is, grown out of sight in a moment, a couple of months of days: then
-  // printed as the slice itself is, the same press, so the opening is the practice's own ink.)
-  const was = { tree, days, kind, look, g, px, W, H }, sp: Kind = KINDS.includes(kind) ? kind : 'oak';
+  const was = { tree, days, kind, look, g, px, W, H }, own = tree.rings.length >= 3 && !visit && !parting;
+  const end = own ? baseNow() : null;
   const rings: Float32Array[] = [];
-  let c: HTMLCanvasElement, grain: NonNullable<typeof intro>['grain'] = null;
-  const cx = W / 2, cy = Math.round(H * 0.47), far = Math.hypot(Math.max(cx, W - cx), Math.max(cy, H - cy)) * 1.04, N = 240;
+  const cx = end ? end.cx : W / 2, cy = end ? end.cy : Math.round(H * 0.47), far = Math.hypot(Math.max(cx, W - cx), Math.max(cy, H - cy)) * 1.04, N = 240;
+  let made: NonNullable<typeof intro> | null = null;
   try {
-    kind = sp; look = { k: 1, ox: 0, oy: 0 }; tree = new TreeSim(1 + Math.floor(Math.random() * 1e6), DAILY); days = [];
-    demoYear(56);
+    look = { k: 1, ox: 0, oy: 0 };
+    if (!own) {
+      kind = KINDS.includes(kind) ? kind : 'oak'; tree = new TreeSim(1 + Math.floor(Math.random() * 1e6), DAILY); days = [];
+      demoYear(56);
+    }
     const n = tree.rings.length;
     if (!n) return;
     // (The bark just past the sheet's farthest corner: the rings fill it.)
-    let least = Infinity;
-    for (let j = 0; j < N; j++) least = Math.min(least, barkOf(n - 1)((j / N) * TAU));
+    let least = Infinity, most = 0;
+    for (let j = 0; j < N; j++) { const r = barkOf(n - 1)((j / N) * TAU); least = Math.min(least, r); most = Math.max(most, r); }
     const s = far / least;
     for (let i = -1; i < n; i++) {
       const ring = new Float32Array(N + 1), r = barkOf(i);
       for (let j = 0; j <= N; j++) ring[j] = s * r((j / N) * TAU);
       rings.push(ring);
     }
-    // (Pressed at some 1.25 to a CSS px (half the screen's pixels at most), so it's quick on a phone.)
-    const S = Math.min(0.5, 1.25 / was.px);
-    c = document.createElement('canvas'); c.width = Math.ceil(W * S); c.height = Math.ceil(H * S);
-    g = c.getContext('2d')!; px = was.px * S; W = c.width; H = c.height;
-    const v: View = { cx: cx * S, cy: cy * S, s: s * S, turn: 0, px, warp: undefined };
-    drawPrint(v);
-    grain = { tree, kind: sp, v, S, done: 0, all: Math.max(v.cy, c.height - v.cy) };
+    // (The press holds the whole slice, its bark too, to be drawn back; at some 1.25 to a CSS px, never more
+    // than half the screen's pixels, and never over some 1100 px a side, so it's quick on a phone.)
+    const Rc = s * most + (barkCss({ cx, cy, s, turn: 0, px, warp: undefined }) * 1.6 + 8) * px;
+    const S = Math.min(0.5, 1.25 / was.px, 1100 / (2 * Rc)), side = Math.ceil(2 * Rc * S);
+    const c = document.createElement('canvas'); c.width = side; c.height = side;
+    g = c.getContext('2d')!; px = was.px * S; W = side; H = side;
+    const v: View = { cx: side / 2, cy: side / 2, s: s * S, turn: 0, px, warp: undefined };
+    SPARSE = 0.35;
+    try { drawPrint(v); } finally { SPARSE = 1; }
+    made = { at: clock(), last: clock(), c, rings, skip: 0, cx, cy, S, to: end ? end.s / s : 1, grain: { tree, kind, v, done: 0, all: side / 2 } };
   } finally { ({ tree, days, kind, look, g, px, W, H } = was); }
   words.style.visibility = 'hidden';
-  intro = { at: clock(), last: clock(), c, rings, skip: 0, grain };
+  intro = made;
 }
 /** Press the opening's grain, out from the middle, for about `ms`. */
 function grainIntro(ms: number): void {
@@ -2660,58 +2688,89 @@ function grainIntro(ms: number): void {
   } finally { ({ tree, kind, look, px } = was); }
   if (gr.done >= gr.all) intro!.grain = null;
 }
+/** (`?introT=1.9`: the opening held at that moment, to look at; never ending.) */
+const INTRO_T = params.has('introT') ? Number(params.get('introT')) : null;
+/** Whether the opening still covers the whole sheet (nothing under it need be drawn). */
+const introCovers = (t: number) => !!intro && !intro.skip && (INTRO_T ?? t - intro.at) < INTRO_GROW;
 function drawIntro(t: number): void {
   if (!intro) return;
-  const it = intro, n = it.rings.length;
-  // (The grain pressed a little more each frame; the rings wait for it, never shown unpressed.)
+  const it = intro, n = it.rings.length, pulls = it.to < 1;
+  if (INTRO_T !== null) { grainIntro(1e9); t = it.at + INTRO_T; it.last = t; }
+  const grow = (e: number) => (n - 1) * (1 - (1 - Math.min(1, e)) ** 2.2);
+  // (The grain pressed a little more each frame; the rings wait for it, never shown unpressed; and the
+  // drawing back waits for the whole of it.)
   if (it.grain && !it.skip) {
-    grainIntro(10);
+    grainIntro(14);
     const gr = it.grain;
     if (gr) {
-      const e0 = (t - it.at) / INTRO_GROW, r0 = (n - 1) * (1 - (1 - Math.min(1, e0)) ** 2.2), ring = it.rings[Math.min(n - 1, Math.ceil(r0) + 1)];
+      const e0 = (t - it.at) / INTRO_GROW, ring = it.rings[Math.min(n - 1, Math.ceil(grow(e0)) + 1)];
       let most = 0;
       for (let j = 0; j < ring.length; j++) most = Math.max(most, Math.abs(ring[j] * Math.sin((j / (ring.length - 1)) * TAU)));
-      if (most * gr.S > gr.done) it.at += t - it.last;
+      if (most * it.S > gr.done || e0 >= 1) it.at += t - it.last;
     }
   }
   it.last = t;
-  const e = (t - it.at) / INTRO_GROW;
-  // (Quickly at first, the last few slower as the sheet fills: eased out. Shown out to the ring reached,
-  // and a little of the next coming.)
-  const reach = (n - 1) * (1 - (1 - Math.min(1, e)) ** 2.2), i = Math.floor(reach), f = reach - i;
-  const end = it.skip || it.at + INTRO_GROW + INTRO_HOLD, fade = it.skip ? 0.35 : INTRO_FADE;
+  const e = (t - it.at) / INTRO_GROW, reach = grow(e), i = Math.floor(reach), f = reach - i;
+  // (Drawn back, today's own, in one movement: slow off the mark, slow into place.)
+  const pullAt = it.at + INTRO_GROW + INTRO_HOLD, q = pulls ? smooth(((it.skip ? Math.min(t, it.skip) : t) - pullAt) / INTRO_PULL) : 0;
+  // (Drawn back, it lands as today's print itself, so it's simply done; otherwise it fades.)
+  const end = it.skip || pullAt + (pulls ? INTRO_PULL : 0), fade = it.skip ? QUICK : pulls ? 1e-3 : INTRO_FADE;
   const al = 1 - smooth((t - end) / fade);
-  if (al <= 0) { intro = null; openedAt = clock(); idleSince = openedAt + OPEN; words.style.visibility = ''; return; }
-  const cx = W / 2, cy = Math.round(H * 0.47), a0 = it.rings[Math.min(n - 1, i)], a1 = it.rings[Math.min(n - 1, i + 1)], N = a0.length - 1;
+  if (al <= 0 && INTRO_T !== null) return;
+  if (al <= 0) {
+    // (Handed over: today's slice already there, never painted in again.)
+    intro = null; openedAt = clock() - OPEN; idleSince = clock(); words.style.visibility = ''; editionShown = 0; return;
+  }
+  const pc = printCaches.drawing, w = pulls && pc ? smooth((q - 0.45) / 0.45) : 0;
+  const k = Math.exp(Math.log(it.to) * q), a0 = it.rings[Math.min(n - 1, i)], a1 = it.rings[Math.min(n - 1, i + 1)], N = a0.length - 1;
   g.save(); g.globalAlpha = al;
   g.drawImage(groundOf(), 0, 0);
-  g.beginPath();
-  for (let j = 0; j <= N; j++) { const a = (j / N) * TAU, r = a0[j] + (a1[j] - a0[j]) * f; const x = cx + r * Math.cos(a), y = cy - r * Math.sin(a); if (j) g.lineTo(x, y); else g.moveTo(x, y); }
-  g.closePath(); g.clip();
-  g.drawImage(it.c, 0, 0, W, H);
+  g.translate(it.cx, it.cy); g.scale(k, k);
+  const side = it.c.width / it.S;
+  // (The ink's edge, ragged as it spreads into the paper: a thin, paler fringe a little beyond, then the
+  // ink; its own shape, never a ruled line; gone once the whole is shown.)
+  const whole = e >= 1;
+  const edge = (out: number) => {
+    g.beginPath();
+    for (let j = 0; j <= N; j++) {
+      const a = (j / N) * TAU, r = a0[j] + (a1[j] - a0[j]) * f, rag = (vnoise(Math.cos(a) * 4 + reach * 0.35, Math.sin(a) * 4 + 9.1) - 0.5) * 7 * px;
+      const rr = r + rag + out * px, x = rr * Math.cos(a), y = -rr * Math.sin(a);
+      if (j) g.lineTo(x, y); else g.moveTo(x, y);
+    }
+    g.closePath();
+  };
+  if (whole) { g.globalAlpha = al * (1 - w * w); g.drawImage(it.c, -side / 2, -side / 2, side, side); }
+  else {
+    g.save(); edge(5); g.clip(); g.globalAlpha = al * 0.35; g.drawImage(it.c, -side / 2, -side / 2, side, side); g.restore();
+    g.save(); edge(0); g.clip(); g.drawImage(it.c, -side / 2, -side / 2, side, side); g.restore();
+  }
   g.restore();
+  // (Coming into place, the opening's picture gives way to today's own print, drawn as large as it is
+  // then: the print chooses its detail by its size on the sheet, so the two differ, and it lands already
+  // the slice it'll be, never a grey cross-fade of the two.)
+  if (pc && w > 0) drawKept(pc, baseNow(), al * w, k / it.to);
 }
 
 /** When the page opened: the slice paints itself in from the heart. */
 let openedAt = 0;
 // (`?slow=5` plays the opening and the bloom five times slower, to look at them.)
-const SLOW = Number(params.get('slow')) || 1, OPEN = 1.8 * SLOW, BLOOM = 1.1 * SLOW;
+const SLOW = Number(params.get('slow')) || 1, OPEN = STEADY_T * SLOW, BLOOM = STEADY_T * SLOW;
 
 function frame(): void {
   const t = clock(), dt = 1 / 60;
   // (The wood's own way with the hand's line.)
   if (GROWN) { const sm = SMOOTH[kind] ?? DAILY.smooth; if (tree.k.smooth !== sm) (tree.k as { smooth: number }).smooth = sm; }
   if (farTo) {
-    const p = smooth((t - farTo.at) / 1.1);
+    const p = smooth((t - farTo.at) / STEADY_T);
     far = farTo.from + (farTo.to - farTo.from) * p; farPull = far;
     if (p >= 1) { const to = farTo.to; farTo = null; if (to === 1 && visit) unvisit(); if (to === 1) tellGrove(); }
   }
   const v = viewNow(t);
   // The ring just closed blooms, then is done (and on the iPhone app, a faint touch as it settles).
-  if (settle.ring >= 0 && t - settle.at > BLOOM + 0.6) {
-    settle.ring = -1;
-    if (NATIVE && painter === null) tap({ strength: 0.3, sharpness: 0.2 });
-  }
+  if (settle.ring >= 0 && t - settle.at > BLOOM + 0.6) settle.ring = -1;
+  // (A faint touch, on the iPhone app, the moment the ring is seen to come to rest: its colour spread,
+  // or, growing true to scale, its new bark all but out to its place.)
+  if (settleTap && t >= settleTap) { settleTap = 0; if (NATIVE && painter === null) tap({ strength: 0.3, sharpness: 0.2 }); }
   // A line left resting a while fades away.
   if (tree.stroke && tree.resting && painter === null && t - restAt > 6) tree.cancel();
   paper.step(dt);
@@ -2720,12 +2779,14 @@ function frame(): void {
   g.drawImage(groundOf(), 0, 0);
   // (While the opening grows, it covers the sheet: nothing under it is pressed yet, so it never stutters;
   // today's slice is pressed in its still moment, before it fades.)
-  if (intro && !intro.skip && t < intro.at + INTRO_GROW) { drawIntro(t); requestAnimationFrame(frame); return; }
+  if (introCovers(t)) { drawIntro(t); drawPaper(g, W, H); requestAnimationFrame(frame); return; }
   // At rest, or drawing: the one eased into the other (slowly to rest, quickly back).
   const busy = fingers.size > 0 || !!tree.stroke || !!ease || settle.ring >= 0 || (GAME && !run.over);
   if (busy) idleSince = t;
   const restWanted = PRINT && !busy && t - idleSince > 1.4 && !!v.warp && v.warp.beta > 0;
-  relax = restWanted ? Math.min(1, relax + dt / 0.9) : Math.max(0, relax - dt / 0.22);
+  // (Left a while on the slice, the grove is drawn ready, out of sight, so drawing back to it never stalls.)
+  if (GROWN && !CHILD && far === 0 && !intro && !busy && t - idleSince > 2.5 && t - groveWarmAt > 5 && canPull()) { groveWarmAt = t; groveBase(); }
+  relax = restWanted ? Math.min(1, relax + dt / STEADY_T) : Math.max(0, relax - dt / 0.22);
   const moving = (!!ease && !GROWN) || !!lookBack || fingers.size >= 2, drift = !!ease && GROWN;
   if (PRINT && growing && (growing.ring !== tree.rings.length - 1 || t - growing.at > SEASON || closer())) growing = null;
   // (A finger the phone never said was lifted (a pinch's, now and then): let go after a still second and a half.)
@@ -2739,7 +2800,7 @@ function frame(): void {
   } else { paper.draw(g, v); drawLatewood(v); }
   const n = tree.rings.length;
   // A ring touched: lit softly along its edge for a moment, as its day is read.
-  const glow = lit >= 0 && lit < n ? 1 - smooth((t - litAt - 2) / 1.2) : 0;
+  const glow = lit >= 0 && lit < n ? 1 - smooth((t - litAt - 2) / STEADY_T) : 0;
   // (A soft light along it, never a ruled line.)
   if (glow > 0.01) {
     g.save(); g.lineJoin = 'round';
@@ -2750,13 +2811,16 @@ function frame(): void {
   // The newest ring's colour spreads from the line drawn in toward the last ring, its front soft.
   if (settle.ring >= 0 && settle.ring < n && !GROWN) {
     const p = smooth((t - settle.at) / BLOOM), inner = barkOf(settle.ring - 1), outer = barkOf(settle.ring);
-    const at = (k: number) => (a: number) => { const r0 = inner(a), r1 = outer(a); return r1 - Math.min(1, k) * (r1 - r0); };
-    // (Never bare paper: what it hasn't reached is a pale first wash, deepening as the colour arrives.)
+    // (Its front never ruled: a little ahead here, behind there, as water creeps through paper.)
+    const at = (k: number) => (a: number) => { const r0 = inner(a), r1 = outer(a), kk = k + 0.08 * (vnoise(Math.cos(a) * 3 + settle.ring, Math.sin(a) * 3) - 0.5); return r1 - Math.max(0, Math.min(1, kk)) * (r1 - r0); };
+    // (Never bare paper: what it hasn't reached is a pale first wash, deepening evenly as the colour
+    // arrives, in fine steps too close to see.)
     if (p < 1) {
       const fade = (1 - p) * (1 - smooth((t - settle.at - BLOOM * 0.7) / (BLOOM * 0.5)));
-      hideBetween(v, inner, at(p), 0.62 * fade);
-      hideBetween(v, at(p), at(p + 0.15), 0.38 * fade);
-      hideBetween(v, at(p + 0.15), at(p + 0.3), 0.16 * fade);
+      hideBetween(v, inner, at(p + 0.3), 0.16 * fade);
+      const STEPS = 8;
+      for (let q = 0; q < STEPS; q++) hideBetween(v, at(p + (0.3 * q) / STEPS), at(p + (0.3 * (q + 1)) / STEPS), (0.46 * fade * (STEPS - q)) / STEPS);
+      hideBetween(v, inner, at(p), 0.46 * fade);
     }
   }
   // On opening, the slice paints itself in, from the heart outward.
@@ -2777,8 +2841,9 @@ function frame(): void {
   drawKnots(shownOf(v), t);
   if (far > 0) drawFar(v);
   else { placeBackInput(false); drawEdition(shownOf(v), t, dt); }
-  drawPaper(g, W, H);
+  // (The paper's tooth over everything, the opening too, so it's printed on the same sheet.)
   drawIntro(t);
+  drawPaper(g, W, H);
   requestAnimationFrame(frame);
 }
 

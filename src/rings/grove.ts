@@ -232,10 +232,14 @@ function pigment(sp: string, season: Season): [number, number, number] | null {
 }
 /** A crown's wash, laid over its ink (multiplied, as watercolour over a print): `wet` for today's. */
 export function washCrown(g: CanvasRenderingContext2D, x: number, y: number, r: number, sp: string, k: number, U: number, season: Season, wet = false, scale = 1): void {
-  const w = washOf(r, sp, k, U, season, wet);
+  // (Painted no larger than some 120 px across its radius, and laid larger: a close look magnifies the
+  // wash, never paints millions of pixels afresh.)
+  const CAP = 120, up = Math.max(1, r / CAP);
+  const w = washOf(r / up, sp, k, U / up, season, wet);
   if (!w) return;
+  const sc = scale * up;
   g.save(); g.globalCompositeOperation = 'multiply';
-  g.drawImage(w.c, x + (w.ox - w.m) * scale, y + (w.oy - w.m) * scale, w.c.width * scale, w.c.height * scale);
+  g.drawImage(w.c, x + (w.ox - w.m) * sc, y + (w.oy - w.m) * sc, w.c.width * sc, w.c.height * sc);
   g.restore();
 }
 /** A crown's wash, painted once (kept for the last few asked for), to be laid at any size. */
