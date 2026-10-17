@@ -14,6 +14,7 @@ const URLS = {
   oak: new URL('./wood/red-oak-years.png', import.meta.url).href,
   pine: new URL('./wood/red-pine-fibre.png', import.meta.url).href,
   ash: new URL('./wood/white-ash-years.png', import.meta.url).href,
+  pineYears: new URL('./wood/scots-pine-years.png', import.meta.url).href,
   cherry: new URL('./wood/black-cherry-fibre.png', import.meta.url).href,
   maple: new URL('./wood/bigleaf-maple-fibre.png', import.meta.url).href,
   birch: new URL('./wood/paper-birch-fibre.png', import.meta.url).href,
@@ -80,7 +81,7 @@ export function loadWood(then: () => void): void {
     if (as === 'oak') wood.oak = wood.years.oak;
     then();
   }).catch(() => {});
-  years(URLS.oak, 'oak'); years(URLS.ash, 'ash');
+  years(URLS.oak, 'oak'); years(URLS.ash, 'ash'); years(URLS.pineYears, 'pine');
   // (The fibre of each wood whose years are drawn; bristlecone and olive, with no section to hand, take
   // their nearest kin's: a red pine's, a cherry's.)
   const fibre = (url: string, ...as: string[]) => pixels(url).then((l) => { for (const k of as) wood.fibre[k] = l; then(); }).catch(() => {});

@@ -21,6 +21,12 @@ for y in range(N):
         ray=np.clip((Ly-1.1*med)/(0.14*med),0,1)
         tex=np.clip(1+0.15*(med-Lby)/med,0.9,1.06)
         ink[s]=base*tex*(1-pore)*(1-0.3*ray)
+    elif kind=='conifer':
+        # (A conifer's year: its pale earlywood barely takes the ink; only as it darkens into the latewood
+        # does the ink come, heaviest at the year's end: darkness measured from the year's own earlywood.)
+        early,dark=np.percentile(Lby,75),np.percentile(Lby,3)
+        t=np.clip((early-Ly)/(early-dark+1e-3),0,1)
+        ink[s]=np.clip(0.08+0.97*t**1.25,0,1)
     else:
         # darkness relative to the year's range: latewood takes the ink
         lo,hi=np.percentile(Ly,3),np.percentile(Ly,97)

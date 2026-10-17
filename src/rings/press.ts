@@ -1831,10 +1831,10 @@ function printYears(v: View, oak: Years | null): void {
         const tight = r < runR[i] ? Math.ceil(Math.log2(runR[i] / Math.max(1, r))) : 0;
         const L = oak.levels[Math.min(oak.levels.length - 1, lvl[i] + tight + (heart ? 3 : 0))], rows = L.rows;
         const wob = (0.09 * Math.sin(2 * a + i * 1.7) + 0.06 * Math.sin(3 * a + i * 2.9 + 1) + 0.04 * Math.sin(5 * a + i * 0.6)) * W0;
-        // (Its springwood opened toward the paper, its latewood kept heavy: the year reads as a band, as the
-        // other woods' do, never a field of charcoal.)
         ink = sample(L, (((a / TAU) * reps[i] * W0 + off[i] + wob * reps[i] * 0.15) * L.w) / W0, year * rows + across * rows, year * rows, rows);
-        ink = Math.pow(ink, 1 + 1.2 * (1 - smooth((across - 0.35) / 0.45))) * tone(i);
+        // (Oak's and ash's springwood opened toward the paper, their latewood kept heavy: the year reads as a band,
+        // never a field of charcoal. A conifer's scanned year is already pale in its earlywood.)
+        ink = (fam() === 'ring' ? Math.pow(ink, 1 + 1.2 * (1 - smooth((across - 0.35) / 0.45))) : ink) * tone(i);
       } else ink = drawnInk(i, a, r, across, heart, rout - rin, dx, dy) * tone(i);
       if (!heart && thin[i] > 0) {
         // (As dark as the wide years: lines as wide as some three-fifths of the space they stand for.)
@@ -1875,7 +1875,7 @@ async function yearPrint(): Promise<HTMLCanvasElement> {
 }
 
 /** The real wood's years, pressed from a scan (see printYears): oak's and ash's, once loaded. */
-const realYears = () => (fam() === 'ring' ? wood.years[kind] : undefined);
+const realYears = () => wood.years[kind];
 
 /**
  * The ink's grain: printed from wood, ink lies in the grain's fine streaks along each ring, heavier and

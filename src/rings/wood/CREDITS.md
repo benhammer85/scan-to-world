@@ -15,6 +15,7 @@ public domain; scanned by the University of California Libraries for the
 | `giant-sequoia-fibre.png` | No. 142, *Sequoia gigantea*, big tree, radial section turned to run round (Part VI) | n110 |
 | `bigleaf-maple-fibre.png` | No. 152, *Acer macrophyllum*, broad-leaved maple, transverse section (Part VII) | n126 |
 
+
 (Parts II, VI and VII from the same Internet Archive collection of Hough's volumes.) The giant sequoia
 stands in for the coast redwood, its close kin. The bristlecone and the olive have no section here (no
 openly licensed one could be had): the bristlecone takes the red pine's fibre, the olive the cherry's,
@@ -25,7 +26,7 @@ are unrolled straight about it (`unroll.py`); for the oak, each year is traced a
 pores and straightened into a strip 112 px deep (`years.py`), then turned into ink as a slice of it
 would print (`inkmap.py`): the pores and rays open (paper), the latewood heavy, the springwood lighter,
 tiling round; the ash the same (16 of its years; one lost to the pore tracing). The pine's rings were too faint in the scan to trace, so only its fibre is kept, its
-ring-lines taken out (`fibre.py`); its years are still drawn. The cherry, maple, birch and sequoia
+ring-lines taken out (`fibre.py`); its years now come from Scots pine cores (below). The cherry, maple, birch and sequoia
 the same (`boxcut.py` cuts the tallest clean strip of a plate): their rings too faint to trace, their
 fibre kept, their years drawn.
 
@@ -64,4 +65,19 @@ Public domain.
 | `olive.png` | *Olea europaea*, the fruit on its stalk (fig. f) | Duhamel du Monceau, *Traité des arbres et arbustes*, vol. 2 (1755), the Olea headpiece, p. 57 (BIU Santé scan, Internet Archive) |
 
 (Sargent's volumes are the Missouri Botanical Garden's scans on the Internet Archive.)
+
+**Scots pine's years** (`scots-pine-years.png`): not from Hough. Two sanded increment cores of living Scots pines (*Pinus
+sylvestris*) in Dalarna, Sweden, photographed by T. Axelson and released into the public domain
+([Wikimedia Commons, `PinusSylvestrisWoodsamle.jpg`](https://commons.wikimedia.org/wiki/File:PinusSylvestrisWoodsamle.jpg),
+fetched as Commons' 1920 px rendering). Each core's middle band was cut and turned so its pith is at the top (the sharp
+latewood-to-earlywood edges show which end that is; `pinecores.py`); each year's edge traced as a smooth path along
+it (`trace.py`, `pine-coreN.png out 14 0 112 3 1`); years far narrower or wider than the core's usual kept out
+(missed or doubled edges); and turned into ink as a conifer's year prints, its pale earlywood barely inked, the ink
+coming as it darkens into the latewood (`inkmap.py … conifer 29 112`). 103 years. Bristlecone keeps the red pine's
+fibre and its drawn years.
+
+Tried and not used: Agnieszka Kwiecień's cross-sections at the Wrocław University botanic garden (CC BY-SA 4.0) of
+mahaleb cherry, bird cherry, Norway maple and silver birch. Their rings show from a distance, but too faintly against
+the grain, at the resolution to hand, to trace into clean years; those woods keep their years drawn from their
+anatomy (`ANATOMY` in `press.ts`).
 
