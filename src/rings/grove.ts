@@ -34,7 +34,7 @@ const HABIT: Record<string, Habit> = {
 const habit = (sp: string) => HABIT[sp] ?? HABIT.oak;
 const CONIFER = new Set(['pine', 'redwood', 'bristlecone', 'fir', 'juniper']);
 /** How big a crown is for its kind and its days (a year's, full size), as a share of a full oak's. */
-export const crownSize = (sp: string, days: number) => habit(sp).size * (0.3 + 0.7 * Math.sqrt(Math.min(1.2, days / 365)));
+export const crownSize = (sp: string, days: number) => habit(sp).size * (0.45 + 0.55 * Math.sqrt(Math.min(1.2, days / 365)));
 
 /**
  * A tree's own crown, from its slice: its outline as its bark is (lopsided, lobed: the slice's shape round
@@ -131,43 +131,80 @@ export function drawCrown(g: CanvasRenderingContext2D, x: number, y: number, r: 
       g.stroke();
     }
   }
-  path(g, x, y, r, E); g.fillStyle = PAPER; g.fill();
-  // Its marks, thickening toward the lower right, where it turns from the light.
-  g.save(); path(g, x, y, r, E); g.clip();
-  g.strokeStyle = ink(1); g.fillStyle = ink(1);
-  const N = Math.min(3000, Math.round(((r * r) / (U * U)) * h.marks));
+  // (Its edge as leaves make it: small scallops round a broadleaf's masses, never a smooth blob; a conifer's
+  // its tufts, as its kind gives them.)
+  const conifer = CONIFER.has(sp), M = E.length - 1, big = Math.min(1, r / (14 * U));
+  const nb = Math.max(14, Math.min(120, Math.round((TAU * r) / (4.5 * U))));
+  const S = new Float32Array(M + 1);
+  for (let j = 0; j <= M; j++) {
+    const a = (j / M) * TAU, sc = conifer ? 0 : 0.07 * (Math.abs(Math.sin((a * nb) / 2 + k)) ** 0.6 - 0.7) * (0.6 + 0.8 * h1(Math.floor((a * nb) / TAU) + k));
+    S[j] = E[j] * (1 + sc * big);
+  }
+  path(g, x, y, r, S); g.fillStyle = PAPER; g.fill();
+  g.save(); path(g, x, y, r, S); g.clip();
+  g.strokeStyle = ink(1); g.fillStyle = ink(1); g.lineCap = 'round';
+  // (Within it, its masses: the shaded side of each, a broken scalloped line, so the crown has depth.)
+  if (!conifer && r > 10 * U) {
+    const masses = 3 + Math.floor(h1(k * 1.9) * 4) + Math.floor(r / (30 * U));
+    for (let i = 0; i < masses; i++) {
+      const a = h1(k + i * 3.3) * TAU, rr = r * (0.15 + 0.5 * Math.sqrt(h1(k * 2 + i))), mr = r * (0.22 + 0.16 * h1(i * 1.7 + k));
+      const cx = x + Math.cos(a) * rr, cy = y + Math.sin(a) * rr, steps = Math.max(8, Math.round(mr / (1.5 * U)));
+      g.lineWidth = 0.55 * U; g.strokeStyle = ink(0.55);
+      g.beginPath();
+      for (let q = 0; q <= steps; q++) {
+        const t = shadeA - 1.3 + (2.6 * q) / steps, bump = 1 + 0.08 * Math.abs(Math.sin(q * 1.9 + i));
+        const px2 = cx + Math.cos(t) * mr * bump, py2 = cy + Math.sin(t) * mr * bump;
+        if (q && h1(i * 11 + q) > 0.18) g.lineTo(px2, py2); else g.moveTo(px2, py2);
+      }
+      g.stroke();
+    }
+    g.strokeStyle = ink(1);
+  }
+  // Its marks, thickening toward the lower right, where it turns from the light: a broadleaf's leaf-clumps,
+  // each a few small scallops, and looked into, single leaves; a conifer's needles, out from its heart.
+  const N = Math.min(5000, Math.round(((r * r) / (U * U)) * h.marks * (conifer ? 1.3 : 2.2))), leafy = conifer ? 0 : Math.max(0, Math.min(1, (r / U - 45) / 40));
   for (let i = 0; i < N; i++) {
     const a = h1(k * 7 + i * 1.37) * TAU, rr = r * Math.sqrt(h1(k * 3 + i * 2.17)), px = x + Math.cos(a) * rr, py = y + Math.sin(a) * rr;
     const s = Math.max(0, Math.min(1, 0.4 + 0.6 * (((px - x) / r) * sun.dx + ((py - y) / r) * sun.dy)));
-    if (h1(i * 5.1 + k) > (0.12 + s) ** 2 * 1.1) continue;
+    if (h1(i * 5.1 + k) > (0.1 + s) ** 2 * 1.1) continue;
     g.beginPath();
-    if (CONIFER.has(sp)) {
-      const ra = Math.atan2(py - y, px - x) + (h1(i) - 0.5) * 0.9, L = U * (1.6 + 2.2 * h1(i * 3));
-      g.lineWidth = 0.55 * U; g.moveTo(px, py); g.quadraticCurveTo(px + Math.cos(ra + 0.3) * L * 0.5, py + Math.sin(ra + 0.3) * L * 0.5, px + Math.cos(ra) * L, py + Math.sin(ra) * L); g.stroke();
-    } else if (sp === 'ash' || sp === 'olive') {
-      const ra = h1(i * 9) * TAU, L = U * (1.2 + 1.4 * h1(i * 3));
-      g.lineWidth = 0.6 * U; g.moveTo(px, py); g.lineTo(px + Math.cos(ra) * L, py + Math.sin(ra) * L); g.stroke();
-    } else if (sp === 'birch') {
-      const d = (0.35 + 0.3 * h1(i)) * U; g.arc(px, py, d, 0, TAU); g.fill();
+    if (conifer) {
+      // (A needle spray: a short twig out from the heart, its needles to either side.)
+      const ra = Math.atan2(py - y, px - x) + (h1(i) - 0.5) * 0.5, L = U * (1.8 + 2.4 * h1(i * 3));
+      const ex = px + Math.cos(ra) * L, ey = py + Math.sin(ra) * L;
+      g.lineWidth = (0.35 + 0.35 * s) * U; g.moveTo(px, py); g.lineTo(ex, ey);
+      if (r > 18 * U) for (let q = 1; q <= 3; q++) { const f = q / 4, nx = px + (ex - px) * f, ny = py + (ey - py) * f, nl = 0.9 * U * (1 - f * 0.5);
+        g.moveTo(nx, ny); g.lineTo(nx + Math.cos(ra + 0.9) * nl, ny + Math.sin(ra + 0.9) * nl); g.moveTo(nx, ny); g.lineTo(nx + Math.cos(ra - 0.9) * nl, ny + Math.sin(ra - 0.9) * nl); }
+      g.stroke();
+    } else if (h1(i * 2.9 + k) < leafy) {
+      // (A leaf, looked into: a small almond, outlined, its shaded half inked.)
+      const la = h1(i * 9) * TAU, L = U * (1.4 + 1.2 * h1(i * 3)), w = L * 0.42;
+      g.save(); g.translate(px, py); g.rotate(la); g.lineWidth = 0.4 * U;
+      g.moveTo(-L / 2, 0); g.quadraticCurveTo(0, -w, L / 2, 0); g.quadraticCurveTo(0, w, -L / 2, 0); g.stroke();
+      if (s > 0.55) { g.beginPath(); g.moveTo(-L / 2, 0); g.quadraticCurveTo(0, w, L / 2, 0); g.closePath(); g.fill(); }
+      g.restore();
     } else {
-      const cr = U * (sp === 'oak' ? 0.9 + 1 * h1(i * 3) : 0.7 + 0.7 * h1(i * 3)), tilt = (h1(i * 7) - 0.5) * 0.8;
-      g.lineWidth = (0.35 + 0.35 * s) * U; g.arc(px, py, cr, 0.15 * Math.PI + tilt, 0.95 * Math.PI + tilt); g.stroke();
+      // (A leaf-clump: two or three small scallops side by side, open toward the light.)
+      const cr = U * (sp === 'oak' ? 0.5 + 0.55 * h1(i * 3) : 0.4 + 0.45 * h1(i * 3)), tilt = shadeA - Math.PI / 2 + (h1(i * 7) - 0.5) * 1.4;
+      const many = sp === 'birch' ? 1 : 2 + (h1(i * 4.3) < 0.4 ? 1 : 0);
+      g.lineWidth = (0.22 + 0.4 * s * s) * U;
+      for (let q = 0; q < many; q++) {
+        const ox = Math.cos(tilt) * cr * 1.7 * (q - (many - 1) / 2), oy = Math.sin(tilt) * cr * 1.7 * (q - (many - 1) / 2);
+        g.moveTo(px + ox + Math.cos(tilt) * cr, py + oy + Math.sin(tilt) * cr);
+        g.arc(px + ox, py + oy, cr, tilt + 0.2, tilt + Math.PI - 0.2 - 0.6 * h1(i * 3.1 + q));
+      }
+      g.stroke();
     }
-  }
-  // (An oak's crown is many crowns: the edges of its big clumps, a few arcs within it.)
-  if (sp === 'oak') {
-    g.strokeStyle = ink(0.35); g.lineWidth = 0.5 * U;
-    for (let i = 0; i < 5; i++) { const a = h1(k + i * 3.3) * TAU, rr = r * (0.25 + 0.3 * h1(k * 2 + i)); g.beginPath(); g.arc(x + Math.cos(a) * rr, y + Math.sin(a) * rr, r * (0.3 + 0.1 * h1(i + k)), 0.1 * Math.PI, 0.85 * Math.PI); g.stroke(); }
   }
   g.restore();
   // Its outline, by hand: heavier on the shade side, broken now and then toward the light.
-  const M = E.length - 1, light = sp === 'birch' || sp === 'olive' ? 0.6 : 1;
+  const light = sp === 'birch' || sp === 'olive' ? 0.6 : 1;
   g.strokeStyle = ink(1);
   for (let j = 0; j < M; j++) {
     const a = (j / M) * TAU, b = ((j + 1) / M) * TAU, sh = 0.5 + 0.5 * Math.cos(a - shadeA);
-    if (sh < 0.25 && h1(j * 0.31 + k) < 0.35) continue;
-    g.lineWidth = U * (0.35 + 0.8 * sh) * light;
-    g.beginPath(); g.moveTo(x + Math.cos(a) * E[j] * r, y + Math.sin(a) * E[j] * r); g.lineTo(x + Math.cos(b) * E[j + 1] * r, y + Math.sin(b) * E[j + 1] * r); g.stroke();
+    if (sh < 0.3 && n1(j * 0.09 + k) < 0.4) continue;
+    g.lineWidth = U * (0.25 + 0.6 * sh * sh) * light;
+    g.beginPath(); g.moveTo(x + Math.cos(a) * S[j] * r, y + Math.sin(a) * S[j] * r); g.lineTo(x + Math.cos(b) * S[j + 1] * r, y + Math.sin(b) * S[j + 1] * r); g.stroke();
   }
   g.restore();
 }
@@ -195,7 +232,7 @@ export function drawSeedling(g: CanvasRenderingContext2D, x: number, y: number, 
  * trees need.
  */
 export const PER_HILL = 20;
-const SPACING = 1.85, GOLD = Math.PI * (3 - Math.sqrt(5));
+const SPACING = 1.45, GOLD = Math.PI * (3 - Math.sqrt(5));
 export interface Hill { x: number; y: number; R: number; n: number }
 export interface Place { x: number; y: number; hill: number; scale: number }
 export function land(count: number, seed: number): { hills: Hill[]; places: Place[] } {
@@ -238,12 +275,15 @@ export function drawHill(g: CanvasRenderingContext2D, w: number, h: number, U: n
   const step = 3 * U, nx = Math.ceil(w / step) + 1, ny = Math.ceil(h / step) + 1, Z = new Float32Array(nx * ny);
   for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) Z[j * nx + i] = height(i * step, j * step);
   const SEG: Record<number, [number, number][]> = { 1: [[3, 0]], 2: [[0, 1]], 3: [[3, 1]], 4: [[1, 2]], 5: [[3, 0], [1, 2]], 6: [[0, 2]], 7: [[3, 2]], 8: [[2, 3]], 9: [[0, 2]], 10: [[0, 1], [2, 3]], 11: [[1, 2]], 12: [[1, 3]], 13: [[0, 1]], 14: [[0, 3]] };
-  g.save(); g.lineCap = 'round';
+  // (Each level one line, laid in one stroke so it never beads where its pieces meet; fewer of them, fine and
+  // pale, broken only now and then, in long stretches; every fourth a little firmer.)
+  g.save(); g.lineCap = 'round'; g.lineJoin = 'round';
   let li = 0;
-  for (let L = 0.14; L < 1.2; L += 0.09 + 0.05 * h1(li * 3.7 + seed), li++) {
+  for (let L = 0.16; L < 1.2; L += 0.13 + 0.06 * h1(li * 3.7 + seed), li++) {
     const major = li % 4 === 3;
-    // (Light, and fainter toward the hill's foot, where it runs out into the field.)
-    g.strokeStyle = ink((major ? 0.42 : 0.26) * (0.45 + 0.55 * Math.min(1, (L - 0.1) / 0.35)));
+    g.strokeStyle = ink((major ? 0.3 : 0.17) * (0.45 + 0.55 * Math.min(1, (L - 0.1) / 0.35)));
+    g.lineWidth = U * (major ? 0.7 : 0.45);
+    g.beginPath();
     for (let j = 0; j < ny - 1; j++) for (let i = 0; i < nx - 1; i++) {
       const a = Z[j * nx + i], b = Z[j * nx + i + 1], c = Z[(j + 1) * nx + i + 1], d = Z[(j + 1) * nx + i];
       const idx = (a > L ? 1 : 0) | (b > L ? 2 : 0) | (c > L ? 4 : 0) | (d > L ? 8 : 0);
@@ -252,11 +292,11 @@ export function drawHill(g: CanvasRenderingContext2D, w: number, h: number, U: n
       const e: [number, number][] = [[x + (step * (L - a)) / (b - a), y], [x + step, y + (step * (L - b)) / (c - b)], [x + (step * (L - d)) / (c - d), y + step], [x, y + (step * (L - a)) / (d - a)]];
       for (const [p, q] of SEG[idx]) {
         const [mx, my] = ref((e[p][0] + e[q][0]) / 2, (e[p][1] + e[q][1]) / 2);
-        if (vn(mx / (40 * U) + li * 7, my / (40 * U)) < (major ? 0.12 : 0.2)) continue;
-        g.lineWidth = U * (major ? 0.8 : 0.5) * (0.75 + 0.5 * vn(mx / (25 * U), my / (25 * U) + li));
-        g.beginPath(); g.moveTo(e[p][0], e[p][1]); g.lineTo(e[q][0], e[q][1]); g.stroke();
+        if (vn(mx / (110 * U) + li * 7, my / (110 * U)) < (major ? 0.1 : 0.16)) continue;
+        g.moveTo(e[p][0], e[p][1]); g.lineTo(e[q][0], e[q][1]);
       }
     }
+    g.stroke();
   }
   g.restore();
 }
@@ -347,6 +387,37 @@ export function washHill(g: CanvasRenderingContext2D, w: number, h: number, U: n
   }
   cx2.putImageData(img, 0, 0);
   g.save(); g.globalCompositeOperation = 'multiply'; g.imageSmoothingEnabled = true; g.drawImage(c, 0, 0, nx * step, ny * step); g.restore();
+}
+
+/**
+ * The meadow: a fine stipple over the ground, thicker in the low ground and thin on the hill's tops, each speck
+ * in its own place on the ground; looked into, the specks are tufts of grass, a few blades each.
+ */
+export function drawMeadow(g: CanvasRenderingContext2D, w: number, h: number, U: number, height: (x: number, y: number) => number, seed: number, ref: Ref = SAME): void {
+  // (The ground's place for each point on the canvas, and back.)
+  const [ox, oy] = ref(0, 0), [ax, ay] = ref(1, 0), [bx, by] = ref(0, 1), det = (ax - ox) * (by - oy) - (bx - ox) * (ay - oy);
+  const back = (X: number, Y: number): [number, number] => [((X - ox) * (by - oy) - (Y - oy) * (bx - ox)) / det, ((Y - oy) * (ax - ox) - (X - ox) * (ay - oy)) / det];
+  const k = 1 / Math.max(1e-6, Math.hypot(ax - ox, ay - oy));
+  const G = 6 * U, xs = [ox, ref(w, 0)[0], ref(0, h)[0], ref(w, h)[0]], ys = [oy, ref(w, 0)[1], ref(0, h)[1], ref(w, h)[1]];
+  const gx0 = Math.floor(Math.min(...xs) / G), gx1 = Math.ceil(Math.max(...xs) / G), gy0 = Math.floor(Math.min(...ys) / G), gy1 = Math.ceil(Math.max(...ys) / G);
+  const tufts = Math.max(0, Math.min(1, (k - 1.5) / 1.5));
+  g.save(); g.fillStyle = ink(0.32); g.strokeStyle = ink(0.4); g.lineCap = 'round';
+  const dots = new Path2D(), blades = new Path2D();
+  for (let j = gy0; j <= gy1; j++) for (let i = gx0; i <= gx1; i++) {
+    const hh = h1(i * 127.1 + j * 311.7 + seed * 0.37);
+    const X = (i + h1(hh * 91.7)) * G, Y = (j + h1(hh * 53.3)) * G, [x, y] = back(X, Y);
+    if (x < -4 * U || y < -4 * U || x > w + 4 * U || y > h + 4 * U) continue;
+    const z = height(x, y), dense = 0.05 + 0.2 * (1 - Math.min(1, Math.max(0, (z - 0.05) / 0.6)));
+    if (hh > dense) continue;
+    if (tufts > 0 && h1(hh * 17.9) < 0.7) {
+      const L = U * (0.9 + 0.9 * h1(hh * 7.7)) * Math.min(k, 3) * 0.7;
+      for (let q = -1; q <= 1; q++) { const a = -Math.PI / 2 + q * 0.45 + (h1(hh * 3 + q) - 0.5) * 0.3; blades.moveTo(x + q * 0.4 * U, y); blades.lineTo(x + q * 0.4 * U + Math.cos(a) * L * (q ? 0.8 : 1), y + Math.sin(a) * L * (q ? 0.8 : 1)); }
+    } else {
+      const r = U * (0.25 + 0.25 * h1(hh * 29.1)); dots.moveTo(x + r, y); dots.arc(x, y, r, 0, TAU);
+    }
+  }
+  g.fill(dots); g.globalAlpha = tufts; g.lineWidth = 0.4 * U; g.stroke(blades);
+  g.restore();
 }
 
 // ---------------------------------------------------------------- the ground's own record
@@ -462,27 +533,65 @@ export function drawTrack(g: CanvasRenderingContext2D, pts: [number, number][], 
   }
   g.restore();
 }
-/** A stream winding through the low ground: paper between its banks, a cool wash, its banks inked, broken now and then. */
+/**
+ * A stream winding through the low ground, as an estate map's draughtsman draws one: its width wandering, a
+ * pale cool wash between its banks, lighter down its middle; each bank a broken pen line, firmer on the side
+ * the light leaves; a few faint current lines along it, broken; reeds where the bank is low, and a stone or two.
+ */
 export function drawStream(g: CanvasRenderingContext2D, pts: [number, number][], width: number, U: number, seed: number): void {
   if (pts.length < 2) return;
-  const wAt = (i: number) => width * (0.8 + 0.4 * n1(i * 0.35 + seed));
-  const side = (s: number): [number, number][] => pts.map((p, i) => {
-    const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)], dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy) || 1;
-    return [p[0] - (dy / l) * wAt(i) * 0.5 * s, p[1] + (dx / l) * wAt(i) * 0.5 * s];
-  });
+  const n = pts.length;
+  const wAt = (i: number) => width * (0.6 + 0.8 * n1(i * 0.22 + seed));
+  const tan = pts.map((_, i) => { const a = pts[Math.max(0, i - 1)], b = pts[Math.min(n - 1, i + 1)], dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy) || 1; return [dx / l, dy / l]; });
+  const side = (s: number, f = 0.5): [number, number][] => pts.map((p, i) => [p[0] - tan[i][1] * wAt(i) * f * s, p[1] + tan[i][0] * wAt(i) * f * s]);
   const L = side(1), R = side(-1);
   g.save(); g.lineCap = 'round'; g.lineJoin = 'round';
-  g.beginPath(); g.moveTo(...L[0]); for (const q of L) g.lineTo(...q); for (let i = R.length - 1; i >= 0; i--) g.lineTo(...R[i]); g.closePath();
+  // The water: paper, a cool wash, paler down the middle where the light is on it.
+  g.beginPath(); g.moveTo(...L[0]); for (const q of L) g.lineTo(...q); for (let i = n - 1; i >= 0; i--) g.lineTo(...R[i]); g.closePath();
   g.fillStyle = 'rgb(244,239,228)'; g.fill();
-  g.globalCompositeOperation = 'multiply'; g.fillStyle = 'rgba(150,176,190,0.45)'; g.fill(); g.globalCompositeOperation = 'source-over';
-  // (Ripples, a few, along it.)
-  g.strokeStyle = 'rgba(92,110,120,0.45)'; g.lineWidth = 0.5 * U;
-  for (let i = 2; i < pts.length - 2; i += 3) { if (h1(i + seed) < 0.5) continue; const p = pts[i], q = pts[i + 1]; g.beginPath(); g.moveTo(p[0], p[1]); g.lineTo(p[0] + (q[0] - p[0]) * 0.6, p[1] + (q[1] - p[1]) * 0.6); g.stroke(); }
-  for (const bank of [L, R]) {
-    g.strokeStyle = ink(0.75);
-    for (let i = 1; i < bank.length; i++) {
-      if (n1(i * 0.5 + seed + bank[0][0]) < 0.18) continue;
-      g.lineWidth = U * (0.5 + 0.5 * n1(i * 0.3 + seed)); g.beginPath(); g.moveTo(...bank[i - 1]); g.lineTo(...bank[i]); g.stroke();
+  g.globalCompositeOperation = 'multiply'; g.fillStyle = 'rgba(160,184,192,0.42)'; g.fill();
+  const Li = side(1, 0.18), Ri = side(-1, 0.18);
+  g.beginPath(); g.moveTo(...Li[0]); for (const q of Li) g.lineTo(...q); for (let i = n - 1; i >= 0; i--) g.lineTo(...Ri[i]); g.closePath();
+  g.globalCompositeOperation = 'screen'; g.fillStyle = 'rgba(255,255,255,0.18)'; g.fill();
+  g.globalCompositeOperation = 'source-over';
+  // The current: a few faint lines along it, each a little way, off the middle.
+  g.strokeStyle = 'rgba(70,92,104,0.32)'; g.lineWidth = 0.45 * U;
+  for (let c = 0; c < 3; c++) {
+    const off = (c - 1) * 0.22 + (h1(seed + c) - 0.5) * 0.1;
+    g.beginPath(); let on = false;
+    for (let i = 0; i < n; i++) {
+      const show = n1(i * 0.18 + c * 13 + seed) > 0.55;
+      const x = pts[i][0] - tan[i][1] * wAt(i) * off, y = pts[i][1] + tan[i][0] * wAt(i) * off;
+      if (show) { if (on) g.lineTo(x, y); else g.moveTo(x, y); }
+      on = show;
+    }
+    g.stroke();
+  }
+  // Its banks: a pen line that swells and thins and breaks, the far bank firmer.
+  for (const [bank, s] of [[L, 1], [R, -1]] as [[number, number][], number][]) {
+    g.strokeStyle = ink(0.7);
+    for (let i = 1; i < n; i++) {
+      if (n1(i * 0.31 + seed + s * 5) < 0.2) continue;
+      g.lineWidth = U * (s > 0 ? 0.55 : 0.8) * (0.6 + 0.8 * n1(i * 0.27 + seed + s));
+      g.beginPath(); g.moveTo(...bank[i - 1]); g.lineTo(...bank[i]); g.stroke();
+    }
+    // (Reeds, in clumps where the bank is low; and now and then a stone at the water's edge.)
+    for (let i = 2; i < n - 2; i += 1) {
+      const hh = h1(i * 7.3 + seed + s * 3.1);
+      if (hh < 0.16) {
+        const [bx, by] = bank[i], nx = -tan[i][1] * s, ny = tan[i][0] * s;
+        g.strokeStyle = ink(0.55); g.lineWidth = 0.4 * U; g.beginPath();
+        for (let q = 0; q < 4; q++) {
+          const along = (q - 1.5) * 0.7 * U, ln = U * (1.6 + 1.4 * h1(hh * 13 + q)), lean = (h1(hh * 5 + q) - 0.5) * 0.6;
+          const x0 = bx + tan[i][0] * along, y0 = by + tan[i][1] * along;
+          g.moveTo(x0, y0); g.lineTo(x0 + (nx + tan[i][0] * lean) * ln, y0 + (ny + tan[i][1] * lean) * ln);
+        }
+        g.stroke();
+      } else if (hh > 0.965) {
+        const [bx, by] = bank[i], rr = U * (0.9 + 0.8 * h1(hh * 3));
+        g.beginPath(); g.ellipse(bx, by, rr, rr * 0.7, h1(hh * 9) * TAU, 0, TAU);
+        g.fillStyle = 'rgb(236,231,220)'; g.fill(); g.strokeStyle = ink(0.6); g.lineWidth = 0.45 * U; g.stroke();
+      }
     }
   }
   g.restore();

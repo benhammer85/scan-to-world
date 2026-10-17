@@ -26,7 +26,7 @@ import { at, paperTooth } from './draw';
 import { Paper } from './paint';
 import { dayDate, dayOf } from './days';
 import { climate, growth as growthOf, season } from './growing';
-import { crownSize, drawCrown, drawHill, drawMoss, drawSeedling, drawStream, drawTrack, heightAt, land, pigment, seasonOf, snowHill, washCrown, washHill, type CrownForm, type Hill, type Season, type Sun } from './grove';
+import { crownSize, drawCrown, drawHill, drawMeadow, drawMoss, drawSeedling, drawStream, drawTrack, heightAt, land, pigment, seasonOf, snowHill, washCrown, washHill, type CrownForm, type Hill, type Season, type Sun } from './grove';
 import { holdStill, steadySize } from './steady';
 import { fromText, grove, keepInGrove, keepTree, recallTree, setGrove, snapshotTree, toText, treeFrom, type KeptTree, type WoodMark } from './save';
 
@@ -2560,7 +2560,7 @@ interface Cam { S: number; X0: number; Y0: number }
 let groveCam: Cam | null = null;
 const GROVE_CLOSEST = 8;
 /** The land, every tree on it (world units), and the view of the whole of it, kept until a tree changes. */
-let worldKey = '', world: { hills: Hill[]; seed: number; trees: Omit<Stand, 'x' | 'y' | 'r'>[]; next: { wx: number; wy: number }; whole: Cam; box: [number, number, number, number]; seedlings: { wx: number; wy: number }[]; stream: [number, number][] } | null = null;
+let worldKey = '', world: { hills: Hill[]; seed: number; trees: Omit<Stand, 'x' | 'y' | 'r'>[]; next: { wx: number; wy: number }; whole: Cam; box: [number, number, number, number]; seedlings: { wx: number; wy: number }[]; stream: [number, number][]; wild: { wx: number; wy: number; wr: number; sp: Kind; k: number }[] } | null = null;
 function worldOf() {
   const mine = visit ? visit.stash : { tree, days, kind };
   const all = [
@@ -2605,7 +2605,21 @@ function worldOf() {
   // (A tree on damp ground by the stream grows fuller.)
   const damp = (x: number, y: number) => { let d = Infinity; for (const [a, b] of stream) d = Math.min(d, Math.hypot(a - x, b - y)); return smooth(1 - (d - 0.6) / 2.2); };
   for (const t of trees) t.wr *= 1 + 0.12 * damp(t.wx, t.wy);
-  worldKey = key; world = { hills: L.hills, seed, trees, next, whole, box: [x0, y0, x1, y1], seedlings, stream };
+  // (Round it, the wood it stands in: trees no one planted, older and taller, thinning out with the distance,
+  // never on the stream, never on the next tree's ground.)
+  const wild: { wx: number; wy: number; wr: number; sp: Kind; k: number }[] = [], WILD: Kind[] = ['oak', 'oak', 'maple', 'ash', 'pine', 'fir', 'cherry', 'birch'];
+  const tries = 60 + 3 * trees.length;
+  for (let q = 0; q < tries; q++) {
+    const a = h1(seed * 0.013 + q * 1.618) * TAU, d = reach + 0.6 + 4.5 * h1(q * 2.71 + seed * 0.07) ** 1.3;
+    if (h1(q * 9.1 + seed) > 1.15 - (d - reach) / 5) continue;
+    const wx = gx + Math.cos(a) * d, wy = gy + Math.sin(a) * d * 0.9, sp = WILD[Math.floor(h1(q * 4.3 + seed) * WILD.length)];
+    const wr = 1.3 * (0.8 + 0.35 * h1(q * 6.1)) * crownSize(sp, 400);
+    if (stream.some(([sx2, sy2]) => Math.hypot(sx2 - wx, sy2 - wy) < wr + 0.45)) continue;
+    if (Math.hypot(next.wx - wx, next.wy - wy) < wr + 1) continue;
+    if ([...trees, ...wild].some((o) => Math.hypot(o.wx - wx, o.wy - wy) < (o.wr + wr) * 0.85)) continue;
+    wild.push({ wx, wy, wr, sp, k: Math.floor(h1(q * 3.3 + seed) * 9000) + 17 });
+  }
+  worldKey = key; world = { hills: L.hills, seed, trees, next, whole, box: [x0, y0, x1, y1], seedlings, stream, wild };
   return world;
 }
 const camNow = (): Cam => groveCam ?? worldOf().whole;
@@ -2795,6 +2809,7 @@ function renderGrove(c: CanvasRenderingContext2D, cam: Cam, sprites?: Sprite[]):
   const ref = (x: number, y: number): [number, number] => [w.whole.X0 + ((x - cam.X0) / cam.S) * w.whole.S, w.whole.Y0 + ((y - cam.Y0) / cam.S) * w.whole.S];
   washHill(c, W, H, px, height, w.seed, season, cam.S, ref);
   if (season === 'winter') snowHill(c, W, H, px, height, ref);
+  drawMeadow(c, W, H, px, height, w.seed, ref);
   drawHill(c, W, H, px, height, w.seed, ref);
   const u = px * Math.pow(Math.max(1, cam.S / w.whole.S), 0.8);
   const at = (wx: number, wy: number): [number, number] => [cam.X0 + wx * cam.S, cam.Y0 + wy * cam.S];
@@ -2802,10 +2817,10 @@ function renderGrove(c: CanvasRenderingContext2D, cam: Cam, sprites?: Sprite[]):
   {
     const pts = w.stream.map(([x, y]) => at(x, y));
     c.save(); c.globalCompositeOperation = 'multiply'; c.lineCap = 'round'; c.lineJoin = 'round';
-    for (const [wd, al] of [[3.2, 0.06], [1.8, 0.08]] as [number, number][]) { c.beginPath(); pts.forEach((q, i) => (i ? c.lineTo(...q) : c.moveTo(...q))); c.strokeStyle = `rgba(120,150,96,${al})`; c.lineWidth = wd * cam.S; c.stroke(); }
+    for (const [wd, al] of [[1.9, 0.035], [1.2, 0.05]] as [number, number][]) { c.beginPath(); pts.forEach((q, i) => (i ? c.lineTo(...q) : c.moveTo(...q))); c.strokeStyle = `rgba(120,150,96,${al})`; c.lineWidth = wd * cam.S; c.stroke(); }
     c.restore();
   }
-  drawStream(c, w.stream.map(([x, y]) => at(x, y)), Math.max(4 * px, 0.32 * cam.S), u, w.seed);
+  drawStream(c, w.stream.map(([x, y]) => at(x, y)), Math.max(6 * px, 0.55 * cam.S), u, w.seed);
   // Paths drawn, as walked: wider the more, fading as they grow over.
   // Paths worn to the trees opened often, from today's: each a little wider where another meets it.
   const worn = trackWays(cam), lines = worn.map((t) => t.pts);
@@ -2826,17 +2841,38 @@ function renderGrove(c: CanvasRenderingContext2D, cam: Cam, sprites?: Sprite[]):
   }
   for (const s of w.seedlings) { const [x, y] = at(s.wx, s.wy); drawSeedling(c, x, y, Math.max(3 * px, 0.18 * cam.S), u); }
   const order = [...L].sort((p, q) => p.y - q.y), shown = order.filter((t) => !(t.x < -t.r * 2 || t.x > W + t.r * 2 || t.y < -t.r * 2 || t.y > H + t.r * 2));
+  const wildShown = w.wild.map((t) => ({ ...t, x: cam.X0 + t.wx * cam.S, y: cam.Y0 + t.wy * cam.S, r: t.wr * cam.S })).filter((t) => !(t.x < -t.r * 2 || t.x > W + t.r * 2 || t.y < -t.r * 2 || t.y > H + t.r * 2)).sort((p, q) => p.y - q.y);
   // (The shadows all on the ground first; then the crowns over them, each to be stirred on its own.)
   // (All the shadows as one: their shapes laid solid, then hatched once, finely and lightly, so where two
   // meet it's never darker.)
   if (sun.strength > 0.02) {
     const lay = document.createElement('canvas'); lay.width = W; lay.height = H;
     const lc = lay.getContext('2d')!;
+    for (const t of wildShown) drawCrown(lc, t.x, t.y, t.r, t.sp, t.k, u, 1, undefined, sun, 'shade');
     for (const t of shown) if (t.n >= 1) drawCrown(lc, t.x, t.y, t.r, t.sp, t.k, u, 1, formOf(t.i), sun, 'shade');
-    lc.globalCompositeOperation = 'source-in'; lc.strokeStyle = ink(1); lc.lineWidth = 0.55 * u; lc.beginPath();
-    for (let d = -H; d < W + H; d += 1.9 * u) { lc.moveTo(d, 0); lc.lineTo(d + H, H); }
-    lc.stroke();
+    // (By hand: each stroke its own distance from the last, a little off true, broken now and then, heavier
+    // or lighter, so it never reads as a ruled fill.)
+    const hatch = document.createElement('canvas'); hatch.width = W; hatch.height = H;
+    const hc = hatch.getContext('2d')!;
+    hc.strokeStyle = ink(1); hc.lineCap = 'round';
+    const seg = 14 * u;
+    for (let d = -H, q = 0; d < W + H; d += (1.3 + 0.9 * h1(q * 1.37)) * u, q++) {
+      const tilt = (h1(q * 2.9) - 0.5) * 0.08;
+      hc.lineWidth = (0.28 + 0.22 * h1(q * 3.7)) * u; hc.beginPath();
+      for (let y0 = 0; y0 < H; y0 += seg) {
+        if (h1(q * 7.1 + y0 * 0.013) < 0.12) continue;
+        const y1 = Math.min(H, y0 + seg * (0.7 + 0.3 * h1(q + y0 * 0.07)));
+        hc.moveTo(d + y0 * (1 + tilt), y0); hc.lineTo(d + y1 * (1 + tilt), y1);
+      }
+      hc.stroke();
+    }
+    lc.globalCompositeOperation = 'source-in'; lc.drawImage(hatch, 0, 0); hatch.width = 0;
     c.save(); c.globalAlpha = 0.5 * sun.strength; c.drawImage(lay, 0, 0); c.restore();
+  }
+  // (The wood round it: ink and a faint wash only, quieter than the trees grown here.)
+  for (const t of wildShown) {
+    drawCrown(c, t.x, t.y, t.r, t.sp, t.k, u, 0.7, undefined, sun, 'crown');
+    c.save(); c.globalAlpha = 0.45; washCrown(c, t.x, t.y, t.r, t.sp, t.k, px, season, false, 1); c.restore();
   }
   for (const t of shown) {
     // (A tree of a day or more is a crown, however small; only a seed just planted is a seedling.)
@@ -3115,6 +3151,7 @@ function tapGrove(x: number, y: number): void {
     const [bx0, by0, bx1, by1] = w.box;
     if (wx < bx0 - 1.5 || wx > bx1 + 1.5 || wy < by0 - 1.5 || wy > by1 + 1.5) return;
     if (w.trees.some((t) => Math.hypot(t.wx - wx, t.wy - wy) < t.wr + 0.35)) return;
+    if (w.wild.some((t) => Math.hypot(t.wx - wx, t.wy - wy) < t.wr + 0.2)) return;
     plantAgain([wx, wy]);
     return;
   }
