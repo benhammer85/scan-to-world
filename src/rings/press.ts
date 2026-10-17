@@ -1757,6 +1757,38 @@ const ANATOMY: Partial<Record<Kind, Anatomy>> = {
   // Olive: dense, close and irregular, its figure a dark mottle wandering through the years.
   olive: { early: 0.6, late: 0.96, share: 0.22, edge: 1.0, rays: 0.6, rayW: 0.3, pores: 0.05, poreR: 0.3, poreEarly: 0, fibre: 0.35, mottle: 0.45 },
 };
+/**
+ * How strongly each wood's rays print: oak's many and plain, a conifer's barely there.
+ */
+const RAYS: Partial<Record<Kind, number>> = { oak: 0.95, ash: 0.7, cherry: 0.75, maple: 0.8, birch: 0.45, olive: 0.55, pine: 0.3, redwood: 0.25, bristlecone: 0.25 };
+/**
+ * The rays at a point (tree angle `a`, `rho` px out at the slice's own size), 0 to 1. Real rays keep about the
+ * same distance apart all the way out: a few begin at the heart, and as the wood widens new ones begin between
+ * them, each at its own radius; each wanders a little and breaks now and then. Laid out by levels, each twice
+ * the last's, a ray begun at one level running on through all the rest, so none ever jumps.
+ */
+function rayAt(a: number, rho: number): number {
+  const R0 = 10, GAP = 3.6;
+  if (rho < R0 * 0.6) return 0;
+  const lv = Math.max(0, Math.floor(Math.log2(rho / R0))), N0 = Math.max(6, Math.round((TAU * R0) / GAP)), N = N0 * 2 ** lv;
+  const sAt = (((a / TAU) % 1) + 1) % 1 * N, k0 = Math.floor(sAt);
+  let best = 0;
+  for (let k = k0 - 1; k <= k0 + 1; k++) {
+    // (Which level it was born at: k's odd part.)
+    let bk = ((k % N) + N) % N, bl = lv;
+    while (bl > 0 && bk % 2 === 0) { bk /= 2; bl--; }
+    const id = bk * 7.31 + bl * 31.7, nb = N0 * 2 ** bl, born = R0 * 2 ** bl * (bl ? 0.7 + 0.6 * h1(id * 1.9) : 0.6);
+    if (rho < born) continue;
+    // (Where it lies: its birth place, a little off even, wandering slowly outward.)
+    const at = ((bk + 0.5 + (h1(id) - 0.5) * 0.5) / nb + (Math.sin(rho / (40 + 30 * h1(id * 2.3)) + id) * 0.25) / nb) * N;
+    let dd = Math.abs(sAt - at); dd = Math.min(dd, N - dd);
+    const dist = (dd * TAU * rho) / N, half = 0.12 + 0.22 * h1(id * 3.7) ** 2;
+    if (dist > half + 0.6) continue;
+    if (vnoise(id * 0.37, rho / 14) < 0.3) continue;
+    best = Math.max(best, Math.min(1, smooth(1 - (dist - half) / 0.6)) * Math.min(1, (rho - born) / 3));
+  }
+  return best;
+}
 function printYears(v: View, oak: Years | null): void {
   const n = tree.rings.length, c = g.canvas as HTMLCanvasElement, B = 720, Z = Math.max(1, look.k);
   const scr = (r: number) => v.s * warpR(v.warp, r);
@@ -1816,7 +1848,7 @@ function printYears(v: View, oak: Years | null): void {
   // (The drawn woods: each year built as its kind's is, from the earlywood out to the latewood and its edge,
   // with its rays, pores and real fibre; all in the slice's own px (`U`), so looked into they're the same,
   // larger, never a fresh scatter.)
-  const an = oak ? null : ANATOMY[kind] ?? ANATOMY.cherry!, fib = wood.fibre[kind], U = px * Z, conifer = fam() === 'conifer';
+  const an = oak ? null : ANATOMY[kind] ?? ANATOMY.cherry!, fib = wood.fibre[kind], U = px * Z, conifer = fam() === 'conifer', RAY = RAYS[kind] ?? 0;
   const drawnInk = (i: number, a: number, r: number, across: number, heart: boolean, width: number, dx: number, dy: number): number => {
     const A = an!, rho = r / U;
     // The year: earlywood, a little deeper as it goes, then darkening into the latewood, ending sharp.
@@ -1828,12 +1860,6 @@ function printYears(v: View, oak: Years | null): void {
     // The real fibre, streaking along the year.
     if (fib && A.fibre) ink *= 1 + A.fibre * (tile(fib, a * rho * 0.5, rho * 0.5) - 0.5) * 2;
     if (A.mottle) ink *= 1 + A.mottle * (vnoise(dx / (22 * U) + 3.1, dy / (22 * U) + 7.7) - 0.5) * 2;
-    // Rays: fine radial lines, broken now and then, more of them further out, as rays begin as the wood widens.
-    if (A.rays) {
-      const lv = Math.max(0, Math.floor(Math.log2(Math.max(1, rho / 40)))), N = Math.round(A.rays * 22 * 2 ** lv);
-      const sAt = (a / TAU) * N, k = Math.floor(sAt), mid = k + 0.5 + (h1(k * 1.7 + lv * 31) - 0.5) * 0.7, dist = Math.abs(sAt - mid) * (TAU * rho) / N;
-      if (dist < A.rayW * 2 && vnoise(k * 3.1 + lv * 17, rho / 16) > 0.45) ink *= 0.78 + 0.22 * smooth(dist / A.rayW - 0.4);
-    }
     // Pores: open vessels, paper in the print, scattered (or gathered at the year's start), in the wood's place.
     if (A.pores) {
       const C = 3, ci = Math.floor(rho / C), cj = Math.floor((a * rho) / C), hh = h1(ci * 7.31 + cj * 1.713 + i * 0.37);
@@ -1892,6 +1918,9 @@ function printYears(v: View, oak: Years | null): void {
         const cov = Math.max(jo < 0 ? 0 : lineAt(jo, at(jo, b, f) - r), ji < 0 ? 0 : lineAt(ji, r - at(ji, b, f))) * (0.75 + 0.35 * vnoise(dx * 0.11 + i, dy * 0.11));
         if (cov > 0) ink = Math.max(ink, 0.95 * cov);
       }
+      // The rays: the wood's fine radial lines, open to the paper, crossing every year, so the latewood prints
+      // as a run of small bricks.
+      if (RAY && !heart) ink *= 1 - RAY * rayAt(a, r / U);
       const k = (y * w + x) * 4;
       d[k] = INK[0]; d[k + 1] = INK[1]; d[k + 2] = INK[2]; d[k + 3] = Math.round(255 * Math.min(1, ink));
     }
@@ -2001,11 +2030,11 @@ function inkGrain(c: HTMLCanvasElement, v: View, band?: [number, number], soft =
       let took = val;
       if (sea && field) {
         const u = mx * perTex, w = my * perTex;
-        took = val * (0.35 + 0.7 * tile(sea, u + 17, w + 31) * (0.55 + 0.45 * tile(field, (u * fc - w * fs) * 0.8, (u * fs + w * fc) * 0.8)));
+        took = val * (0.62 + 0.48 * tile(sea, u + 17, w + 31) * (0.75 + 0.25 * tile(field, (u * fc - w * fs) * 0.8, (u * fs + w * fc) * 0.8)));
         // (Looked at closer than the print's own grain: finer grain, at the screen's scale, so it stays crisp.)
         if (close > 0) took *= 1 + close * 0.22 * (vnoise((dx / Z) * 0.9 + 3.3, (dy / Z) * 0.9 + 7.1) - 0.5);
       }
-      const thr = 0.5 + (sea ? 0.35 : 0.95) * (t1 - 0.5) + 0.2 * (vnoise(mx * low + 40, my * low + 11) - 0.5) + saw;
+      const thr = 0.5 + (sea ? 0.22 : 0.95) * (t1 - 0.5) + 0.2 * (vnoise(mx * low + 40, my * low + 11) - 0.5) + saw;
       // (Took or not, sharply; `soft` keeps a pixel or so of the edge's own shading, for a print that's
       // shown larger than it was pressed, so it's never stepped.)
       const e = Math.max(0, Math.min(1, (took - thr + 0.07 * soft) / (0.14 * soft)));
