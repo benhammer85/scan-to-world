@@ -933,3 +933,9 @@ The game now opens on the Moon, not Mars (Mars's slow climb to 18 km, with nothi
 3. **The Sea of Crises:** alone in high ground to the east. "Two filled. The last crater is ringed by striped high ground: lava poured there runs off and is wasted, so pour from just above the crater."
 
 The lava is a little less runny (thin 0.004, was 0.0015) and poured more gently (rising 0.55, was 1.0), or held still it flooded every sea in reach and no turning was needed. Bots: played carefully, won in about 50 s with nearly all the heat left; aimless, lost; held still and never turned (a new bot, `holder`), two seas then stuck. Stars: keep half the heat, finish in 2 minutes.
+
+### Controls: one meaning each, and seen
+
+- **A tap only erupts.** It used to set running lava where it touched, away from the vent, too (and erupt anywhere else): a tap meant to erupt that landed on lava hardened it instead, with nothing to say why. The setting is gone from the tap (`chill` stays in sim.ts, unused by the game).
+- **Where the volcano is heading.** On every world but Mercury and the toys, the volcano drifts slowly towards whatever part of the world faces you, a little above the middle: turning the world moves it. A short dotted trail now runs from it to where it's heading while it's on its way, and the first time it has far to go, it's said: "The volcano drifts slowly towards the middle of your view, so turning the planet moves it. The dotted trail shows where it is heading".
+- **Under the finger.** A faint ring closes as a resting finger takes hold (the quarter-second before a hold pours), and a warm glow follows the finger while it pours; gone as it lifts, or as soon as it moves off to turn the world. So a hold is felt to begin at once, and a drag is seen not to be one.

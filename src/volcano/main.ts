@@ -1682,7 +1682,6 @@ let peakReached = false;
 /** How much of the aim is done now, reckoned afresh. */
 function reckonAim(): void {
   // (Chilling, taught once on any world, when lava is running and a flow or two has gone.)
-  if (!CHILL_TOLD && HAND && !LAMP && !MARBLE && begun && !ending && planet.tally.flows >= 2 && planet.molten > 0.01) { CHILL_TOLD = true; remember('volcano.learned.chill', '1'); announce('Touch running lava to chill it: it sets there, and the flow turns aside', true); }
   // (The field book: what the rock has made so far, kept for good the moment it's made.)
   for (; foundSeen < planet.found.length; foundSeen++) if (keepFound(planet.found[foundSeen])) feel(20);
   // (Judged as it stands once the fire is out, as a surveyor would map it: ash heaped and washed away again doesn't count.)
@@ -1753,7 +1752,7 @@ function reckonAim(): void {
     }
   }
 }
-let calmHeld = 0, calmAt = 0, litFor = 0, litAt = 0, clearOfSea = false, foundSeen = 0, CHILL_TOLD = remembered('volcano.learned.chill') === '1';
+let calmHeld = 0, calmAt = 0, litFor = 0, litAt = 0, clearOfSea = false, foundSeen = 0;
 /** The survey's outline, laid round the vent as the world began. */
 let surveyMaskNow: Uint8Array | null = null, surveyNow = 0;
 const story: { t: number; v: number; sky: number; n: number }[] = [];
@@ -2019,6 +2018,29 @@ function onGround(pts: { x: number; y: number; z: number }[], into: number[]): v
     into.push(q.x * r, q.y * r, q.z * r);
   }
 }
+/**
+ * Where the volcano is heading: it drifts, slowly, to whatever part of the world faces you, a little above the middle (on every
+ * world but Mercury and the toys). A short dotted trail from it to there, while it's on its way, so a turn that moves
+ * it is seen to; and said once, the first time it has far to go.
+ */
+const ventTrail = new Stipple(P.landInk, 'dot', 1.9 * AIM_BIG);
+ventTrail.byDirection = true; ventTrail.linger = 0.35; (ventTrail.object.material as THREE.Material).depthTest = false;
+(ventTrail.object.material as THREE.ShaderMaterial).uniforms.uAppear.value = 0.3; // (redrawn often: its dots in at once, as the tumbling moon's are, or each redraw began their fading in again)
+group.add(ventTrail.object);
+let trailAt = -1, DRIFT_TOLD = remembered('volcano.learned.drift') === '1';
+function drawTrail(): void {
+  if (seconds - trailAt < 0.25) return;
+  trailAt = seconds;
+  const t = planet.target, q = planet.plume;
+  const on = !!t && begun && !lapsing() && !ending && !planet.over && !LAMP && !MARBLE && !shot && !showing && planet.k.rises > 0;
+  const far = on ? Math.acos(Math.max(-1, Math.min(1, t!.x * q.x + t!.y * q.y + t!.z * q.z))) : 0;
+  if (!on || far < 0.06) { ventTrail.set([]); return; }
+  const a = new THREE.Vector3(q.x, q.y, q.z), b = new THREE.Vector3(t!.x, t!.y, t!.z), pts: { x: number; y: number; z: number }[] = [];
+  const n = Math.max(2, Math.round(Math.min(far, 0.5) / 0.035)), reach = Math.min(far, 0.5);
+  for (let i = 1; i <= n; i++) { const p = a.clone().lerp(b, (reach / far) * (i / n)).normalize(); pts.push({ x: p.x, y: p.y, z: p.z }); }
+  const into: number[] = []; onGround(pts, into); ventTrail.set(into);
+  if (!DRIFT_TOLD && far > 0.15) { DRIFT_TOLD = true; remember('volcano.learned.drift', '1'); announce('The volcano drifts slowly towards the middle of your view, so turning the planet moves it. The dotted trail shows where it is heading'); }
+}
 function drawAim(now: number): void {
   if (now - lastAim < (WORLD.goal === 'calm' ? 0.5 : 2)) return;
   lastAim = now;
@@ -2283,12 +2305,6 @@ function onWorld(x: number, y: number): THREE.Vector3 | null {
 const upMark = WORLD.rules.lamp ? mark((g) => { g.lineWidth = 2.5; g.beginPath(); g.arc(32, 32, 16, 0, Math.PI * 2); g.stroke(); g.beginPath(); g.arc(32, 32, 3.5, 0, Math.PI * 2); g.fill(); }) : null;
 /** One hand: whether a finger is pouring, and since when. */
 let pourHeld = false, pourSince = 0;
-/** Lava chilled by a touch: a puff of steam where it set, and a knock in the hand. */
-function chillSeen(at: THREE.Vector3): void {
-  feel(14);
-  const v = nearestAbove(at), p = topo.positions;
-  if (!BARE) for (let i = 0; i < 5; i++) puffs.add('ash', p[v * 3], p[v * 3 + 1], p[v * 3 + 2], 0.25, Math.random);
-}
 /** One hand: a tap lets all the heat out at once, an eruption, as big as it's been let grow. */
 function tapErupt(): void {
   if (!begun || lapsing() || ending || planet.over || planet.pressure < planet.k.least) return;
@@ -2297,18 +2313,30 @@ function tapErupt(): void {
 /** Whether a finger is holding the vent shut. */
 let holding = false;
 function holdShut(): void {
-  if (HAND) { if (begun && !lapsing() && !ending && !planet.over) { pourHeld = true; pourSince = seconds; feel(8); } return; }
+  if (HAND) { if (begun && !lapsing() && !ending && !planet.over) { pourHeld = true; pourSince = seconds; feel(8); touchCue('pouring'); } return; }
   if (!begun || lapsing() || ending || planet.over) return;
   holding = planet.clamped = true;
   feel(15);
 }
 function letGo(): void {
-  if (HAND) { pourHeld = false; return; }
+  if (HAND) { pourHeld = false; touchCue(null); return; }
   if (!holding) return;
   holding = false;
   planet.unclamp();
 }
 
+/**
+ * Under the finger: a faint ring that closes as a resting finger is about to take hold (a quarter of a second), and
+ * a warm glow once it pours, following the finger; gone as it lifts, or as soon as it moves to turn the world. So a
+ * hold is felt to begin at once, and a drag is seen not to be one.
+ */
+const cue = document.createElement('div'), cueFrom = { x: 0, y: 0 };
+cue.id = 'touchcue';
+document.body.appendChild(cue);
+function touchCue(state: 'pending' | 'pouring' | null): void {
+  cue.className = state ?? '';
+  if (state) { cue.style.left = `${finger.x}px`; cue.style.top = `${finger.y}px`; }
+}
 const gestures = new GestureRecognizer(
   {
     // (A tap no longer calls the heat to where it touched: two ways to play, tilt to pour and a
@@ -2318,7 +2346,9 @@ const gestures = new GestureRecognizer(
       if (LAMP && COMPUTER) { holdShut(); letGo(); }
       // (A touch on running lava, away from the vent, chills it there; anywhere else, or once the circle round the volcano
       // has closed and an eruption is what's wanted, it erupts.)
-      if (HAND) { const at = onWorld(x, y); if (at && !LAMP && !MARBLE && begun && !lapsing() && !ending && !((readyShare() ?? 0) >= 1) && planet.chill(at)) { chillSeen(at); return; } if (at) tapErupt(); }
+      // (A tap only erupts. It used to set running lava where it touched, away from the vent, too: one tap doing two
+      // things, and a tap meant to erupt that landed on lava hardened it instead, with nothing to say why.)
+      if (HAND) { const at = onWorld(x, y); if (at) tapErupt(); }
     },
     spin(dx, dy) { spin.set(0, 0); rotate(dx * 0.006, dy * 0.006); },
     fling(vx, vy) { spin.set(vx * 0.006, vy * 0.006); },
@@ -2346,9 +2376,14 @@ stage.addEventListener('pointerdown', (e) => {
     if (at && planet.marbleMap(at)) { marbleFinger = { id: e.pointerId, x: e.clientX, y: e.clientY, at, last: at, swirling: false }; return; }
   }
   gestures.down(e.pointerId, e.clientX, e.clientY, e.timeStamp);
+  cueFrom.x = e.clientX; cueFrom.y = e.clientY;
+  if (HAND && begun && !lapsing() && !ending && !planet.over && !LAMP && !MARBLE && onWorld(e.clientX, e.clientY)) touchCue('pending');
 });
 stage.addEventListener('pointermove', (e) => {
   finger.x = e.clientX; finger.y = e.clientY;
+  // (The cue: gone once a resting finger moves off to turn the world; with a pouring one, it follows.)
+  if (cue.className === 'pending' && Math.hypot(e.clientX - cueFrom.x, e.clientY - cueFrom.y) > 10) touchCue(null);
+  else if (cue.className === 'pouring') { cue.style.left = `${e.clientX}px`; cue.style.top = `${e.clientY}px`; }
   const f = marbleFinger;
   if (f && f.id === e.pointerId) {
     // (Moved more than a shaking hand does, it swirls from then on, and pours no more.)
@@ -2361,6 +2396,7 @@ stage.addEventListener('pointermove', (e) => {
 for (const type of ['pointerup', 'pointercancel'] as const) stage.addEventListener(type, (e) => {
   if (marbleFinger && marbleFinger.id === e.pointerId) { marbleFinger = null; return; }
   gestures.up(e.pointerId, e.clientX, e.clientY, e.timeStamp);
+  touchCue(null);
 });
 stage.addEventListener('wheel', (e) => { e.preventDefault(); gestures.wheel(e.deltaY); }, { passive: false });
 /** On a keyboard, the arrows tip the world, a little at a time, as a hand would. */
@@ -2576,7 +2612,7 @@ const ACTION_WORDS = /^(The volcano is near the end|The volcano has passed|A sto
  * above were said, and nearly every world's own word on what had just happened, a crack too late, a comet frozen, a
  * burst not at high tide, the far side rising, was kept quiet.)
  */
-const EXPLAIN = /^(One crater filled|Two filled|Goal: |Every (crack|plume) so far|The comet melted|The comet froze|It's tumbling again|You poured too fast|No wave|Not high tide|That stone was too big|Too tall|Theia|The shock|Too late|Too early|Too small|Too near|A big eruption|A giant wave|The island is blown|The far side|A dark streak|A streak, but|The ice cracks|A mound|A lava dome|A dome, but|The mound slumps|The dome slumps|A blob reaches|Ice reaches the ring|An icy comet|Ice melted|The ice froze|Stone caught|Caught in the glow|The eruption's gas|The ground gives way|The last of the sea|The sea is nearly gone|The day has melted|The volcano is in daylight|That lava|A seabird|A nest|Found:|The island stands|Too tall for its width|A dust storm is coming|Theia|Too big to hold|The big stone|A stone too big|The burst missed|In the dark|Chilled)/;
+const EXPLAIN = /^(The volcano drifts|One crater filled|Two filled|Goal: |Every (crack|plume) so far|The comet melted|The comet froze|It's tumbling again|You poured too fast|No wave|Not high tide|That stone was too big|Too tall|Theia|The shock|Too late|Too early|Too small|Too near|A big eruption|A giant wave|The island is blown|The far side|A dark streak|A streak, but|The ice cracks|A mound|A lava dome|A dome, but|The mound slumps|The dome slumps|A blob reaches|Ice reaches the ring|An icy comet|Ice melted|The ice froze|Stone caught|Caught in the glow|The eruption's gas|The ground gives way|The last of the sea|The sea is nearly gone|The day has melted|The volcano is in daylight|That lava|A seabird|A nest|Found:|The island stands|Too tall for its width|A dust storm is coming|Theia|Too big to hold|The big stone|A stone too big|The burst missed|In the dark|Chilled)/;
 function announce(text: string, lesson = false): void {
   text = words$(text);
   if (BARE && !ending) return;
@@ -4241,6 +4277,7 @@ const loop = (): void => {
   effects(dt * Math.min(1, speed));
   for (const pen of [...landPens, ...seaPens]) pen.update(dt, camera);
   if (begun && !lapsing()) drawAim(seconds);
+  drawTrail();
   drawReady(seconds);
   marbleHands(dt);
   marbling();
@@ -4250,6 +4287,7 @@ const loop = (): void => {
   aimInk.update(dt);
   aimPencil.update(dt);
   aimNext.update(dt);
+  ventTrail.update(dt);
   if (WORLD.goal === 'orbit') orbiting(dt);
   if (LAMP) lamping();
   if (WORLD.goal === 'feed') feeding(dt);
@@ -4288,4 +4326,4 @@ const loop = (): void => {
 };
 renderer.setAnimationLoop(loop);
 
-if (import.meta.env.DEV) (window as unknown as { volcano: unknown }).volcano = { atlas: (all: Page[]) => openAtlas(all), sky, haze, dustVeil, planet, held, keepsake: () => keepsakeOf(planet), pick: (id: WorldId) => atlasPick?.(id), portrait: () => { renderer.render(scene, camera); return portraitOf(renderer.domElement); }, group, base, renderer, scene, camera, puffs, ecology, islands, rotate, draw, save, effects: (dt: number) => { effects(dt); puffs.update(dt); }, world, frameCost, kindDots, chain: () => chain, aim: () => aimInk, pencil: () => aimPencil, lines: () => { lastLines = -1; redrawLines(1e6); }, life: () => { lastLife = -10; redrawLife(1e6); }, replayKeep: () => keepReplayFrame(), replayCount: () => replayFrames.length, replaying: () => (replaying ? replayShown : -1), pause: () => renderer.setAnimationLoop(null), frame: () => loop(), readyState: () => ({ share: readyShare(), begun, readyAt, seconds, least: planet.k.least, pressure: planet.pressure, ink: readyInk.object.geometry.getAttribute('position')?.count, pencil: readyPencil.object.geometry.getAttribute('position')?.count, aim: aimInk.object.geometry.getAttribute('position')?.count, vis: readyInk.object.visible, parent: readyInk.object.parent === group, ending: !!ending }), settle: (d = 3.6) => { lift = 0; dist = d; begunAt = -100; zoomedAt = seconds; look(); } };
+if (import.meta.env.DEV) (window as unknown as { volcano: unknown }).volcano = { trail: () => ({ n: ventTrail.object.geometry.getAttribute('position')?.count, vis: ventTrail.object.visible, draw: ventTrail.object.geometry.drawRange }), atlas: (all: Page[]) => openAtlas(all), sky, haze, dustVeil, planet, held, keepsake: () => keepsakeOf(planet), pick: (id: WorldId) => atlasPick?.(id), portrait: () => { renderer.render(scene, camera); return portraitOf(renderer.domElement); }, group, base, renderer, scene, camera, puffs, ecology, islands, rotate, draw, save, effects: (dt: number) => { effects(dt); puffs.update(dt); }, world, frameCost, kindDots, chain: () => chain, aim: () => aimInk, pencil: () => aimPencil, lines: () => { lastLines = -1; redrawLines(1e6); }, life: () => { lastLife = -10; redrawLife(1e6); }, replayKeep: () => keepReplayFrame(), replayCount: () => replayFrames.length, replaying: () => (replaying ? replayShown : -1), pause: () => renderer.setAnimationLoop(null), frame: () => loop(), readyState: () => ({ share: readyShare(), begun, readyAt, seconds, least: planet.k.least, pressure: planet.pressure, ink: readyInk.object.geometry.getAttribute('position')?.count, pencil: readyPencil.object.geometry.getAttribute('position')?.count, aim: aimInk.object.geometry.getAttribute('position')?.count, vis: readyInk.object.visible, parent: readyInk.object.parent === group, ending: !!ending }), settle: (d = 3.6) => { lift = 0; dist = d; begunAt = -100; zoomedAt = seconds; look(); } };

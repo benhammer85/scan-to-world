@@ -41,6 +41,13 @@
       #stage.shown { opacity: 1; }
       body.leaving #stage { opacity: 0; transition: opacity 0.8s ease; }
       #event.shown { opacity: 0.75; }
+      /* Under the finger: a ring closing as a resting finger takes hold, then a warm glow while it pours. */
+      #touchcue { position: fixed; left: 0; top: 0; width: 64px; height: 64px; margin: -32px 0 0 -32px; border-radius: 50%; pointer-events: none; opacity: 0; z-index: 4; transition: opacity 0.25s; }
+      #touchcue.pending { opacity: 0.6; border: 1.5px solid rgba(138, 74, 40, 0.55); animation: cueclose 0.28s ease-in forwards; }
+      #touchcue.pouring { opacity: 0.85; background: radial-gradient(circle, rgba(240, 150, 70, 0.45) 0%, rgba(240, 150, 70, 0.18) 45%, rgba(240, 150, 70, 0) 70%); animation: cuebreathe 1.6s ease-in-out infinite; }
+      @keyframes cueclose { from { transform: scale(1.5); } to { transform: scale(0.75); } }
+      @keyframes cuebreathe { 0%, 100% { transform: scale(0.95); } 50% { transform: scale(1.1); } }
+      @media (prefers-reduced-motion: reduce) { #touchcue.pending, #touchcue.pouring { animation: none; } }
       body.charted #event, body.charted #pace { opacity: 0 !important; transition: opacity 0.6s ease; }
       /* A burst's moment: the words fall quiet. */
       #stage-name, #legend { transition: opacity 1.2s ease; }
