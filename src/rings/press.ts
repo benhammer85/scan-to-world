@@ -1697,8 +1697,8 @@ function drawPrint(v: View): void {
     for (let q = 0; q < count * 1.6; q++) {
       const a = h1(q * 0.917 + tree.seed * 0.01) * TAU;
       if (noise(tree.seed * 0.021 + (a / TAU) * 14) < 0.4) continue;
-      const out = T + (1 + 7 * h1(q * 2.31) ** 1.6) * px * Z, [x, y] = pt(a, bark(a), out), d = (0.35 + 0.5 * h1(q * 5.7)) * px * Z;
-      g.moveTo(x + d, y); g.arc(x, y, d, 0, TAU);
+      const out = T + (1 + 7 * h1(q * 2.31) ** 1.6) * px * Z, [x, y] = pt(a, bark(a), out), d = (0.35 + 0.5 * h1(q * 5.7)) * px * Math.sqrt(Z);
+      g.moveTo(x + d, y); g.ellipse(x, y, d, d * (0.45 + 0.5 * h1(q * 8.9)), h1(q * 3.3) * TAU, 0, TAU);
     }
     g.fill();
   }
@@ -1814,7 +1814,7 @@ function rayAt(a: number, rho: number): number {
     // (Where it lies: its birth place, a little off even, wandering slowly outward.)
     const at = ((bk + 0.5 + (h1(id) - 0.5) * 0.5) / nb + (Math.sin(rho / (40 + 30 * h1(id * 2.3)) + id) * 0.25) / nb) * N;
     let dd = Math.abs(sAt - at); dd = Math.min(dd, N - dd);
-    const dist = (dd * TAU * rho) / N, half = 0.12 + 0.22 * h1(id * 3.7) ** 2;
+    const dist = (dd * TAU * rho) / N + (vnoise(rho * 0.9 + id, id * 0.13) - 0.5) * 0.35, half = 0.07 + 0.16 * h1(id * 3.7) ** 2;
     if (dist > half + 0.6) continue;
     if (vnoise(id * 0.37, rho / 14) < 0.3) continue;
     best = Math.max(best, Math.min(1, smooth(1 - (dist - half) / 0.6)) * Math.min(1, (rho - born) / 3));
@@ -1890,7 +1890,10 @@ function printYears(v: View, oak: Years | null): void {
     // (Its edge: a line a pixel or so wide at the slice's own size, darker than the latewood.)
     if (!heart && width > 0) ink = Math.max(ink, A.edge * smooth((across - (1 - (1.3 * U) / width)) / Math.max(1e-3, (0.8 * U) / width)));
     // The real fibre, streaking along the year.
-    if (fib && A.fibre) ink *= 1 + A.fibre * (tile(fib, a * rho * 0.5, rho * 0.5) - 0.5) * 2;
+    if (fib && A.fibre) ink *= 1 + A.fibre * 0.45 * (tile(fib, a * rho * 0.5, rho * 0.5) - 0.5) * 2;
+    // (And the wood's own fine grain, finer than the scan holds: long thin streaks along the year, in the wood's
+    // place, too fine to see whole and showing as it's looked into, so looking closer finds more, never a blur.)
+    ink *= 1 + 0.5 * (vnoise(rho * 1.6 + i * 5.3, a * rho * 0.09) - 0.5) * 2 * (0.5 + 0.5 * vnoise(rho * 0.25, a * rho * 0.03 + 9.1));
     if (A.mottle) ink *= 1 + A.mottle * (vnoise(dx / (22 * U) + 3.1, dy / (22 * U) + 7.7) - 0.5) * 2;
     // Pores: open vessels, paper in the print, scattered (or gathered at the year's start), in the wood's place.
     if (A.pores) {
@@ -2087,7 +2090,7 @@ const printCaches: Record<string, { c: HTMLCanvasElement; key: string; v: View; 
 const MARGIN = 1.5;
 /** How long each pressing took (ms), for looking into the app's pace. */
 const presses: number[] = [];
-const QUALITY = () => Math.min(1, 2 / Math.max(1, px));
+const QUALITY = () => Math.min(1, 3 / Math.max(1, px));
 type Kept = { c: HTMLCanvasElement; key: string; v: View; at: number };
 function placeOf(pc: { v: View }, v: View, grow = 1): [number, number, number, number] {
   const k = (v.s / pc.v.s) * grow, x0 = (-W * (MARGIN - 1)) / 2, y0 = (-H * (MARGIN - 1)) / 2;
@@ -2236,7 +2239,7 @@ function pressSlowly(slot: string, v: View, key: string, follow = true, budget =
   }
   // (Strips of the one height, as many a frame as fit in some eight milliseconds, one at least: on an older
   // phone a frame a little slow while it's pressed, never a stall.)
-  const t = performance.now(), rows = Math.ceil(40 * QUALITY() * px / 2);
+  const t = performance.now(), rows = Math.max(12, Math.ceil(16 * QUALITY() * px / 2));
   while (job.row < job.end && performance.now() - t < budget) {
     // (Across a knot or burl, a deeper strip, so its margin is pressed fewer times over.)
     const pl = job.pulled, deep = pl && job.row + rows > pl[0] && job.row < pl[1] ? Math.max(rows, 3 * pl[2]) : rows;
