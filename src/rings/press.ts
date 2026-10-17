@@ -688,7 +688,23 @@ function makeRoom(): void {
   const v = baseNow();
   // (Where the new bark was drawn, it stays at first: the slice then draws back from there.)
   const from = was.s * warpR(old, bark) / Math.max(1e-6, warpR(warp, bark));
-  ease = { from: Math.min(from, 3 * v.s), at: clock() };
+  // (Never much larger than it rests: a wide loop's year is shown a little large at first, never filling
+  // the sheet.)
+  ease = { from: Math.min(from, 1.3 * v.s), at: clock() };
+}
+/**
+ * Looked into while the slice is still drawing back: the drawing back is finished at once, and the look
+ * made that much closer, so nothing moves under the fingers, nothing goes on moving after, and looking
+ * out again (a double tap) finds the slice at its own size. And a year still growing is grown.
+ */
+function holdForLook(): void {
+  growing = null;
+  if (!ease) return;
+  const cur = baseNow();
+  ease = null; view = null;
+  const fin = baseNow(), k = look.k * (cur.s / Math.max(1e-6, fin.s));
+  if (k >= 1) look = { k, ox: look.ox + (cur.cx - fin.cx), oy: look.oy + (cur.cy - fin.cy) };
+  else view = cur;
 }
 /** A touch: the slice stops drawing back, where it is. */
 function holdView(): void {
@@ -740,7 +756,7 @@ canvas.addEventListener('pointerdown', (e) => {
   if (fingers.size === 2) {
     // A second finger: a pinch, not a ring (the line begun is let go).
     if (painter !== null) { tree.cancel(); trail = []; painter = null; }
-    holdView(); pinch = spread(); pinched = true;
+    holdForLook(); pinch = spread(); pinched = true;
     return;
   }
   if (fingers.size > 2 || painter !== null) return;
@@ -880,7 +896,7 @@ for (const type of ['pointerup', 'pointercancel'] as const) canvas.addEventListe
 canvas.addEventListener('wheel', (e) => {
   e.preventDefault();
   if (painter !== null) return;
-  holdView(); zoomAbout(e.clientX * px, e.clientY * px, Math.exp(-e.deltaY * 0.002));
+  holdForLook(); zoomAbout(e.clientX * px, e.clientY * px, Math.exp(-e.deltaY * 0.002));
   clearTimeout(wheelT); wheelT = window.setTimeout(() => { if (far > 0 && far < 1 && fingers.size === 0 && !farTo) settleFar(); }, 220);
 }, { passive: false });
 let wheelT = 0;
@@ -1864,7 +1880,7 @@ const ANATOMY: Partial<Record<Kind, Anatomy>> = {
   // Olive: dense, close and irregular, its figure a dark mottle wandering through the years.
   olive: { early: 0.6, late: 0.96, share: 0.22, edge: 1.0, rays: 0.6, rayW: 0.3, pores: 0.05, poreR: 0.3, poreEarly: 0, fibre: 0.35, mottle: 0.45 },
   // Douglas fir: a pale, soft earlywood, then all at once a dark latewood: the boldest year of them all.
-  fir: { early: 0.1, late: 1.12, share: 0.3, edge: 1.12, rays: 0, rayW: 0, pores: 0, poreR: 0, poreEarly: 0, fibre: 0.4, mottle: 0, sharp: 3.2 },
+  fir: { early: 0.3, late: 1.15, share: 0.5, edge: 1.12, rays: 0, rayW: 0, pores: 0, poreR: 0, poreEarly: 0, fibre: 0.7, mottle: 0.15, sharp: 1.8 },
   // Juniper: fine and close, its latewood thin and its years irregular, a soft figure through them.
   juniper: { early: 0.3, late: 1.0, share: 0.26, edge: 1.04, rays: 0, rayW: 0, pores: 0, poreR: 0, poreEarly: 0, fibre: 0.45, mottle: 0.25 },
 };
