@@ -65,7 +65,7 @@ import { SmokeSign } from './smokeSign';
 import { skyBody, starBloom } from './skyBody';
 import { MARK_AT, earned, fromOldMarks, markNames, mergeMarks, readMarks, starsOf, writeMarks, type Marks } from './marks';
 import './fonts.css';
-import { LOOKS, PRINT_FUNCTIONS, LAMP_PRINT_FUNCTIONS, LAMP_PRINT, LAMP_QUIET, printFragment, type Look } from './print';
+import { LOOKS, PRINT_FUNCTIONS, LAMP_PRINT_FUNCTIONS, LAMP_PRINT, LAMP_QUIET, LAMP_WATER, printFragment, type Look } from './print';
 
 const $ = (id: string) => document.getElementById(id)!;
 const stage = $('stage');
@@ -1256,6 +1256,8 @@ const AIM_INK = LOOK === 6 ? (ICE ? '#2f6f96' : DARK_LAVA ? '#6a5646' : '#c0702e
 const aimInk = new Stipple(AIM_INK, 'dot', 2.5 * AIM_BIG), aimPencil = LOOK === 6
   // (Quiet: what's still to do in a paler amber (or blue), as big as done, so it stands clear of the grey grid.)
   ? new Stipple('#' + new THREE.Color(AIM_INK).lerp(new THREE.Color(P.paper), 0.35).getHexString(), 'dot', 2 * AIM_BIG)
+  // (On the glass, the far shore is the whole goal: its dots as dark and as big as the done ones, or they were lost in the lilac.)
+  : WORLD.goal === 'lamp' ? new Stipple(P.landInk, 'dot', 2.6 * AIM_BIG)
   : new Stipple('#' + new THREE.Color(P.pencil).lerp(new THREE.Color(P.landInk), LOOK ? 0.8 : 0.6).getHexString(), 'dot', 1.6 * AIM_BIG);
 /** On the ocean world, the stretch the heat is on and the next, still to do, a little stronger: where to build now. */
 const aimNext = new Stipple(LOOK ? AIM_INK : P.landInk, 'dot', 2.3 * AIM_BIG);
@@ -1601,8 +1603,8 @@ if (LAMP) {
           hs += uHeat[i] * k;
         }
         float heat = f > 0.0 ? hs / f : 0.0, w = max(fwidth(f), 1e-4), a = smoothstep(0.88 - w, 0.88 + w, f);
-        ${LOOK === 6 ? '' : 'if (a <= 0.0) discard;'}
-        ${LOOK === 6 ? LAMP_QUIET : LOOK ? LAMP_PRINT : `vec3 col = mix(uCool, uHot, smoothstep(0.2, 0.9, heat));
+        ${LOOK === 6 || LOOK === 2 ? '' : 'if (a <= 0.0) discard;'}
+        ${LOOK === 6 ? LAMP_QUIET : LOOK === 2 ? LAMP_WATER : LOOK ? LAMP_PRINT : `vec3 col = mix(uCool, uHot, smoothstep(0.2, 0.9, heat));
         col = mix(col, uHeart, smoothstep(1.6, 5.0, f) * heat * 0.6);
         col = mix(col * 0.78, col, smoothstep(0.88, 1.5, f));
         gl_FragColor = vec4(col, a * (0.45 + 0.55 * smoothstep(0.0, 0.4, heat)));`}
@@ -1793,7 +1795,7 @@ const AIM: Record<string, string> = {
   feed: "Fill Saturn's ring with ice.",
   round: 'Fill the low ground to even the surface.',
   ridge: 'Build a ridge all the way round the dotted line.',
-  lamp: 'Fill the dotted shore with glowing blobs.',
+  lamp: 'Fill the dotted shore with glowing blobs. They float up the screen: keep the shore above the volcano.',
   calm: `Calm the tumbling, then keep it calm for ${CALM_HOLD} seconds.`,
   bank: 'Build an island on the undersea mountain.',
   orbit: 'Throw enough rock into the sky to make a moon.',
@@ -4011,6 +4013,7 @@ const OPENINGS: Partial<Record<WorldId, ShowLook>> = {
   giant: { len: 4.5, zoom: 1.35, words: () => `Goal: keep a mountain ${HEIGHT.target} km tall on the dark side until the volcano runs out of heat. The planet turns by itself, and the sunny side melts whatever is on it` },
   surtsey: { len: 4.5, zoom: 0.72, words: () => `Goal: an island where ${NESTS} seabirds nest at once. Birds nest only on cooled lava; ash builds land fast but the sea washes it away` },
   hollow: { len: 4.6, zoom: 0.95, dir: ventDir, at: HORIZON, turn: [1.2, 2.2, 1.2], words: () => `Goal: a mountain ${HEIGHT.target} km tall. Pour a little, then stop: if cracks appear around the volcano, wait for them to fade, or the top caves in` },
+  lamp: { len: 5.2, zoom: 1.1, dir: () => planet.shore, at: TOWARD_US, turn: [1.4, 2.4, 1.4], words: () => `Goal: fill this dotted shore with glowing blobs. Blobs float up the screen, so turn the planet to keep the shore above the volcano. Let each blob grow big, then ${COMPUTER ? 'click' : 'tap'} to let it go` },
   rogue: { len: 4.5, zoom: 0.85, words: () => 'Goal: keep a large area of life alive. Life grows along the edges of fresh lava and dies under it, so pour next to the green, never on it' },
 };
 const WINS: Partial<Record<WorldId, ShowLook>> = {
@@ -4030,6 +4033,7 @@ const WINS: Partial<Record<WorldId, ShowLook>> = {
   surtsey: { len: 6, zoom: 0.85, dir: ventDir, at: HORIZON, turn: [2, 4, 0] }, // (the new island, side-on, with its nests)
   hollow: { len: 6, zoom: 0.9, dir: ventDir, at: HORIZON, turn: [2, 4, 0] },
   rogue: { len: 6, zoom: 1.25, round: true }, // (the warm patches of life, all round)
+  lamp: { len: 6, zoom: 1.1, dir: () => planet.shore, at: TOWARD_US, turn: [2, 4, 0] }, // (the shore, full)
 };
 /** How long a win is shown before the chart. */
 const WIN_FOR = WINS[WORLD.id] && !STILL ? 6 : 4;

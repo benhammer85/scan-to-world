@@ -534,7 +534,7 @@ export const WORLDS: World[] = [
       // Lilac glass; the blobs glowing orange, deepening to red as they cool.
       paper: '#ddd6e3', basalt: '#ddd6e3', ash: '#ddd6e3', lava: '#ea7a3a', deepLava: '#9c3a2a',
       shallow: '#d4e3ec', deep: '#b1c8d8',
-      landInk: '#5a4f6b', landInkHigh: '#3e3450', pencil: '#b9afc7', seaInk: '#5b82a3',
+      landInk: '#5a4f6b', landInkHigh: '#3e3450', pencil: '#6f6287', seaInk: '#5b82a3', // (the pencil dark enough to see the dotted shore on the lilac glass: it was nearly the glass's own colour)
     },
     goal: 'lamp',
     pool: 115,

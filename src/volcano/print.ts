@@ -676,6 +676,42 @@ const WATER = /* glsl */ `
         col += vec3(0.32, 0.12, 0.03) * smoothstep(0.02, 0.45, lv) * (1.0 - cov) * nightL * 0.5 * uFeedingGlow; // (a warm light thrown on the dark ground)
       }`;
 
+/**
+ * The lava lamp's blobs in watercolour, as the lava is everywhere else: pigments swirling wet-in-wet (gold at a
+ * hot heart, through cadmium and vermilion to alizarin at a cool edge), a soft ragged edge where the paint is wet,
+ * pigment gathering into a darker line at the edge as it cools, settling into the paper's tooth, a bloom here and
+ * there. (They were still the old engraving, lines in an outline, after the lava had become paint.)
+ */
+export const LAMP_WATER = /* glsl */ `
+        float tW = uTime * 0.035;
+        vec3 qW = vDir * 7.0;
+        vec3 bend = vec3(noise3(qW + vec3(0.0, tW, 0.0)), noise3(qW + vec3(5.2, -tW, 1.3)), noise3(qW + vec3(2.1, 3.4, tW))) - 0.5;
+        vec3 q2 = qW + 2.6 * bend;
+        float swirl = noise3(q2 * 1.6 + vec3(tW * 0.6)), swirl2 = noise3(q2 * 3.7 - vec3(tW * 0.9, 0.0, tW * 0.5));
+        float tooth = noise3(vDir * 240.0) * 0.6 + noise3(vDir * 95.0) * 0.4;
+        float wet = smoothstep(0.1, 0.6, heat);
+        // (A soft, ragged edge while hot; crisper as it cools.)
+        float fr = f * (1.0 + (0.12 + 0.08 * wet) * (noise3(vDir * 34.0 + bend * 2.0) - 0.5)) + 0.02 * (noise3(vDir * 120.0) - 0.5);
+        float fw2 = max(fwidth(fr), 1e-4) * (1.5 + 2.5 * wet);
+        float cov = smoothstep(0.88 - fw2, 0.88 + fw2, fr);
+        float T = clamp(heat * (0.55 + 0.45 * smoothstep(0.9, 3.0, f)), 0.0, 1.0);
+        float P = clamp(T + (swirl - 0.5) * 0.55 * (0.4 + 0.6 * wet), 0.0, 1.0);
+        vec3 wc = mix(vec3(0.5, 0.22, 0.16), vec3(0.62, 0.11, 0.18), smoothstep(0.0, 0.2, P));
+        wc = mix(wc, vec3(0.86, 0.22, 0.11), smoothstep(0.15, 0.42, P));
+        wc = mix(wc, vec3(0.95, 0.47, 0.15), smoothstep(0.38, 0.66, P));
+        wc = mix(wc, vec3(0.99, 0.76, 0.32), smoothstep(0.62, 0.86, P));
+        wc = mix(wc, vec3(1.0, 0.93, 0.7), smoothstep(0.86, 1.0, P));
+        wc = mix(wc, mix(vec3(0.6, 0.12, 0.2), vec3(1.0, 0.8, 0.4), T), smoothstep(0.58, 0.8, swirl2) * 0.35);
+        float rim = exp(-max((fr - 0.88) / fw2, 0.0) / (3.0 * uPx)) * (0.35 + 0.45 * (1.0 - wet));
+        float body = 0.35 + 0.45 * swirl + 0.25 * swirl2;
+        float bl = noise3(vDir * 19.0 + vec3(3.7, 1.1, 0.0)) + 0.08 * (noise3(vDir * 70.0) - 0.5);
+        float cool = smoothstep(0.7, 0.25, T) * cov;
+        body *= 1.0 - 0.45 * smoothstep(0.6, 0.64, bl) * cool;
+        rim += (1.0 - smoothstep(0.0, 0.025, abs(bl - 0.62))) * 0.55 * cool;
+        float al = clamp((body + rim) * (0.8 + 0.3 * T), 0.0, 0.95) * cov * (0.85 + 0.3 * tooth * (1.0 - T));
+        if (al <= 0.003) discard; // (here, after fwidth: see LAMP_QUIET)
+        gl_FragColor = vec4(pow(wc, vec3(2.2)), al);`;
+
 /** The lava lamp's blobs, as woodblock prints too: a flat block, hot orange at a hot heart, in a black outline. */
 export const LAMP_PRINT_FUNCTIONS = /* glsl */ `
   float hash3(vec3 p) { p = fract(p * 0.1031); p += dot(p, p.zyx + 31.32); return fract((p.x + p.y) * p.z); }

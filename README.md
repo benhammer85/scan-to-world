@@ -917,3 +917,9 @@ Every world played by the bots in hand mode (as the game is played: hold to pour
 - **Ocean World:** past the end of the dotted line no island can count, but the fire went on (one game ran 19 minutes at 4 of 5). Now the fire ends there, and the game says so a little before ("build the last island now"); and the line is a little longer (0.33 of the way round, was 0.3), as careful play often ran out of line for the fifth island. Careful play: 12 of 12 won; careless: none.
 
 Left as is: Mars, where aimless play reaches the height too but ends with too little heat for the heat star (12 to 19% left, against 25 to 35% played carefully); and Hunga Tonga, where aimless play won once, with 2% heat left.
+
+### A World of Glass: watercolour blobs, and a goal you can see
+
+- The blobs were still drawn in the old engraving (lines in a dark outline on a pale fill) after the lava everywhere else became watercolour. In watercolour they're now paint too (`LAMP_WATER` in print.ts): pigments swirling gold to alizarin, a soft edge while hot, pigment gathering at the edge as it cools, a bloom here and there.
+- The dotted shore, the whole goal, was all but invisible: small dots nearly the glass's own lilac. Now as dark and as big as the done dots.
+- An opening, as the other worlds have: the world turns to the shore, with "Goal: fill this dotted shore with glowing blobs. Blobs float up the screen, so turn the planet to keep the shore above the volcano. Let each blob grow big, then tap to let it go". And a win: the full shore. The goal line says the same in short.
