@@ -1804,7 +1804,7 @@ const AIM: Record<string, string> = {
   feed: "Fill Saturn's ring with ice.",
   round: 'Fill the low ground to even the surface.',
   ridge: 'Build a ridge all the way round the dotted line.',
-  lamp: 'Fill the dotted shore with glowing blobs. They float up the screen: keep the shore above the volcano.',
+  lamp: 'Fill the dotted shore with glowing blobs. They float towards the small ring: turn the shore to it.',
   calm: `Calm the tumbling, then keep it calm for ${CALM_HOLD} seconds.`,
   bank: 'Build an island on the undersea mountain.',
   orbit: 'Throw enough rock into the sky to make a moon.',
@@ -1844,7 +1844,7 @@ const TIP: Record<string, string> = {
   feed: `Saturn is the big ringed planet at the top left. Turn the volcano towards it. ${ERUPT} Ice from a burst facing Saturn reaches its ring; facing anywhere else, it falls back. The ring fades, so keep going.`,
   round: `Fill the dotted hollows. Turn one to just below the volcano, and ${HOLD.toLowerCase()} to pour into it. Keep off the hatched high ground: lava there makes the surface more uneven.`,
   ridge: 'Lava runs to the dotted line by itself. Turn a bare part of the line to the top.',
-  lamp: `Hot blobs float to the top of the planet. Turn the planet so the dotted shore is at the top. A blob grows at the volcano: let it grow big, because big blobs stay warm long enough to reach the shore. Then ${COMPUTER ? 'click' : 'tap'} to let it go, before the circle around it fills, or it bursts.`,
+  lamp: `Hot blobs float towards the small ring just above the middle of your view. Turn the planet so the dotted shore is on that ring. A blob grows at the volcano: let it grow big, because big blobs stay warm long enough to reach the shore. Then ${COMPUTER ? 'click' : 'tap'} to let it go, before the circle around it fills, or it bursts.`,
   calm: `The dotted line is where the ground sweeps past fastest. Turn it to the top, under the volcano. ${ERUPT}`,
   bank: `The undersea mountain's top is dotted in pencil. Turn the planet so it's just below the volcano, and ${HOLD.toLowerCase()} to pour there, the same way again and again, without long rests: each flow runs further over the last.`,
   orbit: `Pour first, to build the volcano tall: a taller one holds more. When the circle round it closes, wait a little longer, then ${COMPUTER ? 'click' : 'tap'} the planet to erupt: the longer you wait, the more rock flies up.`,
@@ -2464,7 +2464,7 @@ const CUES: Cue[] = [
   ...HAND_CUES,
   // (What to do on this world, said once the hands are known: it was on the card, and the card is only the aim now.)
   ...(FREE ? [] : [{ ready: () => true, get say() { return words$((OWN_TIP[WORLD.id] ?? TIP[WORLD.goal] ?? '').trim()); }, done: (s: number) => s > 16 }]), // (said when it's reached, by then every word table is made)
-  ...(WORLD.rules.rises ? [{ ready: () => true, say: 'The volcano moves to whichever part of the planet is at the top: turn the planet to move it', done: (s: number) => s > 20 }] : []),
+  ...(WORLD.rules.rises ? [{ ready: () => true, say: 'The volcano drifts slowly towards the middle of your view: turn the planet to move it', done: (s: number) => s > 20 }] : []),
   // (Mars: a storm wears old rock but not fresh lava, so the first one coming is the moment to say so.)
   ...(planet.k.stormFresh > 0 ? [{ ready: () => planet.stormComing !== null, hand: 'hold' as const, say: planet.k.stormSide > 0 ? 'A dust storm is coming. It will wear down the side the wind blows onto: pour fresh lava there. Fresh lava doesn\'t wear away' : 'A dust storm is coming: pour now. Fresh lava doesn\'t wear away', done: (s: number) => s > 12 }] : []),
   ...(WORLD.goal === 'ridge' ? [{ ready: () => planet.tally.flows + planet.tally.bursts > 0, say: 'The spin carries the lava to the dotted line', done: (s: number) => s > 25 }] : []),
@@ -4059,7 +4059,7 @@ const OPENINGS: Partial<Record<WorldId, ShowLook>> = {
   giant: { len: 4.5, zoom: 1.35, words: () => `Goal: keep a mountain ${HEIGHT.target} km tall on the dark side until the volcano runs out of heat. The planet turns by itself, and the sunny side melts whatever is on it` },
   surtsey: { len: 4.5, zoom: 0.72, words: () => `Goal: an island where ${NESTS} seabirds nest at once. Birds nest only on cooled lava; ash builds land fast but the sea washes it away` },
   hollow: { len: 4.6, zoom: 0.95, dir: ventDir, at: HORIZON, turn: [1.2, 2.2, 1.2], words: () => `Goal: a mountain ${HEIGHT.target} km tall. Pour a little, then stop: if cracks appear around the volcano, wait for them to fade, or the top caves in` },
-  lamp: { len: 5.2, zoom: 1.1, dir: () => planet.shore, at: TOWARD_US, turn: [1.4, 2.4, 1.4], words: () => `Goal: fill this dotted shore with glowing blobs. Blobs float up the screen, so turn the planet to keep the shore above the volcano. Let each blob grow big, then ${COMPUTER ? 'click' : 'tap'} to let it go` },
+  lamp: { len: 5.2, zoom: 1.1, dir: () => planet.shore, at: TOWARD_US, turn: [1.4, 2.4, 1.4], words: () => `Goal: fill this dotted shore with glowing blobs. Blobs float towards the small ring just above the middle of your view, so turn the planet to put the shore there. Let each blob grow big, then ${COMPUTER ? 'click' : 'tap'} to let it go` },
   rogue: { len: 4.5, zoom: 0.85, words: () => 'Goal: keep a large area of life alive. Life grows along the edges of fresh lava and dies under it, so pour next to the green, never on it' },
 };
 const WINS: Partial<Record<WorldId, ShowLook>> = {
