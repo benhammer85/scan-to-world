@@ -1614,31 +1614,63 @@ function drawPrint(v: View): void {
   }
   g.strokeStyle = ink(0.95); g.lineWidth = 1 * px * Z; ringPath(v, bark, 0, K * 2); g.stroke();
   }
-  // The checks: as a cut slice dries it splits, from the bark in toward the heart, a few cracks opening
-  // and running deeper as the years go on (from about the fortieth), each its own way, wandering with the
-  // rays and jagged at the edges, widest at the bark. (The practice only: they belong to an old slice.)
+  // The checks: as a cut slice dries it splits. From the bark in toward the heart, a few cracks opening and
+  // running deeper as the years go on (from about the fortieth); and, older, from the heart out, two to four
+  // splitting the slice into wedges (from about the ninetieth). Wood parts along its years as readily as across
+  // them, so a crack now and then runs a little way along a ring before going on: a step. Widest where it began,
+  // jagged at its edges. (The practice only: they belong to an old slice.)
   if (GROWN && n >= 40) {
-    const bark = barkOf(n - 1), T = barkCss(v) * px, count = Math.min(5, 1 + Math.floor((n - 40) / 70));
-    g.save(); g.globalCompositeOperation = 'destination-out'; g.fillStyle = '#000';
-    for (let c = 0; c < count; c++) {
-      const q = tree.seed * 0.0031 + c * 7.71, age = n - 40 - c * 70, a0 = h1(q) * TAU;
-      const deep = Math.min(0.85, 0.2 + 0.0045 * age + 0.3 * h1(q + 1.3)), steps = 40;
-      const wide = Math.min(0.03 * scr(Rb), 9 * px * Z) * (0.5 + 0.7 * h1(q + 2.9)) * Math.min(1, 0.35 + age / 90);
-      const left: [number, number][] = [], right: [number, number][] = [];
-      let a = a0;
-      for (let j = 0; j <= steps; j++) {
-        const f = j / steps, rOut = bark(a), rr = rOut * (1 - deep * f);
-        // (Out at the bark, it's through the bark too; in toward its tip, a hairline.)
-        const out = j === 0 ? T + 2 * px * Z : 0, R = Math.max(1, scr(rr) + out);
-        const hw = (wide * (1 - f) ** 1.3 + 0.35 * px * Z) * (0.75 + 0.5 * h1(q * 3 + j * 0.71)), da = hw / R;
-        left.push(pt(a + da, rr, out)); right.push(pt(a - da * (0.6 + 0.8 * h1(q + j * 1.37)), rr, out));
-        // (It wanders: a long drift, and a jag now and then where it jumps from one ray to the next.)
-        a += (noise(q * 9 + f * 3) - 0.5) * 0.035 + (h1(q * 5 + j) > 0.86 ? (h1(q * 7 + j) - 0.5) * 0.05 : 0);
+    const bark = barkOf(n - 1), T = barkCss(v) * px;
+    // (A crack's way, as (angle, mm), `fromHeart` outward or else inward from the bark, to `deep` of the radius;
+    // `wide` px where it began, a hairline at its end. Stroked a short piece at a time, each as wide as the crack
+    // is there, its ends round, so it turns along a ring and back without a seam.)
+    const crack = (q: number, a0: number, deep: number, wide: number, fromHeart: boolean) => {
+      const pts: [number, number][] = [], along: number[] = [];
+      let a = a0, f = 0, stepping = 0, dir = 1, held = 0, stepped = false;
+      const steps = 60;
+      for (let j = 0; j <= steps * 2 && f <= 1; j++) {
+        if (stepping > 0) {
+          // (Along the ring it met: the radius held at that year's edge, the angle moving on.)
+          pts.push([a, barkOf(held)(a)]); along.push(pts.length - 1); a += dir * 0.012; stepping--;
+          continue;
+        }
+        const rr = Math.max(tree.k.pith * 1.5, bark(a) * (fromHeart ? f * deep : 1 - f * deep));
+        pts.push([a, rr]);
+        f += 1 / steps;
+        a += (noise(q * 9 + f * 3) - 0.5) * 0.03;
+        // (Once in a while, at a year's edge, it turns along it for a short way.)
+        if (f > 0.4 && f < 0.85 && !stepped && h1(q * 5.3 + j * 0.77) < 0.045) {
+          stepped = h1(q * 8.1) > 0.4;
+          let i = 0; while (i < n - 1 && meanR(i) < rr) i++;
+          held = Math.max(0, i - 1); stepping = 5 + Math.floor(h1(q * 2.1 + j) * 9); dir = h1(q * 3.9 + j) < 0.5 ? -1 : 1;
+        }
       }
-      g.beginPath(); g.moveTo(...left[0]);
-      for (const p of left) g.lineTo(...p);
-      for (let j = right.length - 1; j >= 0; j--) g.lineTo(...right[j]);
-      g.closePath(); g.fill();
+      const L = pts.length;
+      for (let j = 1; j < L; j++) {
+        const g0 = j / (L - 1), atBark = !fromHeart && j === 1;
+        const hw = (wide * (1 - g0) ** 1.3 + 0.35 * px * Z) * (0.75 + 0.5 * h1(q * 3 + j * 0.71)) * (along.includes(j) ? 0.45 : 1);
+        g.lineWidth = 2 * hw; g.beginPath();
+        g.moveTo(...pt(pts[j - 1][0], pts[j - 1][1], atBark ? T + 2 * px * Z : 0)); g.lineTo(...pt(pts[j][0], pts[j][1])); g.stroke();
+      }
+    };
+    g.save(); g.globalCompositeOperation = 'destination-out'; g.strokeStyle = '#000'; g.lineCap = 'round'; g.lineJoin = 'round';
+    const count = Math.min(5, 1 + Math.floor((n - 40) / 70));
+    for (let c = 0; c < count; c++) {
+      const q = tree.seed * 0.0031 + c * 7.71, age = n - 40 - c * 70;
+      const deep = Math.min(0.85, 0.2 + 0.0045 * age + 0.3 * h1(q + 1.3));
+      const wide = Math.min(0.03 * scr(Rb), 9 * px * Z) * (0.5 + 0.7 * h1(q + 2.9)) * Math.min(1, 0.35 + age / 90);
+      crack(q, h1(q) * TAU, deep, wide, false);
+    }
+    // (From the heart: two to four, spread round, each opening as the slice ages.)
+    if (n >= 90) {
+      const hs = 2 + Math.floor(h1(tree.seed * 0.173) * 3), base = h1(tree.seed * 0.71) * TAU;
+      for (let c = 0; c < hs; c++) {
+        const q = tree.seed * 0.0057 + c * 3.37 + 50, age = n - 90 - c * 40;
+        if (age < 0) continue;
+        const deep = Math.min(0.75, 0.15 + 0.004 * age + 0.25 * h1(q + 0.9));
+        const wide = Math.min(0.035 * scr(Rb), 10 * px * Z) * (0.6 + 0.6 * h1(q + 1.7)) * Math.min(1, 0.4 + age / 100);
+        crack(q, base + (c / hs) * TAU + (h1(q * 2.2) - 0.5) * 0.8, deep, wide, true);
+      }
     }
     g.restore();
   }
