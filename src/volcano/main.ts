@@ -1278,6 +1278,11 @@ if (WORLD.goal === 'basins' || WORLD.goal === 'bank' || WORLD.goal === 'round') 
   const m = (aimPencil.object.material as THREE.ShaderMaterial).uniforms, ink = '#' + new THREE.Color(AIM_INK).multiplyScalar(0.6).getHexString();
   m.uInk.value.set(ink); m.uInk2.value.set(ink); m.uSize.value = 2.6 * AIM_BIG * Math.min(2, window.devicePixelRatio || 1);
 }
+// (The crater to fill now: its rim's dots bigger and darker than the others', so the one to fill is plain to see.)
+if (WORLD.goal === 'basins') {
+  const m = (aimNext.object.material as THREE.ShaderMaterial).uniforms, ink = '#' + new THREE.Color(AIM_INK).multiplyScalar(0.45).getHexString();
+  m.uInk.value.set(ink); m.uInk2.value.set(ink); m.uSize.value = 4 * AIM_BIG * Math.min(2, window.devicePixelRatio || 1);
+}
 /**
  * On Mars and the ice moon, a ring of the same dots round the heat, drawn once about the pole and
  * turned to follow the heat smoothly, so it glides with it rather than stepping.
@@ -2265,6 +2270,12 @@ function drawAim(now: number): void {
       for (let v = 3; v < N; v += 6) if (h(v) > high && base[v * 3] * q.x + base[v * 3 + 1] * q.y + base[v * 3 + 2] * q.z > 0.85 && !planet.basins.some((b) => Math.hypot(base[v * 3] - b.x, base[v * 3 + 1] - b.y, base[v * 3 + 2] - b.z) < b.r * 0.9)) { const r = groundOver(v); hatch.push(base[v * 3] * r, base[v * 3 + 1] * r, base[v * 3 + 2] * r); }
       highHatch.set(hatch);
     }
+    // And round each, its edge in dots, so the crater reads as the thing to fill, not as the ground's own texture: the
+    // one to fill now bold, the others faint, a filled one inked all round. (The stipple alone was taken for the
+    // Moon's own surface.) The one to fill now: on the first world, in order; elsewhere, the nearest.
+    const q = planet.plume, open = planet.basins.filter((b) => planet.flooded(b) < FLOODED_ENOUGH);
+    const now = WORLD.startAt ? open[0] : open.slice().sort((a, b) => (b.x * q.x + b.y * q.y + b.z * q.z) - (a.x * q.x + a.y * q.y + a.z * q.z))[0];
+    for (const b of planet.basins) onGround(circleAt(b, b.r * 1.08), b === now ? next : open.includes(b) ? pencilled : inked); // (on the rim, clear of the stipple inside: at its edge, it read as more stipple)
     for (const b of planet.basins) {
       if (planet.flooded(b) >= FLOODED_ENOUGH) continue;
       for (const d of capDots(b, b.r * 0.8)) {

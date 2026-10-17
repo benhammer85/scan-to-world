@@ -946,3 +946,7 @@ The lava is a little less runny (thin 0.004, was 0.0015) and poured more gently 
 Full means tap now, on every world that has it. Where tapping wouldn't work yet (Io before high tide, Hunga Tonga with the top not just under the sea, Triton out of the sun), it stops just short of full; where waiting longer is bad, it empties again after full, and empty is too late (Europa: the ice blasted, not cracked).
 
 The glass world was the one the other way round: its circle filled as the blob grew, and full meant it burst, so it had to be tapped before full. Now it's as everywhere: full when the blob is big enough to stay warm the way to the shore (at the world's `explosive`, about 7 s of growth), then emptying, over the next 17 s or so, to the burst. Its goal, tip, opening and the "the circle is full" hint (now shown there too) say so.
+
+### The Moon: the craters marked as craters
+
+A crater to fill was only its floor stippled, which a first player read as the Moon's own surface, not as the thing to fill. Each now has its rim in dots too, on the rim itself, clear of the stipple inside (at the stipple's edge it read as more stipple): the crater to fill now in bigger, darker dots (on the first world, in order; elsewhere the nearest), the others fainter, a filled one inked all round.
