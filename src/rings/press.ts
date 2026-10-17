@@ -2110,16 +2110,28 @@ function markOf(pc: { c: HTMLCanvasElement; v: View }): { c: HTMLCanvasElement; 
   const d = 1.1 * px * Q, c = document.createElement('canvas'); c.width = w; c.height = h;
   const m = c.getContext('2d')!, t = document.createElement('canvas'); t.width = w; t.height = h;
   const tc = t.getContext('2d')!;
+  // (The block's shape, whole: the print's own rough edge, filled solid within, so only the outer edge is
+  // marked, never the lines between the years.)
+  const sil = document.createElement('canvas'); sil.width = w; sil.height = h;
+  const sc = sil.getContext('2d')!, bark = barkOf(tree.rings.length - 1);
+  sc.drawImage(pc.c, x, y, w, h, 0, 0, w, h);
+  sc.beginPath();
+  for (let j = 0; j <= K; j++) {
+    const a = (j / K) * TAU, R = pc.v.s * warpR(pc.v.warp, bark(a)), tt = a + pc.v.turn;
+    const X = (pc.v.cx + R * Math.cos(tt) + mx) * Q - x, Y = (pc.v.cy - R * Math.sin(tt) + my) * Q - y;
+    if (j) sc.lineTo(X, Y); else sc.moveTo(X, Y);
+  }
+  sc.closePath(); sc.fillStyle = '#000'; sc.fill();
   const lay = (dx: number, dy: number, col: string) => {
-    tc.globalCompositeOperation = 'source-over'; tc.clearRect(0, 0, w, h); tc.drawImage(pc.c, x, y, w, h, dx, dy, w, h);
+    tc.globalCompositeOperation = 'source-over'; tc.clearRect(0, 0, w, h); tc.drawImage(sil, dx, dy);
     tc.globalCompositeOperation = 'source-in'; tc.fillStyle = col; tc.fillRect(0, 0, w, h);
     m.drawImage(t, 0, 0);
   };
   lay(-d, -d, 'rgba(36,28,23,0.11)');
   lay(d, d, 'rgba(255,253,247,0.7)');
   // (Only round the ink, never over it.)
-  m.globalCompositeOperation = 'destination-out'; m.drawImage(pc.c, x, y, w, h, 0, 0, w, h);
-  t.width = 0; t.height = 0;
+  m.globalCompositeOperation = 'destination-out'; m.drawImage(sil, 0, 0);
+  t.width = 0; t.height = 0; sil.width = 0; sil.height = 0;
   const out = { c, x, y };
   marksMade.set(pc, out);
   return out;
