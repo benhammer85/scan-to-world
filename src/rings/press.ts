@@ -2351,10 +2351,10 @@ function renderGrove(c: CanvasRenderingContext2D, cam: Cam, sprites?: Sprite[]):
   const lines = [...ways.map((pth) => pth.pts), ...worn.map((t) => t.pts)];
   for (const [i, pth] of ways.entries()) {
     c.save(); c.globalAlpha = pathAlpha(pth);
-    drawTrack(c, pth.pts.map(([x, y]) => at(x, y)), pathWidth(pth.walks) * cam.S, u, (pth.id ?? i * 31) % 997 + 7, { wear: smooth(pth.walks / 8), grown: pathGrown(pth), wide: meets(pth.pts, lines, i) });
+    drawTrack(c, pth.pts.map(([x, y]) => at(x, y)), pathWidth(pth.walks) * cam.S, u, (pth.id ?? i * 31) % 997 + 7, { wear: smooth(pth.walks / 8), grown: pathGrown(pth), wide: meets(pth.pts, lines, i), sun });
     c.restore();
   }
-  for (const [j, t] of worn.entries()) drawTrack(c, t.pts.map(([x, y]) => at(x, y)), pathWidth(t.v) * cam.S, u, t.k, { wear: smooth((t.v - 3) / 8), wide: meets(t.pts, lines, ways.length + j) });
+  for (const [j, t] of worn.entries()) drawTrack(c, t.pts.map(([x, y]) => at(x, y)), pathWidth(t.v) * cam.S, u, t.k, { wear: smooth((t.v - 3) / 8), wide: meets(t.pts, lines, ways.length + j), sun });
   if (w.wall.length) drawWall(c, w.wall.map(([x, y]) => at(x, y)), u, w.seed);
   const L = groveLayout(cam).trees;
   // Moss, between trees long standing side by side.
@@ -2484,7 +2484,7 @@ function drawLife(cam: Cam): void {
     const f = smooth((clock() - settling.at) / SETTLE), st = settling;
     const pts = st.from.map(([x, y], i) => { const [a, b] = st.to[i]; return [cam.X0 + (x + (a - x) * f) * cam.S, cam.Y0 + (y + (b - y) * f) * cam.S] as [number, number]; });
     if (f < 1) { g.beginPath(); pts.forEach((q, i) => (i ? g.lineTo(...q) : g.moveTo(...q))); g.strokeStyle = `rgba(92,88,84,${(0.32 * (1 - f)).toFixed(3)})`; g.lineWidth = 1.4 * px; g.stroke(); }
-    g.save(); g.globalAlpha = f; drawTrack(g, pts, pathWidth(0) * cam.S, px * Math.pow(Math.max(1, cam.S / worldOf().whole.S), 0.8), st.id % 997 + 7, { wide: meets(st.to, [...pathsOf().map((p) => p.pts), ...trackWays(cam).map((w) => w.pts)], pathsOf().findIndex((p) => p.id === st.id)) }); g.restore();
+    g.save(); g.globalAlpha = f; drawTrack(g, pts, pathWidth(0) * cam.S, px * Math.pow(Math.max(1, cam.S / worldOf().whole.S), 0.8), st.id % 997 + 7, { wide: meets(st.to, [...pathsOf().map((p) => p.pts), ...trackWays(cam).map((w) => w.pts)], pathsOf().findIndex((p) => p.id === st.id)), sun: sunNow().sun }); g.restore();
     if (clock() - st.at >= SETTLE) settling = null;
   }
   const { tint } = sunNow();
