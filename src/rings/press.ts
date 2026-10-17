@@ -161,7 +161,7 @@ function keepMarks(): void {
   pendingMarks = [];
 }
 /** The hand still: when it last moved, and its brush's angles a moment back (for a scribble). */
-let movedAt = 0, moveX = 0, moveY = 0, wiggle: { t: number; a: number }[] = [];
+let movedAt = 0, moveX = 0, moveY = 0, wiggle: { t: number; a: number; x: number; y: number }[] = [];
 /** Each frame, while drawing: the brush held still a moment mid-loop begins a knot, and feeds it as it's held. */
 function watchHand(t: number, dt: number): void {
   if (painter === null || !tree.stroke || tree.resting || tree.progress < 0.04 || !trail.length) return;
@@ -173,20 +173,27 @@ function watchHand(t: number, dt: number): void {
     if (NATIVE) tap({ strength: 0.45, sharpness: 0.6 });
   } else p.grow = Math.min(2.5, p.grow + dt);
 }
-/** A finger's move while drawing: how far it went (a pause is none), and the brush's angle (a scribble's back and forth). */
+/**
+ * A finger's move while drawing: how far it went (a pause is none), and a scribble's back and forth: any
+ * way at all (along the loop, in and out, or across), four turns or more within a second, in a small spot.
+ */
 function noteHand(x: number, y: number, a: number, t: number): void {
   if (Math.hypot(x - moveX, y - moveY) > 3) { movedAt = t; moveX = x; moveY = y; }
-  wiggle.push({ t, a });
+  const last = wiggle[wiggle.length - 1];
+  if (!last || Math.hypot(x - last.x, y - last.y) >= 4) wiggle.push({ t, a, x, y });
   while (wiggle.length && t - wiggle[0].t > 1.1) wiggle.shift();
-  // (Back and forth, four times or more, over a short arc: a scribble, a burl.)
-  let turns = 0, dir = 0, lo = 0, hi = 0, acc = 0;
-  for (let i = 1; i < wiggle.length; i++) {
-    const d = (((wiggle[i].a - wiggle[i - 1].a + Math.PI) % TAU) + TAU) % TAU - Math.PI;
-    acc += d; lo = Math.min(lo, acc); hi = Math.max(hi, acc);
-    if (Math.abs(d) > 0.004) { const s = Math.sign(d); if (dir && s !== dir) turns++; dir = s; }
+  if (wiggle.length < 5) return;
+  // (A turn: the finger heading back the way it came, near enough.)
+  let turns = 0, x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (let i = 0; i < wiggle.length; i++) {
+    const q = wiggle[i];
+    x0 = Math.min(x0, q.x); x1 = Math.max(x1, q.x); y0 = Math.min(y0, q.y); y1 = Math.max(y1, q.y);
+    if (i < 2) continue;
+    const p = wiggle[i - 1], o = wiggle[i - 2], ux = p.x - o.x, uy = p.y - o.y, vx = q.x - p.x, vy = q.y - p.y;
+    if (ux * vx + uy * vy < -0.3 * Math.hypot(ux, uy) * Math.hypot(vx, vy)) turns++;
   }
-  if (turns >= 4 && hi - lo < 0.45 && trail.length) {
-    const q = trail[trail.length - 1], at = wiggle[0].a + (lo + hi) / 2;
+  if (turns >= 4 && Math.max(x1 - x0, y1 - y0) < 70 && trail.length) {
+    const q = trail[trail.length - 1], at = q.a;
     const p = pendingMarks.find((m) => m.kind === 'burl' && angleOff(m.a, at) < 0.4);
     if (!p) { pendingMarks.push({ kind: 'burl', a: at, r: q.r, at: t, grow: 0 }); if (NATIVE) tap({ strength: 0.35, sharpness: 0.3 }); }
     else p.grow = Math.min(3, p.grow + 0.35);
