@@ -1353,7 +1353,7 @@ function vnoise(x: number, y: number): number {
  * lighter, starved to the paper here and there, its edges breaking a little. Laid into the ink (dark
  * pixels only; paper-coloured marks left as they are) of a canvas `c` holding the slice drawn for view `v`.
  */
-function inkGrain(c: HTMLCanvasElement, v: View, band?: [number, number]): void {
+function inkGrain(c: HTMLCanvasElement, v: View, band?: [number, number], soft = 1): void {
   const n = tree.rings.length, last = n ? tree.rings[n - 1] : null;
   let rmax = tree.k.pith;
   if (last) for (let i = 0; i < K; i++) rmax = Math.max(rmax, last[i]);
@@ -1426,7 +1426,9 @@ function inkGrain(c: HTMLCanvasElement, v: View, band?: [number, number]): void 
         if (close > 0) took *= 1 + close * 0.22 * (vnoise((dx / Z) * 0.9 + 3.3, (dy / Z) * 0.9 + 7.1) - 0.5);
       }
       const thr = 0.5 + (sea ? 0.35 : 0.95) * (t1 - 0.5) + 0.2 * (vnoise(mx * low + 40, my * low + 11) - 0.5) + saw;
-      const e = Math.max(0, Math.min(1, (took - thr + 0.07) / 0.14));
+      // (Took or not, sharply; `soft` keeps a pixel or so of the edge's own shading, for a print that's
+      // shown larger than it was pressed, so it's never stepped.)
+      const e = Math.max(0, Math.min(1, (took - thr + 0.07 * soft) / (0.14 * soft)));
       d[k + 3] = Math.round(255 * e * e * (3 - 2 * e));
     }
   }
@@ -1581,11 +1583,12 @@ function plantAgain(): void {
   parting = { k: kept(), tree, days, kind, seedAt };
   tree = new TreeSim(1 + Math.floor(Math.random() * 1e6), DAILY); days = []; seedAt = null; folding = null;
   lookAfresh(); groveCam = null; farTo = { from: far, to: 0, at: clock() };
+  say('Swipe through the woods. Touch one to plant it.', 1e5);
 }
 function unpart(): void {
   if (!parting) return;
   ({ tree, days, kind, seedAt } = parting); parting = null;
-  lookAfresh();
+  lookAfresh(); words.classList.remove('shown');
 }
 
 // ---------------------------------------------------------------- the grove
@@ -1618,9 +1621,12 @@ function worldOf() {
   const mine = visit ? visit.stash : { tree, days, kind };
   const all = [
     ...groveKept.map((k, i) => ({ sp: asKind(k.tree) ?? 'oak', n: ((k.sim.rings as unknown[] | undefined) ?? []).length, i, k: (k.seed % 9973) + 11 })),
+    // (Choosing a new seed: the tree drawn so far still stands where it stood, and the new one is the
+    // empty circle's, so the view comes down to where it was touched.)
+    ...(parting ? [{ sp: parting.kind, n: parting.tree.rings.length, i: -2, k: (parting.tree.seed % 9973) + 11 }] : []),
     { sp: mine.kind, n: mine.tree.rings.length, i: -1, k: (mine.tree.seed % 9973) + 11 },
   ];
-  const seed = groveKept[0]?.seed ?? mine.tree.seed, key = `${W}x${H}:${seed}:${all.map((t) => `${t.sp}${t.n}`).join(',')}`;
+  const seed = groveKept[0]?.seed ?? (parting ? parting.tree.seed : mine.tree.seed), key = `${W}x${H}:${seed}:${all.map((t) => `${t.sp}${t.n}`).join(',')}`;
   if (world && worldKey === key) return world;
   const L = land(all.length, seed);
   const trees = all.map((a, j) => ({ ...a, wx: L.places[j].x, wy: L.places[j].y, wr: 1.4 * L.places[j].scale * crownSize(a.sp, a.n) }));
@@ -1929,8 +1935,8 @@ function startIntro(): void {
       try { drawPrint(v); } finally { SPARSE = 1; g = was.g; px = was.px; W = was.W; H = was.H; }
       return { c, S, cx: ox, cy: oy, v, done: 0, all: Math.max(oy, ch - oy) };
     };
-    // (Sharp: some 1.25 to a CSS px, half the screen's pixels at most, just the sheet.)
-    const SA = Math.min(0.5, 1.25 / was.px);
+    // (Sharp: some 1.6 to a CSS px, the screen's own at most, just the sheet: seen whole, it must hold up.)
+    const SA = Math.min(1, 1.6 / was.px);
     const near = press(Math.ceil(W * SA), Math.ceil(H * SA), SA, cx * SA, cy * SA);
     // (Whole: the bark too, never over some 900 px a side.)
     let whole: IntroLayer | null = null;
@@ -1954,8 +1960,8 @@ function grainIntro(ms: number): void {
       if (!L) continue;
       px = L.v.px;
       while (L.done < L.all && performance.now() < until) {
-        inkGrain(L.c, L.v, [L.cy - L.done - step, L.cy - L.done]);
-        inkGrain(L.c, L.v, [L.cy + L.done, L.cy + L.done + step]);
+        inkGrain(L.c, L.v, [L.cy - L.done - step, L.cy - L.done], 1.7);
+        inkGrain(L.c, L.v, [L.cy + L.done, L.cy + L.done + step], 1.7);
         L.done += step;
       }
       if (L.done < L.all) break;
@@ -1975,7 +1981,7 @@ function drawIntro(t: number): void {
   // drawing back waits for the whole of it.)
   const pending = it.near.done < it.near.all || (!!it.whole && it.whole.done < it.whole.all);
   if (pending && !it.skip) {
-    grainIntro(14);
+    grainIntro(18);
     const e0 = (t - it.at) / INTRO_GROW, ring = it.rings[Math.min(n - 1, Math.ceil(grow(e0)) + 1)];
     let most = 0;
     for (let j = 0; j < ring.length; j++) most = Math.max(most, Math.abs(ring[j] * Math.sin((j / (ring.length - 1)) * TAU)));
@@ -1998,6 +2004,7 @@ function drawIntro(t: number): void {
   g.save(); g.globalAlpha = al;
   g.drawImage(groundOf(), 0, 0);
   g.translate(it.cx, it.cy); g.scale(k, k);
+  g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
   const lay = (L: IntroLayer) => g.drawImage(L.c, -L.cx / L.S, -L.cy / L.S, L.c.width / L.S, L.c.height / L.S);
   // (The ink's edge, ragged as it spreads into the paper: a thin, paler fringe a little beyond, then the
   // ink; its own shape, never a ruled line; gone once the whole is shown.)
