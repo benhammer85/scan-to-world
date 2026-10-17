@@ -1,13 +1,19 @@
 /**
- * Real wood for the print (see wood/CREDITS.md): each wood's fibre, from real sections, and how ink takes
- * on a real relief print (Munch's sea and his field, as density, 1 full, 0 the paper). Loaded once.
+ * Real wood for the print (see wood/CREDITS.md): a red oak's years, straightened, as ink (each year a
+ * strip `YEAR` px deep, pores at its top), and a red pine's fibre. Loaded once, the years then kept in
+ * smaller and smaller copies, so a fine ring samples a small copy rather than shimmering.
  */
 export interface Level { w: number; h: number; d: Float32Array }
+export interface Years { n: number; year: number; levels: (Level & { rows: number })[] }
 
-export const wood: { pine?: Level; sea?: Level; field?: Level; fibre: Record<string, Level> } = { fibre: {} };
+export const YEAR = 112;
+/** (And how ink takes on a real relief print: Munch's sea and his field, as density, 1 full, 0 the paper.) */
+export const wood: { oak?: Years; pine?: Level; sea?: Level; field?: Level; years: Record<string, Years>; fibre: Record<string, Level> } = { years: {}, fibre: {} };
 
 const URLS = {
+  oak: new URL('./wood/red-oak-years.png', import.meta.url).href,
   pine: new URL('./wood/red-pine-fibre.png', import.meta.url).href,
+  ash: new URL('./wood/white-ash-years.png', import.meta.url).href,
   cherry: new URL('./wood/black-cherry-fibre.png', import.meta.url).href,
   maple: new URL('./wood/bigleaf-maple-fibre.png', import.meta.url).href,
   birch: new URL('./wood/paper-birch-fibre.png', import.meta.url).href,
@@ -30,9 +36,27 @@ function pixels(url: string): Promise<Level> {
   });
 }
 
+/**
+ * A smaller copy of the years: each year `rows` deep, `w` round, every texel the mean of what it covers
+ * (so a ring a few pixels wide prints the year's tone, not a shimmer).
+ */
+function shrink(l: Level, years: number, rows: number, w: number): Level {
+  const d = new Float32Array(w * years * rows), fy = YEAR / rows, fx = l.w / w;
+  for (let yr = 0; yr < years; yr++) for (let r = 0; r < rows; r++) {
+    const s0 = yr * YEAR + Math.floor(r * fy), s1 = yr * YEAR + Math.max(Math.floor(r * fy) + 1, Math.floor((r + 1) * fy));
+    for (let x = 0; x < w; x++) {
+      const x0 = Math.floor(x * fx), x1 = Math.max(x0 + 1, Math.floor((x + 1) * fx));
+      let t = 0;
+      for (let sy = s0; sy < s1; sy++) for (let sx = x0; sx < x1; sx++) t += l.d[sy * l.w + sx];
+      d[(yr * rows + r) * w + x] = t / ((s1 - s0) * (x1 - x0));
+    }
+  }
+  return { w, h: years * rows, d };
+}
+
 /** Bilinear, wrapping both ways (a tile). */
 export const tile = (l: Level, u: number, v: number) => sample(l, u, ((v % l.h) + l.h) % l.h);
-/** Bilinear, wrapping round (along) and clamped within a strip (across). */
+/** Bilinear, wrapping round (along) and clamped within one year's strip (across). */
 export function sample(l: Level, u: number, v: number, top = 0, rows = l.h): number {
   u = ((u % l.w) + l.w) % l.w;
   v = Math.max(top, Math.min(top + rows - 1.001, v));
@@ -46,7 +70,18 @@ let asked = false;
 export function loadWood(then: () => void): void {
   if (asked) return;
   asked = true;
-  // (The fibre of each wood; bristlecone and olive, with no section to hand, take
+  const years = (url: string, as: string) => pixels(url).then((l) => {
+    const n = Math.round(l.h / YEAR), levels = [{ ...l, rows: YEAR }];
+    for (let k = 1; 2 ** (k - 1) < YEAR; k++) {
+      const rows = Math.max(1, Math.round(YEAR / 2 ** k));
+      levels.push({ ...shrink(l, n, rows, Math.max(4, Math.round(l.w / 2 ** k))), rows });
+    }
+    wood.years[as] = { n, year: YEAR, levels };
+    if (as === 'oak') wood.oak = wood.years.oak;
+    then();
+  }).catch(() => {});
+  years(URLS.oak, 'oak'); years(URLS.ash, 'ash');
+  // (The fibre of each wood whose years are drawn; bristlecone and olive, with no section to hand, take
   // their nearest kin's: a red pine's, a cherry's.)
   const fibre = (url: string, ...as: string[]) => pixels(url).then((l) => { for (const k of as) wood.fibre[k] = l; then(); }).catch(() => {});
   fibre(URLS.cherry, 'cherry', 'olive'); fibre(URLS.maple, 'maple'); fibre(URLS.birch, 'birch'); fibre(URLS.redwood, 'redwood');
