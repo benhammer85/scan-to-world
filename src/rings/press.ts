@@ -32,7 +32,7 @@ import { fromText, grove, keepInGrove, keepTree, recallTree, setGrove, snapshotT
 
 const TAU = Math.PI * 2, PAPER = '#f4efe4';
 /**
- * The relief print, after tree-ring prints (the wood inked and pressed): the slice's look.
+ * The relief print, after tree-ring prints (the wood itself inked and pressed): the slice's look.
  * `?ink=water` shows the watercolour instead.
  */
 const PRINT = new URLSearchParams(location.search).get('ink') !== 'water';
