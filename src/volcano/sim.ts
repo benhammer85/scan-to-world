@@ -1688,7 +1688,7 @@ export class Planet {
     this.slidWay = s;
     { const r = Math.hypot(sx, sy, sz); this.slidTo = r > 0 ? { x: sx / r, y: sy / r, z: sz / r } : null; }
     this.find('aureole', 'an aureole. A side that gave way, spread far out in ridges, as round Olympus Mons');
-    this.tell('Too tall for its base: a side collapsed. Pour down the sides where the dotted ring is faint, to widen it');
+    this.tell('Too narrow: a side collapsed. Pour where the dotted ring is still faint');
   }
   /** Mars: how high the ground under the mountain stood before it, as first reckoned. */
   summitBefore: number | null = null;

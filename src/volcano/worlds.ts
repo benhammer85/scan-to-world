@@ -176,9 +176,9 @@ export const WORLDS: World[] = [
       waves: 0, rain: 0, sink: 0, life: false,
       talus: 1.65, flow: 8, channel: 4, coolLand: 1, // (its gravity makes slopes stand steeper still; and it sets fast, so poured lava stacks into a mountain rather than running off)
       drift: 0, rises: 0, heat: 210, rising: 0.8, steady: true, // (the heat comes back quickly: the first world, so waiting is short)
-      impactEvery: [60, 100], impactWarning: 14, impactHeat: 6,
-      stormEvery: [55, 80], stormWarning: 15, stormLasts: 18, stormWear: 0.012, softer: 7, stormFresh: 30, // (often enough to plan for, and hard on old rock and ash: lava poured just before one is still fresh, and keeps the peak)
-      stormSide: 0.7, // (each storm from its own side: that side wears hardest)
+      // (One idea, the second world played: build it wide, or a side gives way. Its dust storms from one side and its
+      // falling stones each needed their own explaining, and made a simple thing hard to follow: gone.)
+      impactEvery: [0, 0],
       taper: 1.1, // (only so tall for its width: a narrow side gives way)
       groundIce: 3, formations: ['aureole', 'rootless'],
     },

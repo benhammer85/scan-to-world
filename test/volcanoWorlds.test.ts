@@ -177,7 +177,9 @@ describe('Mars', () => {
 
   it('dust storms come, seen rising first, and wear the heights while they blow', () => {
     // Two worlds alike in everything but the storms' wear: the one the storms wear ends lower.
-    const worn = mars(), calm = new Planet(topo, nearest(0, 0, 1), 5, { ...worldOf('mars').rules, stormWear: 0 });
+    // (Storms as Mars had them, before they were taken out of it to keep the second world to one idea: the mechanism stays.)
+    const storms = { ...worldOf('mars').rules, stormEvery: [55, 80] as [number, number], stormWarning: 15, stormLasts: 18, stormWear: 0.012, softer: 7, stormFresh: 30, stormSide: 0.7 };
+    const worn = new Planet(topo, nearest(0, 0, 1), 5, storms), calm = new Planet(topo, nearest(0, 0, 1), 5, { ...storms, stormWear: 0 });
     let warned = false, blew = false;
     for (let t = 0; t < 260; t += 1 / 20) {
       for (const pl of [worn, calm]) { pl.step(1 / 20); if (Math.round(t * 20) % 60 === 0) pl.erupt(); }

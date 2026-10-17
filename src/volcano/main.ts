@@ -1878,7 +1878,7 @@ const TIP: Record<string, string> = {
 };
 /** A world's own tip, where its aim is shared with others but the way to it isn't. */
 const OWN_TIP: Partial<Record<WorldId, string>> = {
-  mars: `${HOLD} to pour lava. It flows down the screen, so turn the planet between pours. The dotted ring shows how wide the base must be before the mountain can grow taller: pour down any side where the ring is still faint. If the mountain gets too tall for its narrowest side, that side collapses. Before a dust storm, watch which side the wind blows onto, and pour fresh lava there: storms wear away old rock, but not fresh lava.`,
+  mars: `${HOLD} to pour. Lava runs down the screen, so turn the planet to pour on every side. Fill out to the dotted ring first: a narrow mountain collapses.`,
   hollow: `${HOLD} to pour a little lava, then stop for a while. If cracks appear around the volcano, stop until they fade, or the top collapses. Don't ${COMPUTER ? 'click' : 'tap'} to erupt: a big eruption empties the ground underneath all at once.`,
 };
 if (SURVEY) { AIM[WORLD.goal] = SURVEY.aim; OWN_TIP[WORLD.id] = SURVEY.tip; }
@@ -2625,7 +2625,7 @@ const ACTION_WORDS = /^(The volcano is near the end|The volcano has passed|A sto
  * above were said, and nearly every world's own word on what had just happened, a crack too late, a comet frozen, a
  * burst not at high tide, the far side rising, was kept quiet.)
  */
-const EXPLAIN = /^(The volcano drifts|One crater filled|Two filled|Goal: |Every (crack|plume) so far|The comet melted|The comet froze|It's tumbling again|You poured too fast|No wave|Not high tide|That stone was too big|Too tall|Theia|The shock|Too late|Too early|Too small|Too near|A big eruption|A giant wave|The island is blown|The far side|A dark streak|A streak, but|The ice cracks|A mound|A lava dome|A dome, but|The mound slumps|The dome slumps|A blob reaches|Ice reaches the ring|An icy comet|Ice melted|The ice froze|Stone caught|Caught in the glow|The eruption's gas|The ground gives way|The last of the sea|The sea is nearly gone|The day has melted|The volcano is in daylight|That lava|A seabird|A nest|Found:|The island stands|Too tall for its width|A dust storm is coming|Theia|Too big to hold|The big stone|A stone too big|The burst missed|In the dark|Chilled)/;
+const EXPLAIN = /^(Too narrow|The volcano drifts|One crater filled|Two filled|Goal: |Every (crack|plume) so far|The comet melted|The comet froze|It's tumbling again|You poured too fast|No wave|Not high tide|That stone was too big|Too tall|Theia|The shock|Too late|Too early|Too small|Too near|A big eruption|A giant wave|The island is blown|The far side|A dark streak|A streak, but|The ice cracks|A mound|A lava dome|A dome, but|The mound slumps|The dome slumps|A blob reaches|Ice reaches the ring|An icy comet|Ice melted|The ice froze|Stone caught|Caught in the glow|The eruption's gas|The ground gives way|The last of the sea|The sea is nearly gone|The day has melted|The volcano is in daylight|That lava|A seabird|A nest|Found:|The island stands|Too tall for its width|A dust storm is coming|Theia|Too big to hold|The big stone|A stone too big|The burst missed|In the dark|Chilled)/;
 function announce(text: string, lesson = false): void {
   text = words$(text);
   if (BARE && !ending) return;
@@ -3998,30 +3998,19 @@ function farLook(): void {
 }
 /**
  * The world turned for you at a moment that decides what to do next, then put back as it was (as Mercury's far
- * side is shown, above). On Mars, when a side gives way: the view leans in over that side, the one to widen. On
- * Io and Europa, after each plume or crack that counts: the world turns once right round, so every circle used so
+ * side is shown, above). (On Mars it leaned in over a side that gave way: no longer, as it took the world out of
+ * the player's hands mid-build.) On Io and Europa, after each plume or crack that counts: the world turns once right round, so every circle used so
  * far is seen, the ones on the far side too, and the next can be put outside them all. Never while lava is being
  * poured (it waits for the finger to lift, a while), and not at all if less motion is asked for.
  */
 interface Shot { due: number; len: number; zoom: number; from: THREE.Quaternion | null; pose: (from: THREE.Quaternion, t: number) => void; begin?: () => void }
-let shot: Shot | null = null, shotZoom = 1, shotSlides = 0, shotPlaces = 0;
-const SHOT_V = new THREE.Vector3(), SHOT_TO = new THREE.Quaternion(), SHOT_TURN = new THREE.Quaternion(), SKY_Y = new THREE.Vector3(0, 1, 0);
+let shot: Shot | null = null, shotZoom = 1, shotPlaces = 0;
+const SHOT_V = new THREE.Vector3(), SHOT_TURN = new THREE.Quaternion(), SKY_Y = new THREE.Vector3(0, 1, 0);
 const smooth = (u: number) => u * u * (3 - 2 * u);
 function shotLook(): void {
   // What to show, as it happens.
-  if (planet.slides > shotSlides) {
-    shotSlides = planet.slides;
-    const to = planet.slidTo, q = planet.plume;
-    if (to && !shot) {
-      const IN = 1.4, HOLD = 3, OUT = 1.4;
-      const mid = new THREE.Vector3(q.x + to.x, q.y + to.y, q.z + to.z).normalize();
-      shot = { due: planet.seconds, len: IN + HOLD + OUT, zoom: 0.84, from: null, pose: (from, t) => {
-        if (!SHOT_V.lengthSq()) { SHOT_V.copy(mid).applyQuaternion(from); SHOT_TO.setFromUnitVectors(SHOT_V, TOWARD_US).multiply(from); }
-        const u = t < IN ? smooth(t / IN) : t < IN + HOLD ? 1 : 1 - smooth((t - IN - HOLD) / OUT);
-        group.quaternion.slerpQuaternions(from, SHOT_TO, u);
-      } };
-    }
-  }
+  // (Mars: the world no longer turns itself to a side that gave way. It came while the mountain was being built, and
+  // took the world out of the player's hands just when they were using it; the words and the debris say which side.)
   if ((WORLD.goal === 'plumes' || WORLD.goal === 'chaos') && planet.plumes.length > shotPlaces) {
     shotPlaces = planet.plumes.length;
     if (shotPlaces < aimOf && !shot) {
@@ -4057,7 +4046,7 @@ interface ShowLook { len: number; zoom: number; words?: () => string; dir?: () =
 const HORIZON = new THREE.Vector3(0, 0.88, 0.47).normalize(); // (the vent near the world's top edge: its mountain seen side-on, against the sky)
 const ventDir = (): V3 => planet.plume, antiVent = (): V3 => ({ x: -planet.plume.x, y: -planet.plume.y, z: -planet.plume.z });
 const OPENINGS: Partial<Record<WorldId, ShowLook>> = {
-  mars: { len: 4.6, zoom: 0.95, dir: ventDir, at: HORIZON, turn: [1.2, 2.2, 1.2], words: () => `Goal: a mountain ${HEIGHT.target} km high. A tall mountain needs a wide base, or its sides collapse` },
+  mars: { len: 4.6, zoom: 0.95, dir: ventDir, at: HORIZON, turn: [1.2, 2.2, 1.2], words: () => `Goal: a mountain ${HEIGHT.target} km high. Build it wide first, out to the dotted ring: a narrow mountain collapses` },
   mercury: { len: 4.8, zoom: 1, dir: () => planet.far, at: TOWARD_US, turn: [1.4, 2, 1.4], words: () => `Goal: raise the ground ${FAR_KM} km in the dotted circle on the far side of the planet. Eruptions at the volcano send shocks through the planet to it` },
   io: { len: 4.5, zoom: 1.45, words: () => `Goal: ${PLUMES} big eruptions, each in a different place. They only work at high tide, when Jupiter looks biggest` },
   europa: { len: 4.5, zoom: 0.72, words: () => `Goal: crack the ice in ${FIELDS} places. Under it is an ocean: erupt when the circle around the volcano is full` },

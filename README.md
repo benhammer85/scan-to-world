@@ -950,3 +950,13 @@ The glass world was the one the other way round: its circle filled as the blob g
 ### The Moon: the craters marked as craters
 
 A crater to fill was only its floor stippled, which a first player read as the Moon's own surface, not as the thing to fill. Each now has its rim in dots too, on the rim itself, clear of the stipple inside (at the stipple's edge it read as more stipple): the crater to fill now in bigger, darker dots (on the first world, in order; elsewhere the nearest), the others fainter, a filled one inked all round.
+
+### Mars, made simple
+
+Mars had gathered dust storms from one side, falling stones, a collapse that turned the world for you, and four sentences of instructions. Now it's one idea: pour on every side, out to the dotted ring, or a narrow side collapses.
+
+- No dust storms and no falling stones (the storm mechanism stays in sim.ts; its test now sets the storm rules itself).
+- The world no longer turns itself to a side that gave way: it came mid-build and took the world out of the player's hands.
+- The words: tip "Hold to pour. Lava runs down the screen, so turn the planet to pour on every side. Fill out to the dotted ring first: a narrow mountain collapses."; opening "Goal: a mountain 18 km high. Build it wide first, out to the dotted ring: a narrow mountain collapses"; at a collapse "Too narrow: a side collapsed. Pour where the dotted ring is still faint".
+
+Bots: played carefully, won every seed (158 to 193 s); random play won 2 of 3; held still and never turned, won all 3. Mars is now an easy build. A stricter width rule (taper 0.85, 0.7) made nobody win, careful or not: turning to build wide doesn't make the base wider than pouring in one place does, so the width rule can't be the decision it was meant to be.
