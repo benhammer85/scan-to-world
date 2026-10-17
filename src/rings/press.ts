@@ -1155,15 +1155,18 @@ function drawPrint(v: View): void {
     const gapOf = (r: typeof pool[0]) => ((r.k >= 5000 ? 0.65 : 0.9) * px * Z) / Math.max(1, R);
     const rough = 0.28 * px * Z;
     const brick = (a0: number, a1: number, seed: number) => {
-      const steps = Math.max(2, Math.ceil(((a1 - a0) * R) / (4 * px * Z)));
+      // (Its edges ragged by a smooth wander in the wood's own place, some 4 px apart at the slice's own
+      // size, and traced at the screen's: looked into, the same edge magnified, never a run of facets.)
+      const steps = Math.max(2, Math.ceil(((a1 - a0) * R) / (3 * px)));
+      const along = (R / Z) / (4 * px), jitAt = (a: number, k: number) => (vnoise(a * along + k, seed * 0.013 + k) - 0.5) * rough * 2.6;
       g.beginPath();
       for (let j = 0; j <= steps; j++) {
-        const a = a0 + ((a1 - a0) * j) / steps, jit = (h1(seed + j * 3.1) - 0.5) * rough * 2;
-        const [x, y] = pt(a, outer(a), jit); if (j) g.lineTo(x, y); else g.moveTo(x, y);
+        const a = a0 + ((a1 - a0) * j) / steps;
+        const [x, y] = pt(a, outer(a), jitAt(a, 3.1)); if (j) g.lineTo(x, y); else g.moveTo(x, y);
       }
       for (let j = steps; j >= 0; j--) {
-        const a = a0 + ((a1 - a0) * j) / steps, jit = (h1(seed + j * 5.3 + 1.7) - 0.5) * rough * 2;
-        const [x, y] = pt(a, bandIn(a), jit); g.lineTo(x, y);
+        const a = a0 + ((a1 - a0) * j) / steps;
+        const [x, y] = pt(a, bandIn(a), jitAt(a, 17.7)); g.lineTo(x, y);
       }
       g.closePath();
       // (The ink a little starved now and then.)
@@ -1923,15 +1926,14 @@ function startIntro(): void {
       for (let j = 0; j <= N; j++) ring[j] = s * r((j / N) * TAU);
       rings.push(ring);
     }
-    // (Today's own, pressed as today's print magnified, its detail decided at its own size on the sheet,
-    // as a close look is: drawn back, it lands as that print exactly, nothing to cross-fade.)
-    if (end) look = { k: s / end.s, ox: 0, oy: 0 };
-    const k = look.k;
+    // (Pressed at its own size, every year its own, as a slice that large would print: never today's print
+    // magnified, which is a woodcut's blocks.)
+    const k = 1;
     const press = (cw: number, ch: number, S: number, ox: number, oy: number): IntroLayer => {
       const c = document.createElement('canvas'); c.width = cw; c.height = ch;
       g = c.getContext('2d')!; px = was.px * S; W = cw; H = ch;
       const v: View = { cx: ox, cy: oy, s: s * S, turn: 0, px, warp: undefined };
-      SPARSE = end ? 1 : 0.35;
+      SPARSE = 0.35;
       try { drawPrint(v); } finally { SPARSE = 1; g = was.g; px = was.px; W = was.W; H = was.H; }
       return { c, S, cx: ox, cy: oy, v, done: 0, all: Math.max(oy, ch - oy) };
     };
@@ -2000,6 +2002,8 @@ function drawIntro(t: number): void {
     // (Handed over: today's slice already there, never painted in again.)
     intro = null; openedAt = clock() - OPEN; idleSince = clock(); words.style.visibility = ''; editionShown = 0; return;
   }
+  // (Near its place, and small by then and still moving, it gives way to today's own print, quickly.)
+  const pc = printCaches.drawing, hand = pulls && pc ? smooth((q - 0.72) / 0.28) : 0;
   const k = Math.exp(Math.log(it.to) * q), a0 = it.rings[Math.min(n - 1, i)], a1 = it.rings[Math.min(n - 1, i + 1)], N = a0.length - 1;
   g.save(); g.globalAlpha = al;
   g.drawImage(groundOf(), 0, 0);
@@ -2021,14 +2025,16 @@ function drawIntro(t: number): void {
   if (whole) {
     // (Drawn back: the whole press under the sharp one, the same print; the sharp one let go once the
     // whole is fine enough at the size it's shown.)
+    g.globalAlpha = al * (1 - hand);
     if (q > 0 && it.whole) lay(it.whole);
     const kSwitch = it.whole ? it.whole.S / it.near.S : 0, aNear = q > 0 ? smooth((k - 1.2 * kSwitch) / (0.8 * kSwitch + 1e-6)) : 1;
-    if (aNear > 0.01) { g.globalAlpha = al * aNear; lay(it.near); }
+    if (aNear > 0.01) { g.globalAlpha = al * aNear * (1 - hand); lay(it.near); }
   } else {
     g.save(); edge(5); g.clip(); g.globalAlpha = al * 0.35; lay(it.near); g.restore();
     g.save(); edge(0); g.clip(); lay(it.near); g.restore();
   }
   g.restore();
+  if (pc && hand > 0) drawKept(pc, baseNow(), al * hand, k / it.to);
 }
 
 /** When the page opened: the slice paints itself in from the heart. */
