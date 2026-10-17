@@ -32,8 +32,15 @@ async function run<T>(mode: IDBTransactionMode, act: (s: IDBObjectStore) => IDBR
 /** (`at`: where on the sheet the seed was planted, as shares of its width and height.) */
 /** (A child's tree also keeps their `name`, their `birth` (as 2023-05-02), and how many of its first rings are
  * `whole` years, grown before the days began to be drawn.) */
+/**
+ * What the hand left in the wood besides its rings: a knot (a branch grown from where the brush paused) or
+ * a burl (a swelling of tangled grain where it scribbled). At angle `a`, begun in ring `from`, last fed in
+ * ring `last`, grown to `size`.
+ */
+export interface WoodMark { kind: 'knot' | 'burl'; a: number; from: number; last: number; size: number; seed: number }
 export interface KeptTree {
   tree: string; seed: number; wander: boolean; turn: number; sim: Record<string, unknown>; days?: string[]; at?: [number, number];
+  marks?: WoodMark[];
   name?: string; birth?: string; whole?: number;
   /** (A child's tree, as well: whether the sound of the moment shapes each day; their height at each
    * birthday by age; the years finished, each its own tree; this year's age; the words kept with its days.) */

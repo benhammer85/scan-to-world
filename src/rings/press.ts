@@ -28,7 +28,7 @@ import { dayDate, dayOf } from './days';
 import { climate, growth as growthOf, season } from './growing';
 import { crownSize, drawCrown, drawHill, drawSeedling, heightAt, land, seasonOf, washCrown, washHill, type Hill, type Season } from './grove';
 import { holdStill, steadySize } from './steady';
-import { fromText, grove, keepInGrove, keepTree, recallTree, setGrove, snapshotTree, toText, treeFrom, type KeptTree } from './save';
+import { fromText, grove, keepInGrove, keepTree, recallTree, setGrove, snapshotTree, toText, treeFrom, type KeptTree, type WoodMark } from './save';
 
 const TAU = Math.PI * 2, PAPER = '#f4efe4';
 /**
@@ -104,9 +104,154 @@ function rounded(a: number, u: number): number {
   // (Never stopped short of the hand: a loop as wide as the room, however loose, is laid; the tree only
   // draws back the more for it.)
   const roomU = Math.max(LOOSEST, (roomNow() - v.s * tree.radius) / (SEED_K * STEADY * px));
-  if (growingOut()) return Math.max(LEAST, Math.min(roomU, loose)) * (growth(a) / SPEC[kind].width) + evenUp(a);
+  if (growingOut()) return Math.max(LEAST, Math.min(roomU, loose)) * (growth(a) / SPEC[kind].width) + evenUp(a) + markSwell(a);
   // (And the tree's own year: good, lean, now and then a hard one.)
-  return Math.max(LEAST, Math.min(roomU, loose)) * growth(a) * climate(tree.seed, tree.rings.length) + evenUp(a);
+  return Math.max(LEAST, Math.min(roomU, loose)) * growth(a) * climate(tree.seed, tree.rings.length) + evenUp(a) + markSwell(a);
+}
+
+// ---------------------------------------------------------------- knots and burls
+/**
+ * What the hand leaves in the wood besides its rings, found by drawing. The brush paused a moment mid-loop:
+ * a knot, a branch grown out from there, a dark streak running out through the years, the rings bulging
+ * round it; paused there again on a later day, the branch grows on and thickens; left, it dies and the
+ * rings close over it. A scribble in one place: a burl, tangled grain swelling the rings into a lump,
+ * flecked with the eyes of buds that never grew; fed again, it swells; left, it rounds off. Each wood its
+ * own way with them (an olive burls hugely, a pine's knots are dark with resin).
+ */
+let marks: WoodMark[] = [];
+/** Begun or fed in the loop being drawn: where (angle, mm), when, and how long held (s). Kept as the ring closes. */
+let pendingMarks: { kind: WoodMark['kind']; a: number; r: number; at: number; grow: number }[] = [];
+/** How each wood takes them: its knots' and burls' strength. */
+const TAKES: Record<Kind, { knot: number; burl: number }> = {
+  oak: { knot: 1.1, burl: 1 }, ash: { knot: 0.9, burl: 0.7 }, cherry: { knot: 0.9, burl: 1 }, maple: { knot: 1, burl: 1.3 },
+  birch: { knot: 1, burl: 1.2 }, pine: { knot: 1.3, burl: 0.6 }, redwood: { knot: 0.8, burl: 1.6 }, bristlecone: { knot: 0.9, burl: 1.1 }, olive: { knot: 1, burl: 2 },
+};
+const angleOff = (a: number, b: number) => Math.abs(((a - b + Math.PI) % TAU + TAU) % TAU - Math.PI);
+/** How much a ring swells here (steady widths) for the knots and burls alive at it. */
+function markSwell(a: number): number {
+  const n = tree.rings.length, take = TAKES[kind];
+  let u = 0;
+  for (const m of marks) {
+    const age = n - m.last, alive = age <= 1 ? 1 : Math.max(0, 1 - (age - 1) / (m.kind === 'knot' ? 3 : 5));
+    if (alive <= 0) continue;
+    const d = angleOff(a, m.a);
+    if (m.kind === 'knot') u += alive * take.knot * 0.3 * Math.min(4, m.size) ** 0.6 * Math.exp(-((d / 0.1) ** 2));
+    else u += alive * take.burl * 0.32 * Math.min(6, m.size) ** 0.7 * (0.75 + 0.5 * h1(m.seed + n * 1.7)) * Math.exp(-((d / (0.2 + 0.025 * Math.min(6, m.size))) ** 2));
+  }
+  // (And the one forming under the brush now, at once.)
+  for (const p of pendingMarks) {
+    const d = angleOff(a, p.a);
+    u += p.kind === 'knot' ? take.knot * (0.1 + 0.08 * Math.min(1, p.grow)) * Math.exp(-((d / 0.07) ** 2)) : take.burl * (0.2 + 0.1 * Math.min(2, p.grow)) * Math.exp(-((d / 0.22) ** 2));
+  }
+  return u;
+}
+/** The ring closed: what was begun in it is kept, fed to a knot or burl nearby still alive, or begun anew. */
+function keepMarks(): void {
+  const n = tree.rings.length - 1;
+  for (const p of pendingMarks) {
+    const near = marks.find((m) => m.kind === p.kind && n - m.last <= (p.kind === 'knot' ? 3 : 5) && angleOff(m.a, p.a) < (p.kind === 'knot' ? 0.25 : 0.45));
+    if (near) { near.last = n; near.size += 1 + p.grow; near.a += ((((p.a - near.a + Math.PI) % TAU) + TAU) % TAU - Math.PI) * 0.2; }
+    else marks.push({ kind: p.kind, a: p.a, from: n, last: n, size: 1 + p.grow, seed: Math.floor(Math.random() * 1e6) });
+  }
+  pendingMarks = [];
+}
+/** The hand still: when it last moved, and its brush's angles a moment back (for a scribble). */
+let movedAt = 0, moveX = 0, moveY = 0, wiggle: { t: number; a: number }[] = [];
+/** Each frame, while drawing: the brush held still a moment mid-loop begins a knot, and feeds it as it's held. */
+function watchHand(t: number, dt: number): void {
+  if (painter === null || !tree.stroke || tree.resting || tree.progress < 0.04 || !trail.length) return;
+  if (t - movedAt < 0.45) return;
+  const q = trail[trail.length - 1];
+  let p = pendingMarks.find((m) => m.kind === 'knot' && angleOff(m.a, q.a) < 0.2);
+  if (!p) {
+    p = { kind: 'knot', a: q.a, r: q.r, at: t, grow: 0 }; pendingMarks.push(p);
+    if (NATIVE) tap({ strength: 0.45, sharpness: 0.6 });
+  } else p.grow = Math.min(2.5, p.grow + dt);
+}
+/** A finger's move while drawing: how far it went (a pause is none), and the brush's angle (a scribble's back and forth). */
+function noteHand(x: number, y: number, a: number, t: number): void {
+  if (Math.hypot(x - moveX, y - moveY) > 3) { movedAt = t; moveX = x; moveY = y; }
+  wiggle.push({ t, a });
+  while (wiggle.length && t - wiggle[0].t > 1.1) wiggle.shift();
+  // (Back and forth, four times or more, over a short arc: a scribble, a burl.)
+  let turns = 0, dir = 0, lo = 0, hi = 0, acc = 0;
+  for (let i = 1; i < wiggle.length; i++) {
+    const d = (((wiggle[i].a - wiggle[i - 1].a + Math.PI) % TAU) + TAU) % TAU - Math.PI;
+    acc += d; lo = Math.min(lo, acc); hi = Math.max(hi, acc);
+    if (Math.abs(d) > 0.004) { const s = Math.sign(d); if (dir && s !== dir) turns++; dir = s; }
+  }
+  if (turns >= 4 && hi - lo < 0.45 && trail.length) {
+    const q = trail[trail.length - 1], at = wiggle[0].a + (lo + hi) / 2;
+    const p = pendingMarks.find((m) => m.kind === 'burl' && angleOff(m.a, at) < 0.4);
+    if (!p) { pendingMarks.push({ kind: 'burl', a: at, r: q.r, at: t, grow: 0 }); if (NATIVE) tap({ strength: 0.35, sharpness: 0.3 }); }
+    else p.grow = Math.min(3, p.grow + 0.35);
+    wiggle = [];
+  }
+}
+/**
+ * The knots and burls, printed in the wood (the print's own scale: `Z` times smaller than now): a knot a
+ * dark streak out through the years from where it began, widest where it was last fed, its tip closing
+ * over once it's left; a burl a scatter of eyes through the years it swelled.
+ */
+function drawMarks(v: View, Z: number): void {
+  const n = tree.rings.length;
+  if (!n || !marks.length) return;
+  const ringR = (i: number, a: number) => (i < 0 ? tree.k.pith : radiusAt(tree.rings[Math.min(n - 1, i)], a));
+  const P = (a: number, r: number): [number, number] => { const R = v.s * warpR(v.warp, r), t = a + v.turn; return [v.cx + R * Math.cos(t), v.cy - R * Math.sin(t)]; };
+  for (const m of marks) {
+    if (m.from >= n) continue;
+    if (m.kind === 'knot') {
+      // (Along the radius: from where it began, thickening to where it was last fed, then (left) closing.)
+      const alive = n - 1 - m.last <= 1, end = Math.min(n - 1, alive ? n - 1 : m.last + 2);
+      const r0 = ringR(m.from - 1, m.a), r1 = ringR(m.last, m.a), r2 = alive ? ringR(end, m.a) : ringR(end, m.a);
+      const yearW = Math.max(1e-3, ringR(m.from, m.a) - r0), wMax = Math.max((2.2 * px * Z) / v.s, yearW * (0.7 + 0.3 * Math.sqrt(Math.min(8, m.size)))) * TAKES[kind].knot;
+      const left: [number, number][] = [], right: [number, number][] = [], N = 24;
+      for (let j = 0; j <= N; j++) {
+        const f = j / N, r = r0 + (r2 - r0) * f, rise = smooth((r - r0) / Math.max(1e-3, r1 - r0)), fall = alive ? 1 : 1 - smooth((r - r1) / Math.max(1e-3, r2 - r1));
+        const w = wMax * (0.25 + 0.75 * rise) * fall * (0.9 + 0.2 * h1(m.seed + j * 0.7)), da = w / 2 / Math.max(1e-3, r);
+        left.push(P(m.a + da, r)); right.push(P(m.a - da, r));
+      }
+      g.beginPath(); g.moveTo(...left[0]); for (const q of left) g.lineTo(...q); for (let j = right.length - 1; j >= 0; j--) g.lineTo(...right[j]); g.closePath();
+      g.lineJoin = 'round'; g.strokeStyle = 'rgba(244,239,228,0.75)'; g.lineWidth = 1.4 * px * Z; g.stroke();
+      g.fillStyle = ink(0.97); g.fill();
+      // (Still growing: the branch's own small slice at its tip, pale-ringed.)
+      if (alive) {
+        const [x, y] = P(m.a, r2), e = Math.max(1.6 * px * Z, (v.s * wMax) * 0.45);
+        g.beginPath(); g.ellipse(x, y, e, e * 0.8, -(m.a + v.turn), 0, TAU); g.fillStyle = ink(0.97); g.fill();
+        g.beginPath(); g.ellipse(x, y, e * 0.62, e * 0.5, -(m.a + v.turn), 0, TAU); g.strokeStyle = 'rgba(244,239,228,0.85)'; g.lineWidth = 0.7 * px * Z; g.stroke();
+        g.beginPath(); g.arc(x, y, 0.8 * px * Z, 0, TAU); g.fillStyle = 'rgba(244,239,228,0.9)'; g.fill();
+      }
+    } else {
+      // (A burl: through the years it swelled, round its middle, the eyes of buds that never grew.)
+      const end = Math.min(n - 1, m.last + 3), spread = 0.2 + 0.025 * Math.min(6, m.size), count = Math.min(60, Math.round((6 + 7 * m.size) * TAKES[kind].burl));
+      for (let q = 0; q < count; q++) {
+        const fa = (h1(m.seed + q * 1.37) - 0.5) * 2, a = m.a + fa * spread;
+        const i = m.from + Math.floor(h1(m.seed * 0.7 + q * 3.3) * (end - m.from + 1)), rin = ringR(i - 1, a), rout = ringR(i, a);
+        const r = rin + (rout - rin) * (0.2 + 0.6 * h1(q * 5.1 + m.seed)), [x, y] = P(a, r);
+        const e = (0.9 + 1.6 * h1(q * 7.7 + 1)) * px * Z * (1 - 0.4 * Math.abs(fa));
+        g.beginPath(); g.arc(x, y, e * 1.7, 0, TAU); g.fillStyle = 'rgba(244,239,228,0.8)'; g.fill();
+        g.beginPath(); g.arc(x, y, e, 0, TAU); g.fillStyle = ink(0.95); g.fill();
+      }
+    }
+  }
+}
+/** While drawing: the knot or burl forming under the brush, at once (pressed into the wood when the ring closes). */
+function drawPendingMarks(v: View, t: number): void {
+  for (const p of pendingMarks) {
+    const [x, y] = at(v, p.a, p.r), k = smooth((t - p.at) / 0.4);
+    if (p.kind === 'knot') {
+      const e = (2.4 + 2.6 * Math.min(1, p.grow)) * px * k;
+      g.beginPath(); g.ellipse(x, y, e, e * 0.8, -(p.a + v.turn), 0, TAU); g.fillStyle = ink(0.95); g.fill();
+      g.beginPath(); g.ellipse(x, y, e * 0.6, e * 0.48, -(p.a + v.turn), 0, TAU); g.strokeStyle = 'rgba(244,239,228,0.8)'; g.lineWidth = 0.8 * px; g.stroke();
+    } else {
+      for (let q = 0; q < 5 + Math.round(3 * p.grow); q++) {
+        const da = (h1(q * 1.9 + p.at) - 0.5) * 0.18, dr = (h1(q * 3.7 + p.at) - 0.5) * 0.6 * tree.wRef, [ex, ey] = at(v, p.a + da, p.r + dr);
+        const e = (1 + 1.2 * h1(q * 5.3)) * px * k;
+        g.beginPath(); g.arc(ex, ey, e * 1.7, 0, TAU); g.fillStyle = 'rgba(244,239,228,0.8)'; g.fill();
+        g.beginPath(); g.arc(ex, ey, e, 0, TAU); g.fillStyle = ink(0.95); g.fill();
+      }
+    }
+  }
 }
 /**
  * A tree evens out its lumps, slowly: where it's short of round, a year a little wider (in proportion to
@@ -231,11 +376,11 @@ async function recall(): Promise<void> {
   if (params.has('fresh')) return;
   const k = await recallTree(DIARY), t = k && treeFrom(k, DAILY);
   if (!k || !t) return;
-  tree = t; days = (k.days ?? []).slice(0, t.rings.length); kind = asKind(k.tree) ?? 'oak';
+  tree = t; days = (k.days ?? []).slice(0, t.rings.length); kind = asKind(k.tree) ?? 'oak'; marks = (k.marks ?? []).map((m) => ({ ...m }));
   seedAt = k.at ?? (t.rings.length ? [0.5, 0.47] : null);
   while (days.length < t.rings.length) days.unshift(days[0] ?? dayOf());
   // (The practice: a year from its first ring, the tree is finished, and stands in the grove.)
-  if (GROWN && days.length && dayOf() >= yearOn(days[0])) { await keepInGrove(kept()); finishedYear = true; tree = new TreeSim(1 + Math.floor(Math.random() * 1e6), DAILY); days = []; seedAt = null; keep(); }
+  if (GROWN && days.length && dayOf() >= yearOn(days[0])) { await keepInGrove(kept()); finishedYear = true; tree = new TreeSim(1 + Math.floor(Math.random() * 1e6), DAILY); days = []; seedAt = null; marks = []; keep(); }
 }
 /** A day a year on from the given one (as 2027-10-14). */
 const yearOn = (d: string) => { const x = dayDate(d); x.setFullYear(x.getFullYear() + 1); return dayOf(x); };
@@ -247,7 +392,7 @@ function keep(): void {
 }
 /** The tree as kept (and as a copy is kept). */
 function kept(): KeptTree {
-  return { tree: kind, seed: tree.seed, wander: false, turn: 0, sim: snapshotTree(tree), days: days.slice(), ...(seedAt ? { at: seedAt } : {}) };
+  return { tree: kind, seed: tree.seed, wander: false, turn: 0, sim: snapshotTree(tree), days: days.slice(), ...(seedAt ? { at: seedAt } : {}), ...(marks.length ? { marks: marks.map((m) => ({ ...m })) } : {}) };
 }
 
 /**
@@ -457,6 +602,7 @@ canvas.addEventListener('pointerdown', (e) => {
   if (tree.begin(e.timeStamp / 1000, b.a, rounded(b.a, b.u))) {
     painter = e.pointerId; paper.begin(tree); trailAt(b.a, b.u);
     loop = { x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, len: 0, closed: false };
+    pendingMarks = []; wiggle = []; movedAt = clock(); moveX = e.clientX; moveY = e.clientY;
   }
 });
 canvas.addEventListener('pointermove', (e) => {
@@ -484,6 +630,7 @@ canvas.addEventListener('pointermove', (e) => {
     const bp = brushPoint(strokeView, c.clientX * px, c.clientY * px), b = brushAt(tree, strokeView, 0, ...bp);
     tree.move(c.timeStamp / 1000, b.a, rounded(b.a, b.u));
     trailAt(b.a, b.u);
+    if (GROWN) noteHand(c.clientX, c.clientY, b.a, clock());
     if (!tree.stroke) break;
     // The finger come back round to where it began: the circle is drawn, whatever the angle says.
     loop.len += Math.hypot(c.clientX - loop.x, c.clientY - loop.y); loop.x = c.clientX; loop.y = c.clientY;
@@ -823,6 +970,7 @@ function hear(): void {
     // The day's ring, kept; the first of the day is counted, quietly, once it has settled.
     const today = dayOf(), first = !days.includes(today);
     days.push(today);
+    keepMarks();
     keep();
     if (first) editionAt = clock() + (GROWN ? SEASON : 1.6);
     // (The ring is done: it settles into the paper and the slice draws back to make room, while the
@@ -1243,6 +1391,7 @@ function drawPrint(v: View): void {
     }
   }
 
+  drawMarks(v, Z);
   const bk = SPEC[kind].bark;
   if (bk === 'papery') drawBirchBark(v, pt, scr(Rb));
   else {
@@ -1577,20 +1726,20 @@ let editionY = -1e9, stampAt: [number, number] = [-1e9, -1e9];
  * A new tree: straight to the seeds, nothing asked. The tree drawn so far waits, kept as it was, until a
  * seed is touched (then it stands in the grove); drawn back to the grove instead, it's as it was.
  */
-let parting: { k: KeptTree; tree: TreeSim; days: string[]; kind: Kind; seedAt: [number, number] | null } | null = null;
+let parting: { k: KeptTree; tree: TreeSim; days: string[]; kind: Kind; seedAt: [number, number] | null; marks: WoodMark[] } | null = null;
 function plantAgain(): void {
   if (painter !== null) { tree.cancel(); trail = []; painter = null; }
   if (visit) unvisit();
   fingers.clear();
   if (parting) return;
-  parting = { k: kept(), tree, days, kind, seedAt };
-  tree = new TreeSim(1 + Math.floor(Math.random() * 1e6), DAILY); days = []; seedAt = null; folding = null;
+  parting = { k: kept(), tree, days, kind, seedAt, marks };
+  tree = new TreeSim(1 + Math.floor(Math.random() * 1e6), DAILY); days = []; seedAt = null; folding = null; marks = []; pendingMarks = [];
   lookAfresh(); groveCam = null; farTo = { from: far, to: 0, at: clock() };
   say('Swipe through the woods. Touch one to plant it.', 1e5);
 }
 function unpart(): void {
   if (!parting) return;
-  ({ tree, days, kind, seedAt } = parting); parting = null;
+  ({ tree, days, kind, seedAt, marks } = parting); parting = null;
   lookAfresh(); words.classList.remove('shown');
 }
 
@@ -1606,7 +1755,7 @@ let groveKept: KeptTree[] = [];
 /** How far drawn back (0 the slice, 1 the grove), and easing to where it settles. */
 let far = 0, farPull = 0, farTo: { from: number; to: number; at: number } | null = null;
 /** An older tree looked at, and today's, kept aside meanwhile. */
-let visit: { i: number; stash: { tree: TreeSim; days: string[]; kind: Kind } } | null = null;
+let visit: { i: number; stash: { tree: TreeSim; days: string[]; kind: Kind; marks: WoodMark[] } } | null = null;
 const canPull = () => GROWN && (tree.rings.length > 0 || (!!seedAt && groveKept.length > 0));
 const settleFar = () => { farTo = { from: far, to: far > 0.45 ? 1 : 0, at: clock() }; };
 interface Stand { sp: Kind; n: number; i: number; k: number; wx: number; wy: number; wr: number; x: number; y: number; r: number }
@@ -1834,16 +1983,16 @@ function tapGrove(x: number, y: number): void {
   if (hit.i < 0) { groveCam = null; farTo = { from: far, to: 0, at: clock() }; return; }
   const k = groveKept[hit.i], t2 = treeFrom(k, DAILY);
   if (!t2) return;
-  if (!visit) visit = { i: hit.i, stash: { tree, days, kind } };
+  if (!visit) visit = { i: hit.i, stash: { tree, days, kind, marks } };
   else visit.i = hit.i;
-  tree = t2; days = (k.days ?? []).slice(0, t2.rings.length); kind = asKind(k.tree) ?? 'oak';
+  tree = t2; days = (k.days ?? []).slice(0, t2.rings.length); kind = asKind(k.tree) ?? 'oak'; marks = (k.marks ?? []).map((m) => ({ ...m }));
   lookAfresh(); openedAt = clock(); idleSince = openedAt + OPEN;
   farTo = { from: far, to: 0, at: clock() };
 }
 /** Back from an older tree to today's. */
 function unvisit(): void {
   if (!visit) return;
-  ({ tree, days, kind } = visit.stash); visit = null;
+  ({ tree, days, kind, marks } = visit.stash); visit = null;
   lookAfresh();
 }
 function lookAfresh(): void {
@@ -1904,7 +2053,7 @@ let intro: {
 } | null = null;
 function startIntro(): void {
   if (!INTRO) return;
-  const was = { tree, days, kind, look, g, px, W, H }, own = tree.rings.length >= 3 && !visit && !parting;
+  const was = { tree, days, kind, look, g, px, W, H, marks }, own = tree.rings.length >= 3 && !visit && !parting;
   const end = own ? baseNow() : null;
   const rings: Float32Array[] = [];
   const cx = end ? end.cx : W / 2, cy = end ? end.cy : Math.round(H * 0.47), far = Math.hypot(Math.max(cx, W - cx), Math.max(cy, H - cy)) * 1.04, N = 240;
@@ -1912,7 +2061,7 @@ function startIntro(): void {
   try {
     look = { k: 1, ox: 0, oy: 0 };
     if (!own) {
-      kind = KINDS.includes(kind) ? kind : 'oak'; tree = new TreeSim(1 + Math.floor(Math.random() * 1e6), DAILY); days = [];
+      kind = KINDS.includes(kind) ? kind : 'oak'; tree = new TreeSim(1 + Math.floor(Math.random() * 1e6), DAILY); days = []; marks = [];
       demoYear(56);
     }
     const n = tree.rings.length;
@@ -1948,7 +2097,7 @@ function startIntro(): void {
       whole = press(side, side, SB, side / 2, side / 2);
     }
     made = { at: clock(), last: clock(), rings, skip: 0, cx, cy, to: end ? end.s / s : 1, near, whole, as: { tree, kind, k } };
-  } finally { ({ tree, days, kind, look, g, px, W, H } = was); }
+  } finally { ({ tree, days, kind, look, g, px, W, H, marks } = was); }
   words.style.visibility = 'hidden';
   intro = made;
 }
@@ -2063,6 +2212,7 @@ function frame(): void {
   // A line left resting a while fades away.
   if (tree.stroke && tree.resting && painter === null && t - restAt > 6) tree.cancel();
   paper.step(dt);
+  if (GROWN) watchHand(t, dt);
 
   g.setTransform(1, 0, 0, 1, 0, 0);
   g.drawImage(groundOf(), 0, 0);
@@ -2127,6 +2277,7 @@ function frame(): void {
   if (GROWN && !n && !seedAt) drawSeedChoice(v, t);
   drawBreath(shownOf(v), t, dt);
   drawBrush(g, v, t);
+  if (GROWN && painter !== null && tree.stroke) drawPendingMarks(v, t);
   if (far > 0) drawFar(v);
   else { placeBackInput(false); drawEdition(shownOf(v), t, dt); }
   // (The paper's tooth over everything, the opening too, so it's printed on the same sheet.)
@@ -2147,7 +2298,7 @@ void (async () => {
   else if (GROWN && !tree.rings.length) say(seedAt ? 'Draw a loop around the seed.' : 'Swipe through the woods. Touch one to plant it.', 1e5);
   // (Words only where they're needed: before the first ring. After that, the tree says it.)
   else if (!tree.rings.length) say('Draw a circle around this one.', 8);
-  Object.assign(window, { press: { get tree() { return tree; }, get phase() { return settle.ring >= 0 ? 'settling' : 'trace'; }, get easing() { return !!ease; }, get view() { return viewNow(); }, get days() { return days; }, get kind() { return kind; }, get choice() { return SEEDS[choice]; }, get far() { return far; }, get visiting() { return visit?.i ?? null; }, get parting() { return !!parting; }, groveNext: () => { const c = camNow(), w = worldOf(); return { x: (c.X0 + w.next.wx * c.S) / px, y: (c.Y0 + w.next.wy * c.S) / px }; }, grove: () => groveLayout().trees.map((t) => ({ sp: t.sp, n: t.n, i: t.i, x: t.x / px, y: t.y / px, r: t.r / px })), get editionY() { return editionY; }, get stampAt() { return stampAt; }, } });
+  Object.assign(window, { press: { get tree() { return tree; }, get phase() { return settle.ring >= 0 ? 'settling' : 'trace'; }, get easing() { return !!ease; }, get view() { return viewNow(); }, get days() { return days; }, get kind() { return kind; }, get choice() { return SEEDS[choice]; }, get far() { return far; }, get visiting() { return visit?.i ?? null; }, get parting() { return !!parting; }, groveNext: () => { const c = camNow(), w = worldOf(); return { x: (c.X0 + w.next.wx * c.S) / px, y: (c.Y0 + w.next.wy * c.S) / px }; }, grove: () => groveLayout().trees.map((t) => ({ sp: t.sp, n: t.n, i: t.i, x: t.x / px, y: t.y / px, r: t.r / px })), get editionY() { return editionY; }, get stampAt() { return stampAt; }, get marks() { return marks.map((m) => `${m.kind}@${m.a.toFixed(2)} ${m.from}-${m.last} x${m.size.toFixed(1)}`); } } });
   // (The real wood: once it's come, the print is pressed again with it.)
   if (PRINT) loadWood(() => { for (const k in printCaches) delete printCaches[k]; });
   startIntro();
