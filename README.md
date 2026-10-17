@@ -960,3 +960,7 @@ Mars had gathered dust storms from one side, falling stones, a collapse that tur
 - The words: tip "Hold to pour. Lava runs down the screen, so turn the planet to pour on every side. Fill out to the dotted ring first: a narrow mountain collapses."; opening "Goal: a mountain 18 km high. Build it wide first, out to the dotted ring: a narrow mountain collapses"; at a collapse "Too narrow: a side collapsed. Pour where the dotted ring is still faint".
 
 Bots: played carefully, won every seed (158 to 193 s); random play won 2 of 3; held still and never turned, won all 3. Mars is now an easy build. A stricter width rule (taper 0.85, 0.7) made nobody win, careful or not: turning to build wide doesn't make the base wider than pouring in one place does, so the width rule can't be the decision it was meant to be.
+
+### Words, cut down
+
+Every world's tip is now at most two short sentences, keeping only the one choice that decides it (the full rules are learned by playing, and by the short lines said when something happens). The openings' lines are the goal and one short rule. The first world's prompts and the drift line are shorter too: "One filled. Turn the planet so the next crater is just below the volcano"; "Two filled. Pour from just above the last one: lava on the striped ground is wasted"; "Turning the planet moves the volcano: the dotted trail shows where it is heading".
