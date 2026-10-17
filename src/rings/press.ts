@@ -396,8 +396,19 @@ const youth = (n: number) => (0.72 + 0.28 * smooth(n / 2.5)) * (1 + 0.32 * Math.
  * how far short, of the whole radius: never so strong that the swells below can't build a lobe).
  */
 const evenUp = (a: number) => (0.8 * SPEC[kind].even * (tree.radius - radiusAt((i) => tree.inner(i), a))) / Math.max(1e-3, tree.radius);
-/** How the tree itself grows round its girth, besides the hand (see `growing.ts`). */
-const growth = (a: number, n = tree.rings.length) => Math.pow(growthOf(tree.seed, a, n), SPEC[kind].amp) * SPEC[kind].width * alive(a, n);
+/** How the tree itself grows round its girth, besides the hand (see `growing.ts`), and its lean. */
+const growth = (a: number, n = tree.rings.length) => Math.pow(growthOf(tree.seed, a, n), SPEC[kind].amp) * SPEC[kind].width * alive(a, n) * leanOf(a, n);
+/**
+ * A tree is never grown evenly round: it leans, or the light comes from one side, and year after year it lays
+ * more wood on that side than the other, so its heart sits off the middle, the years wide on one side and close
+ * on the other. Its own side, from its seed, drifting a little over the years; the first dozen years even (a
+ * sapling's core is near its middle), gathering over the next sixty or so, then a third to two-thirds again as wide on the one side as the other. (`lean`, below, is
+ * the first game's.)
+ */
+const leanOf = (a: number, n: number) => {
+  const side = h1(tree.seed * 0.0417) * TAU + 0.5 * Math.sin(n / 90 + tree.seed), k = (0.12 + 0.12 * h1(tree.seed * 0.29)) * smooth((n - 12) / 60);
+  return Math.exp(k * Math.cos(a - side));
+};
 /**
  * The bristlecone, old, lives on in a strip: from its thirtieth year or so, a side of it dies back, its
  * bark gone, and grows on no more, the dead sector widening slowly; the rest grows on round it (1 where
@@ -1631,6 +1642,34 @@ function drawPrint(v: View): void {
     }
     g.restore();
   }
+  // The bark come away: as a cut slice dries, its bark parts from the wood, a hairline of paper just inside it,
+  // unbroken for long stretches, gone here and there where it still holds. (The practice only, an older slice.)
+  if (GROWN && n >= 25 && bk !== 'papery') {
+    const bark = barkOf(n - 1), T = barkCss(v), on = smooth((n - 25) / 40);
+    g.save(); g.globalCompositeOperation = 'destination-out'; g.strokeStyle = '#000'; g.lineCap = 'round';
+    const N = K * 2;
+    for (let j = 0; j < N; j++) {
+      const a0 = (j / N) * TAU, a1 = ((j + 1) / N) * TAU, held = noise(tree.seed * 0.013 + (a0 / TAU) * 9);
+      if (held > 0.25 + 0.5 * on) continue;
+      const out = T * (0.18 + 0.1 * noise(tree.seed * 0.07 + (a0 / TAU) * 23));
+      g.lineWidth = (0.5 + 0.6 * on) * px * Z * (0.6 + 0.8 * h1(j * 0.37 + tree.seed));
+      g.beginPath(); g.moveTo(...pt(a0, bark(a0), out * px)); g.lineTo(...pt(a1, bark(a1), out * px)); g.stroke();
+    }
+    g.restore();
+  }
+  // Round the edge, a faint grey of ink caught from the block's rim and the bark's loose bits: a fine stipple
+  // a few px out, thick in places and none in others.
+  if (n) {
+    const bark = barkOf(n - 1), T = barkCss(v) * px, count = Math.round((TAU * scr(Rb) * SPARSE) / (2.2 * px * Z));
+    g.fillStyle = ink(0.45); g.beginPath();
+    for (let q = 0; q < count * 1.6; q++) {
+      const a = h1(q * 0.917 + tree.seed * 0.01) * TAU;
+      if (noise(tree.seed * 0.021 + (a / TAU) * 14) < 0.4) continue;
+      const out = T + (1 + 7 * h1(q * 2.31) ** 1.6) * px * Z, [x, y] = pt(a, bark(a), out), d = (0.35 + 0.5 * h1(q * 5.7)) * px * Z;
+      g.moveTo(x + d, y); g.arc(x, y, d, 0, TAU);
+    }
+    g.fill();
+  }
   // The press: a hand-pulled print is never evenly pressed. The ink is a little paler toward one side
   // (where the press bore down less), and in a few broad, soft patches; only the ink is lightened.
   {
@@ -1643,6 +1682,16 @@ function drawPrint(v: View): void {
       const a = h1(tree.seed + q * 3.3) * TAU, d = Rs * (0.2 + 0.6 * h1(q * 7.1 + tree.seed)), rr = Rs * (0.25 + 0.3 * h1(q * 2.9));
       const x = v.cx + d * Math.cos(a), y = v.cy - d * Math.sin(a), rad = g.createRadialGradient(x, y, 0, x, y, rr);
       rad.addColorStop(0, `rgba(244,239,228,${(0.03 + 0.03 * h1(q * 5.5)).toFixed(3)})`); rad.addColorStop(1, 'rgba(244,239,228,0)');
+      g.fillStyle = rad; g.fillRect(x - rr, y - rr, 2 * rr, 2 * rr);
+    }
+    g.restore();
+    // (And where the block was inked thin, or sat low, the ink starved: a few broad patches where it thins, to
+    // be broken by the paper's tooth into a speckle.)
+    g.save(); g.globalCompositeOperation = 'destination-out';
+    for (let q = 0; q < 4; q++) {
+      const a = h1(tree.seed * 1.7 + q * 4.1) * TAU, d = Rs * (0.15 + 0.6 * h1(q * 3.9 + tree.seed * 0.3)), rr = Rs * (0.18 + 0.22 * h1(q * 6.3 + tree.seed));
+      const x = v.cx + d * Math.cos(a), y = v.cy - d * Math.sin(a), rad = g.createRadialGradient(x, y, 0, x, y, rr);
+      rad.addColorStop(0, `rgba(0,0,0,${(0.26 + 0.16 * h1(q * 2.2 + tree.seed)).toFixed(3)})`); rad.addColorStop(0.55, `rgba(0,0,0,${(0.12 + 0.08 * h1(q * 2.2 + tree.seed)).toFixed(3)})`); rad.addColorStop(1, 'rgba(0,0,0,0)');
       g.fillStyle = rad; g.fillRect(x - rr, y - rr, 2 * rr, 2 * rr);
     }
     g.restore();
