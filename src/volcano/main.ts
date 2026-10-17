@@ -66,6 +66,7 @@ import { skyBody, starBloom } from './skyBody';
 import { MARK_AT, earned, fromOldMarks, markNames, mergeMarks, readMarks, starsOf, writeMarks, type Marks } from './marks';
 import './fonts.css';
 import { LOOKS, PRINT_FUNCTIONS, LAMP_PRINT_FUNCTIONS, LAMP_PRINT, LAMP_QUIET, LAMP_WATER, printFragment, type Look } from './print';
+import { pointAt } from './real';
 
 const $ = (id: string) => document.getElementById(id)!;
 const stage = $('stage');
@@ -192,9 +193,10 @@ const GROUND_KEY = WORLD.rules.real ? `${WORLD.id}-real` : WORLD.id;
 // each time it's played, so an age is always this world, not the last try at it.)
 const AGE_BEFORE = !wanted ? ageBefore(WORLD.id) : null;
 const AGE_GROUND = AGE_BEFORE ? recallGround(ageKey(AGE_BEFORE), N) : null;
-const GROUND = wanted || ageBefore(WORLD.id) || WORLD.id === AGES[0] ? null : recallGround(GROUND_KEY, N);
+const GROUND = wanted || ageBefore(WORLD.id) || WORLD.id === AGES[0] || WORLD.startAt ? null : recallGround(GROUND_KEY, N);
 const FIRES = GROUND?.fires ?? 0;
 const START = (() => {
+  if (WORLD.startAt) { const p = pointAt(WORLD.startAt[0], WORLD.startAt[1]); return nearest(p.x, p.y, p.z); }
   if (!GROUND) return nearest(0.1, 0.15, 0.98);
   const h = (k: number) => { const x = Math.sin(seed * 12.9898 + k * 78.233) * 43758.5453; return x - Math.floor(x); };
   const z = h(1) * 2 - 1, a = h(2) * Math.PI * 2, r = Math.sqrt(1 - z * z);
@@ -1674,7 +1676,7 @@ let seaNow = SEA_START;
 let warnedAt = -100;
 /** The red giant: the mountain's height (km), as last reckoned. */
 let peakNow = 0;
-let aimDone = 0, aimOf = WORLD.goal === 'nests' ? NESTS : WORLD.goal === 'white' ? 100 : WORLD.goal === 'waves' ? RINGS : WORLD.goal === 'glow' ? 100 : WORLD.goal === 'antipode' ? FAR_KM : WORLD.goal === 'gather' ? GATHER : WORLD.goal === 'water' ? WATER : WORLD.goal === 'atolls' ? ATOLLS_N : WORLD.goal === 'chaos' || WORLD.goal === 'streaks' ? FIELDS : WORLD.goal === 'domes' ? DOMES : MARBLE ? 100 : WORLD.goal === 'oxygen' || WORLD.goal === 'thaw' || WORLD.goal === 'outbuild' || WORLD.goal === 'snow' ? 100 : WORLD.goal === 'ring' ? CHAIN.stretches : WORLD.goal === 'height' ? HEIGHT.target : WORLD.goal === 'cover' ? COVER : WORLD.goal === 'round' ? ROUND : WORLD.goal === 'ridge' ? Planet.RIDGE_STRETCHES : WORLD.goal === 'lamp' || WORLD.goal === 'bank' ? 100 : WORLD.goal === 'calm' ? CALM : WORLD.goal === 'plumes' ? PLUMES : WORLD.goal === 'orbit' || WORLD.goal === 'feed' ? 100 : planet.basins.length, lastAim = -10;
+let seasSaid = 0, aimDone = 0, aimOf = WORLD.goal === 'nests' ? NESTS : WORLD.goal === 'white' ? 100 : WORLD.goal === 'waves' ? RINGS : WORLD.goal === 'glow' ? 100 : WORLD.goal === 'antipode' ? FAR_KM : WORLD.goal === 'gather' ? GATHER : WORLD.goal === 'water' ? WATER : WORLD.goal === 'atolls' ? ATOLLS_N : WORLD.goal === 'chaos' || WORLD.goal === 'streaks' ? FIELDS : WORLD.goal === 'domes' ? DOMES : MARBLE ? 100 : WORLD.goal === 'oxygen' || WORLD.goal === 'thaw' || WORLD.goal === 'outbuild' || WORLD.goal === 'snow' ? 100 : WORLD.goal === 'ring' ? CHAIN.stretches : WORLD.goal === 'height' ? HEIGHT.target : WORLD.goal === 'cover' ? COVER : WORLD.goal === 'round' ? ROUND : WORLD.goal === 'ridge' ? Planet.RIDGE_STRETCHES : WORLD.goal === 'lamp' || WORLD.goal === 'bank' ? 100 : WORLD.goal === 'calm' ? CALM : WORLD.goal === 'plumes' ? PLUMES : WORLD.goal === 'orbit' || WORLD.goal === 'feed' ? 100 : planet.basins.length, lastAim = -10;
 /** Lengai: whether its peak has reached its height (kept, once it has). */
 let peakReached = false;
 /** How much of the aim is done now, reckoned afresh. */
@@ -1741,7 +1743,15 @@ function reckonAim(): void {
   else if (WORLD.goal === 'domes') { aimDone = planet.plumes.length; aimOf = DOMES; }
   // (Io's two fires: measured twice a second, being slow to find.)
   else if (MARBLE) { if (planet.seconds - marbledAt >= 0.5) { marbledAt = planet.seconds; aimDone = Math.round(100 * planet.marbled); } aimOf = 100; }
-  else { aimDone = planet.basins.filter((b) => planet.flooded(b) >= FLOODED_ENOUGH).length; aimOf = planet.basins.length; }
+  else {
+    aimDone = planet.basins.filter((b) => planet.flooded(b) >= FLOODED_ENOUGH).length; aimOf = planet.basins.length;
+    // (The first world played: each sea filled says what the next one asks, one thing at a time.)
+    if (WORLD.startAt && WORLD.goal === 'basins' && aimDone > seasSaid && aimDone < aimOf) {
+      seasSaid = aimDone;
+      announce(aimDone === 1 ? 'One crater filled. Now turn the planet so the next dotted crater is just below the volcano: lava runs down the screen'
+        : 'Two filled. The last crater is ringed by striped high ground: lava poured there runs off and is wasted, so pour from just above the crater');
+    }
+  }
 }
 let calmHeld = 0, calmAt = 0, litFor = 0, litAt = 0, clearOfSea = false, foundSeen = 0, CHILL_TOLD = remembered('volcano.learned.chill') === '1';
 /** The survey's outline, laid round the vent as the world began. */
@@ -2566,7 +2576,7 @@ const ACTION_WORDS = /^(The volcano is near the end|The volcano has passed|A sto
  * above were said, and nearly every world's own word on what had just happened, a crack too late, a comet frozen, a
  * burst not at high tide, the far side rising, was kept quiet.)
  */
-const EXPLAIN = /^(Goal: |Every (crack|plume) so far|The comet melted|The comet froze|It's tumbling again|You poured too fast|No wave|Not high tide|That stone was too big|Too tall|Theia|The shock|Too late|Too early|Too small|Too near|A big eruption|A giant wave|The island is blown|The far side|A dark streak|A streak, but|The ice cracks|A mound|A lava dome|A dome, but|The mound slumps|The dome slumps|A blob reaches|Ice reaches the ring|An icy comet|Ice melted|The ice froze|Stone caught|Caught in the glow|The eruption's gas|The ground gives way|The last of the sea|The sea is nearly gone|The day has melted|The volcano is in daylight|That lava|A seabird|A nest|Found:|The island stands|Too tall for its width|A dust storm is coming|Theia|Too big to hold|The big stone|A stone too big|The burst missed|In the dark|Chilled)/;
+const EXPLAIN = /^(One crater filled|Two filled|Goal: |Every (crack|plume) so far|The comet melted|The comet froze|It's tumbling again|You poured too fast|No wave|Not high tide|That stone was too big|Too tall|Theia|The shock|Too late|Too early|Too small|Too near|A big eruption|A giant wave|The island is blown|The far side|A dark streak|A streak, but|The ice cracks|A mound|A lava dome|A dome, but|The mound slumps|The dome slumps|A blob reaches|Ice reaches the ring|An icy comet|Ice melted|The ice froze|Stone caught|Caught in the glow|The eruption's gas|The ground gives way|The last of the sea|The sea is nearly gone|The day has melted|The volcano is in daylight|That lava|A seabird|A nest|Found:|The island stands|Too tall for its width|A dust storm is coming|Theia|Too big to hold|The big stone|A stone too big|The burst missed|In the dark|Chilled)/;
 function announce(text: string, lesson = false): void {
   text = words$(text);
   if (BARE && !ending) return;
@@ -4004,7 +4014,7 @@ const OPENINGS: Partial<Record<WorldId, ShowLook>> = {
   europa: { len: 4.5, zoom: 0.72, words: () => `Goal: crack the ice in ${FIELDS} places. Under it is an ocean: erupt when the circle around the volcano is full` },
   tonga: { len: 4.6, zoom: 0.85, dir: ventDir, at: HORIZON, turn: [1.2, 2.2, 1.2], words: () => `Goal: ${RINGS} giant waves. Erupt with the top of the volcano just under the sea` },
   first: { len: 4.5, zoom: 1.5, words: () => 'Goal: grow the planet by catching stones in the gold ring. Keep away from red stones, too big to hold. Grow big enough, and Theia comes' },
-  moon: { len: 5, zoom: 1.25, round: true, words: () => 'Goal: fill every dotted crater with lava. Lava poured on the striped high ground runs off and is wasted' },
+  moon: { len: 5, zoom: 1.25, round: true, words: () => `Goal: fill the three dotted craters with lava. The first is right under the volcano: ${HOLD.toLowerCase()} to pour` },
   venus: { len: 4.6, zoom: 0.9, dir: ventDir, at: HORIZON, turn: [1.2, 2.2, 1.2], words: () => `Goal: ${DOMES} lava domes, each in a different place. Pour about two seconds at a time: pouring too long makes a dome sag` },
   comets: { len: 4.5, zoom: 0.85, words: () => `Goal: melt ${WATER} icy comets into water. A comet melts only if it lands on fresh lava or on the volcano` },
   archean: { len: 4.5, zoom: 1.35, words: () => 'Goal: make enough oxygen to turn the orange sky blue. Pour lava into the sea to make shallows: life grows there and makes oxygen. Eruptions use it up' },

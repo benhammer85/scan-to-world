@@ -24,14 +24,14 @@ const run = (pl: Planet, seconds: number) => { for (let t = 0; t < seconds; t +=
 describe('the worlds', () => {
   it('come one after another, and each has its own aim', () => {
     const played = WORLDS.filter((w) => !SAVED.includes(w.id)).map((w) => w.id);
-    expect(played).toEqual(['mars', 'moon', 'mercury', 'io', 'europa', 'venus', 'first', 'comets', 'archean', 'ocean', 'drying', 'giant', 'surtsey', 'tonga', 'hollow', 'rogue', 'lamp', 'twofires']);
+    expect(played).toEqual(['moon', 'mars', 'mercury', 'io', 'europa', 'venus', 'first', 'comets', 'archean', 'ocean', 'drying', 'giant', 'surtsey', 'tonga', 'hollow', 'rogue', 'lamp', 'twofires']);
     for (let i = 0; i + 1 < played.length; i++) expect(nextWorld(worldOf(played[i]))!.id).toBe(played[i + 1]);
     expect(nextWorld(worldOf('twofires'))).toBe(null);
     // (Saved for later: kept whole, but never come to.)
     expect(nextWorld(worldOf('enceladus'))).toBe(null);
     expect(worldOf('enceladus').goal).toBe('feed');
     expect(worldOf('moon').goal).toBe('basins');
-    expect(worldOf('nowhere').id).toBe('mars');
+    expect(worldOf('nowhere').id).toBe('moon');
   });
 
 });
@@ -94,19 +94,28 @@ describe('the Moon', () => {
 
   it('is dry highland scarred by great basins, with no life', () => {
     const pl = moon();
-    expect(pl.basins.length).toBe(9);
+    expect(pl.basins.length).toBe(3); // (the first world played: three seas, each teaching one thing)
     expect(Math.min(...pl.rock)).toBeGreaterThan(0); // no sea anywhere
     run(pl, 120);
     expect(pl.lifeShare()).toBe(0);
   });
 
   it('floods the basin its lava is poured into', () => {
-    const pl = moon(), b = pl.basins[0];
+    // Poured as it's played, from the sea's middle: tipped a little, this way and that, so the lava runs out over
+    // its floor; held with the volcano uppermost, so the heat stays where it is.
+    const b0 = moon().basins[0], pl = new Planet(topo, nearest(b0.x, b0.y, b0.z), 3, worldOf('moon').rules), b = pl.basins[0];
     expect(pl.flooded(b)).toBe(0);
-    for (let t = 0; t < 240; t += 1 / 20) {
-      pl.callTo(b.x, b.y, b.z);
+    let pouring = false, way = 0;
+    for (let t = 0; t < 120; t += 1 / 20) {
+      const q = pl.plume, a = { x: Math.abs(q.y) < 0.9 ? 0 : 1, y: Math.abs(q.y) < 0.9 ? 1 : 0, z: 0 };
+      const c1 = { x: q.y * a.z - q.z * a.y, y: q.z * a.x - q.x * a.z, z: q.x * a.y - q.y * a.x }, l1 = Math.hypot(c1.x, c1.y, c1.z);
+      const e1 = { x: c1.x / l1, y: c1.y / l1, z: c1.z / l1 }, e2 = { x: q.y * e1.z - q.z * e1.y, y: q.z * e1.x - q.x * e1.z, z: q.x * e1.y - q.y * e1.x };
+      // (Held level while the heat gathers, then tipped to pour it, a new way round each time: as it's played.)
+      if (!pouring && pl.pressure >= pl.k.explosive * 0.8) { pouring = true; way += 2.1; } else if (pouring && pl.pressure < pl.k.least * 0.5) pouring = false;
+      const s = pouring ? Math.sin(0.6) : 0, cz = pouring ? Math.cos(0.6) : 1;
+      pl.gravity = { x: -q.x * cz + s * (e1.x * Math.cos(way) + e2.x * Math.sin(way)), y: -q.y * cz + s * (e1.y * Math.cos(way) + e2.y * Math.sin(way)), z: -q.z * cz + s * (e1.z * Math.cos(way) + e2.z * Math.sin(way)) };
+      pl.upright = { x: -q.x, y: -q.y, z: -q.z };
       pl.step(1 / 20);
-      if (Math.round(t * 20) % 50 === 0) pl.erupt();
     }
     expect(pl.flooded(b)).toBeGreaterThan(0.5);
   });
@@ -751,7 +760,7 @@ describe('worlds under a star', () => {
 describe('real terrain', () => {
   it("lays the Moon's real heights, near side towards us, its seas low", () => {
     const pl = new Planet(topo, nearest(0, 0, 1), 3, worldOf('moon').rules);
-    const imbrium = pl.basins[0];
+    const imbrium = pl.basins[1]; // (the Sea of Rains: the first world's second sea)
     let inside = 0, ni = 0, highland = 0, nh = 0;
     for (let v = 0; v < pl.rock.length; v++) {
       const d = Math.hypot(p[v * 3] - imbrium.x, p[v * 3 + 1] - imbrium.y, p[v * 3 + 2] - imbrium.z);

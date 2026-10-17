@@ -923,3 +923,13 @@ Left as is: Mars, where aimless play reaches the height too but ends with too li
 - The blobs were still drawn in the old engraving (lines in a dark outline on a pale fill) after the lava everywhere else became watercolour. In watercolour they're now paint too (`LAMP_WATER` in print.ts): pigments swirling gold to alizarin, a soft edge while hot, pigment gathering at the edge as it cools, a bloom here and there.
 - The dotted shore, the whole goal, was all but invisible: small dots nearly the glass's own lilac. Now as dark and as big as the done dots.
 - An opening, as the other worlds have: the world turns to the shore, with "Goal: fill this dotted shore with glowing blobs. Blobs float up the screen, so turn the planet to keep the shore above the volcano. Let each blob grow big, then tap to let it go". And a win: the full shore. The goal line says the same in short.
+
+### The first world: the Moon, three seas
+
+The game now opens on the Moon, not Mars (Mars's slow climb to 18 km, with nothing to react to for the first minutes, made a dull first level; it's second now). Three of the Moon's real seas, in order, each teaching one thing:
+
+1. **The Sea of Serenity:** the volcano begins on its floor by the western rim (`startAt`, the same every time; the world is fresh each time). Just hold to pour.
+2. **The Sea of Rains:** across the mountains to the west. "One crater filled. Now turn the planet so the next dotted crater is just below the volcano."
+3. **The Sea of Crises:** alone in high ground to the east. "Two filled. The last crater is ringed by striped high ground: lava poured there runs off and is wasted, so pour from just above the crater."
+
+The lava is a little less runny (thin 0.004, was 0.0015) and poured more gently (rising 0.55, was 1.0), or held still it flooded every sea in reach and no turning was needed. Bots: played carefully, won in about 50 s with nearly all the heat left; aimless, lost; held still and never turned (a new bot, `holder`), two seas then stuck. Stars: keep half the heat, finish in 2 minutes.

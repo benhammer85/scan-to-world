@@ -74,6 +74,8 @@ export interface World {
   rings?: number;
   /** For Mercury: how high (km) the far side's mountain must stand. */
   farKm?: number;
+  /** Where the volcano begins (latitude, longitude, on a world of real heights), the same each time; and the world is fresh each time, not as the last fire left it. */
+  startAt?: [number, number];
   /** For a world whose star crosses its sky: how fast (radians a second, about the sky's up). */
   sunTurns?: number;
   /** For the first world: how many stones of the rubble to catch. */
@@ -128,9 +130,41 @@ export interface World {
 
 export const WORLDS: World[] = [
   {
+    id: 'moon',
+    kind: 'A grey moon',
+    numeral: 'I',
+    title: 'The Moon',
+    first: 'Old and airless, with almost no heat left.',
+    why: "The dark patches you can see on the Moon from Earth are old lava that filled its great craters. These three are real: the Sea of Serenity, the Sea of Rains and the Sea of Crises.",
+    second: 'Hold to pour lava into the crater under the volcano. Then turn the planet to reach the next.',
+    rules: {
+      thin: 0.004, // (runny, as the Moon's flood basalts were; but not so runny that held still, it floods every sea in reach: the first world played teaches turning)
+      g: 0.17, // (the Moon's gravity, Earth's being 1)
+      terrain: 'moon', basins: 9, floor: 0.4, rough: 0.008, craters: 0,
+      // (Its real heights, and its real seas, where they are and as wide (latitude, longitude, km): Imbrium,
+      // Serenitatis, Tranquillitatis, Crisium, Nectaris, Fecunditatis, Nubium, Humorum, and Orientale on the edge.)
+      real: 'moon', realScale: 0.04, realRadius: 1737,
+      // (The first world played: three of them, in order, each teaching one thing. Serenitatis, where the volcano
+      // begins, to just hold and fill; Tranquillitatis beside it, to turn the world to; Crisium, alone in high
+      // ground, to aim for. Earlier: all nine seas, Imbrium, Nubium, Humorum, Nectaris, Fecunditatis, Orientale too.)
+      realBasins: [[27, 18, 330], [33, -16, 330], [17, 59, 280]],
+      waves: 0, rain: 0, sink: 0, swell: 0, life: false,
+      flow: 16, channel: 1, coolLand: 0.06,
+      drift: 0, rises: 0.035, heat: 200, rising: 0.55, // (poured gently: the first world played, its three seas a minute or two's work)
+      impactEvery: [12, 22], impactWarning: 12, crater: 0.08, craterDepth: 0.05, impactHeat: 4, ageCraters: 0.12,
+    },
+    palette: {
+      paper: '#e4e1da', basalt: '#9c9a95', ash: '#b9b6b0', lava: '#b8563c', deepLava: '#8f3b28', flooded: '#6f7074',
+      shallow: '#d4e3ec', deep: '#b1c8d8',
+      landInk: '#55524d', landInkHigh: '#35332f', pencil: '#b6b2aa', seaInk: '#5b82a3',
+    },
+    goal: 'basins',
+    startAt: [29, 13], // (on Serenitatis's floor, near its western rim: the first sea is right under the volcano)
+  },
+  {
     id: 'mars',
     kind: 'A red world',
-    numeral: 'I',
+    numeral: 'II',
     title: 'Mars',
     first: 'Cold and dry, with thin, dusty air.',
     why: 'Mars has weak gravity, so lava can pile up much higher than on Earth: Olympus Mons is 22 km tall and 600 km wide. Its sides have given way in giant landslides, and steep cliffs ring it.',
@@ -155,34 +189,6 @@ export const WORLDS: World[] = [
     },
     goal: 'height',
     height: { target: 18, kmPerUnit: 40 }, // (twice Everest; Olympus Mons is 22, which took too long)
-  },
-  {
-    id: 'moon',
-    kind: 'A grey moon',
-    numeral: 'II',
-    title: 'The Moon',
-    first: 'Old and airless, with almost no heat left.',
-    why: "These are the Moon's real big craters. The dark patches you can see from Earth are old lava that filled them.",
-    second: 'Turn a crater just below the volcano and pour, and it fills.',
-    rules: {
-      thin: 0.0015, // (runny, as the Moon's flood basalts were: its aim is to cover ground, and stiff lava covers less)
-      g: 0.17, // (the Moon's gravity, Earth's being 1)
-      terrain: 'moon', basins: 9, floor: 0.4, rough: 0.008, craters: 0,
-      // (Its real heights, and its real seas, where they are and as wide (latitude, longitude, km): Imbrium,
-      // Serenitatis, Tranquillitatis, Crisium, Nectaris, Fecunditatis, Nubium, Humorum, and Orientale on the edge.)
-      real: 'moon', realScale: 0.04, realRadius: 1737,
-      realBasins: [[33, -16, 550], [27, 18, 330], [8.5, 31, 350], [17, 59, 280], [-15, 35, 170], [-8, 51, 300], [-21, -17, 350], [-24, -39, 190], [-19, -95, 320]],
-      waves: 0, rain: 0, sink: 0, swell: 0, life: false,
-      flow: 16, channel: 1, coolLand: 0.06,
-      drift: 0, rises: 0.035, heat: 200, rising: 1.0, // (its seas lie close together, as the real ones do: less heat, so they're still a fire's work)
-      impactEvery: [12, 22], impactWarning: 12, crater: 0.08, craterDepth: 0.05, impactHeat: 4, ageCraters: 0.12,
-    },
-    palette: {
-      paper: '#e4e1da', basalt: '#9c9a95', ash: '#b9b6b0', lava: '#b8563c', deepLava: '#8f3b28', flooded: '#6f7074',
-      shallow: '#d4e3ec', deep: '#b1c8d8',
-      landInk: '#55524d', landInkHigh: '#35332f', pencil: '#b6b2aa', seaInk: '#5b82a3',
-    },
-    goal: 'basins',
   },
   {
     id: 'mercury',
@@ -945,7 +951,7 @@ export const WORLDS: World[] = [
  * into domes and mounds; and last, two extras that play differently: the lava lamp and Io's Two Lavas.
  */
 export const CHAPTERS: { numeral: string; title: string; worlds: WorldId[] }[] = [
-  { numeral: 'I', title: 'Our Neighbours', worlds: ['mars', 'moon', 'mercury', 'io', 'europa', 'venus'] },
+  { numeral: 'I', title: 'Our Neighbours', worlds: ['moon', 'mars', 'mercury', 'io', 'europa', 'venus'] },
   { numeral: 'II', title: 'Earth\'s Past', worlds: ['first', 'comets', 'archean', 'ocean'] },
   { numeral: 'III', title: 'Earth\'s Future', worlds: ['drying', 'giant'] },
   { numeral: 'IV', title: 'Real Volcanoes', worlds: ['surtsey', 'tonga'] },

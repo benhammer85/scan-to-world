@@ -26,7 +26,7 @@ export const MARK_AT: Record<WorldId, { heat: number; minutes: number }> = {
   atolls: { heat: 20, minutes: 4 },
   drying: { heat: 10, minutes: 12 },
   giant: { heat: 16, minutes: 24 }, // (the red giant: the mountain's height kept, in km, for the second and third stars; see PEAKS) // (the drying seas: the shares of the world still sea, for the second and third stars; see SEAS)
-  moon: { heat: 33, minutes: 3 },
+  moon: { heat: 50, minutes: 2 }, // (three seas, the first world played)
   mars: { heat: 20, minutes: 4 },
   ice: { heat: 10, minutes: 6 },
   asteroid: { heat: 25, minutes: 5 },
