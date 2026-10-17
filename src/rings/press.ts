@@ -26,7 +26,7 @@ import { at, paperTooth } from './draw';
 import { Paper } from './paint';
 import { dayDate, dayOf } from './days';
 import { climate, growth as growthOf, season } from './growing';
-import { crownSize, drawCrown, drawHill, drawMeadow, drawMoss, drawSeedling, drawStream, drawTrack, heightAt, land, pigment, seasonOf, snowHill, washCrown, washHill, type CrownForm, type Hill, type Season, type Sun } from './grove';
+import { crownSize, drawCrown, drawHill, drawMeadow, drawMoss, drawSeedling, drawStream, drawTrack, washFlat, shadeOf, heightAt, land, pigment, seasonOf, snowHill, washCrown, washHill, type CrownForm, type Hill, type Season, type Sun } from './grove';
 import { holdStill, steadySize } from './steady';
 import { fromText, grove, keepInGrove, keepTree, recallTree, setGrove, snapshotTree, toText, treeFrom, type KeptTree, type WoodMark } from './save';
 
@@ -2846,33 +2846,32 @@ function renderGrove(c: CanvasRenderingContext2D, cam: Cam, sprites?: Sprite[]):
   // (All the shadows as one: their shapes laid solid, then hatched once, finely and lightly, so where two
   // meet it's never darker.)
   if (sun.strength > 0.02) {
+    // (One sheet: the hatching laid over it all, then kept only inside the shadows, gathered as one shape.)
     const lay = document.createElement('canvas'); lay.width = W; lay.height = H;
-    const lc = lay.getContext('2d')!;
-    for (const t of wildShown) drawCrown(lc, t.x, t.y, t.r, t.sp, t.k, u, 1, undefined, sun, 'shade');
-    for (const t of shown) if (t.n >= 1) drawCrown(lc, t.x, t.y, t.r, t.sp, t.k, u, 1, formOf(t.i), sun, 'shade');
+    const lc = lay.getContext('2d')!, all = new Path2D();
+    for (const t of wildShown) all.addPath(shadeOf(t.x, t.y, t.r, t.sp, t.k, undefined, sun));
+    for (const t of shown) if (t.n >= 1) all.addPath(shadeOf(t.x, t.y, t.r, t.sp, t.k, formOf(t.i), sun));
     // (By hand: each stroke its own distance from the last, a little off true, broken now and then, heavier
     // or lighter, so it never reads as a ruled fill.)
-    const hatch = document.createElement('canvas'); hatch.width = W; hatch.height = H;
-    const hc = hatch.getContext('2d')!;
-    hc.strokeStyle = ink(1); hc.lineCap = 'round';
+    lc.strokeStyle = ink(1); lc.lineCap = 'round';
     const seg = 14 * u;
     for (let d = -H, q = 0; d < W + H; d += (1.3 + 0.9 * h1(q * 1.37)) * u, q++) {
       const tilt = (h1(q * 2.9) - 0.5) * 0.08;
-      hc.lineWidth = (0.28 + 0.22 * h1(q * 3.7)) * u; hc.beginPath();
+      lc.lineWidth = (0.28 + 0.22 * h1(q * 3.7)) * u; lc.beginPath();
       for (let y0 = 0; y0 < H; y0 += seg) {
         if (h1(q * 7.1 + y0 * 0.013) < 0.12) continue;
         const y1 = Math.min(H, y0 + seg * (0.7 + 0.3 * h1(q + y0 * 0.07)));
-        hc.moveTo(d + y0 * (1 + tilt), y0); hc.lineTo(d + y1 * (1 + tilt), y1);
+        lc.moveTo(d + y0 * (1 + tilt), y0); lc.lineTo(d + y1 * (1 + tilt), y1);
       }
-      hc.stroke();
+      lc.stroke();
     }
-    lc.globalCompositeOperation = 'source-in'; lc.drawImage(hatch, 0, 0); hatch.width = 0;
+    lc.globalCompositeOperation = 'destination-in'; lc.fillStyle = '#000'; lc.fill(all, 'nonzero');
     c.save(); c.globalAlpha = 0.5 * sun.strength; c.drawImage(lay, 0, 0); c.restore();
   }
   // (The wood round it: ink and a faint wash only, quieter than the trees grown here.)
   for (const t of wildShown) {
     drawCrown(c, t.x, t.y, t.r, t.sp, t.k, u, 0.7, undefined, sun, 'crown');
-    c.save(); c.globalAlpha = 0.45; washCrown(c, t.x, t.y, t.r, t.sp, t.k, px, season, false, 1); c.restore();
+    washFlat(c, t.x, t.y, t.r, t.sp, t.k, season, 0.8);
   }
   for (const t of shown) {
     // (A tree of a day or more is a crown, however small; only a seed just planted is a seedling.)
@@ -2936,10 +2935,12 @@ function layGrove(cam: Cam, still: boolean): void {
     const doubled = new Set(over?.sprites.map((s) => s.k));
     for (const s of from.sprites) {
       if (doubled.has(s.k)) continue;
-      const amp = Math.min(1.8 * px, s.r * 0.035) * wind * q, ph = s.k * 0.37;
+      // (A slow sway, the same wind over all of them, reaching each a moment after the last as it crosses the
+      // grove; barely there, and no more when looked into: never trees staggering each their own way.)
+      const amp = Math.min(0.7 * px, s.r * 0.012) * wind * Math.pow(q, 0.25), ph = (s.x / W) * 2.2 + h1(s.k) * 0.4;
       // (And leaning in a breeze drawn across it, tossing a little as it goes by.)
       const [bx, by] = gusts.length ? breezeAt((s.x - from.cam.X0) / from.cam.S, (s.y - from.cam.Y0) / from.cam.S, t) : [0, 0], lean = Math.min(5 * px, s.r * 0.09) * q * (1 + 0.25 * Math.sin(t * 6 + ph));
-      const dx = amp * (Math.sin(t * 0.8 + ph) + 0.35 * Math.sin(t * 2.1 + ph * 1.7)) + bx * lean, dy = amp * 0.6 * Math.sin(t * 0.7 + ph * 2.3) + by * lean;
+      const dx = amp * (Math.sin(t * 0.55 - ph) + 0.25 * Math.sin(t * 1.3 - ph * 1.3)) + bx * lean, dy = amp * 0.4 * Math.sin(t * 0.55 - ph + 1.1) + by * lean;
       g.drawImage(s.c, X(s.x) - s.m * q + dx, Y(s.y) - s.m * q + dy, 2 * s.m * q, 2 * s.m * q);
     }
   };
@@ -3068,7 +3069,7 @@ function drawFar(v: View): void {
   const own = smooth(far / 0.22) * (1 - rest), fx = X, fy = Y;
   if (own > 0.01) {
     if (f.n >= 1) {
-      drawCrown(g, fx, fy, fr * k, f.sp, f.k, px * Math.min(k, 2.2), own, formOf(f.i), sunNow().sun);
+      drawCrown(g, fx, fy, fr * k, f.sp, f.k, px * Math.max(1, k * Math.min(1, (fr / px) / 14)), own, formOf(f.i), sunNow().sun);
       // (The colour comes with the years: only as the view rises off the day.)
       const tint = smooth((far - 0.55) / 0.35);
       if (tint > 0.01) { g.save(); g.globalAlpha = tint * own; { const r0 = Math.min(fr * k, 0.5 * W), u0 = px * Math.min(k, 2.2) * (r0 / (fr * k)); washCrown(g, fx, fy, r0, f.sp, f.k, u0, seasonNow(), f.i === -1, (fr * k) / r0, formOf(f.i)); } g.restore(); }
