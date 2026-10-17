@@ -881,19 +881,16 @@ function breathe(t: number, dt: number): void {
 }
 /** How much larger the slice is drawn now, breathing (about one part in sixty at the full in-breath). */
 const breathGrow = () => 1 + 0.016 * breathShown * breathNow;
-function drawBreath(v: View, _t: number, _dt: number): void {
-  if (!BREATH || breathShown <= 0.01) return;
-  const n = tree.rings.length, b = breathNow;
-  const bark = n ? barkOf(n - 1) : barkOf(-1), T = n ? barkCss(v) : 2, reach = 6 + 16 * b;
-  g.save(); g.lineJoin = 'round';
-  for (let k = 0; k < 12; k++) {
-    const f = (k + 0.5) / 12;
-    g.strokeStyle = ink(0.026 * breathShown * (1 - f) ** 1.5 * (0.4 + 0.6 * b));
-    g.lineWidth = (reach / 4 + 3) * px;
-    ringPath({ ...v, s: v.s * breathGrow() }, bark, T + 2 + reach * f);
-    g.stroke();
-  }
-  g.restore();
+/**
+ * The press's own mark: the paper pushed down under the block, a faint rim along the print's own edge, lit
+ * from the upper left as the sheet is (see `markOf`). Always there once a year is in; away while one's being
+ * drawn or growing, so it's never where the bark isn't. (The breath is the slice's own slight swell, nothing
+ * round it.)
+ */
+let pressShown = 0;
+function drawPressMark(_v: View, _t: number, dt: number): void {
+  const away = !tree.rings.length || !!tree.stroke || !!growing || settle.ring >= 0 || far > 0;
+  pressShown = away ? Math.max(0, pressShown - dt / 0.25) : Math.min(1, pressShown + dt / 1.2);
 }
 
 /**
@@ -2092,7 +2089,40 @@ function drawKept(pc: { c: HTMLCanvasElement; v: View }, v: View, alpha = 1, gro
   const [ox, oy, w, h] = placeOf(pc, v, grow);
   g.globalAlpha = alpha;
   g.drawImage(pc.c, ox, oy, w, h);
+  if (pressShown > 0.01) {
+    const m = markOf(pc), k = w / pc.c.width;
+    if (m) { g.globalAlpha = alpha * pressShown; g.drawImage(m.c, ox + m.x * k, oy + m.y * k, m.c.width * k, m.c.height * k); }
+  }
   g.globalAlpha = 1;
+}
+/**
+ * A kept print's press mark (made once, round the slice only): the paper's step down along the print's own
+ * edge, so it follows every rough bit of the bark. A touch of shadow just outside the edge toward the light,
+ * where the sheet steps down into the pressed part; a hairline of light on the far side, where it rises out.
+ */
+const marksMade = new WeakMap<object, { c: HTMLCanvasElement; x: number; y: number } | null>();
+function markOf(pc: { c: HTMLCanvasElement; v: View }): { c: HTMLCanvasElement; x: number; y: number } | null {
+  if (marksMade.has(pc)) return marksMade.get(pc)!;
+  const Q = pc.c.width / (W * MARGIN), mx = (W * (MARGIN - 1)) / 2, my = (H * (MARGIN - 1)) / 2;
+  const R = (pc.v.s * warpR(pc.v.warp, barkMax()) + (barkCss(pc.v) * 1.6 + 12) * px) * Q, cx = (pc.v.cx + mx) * Q, cy = (pc.v.cy + my) * Q;
+  const x = Math.max(0, Math.floor(cx - R)), y = Math.max(0, Math.floor(cy - R)), w = Math.min(pc.c.width, Math.ceil(cx + R)) - x, h = Math.min(pc.c.height, Math.ceil(cy + R)) - y;
+  if (!tree.rings.length || w <= 0 || h <= 0) { marksMade.set(pc, null); return null; }
+  const d = 1.1 * px * Q, c = document.createElement('canvas'); c.width = w; c.height = h;
+  const m = c.getContext('2d')!, t = document.createElement('canvas'); t.width = w; t.height = h;
+  const tc = t.getContext('2d')!;
+  const lay = (dx: number, dy: number, col: string) => {
+    tc.globalCompositeOperation = 'source-over'; tc.clearRect(0, 0, w, h); tc.drawImage(pc.c, x, y, w, h, dx, dy, w, h);
+    tc.globalCompositeOperation = 'source-in'; tc.fillStyle = col; tc.fillRect(0, 0, w, h);
+    m.drawImage(t, 0, 0);
+  };
+  lay(-d, -d, 'rgba(36,28,23,0.11)');
+  lay(d, d, 'rgba(255,253,247,0.7)');
+  // (Only round the ink, never over it.)
+  m.globalCompositeOperation = 'destination-out'; m.drawImage(pc.c, x, y, w, h, 0, 0, w, h);
+  t.width = 0; t.height = 0;
+  const out = { c, x, y };
+  marksMade.set(pc, out);
+  return out;
 }
 /**
  * The year growing: the print as it was; and beyond the old bark, the print as it is now, drawn a little
@@ -3053,7 +3083,7 @@ function frame(): void {
     if (relax > 0 && rest?.key !== printKey(rv)) relax = Math.min(relax, 0.01);
     const rk = smooth(relax);
     if (rk < 1) drawPrintCached(v, moving, 'drawing', 1 - rk, drift, breathGrow());
-    if (rk > 0 && rest) drawKept(rest, rv, rk);
+    if (rk > 0 && rest) drawKept(rest, rv, rk, breathGrow());
   } else { paper.draw(g, v); drawLatewood(v); }
   const n = tree.rings.length;
   // A ring touched: lit softly along its edge for a moment, as its day is read.
@@ -3093,7 +3123,7 @@ function frame(): void {
   // slice, so it draws back with it.)
   if (GROWN && !n && seedAt) drawSeed(v, t);
   if (GROWN && !n && !seedAt) drawSeedChoice(v, t);
-  drawBreath(shownOf(v), t, dt);
+  drawPressMark(shownOf(v), t, dt);
   drawBrush(g, v, t);
   if (GROWN && painter !== null && tree.stroke) drawPendingMarks(v, t);
   if (far > 0) drawFar(v);
