@@ -5,10 +5,12 @@ from PIL import Image
 import numpy as np
 from scipy import ndimage as nd
 sea=np.asarray(Image.open('src/rings/wood/munch-sea-ink.png').convert('L')).astype(float)/255
-H_CSS={'oak':84,'ash':112,'cherry':62,'maple':92,'birch':52,'pine':64,'redwood':72,'bristlecone':118,'olive':66}
+H_CSS={'oak':84,'ash':112,'cherry':62,'maple':92,'birch':52,'pine':64,'redwood':72,'bristlecone':118,'olive':66,'fir':96,'juniper':60}
+import os
+if os.environ.get('ONLY'): H_CSS={k:v for k,v in H_CSS.items() if k in os.environ['ONLY'].split(',')}
 FAINT={'pine':0.09,'maple':0.13}
-CONES={'redwood','bristlecone'}
-LINES={'oak','cherry','redwood','bristlecone','olive'}   # (shaded forms; the rest are drawn in line)
+CONES={'redwood','bristlecone','fir'}
+LINES={'oak','cherry','redwood','bristlecone','olive','fir','juniper'}   # (shaded forms; the rest are drawn in line)
 rng=np.random.default_rng(7); SS=4
 for k,hc in H_CSS.items():
     a0=np.asarray(Image.open(f'seedc-{k}.png')).astype(float)[...,3]/255

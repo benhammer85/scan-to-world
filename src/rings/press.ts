@@ -934,7 +934,7 @@ function drawPressMark(_v: View, _t: number, dt: number): void {
  * begins alike, a long one never longer than a share more (`ART_H` keeps only the names); until one has
  * loaded, its seed is drawn as below.
  */
-const ART_H: Partial<Record<Kind, number>> = { oak: 84, ash: 112, cherry: 62, maple: 92, birch: 52, pine: 64, redwood: 72, bristlecone: 118, olive: 66 };
+const ART_H: Partial<Record<Kind, number>> = { oak: 84, ash: 112, cherry: 62, maple: 92, birch: 52, pine: 64, redwood: 72, bristlecone: 118, olive: 66, fir: 96, juniper: 60 };
 const SEED_ART: Partial<Record<Kind, HTMLImageElement>> = {};
 for (const sp of Object.keys(ART_H) as Kind[]) {
   const im = new Image();

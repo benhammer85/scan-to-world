@@ -5,7 +5,8 @@
 from PIL import Image, ImageDraw
 import numpy as np
 from scipy import ndimage as nd
-ol=Image.open('ls-full.jpg').convert('L'); w,h=ol.size; ox,oy=int(w*0.72),int(h*0.07)
+import os
+ol=Image.open('ls-full.jpg').convert('L') if os.path.exists('ls-full.jpg') else None; w,h=ol.size if ol else (1,1); ox,oy=int(w*0.72),int(h*0.07)
 # name: (image, box, how): 'line' = a figure drawn in outline (keep the ink components touching the seed
 # point's blob); 'body' = a shaded solid (keep what lies on its filled form); extra masks in plate coords.
 S={
@@ -18,7 +19,13 @@ S={
  'redwood':('pl-redwood.jpg',(1140,2610,1545,3125),'body',{'reach':3,'open':9,'poly':[(1170,2700),(1290,2622),(1440,2632),(1540,2760),(1540,2850),(1500,2950),(1430,3080),(1300,3115),(1200,3060),(1150,2900)]}),
  'bristlecone':('pl-bristlecone.jpg',(1620,2540,2470,3830),'body',{'reach':4,'open':9,'runs':26,'poly':[(1790,2560),(1950,2545),(2070,2620),(2160,2700),(2215,2800),(2255,2900),(2295,2980),(2330,3060),(2380,3150),(2440,3260),(2470,3830),(1620,3830),(1620,2880),(1680,2700),(1730,2610)]}),
  'olive':(None,(ox+140,oy+60,ox+420,oy+420),'body',{'runs':40}),
+ # (Douglas fir, Pseudotsuga mucronata, Tab. DCVII, mobot31753000329323 n104: the hanging cone, its bracts; cut above where the twig crosses.)
+ 'fir':('pl-fir.jpg',(1537, 3322, 2487, 4762),'body',{'reach':4,'open':6,'runs':24,'poly':[(1677, 3402), (1987, 3332), (2247, 3332), (2427, 3452), (2477, 3752), (2447, 4092), (2327, 4372), (2147, 4652), (1927, 4752), (1727, 4692), (1607, 4452), (1547, 4152), (1587, 3812)]}),
+ # (Juniper, Juniperus virginiana, Tab. DXXIV, mobot31753000329307 n164: two of its berries, where they touch on the sprig.)
+ 'juniper':('pl-juniper.jpg',(2390, 1580, 2630, 1810),'circles',{'cs':[(2468, 1652, 57), (2557, 1737, 53)]}),
 }
+import os
+if os.environ.get('ONLY'): S={k:v for k,v in S.items() if k in os.environ['ONLY'].split(',')}
 for k,(f,b,how,ex) in S.items():
     im=(ol if f is None else Image.open(f).convert('L')).crop(b)
     a=nd.gaussian_filter(np.asarray(im).astype(float),0.5)
@@ -27,7 +34,10 @@ for k,(f,b,how,ex) in S.items():
     H,W=al.shape; yy,xx=np.mgrid[0:H,0:W]
     if 'cut' in ex: al[:max(0,ex['cut']-b[1])]=0
     for (x0,y0,x1,y1) in ex.get('drop',[]): al[y0-b[1]:y1-b[1],x0-b[0]:x1-b[0]]=0
-    if how=='circle':
+    if how=='circles':
+        keep=np.zeros((H,W),bool)
+        for cx,cy,r in ex['cs']: keep|=(xx+b[0]-cx)**2+(yy+b[1]-cy)**2<=r*r
+    elif how=='circle':
         cx,cy,r=ex['c']; keep=(xx+b[0]-cx)**2+(yy+b[1]-cy)**2<=r*r
         m=Image.new('L',(W,H),0); ImageDraw.Draw(m).polygon([(x-b[0],y-b[1]) for x,y in ex['stalk']],fill=1)
         keep=keep|np.asarray(m).astype(bool)

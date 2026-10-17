@@ -58,6 +58,8 @@ Public domain.
 | `ash.png` | *Fraxinus americana*, key | the same |
 | `cherry.png` | *Prunus serotina*, one fruit from the raceme | the same |
 | `maple.png` | *Acer macrophyllum*, a pair of keys | the same |
+| `fir.png` | *Pseudotsuga mucronata* (Douglas fir), its cone, bracts showing (Tab. DCVII; Internet Archive mobot31753000329323, n104) | the same |
+| `juniper.png` | *Juniperus virginiana* (eastern red cedar), two of its berries (Tab. DXXIV; mobot31753000329307, n164) | the same |
 | `birch.png` | *Betula papyrifera*, winged nutlet | the same |
 | `pine.png` | *Pinus resinosa*, seed and wing | the same |
 | `redwood.png` | *Sequoia sempervirens*, cone | the same |
