@@ -135,7 +135,8 @@ function markSwell(a: number): number {
     const age = n - m.last, alive = age <= 1 ? 1 : Math.max(0, 1 - (age - 1) / (m.kind === 'knot' ? 3 : 5));
     if (alive <= 0) continue;
     const d = angleOff(a, m.a);
-    if (m.kind === 'knot') u += alive * take.knot * 0.3 * Math.min(4, m.size) ** 0.6 * Math.exp(-((d / 0.1) ** 2));
+    // (A knot: the rings bowing tight round the branch, a point more than a swell.)
+    if (m.kind === 'knot') u += alive * take.knot * Math.min(4, m.size) ** 0.6 * (0.3 * Math.exp(-((d / 0.05) ** 2)) + 0.12 * Math.exp(-((d / 0.16) ** 2)));
     else {
       // (Swelling, and its grain tangled: the ring there crimped, differently each year.)
       const wB = 0.2 + 0.025 * Math.min(6, m.size), env = Math.exp(-((d / wB) ** 2)), sz = Math.min(6, m.size);
@@ -193,80 +194,16 @@ function noteHand(x: number, y: number, a: number, t: number): void {
   }
 }
 /**
- * The knots and burls, printed in the wood (the print's own scale: `Z` times smaller than now): a knot a
- * dark streak out through the years from where it began, widest where it was last fed, its tip closing
- * over once it's left; a burl a scatter of eyes through the years it swelled.
+ * The knots and burls, in the print: only what the rings themselves do (see `markSwell`), nothing laid
+ * over them, but for a growing knot's pith, a small dark point at the branch's tip, the size of the tree's
+ * own (left, it's grown over and gone).
  */
 function drawMarks(v: View, Z: number): void {
   const n = tree.rings.length;
-  if (!n || !marks.length) return;
-  const ringR = (i: number, a: number) => (i < 0 ? tree.k.pith : radiusAt(tree.rings[Math.min(n - 1, i)], a));
-  const P = (a: number, r: number): [number, number] => { const R = v.s * warpR(v.warp, r), t = a + v.turn; return [v.cx + R * Math.cos(t), v.cy - R * Math.sin(t)]; };
-  const paperInk = (al: number) => `rgba(244,239,228,${al.toFixed(3)})`;
   for (const m of marks) {
-    if (m.from >= n) continue;
-    if (m.kind === 'knot') {
-      // (Along the radius: from where it began, thickening to where it was last fed, then (left) closing.
-      // Never outlined: dark wood, its own grain in fine pale lines following its shape, as a branch cut
-      // through shows its rings; its edge wandering, as the wood's does.)
-      const alive = n - 1 - m.last <= 1, end = Math.min(n - 1, alive ? n - 1 : m.last + 2);
-      const r0 = ringR(m.from - 1, m.a), r1 = ringR(m.last, m.a), r2 = ringR(end, m.a);
-      const yearW = Math.max(1e-3, ringR(m.from, m.a) - r0), wMax = Math.max((2.2 * px * Z) / v.s, yearW * (0.7 + 0.3 * Math.sqrt(Math.min(8, m.size)))) * TAKES[kind].knot;
-      const N = 40, width = (f: number) => {
-        const r = r0 + (r2 - r0) * f, rise = smooth((r - r0) / Math.max(1e-3, r1 - r0)), fall = alive ? 1 : 1 - smooth((r - r1) / Math.max(1e-3, r2 - r1));
-        return wMax * (0.2 + 0.8 * rise) * fall;
-      };
-      const outline = (k: number, side: number) => {
-        const pts: [number, number][] = [];
-        for (let j = 0; j <= N; j++) {
-          const f = j / N, r = r0 + (r2 - r0) * f, wob = 1 + 0.18 * (vnoise(f * 9 + m.seed * 0.01 + side * 3.3, k * 1.7) - 0.5);
-          const da = (side * width(f) * k * wob) / 2 / Math.max(1e-3, r);
-          pts.push(P(m.a + da, r));
-        }
-        return pts;
-      };
-      const shape = (k: number) => {
-        const L = outline(k, 1), R = outline(k, -1);
-        g.beginPath(); g.moveTo(...L[0]); for (const q of L) g.lineTo(...q); for (let j = R.length - 1; j >= 0; j--) g.lineTo(...R[j]); g.closePath();
-      };
-      shape(1); g.fillStyle = ink(0.96); g.fill();
-      // (Its grain: a few fine pale lines nested inside, broken here and there.)
-      g.lineJoin = 'round'; g.lineCap = 'round';
-      for (const k of [0.55, 0.22]) {
-        shape(k); g.setLineDash([(6 + 9 * h1(m.seed + k)) * px * Z, (2.5 + 3 * h1(m.seed * 1.3 + k)) * px * Z]);
-        g.strokeStyle = paperInk(0.3); g.lineWidth = 0.5 * px * Z; g.stroke();
-      }
-      g.setLineDash([]);
-      // (Still growing: the branch's own small slice at its tip, a few tight rings round a dark pith.)
-      if (alive) {
-        const [x, y] = P(m.a, r2), e = Math.max(1.4 * px * Z, (v.s * wMax) * 0.4), rot = -(m.a + v.turn);
-        for (const [k, fill] of [[1, ink(0.96)], [0.62, null], [0.3, ink(0.96)]] as [number, string | null][]) {
-          g.beginPath();
-          for (let j = 0; j <= 14; j++) {
-            const t = (j / 14) * TAU, rr = e * k * (1 + 0.16 * (vnoise(Math.cos(t) * 2 + m.seed * 0.1, Math.sin(t) * 2 + k * 5) - 0.5));
-            const ex = rr * Math.cos(t), ey = rr * 0.78 * Math.sin(t), xx = x + ex * Math.cos(rot) - ey * Math.sin(rot), yy = y + ex * Math.sin(rot) + ey * Math.cos(rot);
-            if (j) g.lineTo(xx, yy); else g.moveTo(xx, yy);
-          }
-          g.closePath();
-          if (fill) { g.fillStyle = fill; g.fill(); } else { g.strokeStyle = paperInk(0.55); g.lineWidth = 0.5 * px * Z; g.stroke(); }
-        }
-      }
-    } else {
-      // (A burl: through the years it swelled, crowded toward its middle, the eyes of buds that never grew,
-      // small dark specks, each in a faint pale ring of its own grain; never circles drawn round.)
-      const end = Math.min(n - 1, m.last + 3), sz = Math.min(6, m.size), spread = 0.18 + 0.025 * sz;
-      const count = Math.min(140, Math.round((18 + 14 * sz) * TAKES[kind].burl));
-      for (let q = 0; q < count; q++) {
-        // (Crowded to the middle: a bell, not a box.)
-        const u1 = h1(m.seed + q * 1.37), u2 = h1(m.seed * 0.31 + q * 2.71), fa = Math.sqrt(-2 * Math.log(Math.max(1e-4, u1))) * Math.cos(TAU * u2) * 0.45;
-        const a = m.a + Math.max(-1, Math.min(1, fa)) * spread;
-        const i = m.from + Math.floor(h1(m.seed * 0.7 + q * 3.3) * (end - m.from + 1)), rin = ringR(i - 1, a), rout = ringR(i, a);
-        const r = rin + (rout - rin) * (0.1 + 0.8 * h1(q * 5.1 + m.seed)), [x, y] = P(a, r);
-        const e = (0.45 + 0.8 * h1(q * 7.7 + 1) ** 2) * px * Z, rot = h1(q * 9.1) * TAU;
-        g.beginPath(); g.ellipse(x, y, e * 2.3, e * 1.7, rot, 0, TAU); g.strokeStyle = paperInk(0.4); g.lineWidth = 0.45 * px * Z; g.stroke();
-        g.beginPath(); g.ellipse(x, y, e, e * 0.8, rot, 0, TAU); g.fillStyle = ink(0.95); g.fill();
-      }
-    }
+    if (m.kind !== 'knot' || m.from >= n || n - 1 - m.last > 1) continue;
+    const r = radiusAt(tree.rings[n - 1], m.a), R = v.s * warpR(v.warp, r) - 2.2 * px * Z, t = m.a + v.turn;
+    g.beginPath(); g.arc(v.cx + R * Math.cos(t), v.cy - R * Math.sin(t), 1.4 * px * Z, 0, TAU); g.fillStyle = ink(0.85); g.fill();
   }
 }
 /** While drawing: the knot or burl forming under the brush, at once (pressed into the wood when the ring closes). */
