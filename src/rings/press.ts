@@ -136,7 +136,11 @@ function markSwell(a: number): number {
     if (alive <= 0) continue;
     const d = angleOff(a, m.a);
     if (m.kind === 'knot') u += alive * take.knot * 0.3 * Math.min(4, m.size) ** 0.6 * Math.exp(-((d / 0.1) ** 2));
-    else u += alive * take.burl * 0.32 * Math.min(6, m.size) ** 0.7 * (0.75 + 0.5 * h1(m.seed + n * 1.7)) * Math.exp(-((d / (0.2 + 0.025 * Math.min(6, m.size))) ** 2));
+    else {
+      // (Swelling, and its grain tangled: the ring there crimped, differently each year.)
+      const wB = 0.2 + 0.025 * Math.min(6, m.size), env = Math.exp(-((d / wB) ** 2)), sz = Math.min(6, m.size);
+      u += alive * take.burl * env * (0.32 * sz ** 0.7 * (0.75 + 0.5 * h1(m.seed + n * 1.7)) + 0.14 * sz ** 0.5 * Math.sin(a * 46 + h1(m.seed + n * 3.1) * TAU) * Math.sin(a * 17 + n * 1.9));
+    }
   }
   // (And the one forming under the brush now, at once.)
   for (const p of pendingMarks) {
@@ -198,39 +202,69 @@ function drawMarks(v: View, Z: number): void {
   if (!n || !marks.length) return;
   const ringR = (i: number, a: number) => (i < 0 ? tree.k.pith : radiusAt(tree.rings[Math.min(n - 1, i)], a));
   const P = (a: number, r: number): [number, number] => { const R = v.s * warpR(v.warp, r), t = a + v.turn; return [v.cx + R * Math.cos(t), v.cy - R * Math.sin(t)]; };
+  const paperInk = (al: number) => `rgba(244,239,228,${al.toFixed(3)})`;
   for (const m of marks) {
     if (m.from >= n) continue;
     if (m.kind === 'knot') {
-      // (Along the radius: from where it began, thickening to where it was last fed, then (left) closing.)
+      // (Along the radius: from where it began, thickening to where it was last fed, then (left) closing.
+      // Never outlined: dark wood, its own grain in fine pale lines following its shape, as a branch cut
+      // through shows its rings; its edge wandering, as the wood's does.)
       const alive = n - 1 - m.last <= 1, end = Math.min(n - 1, alive ? n - 1 : m.last + 2);
-      const r0 = ringR(m.from - 1, m.a), r1 = ringR(m.last, m.a), r2 = alive ? ringR(end, m.a) : ringR(end, m.a);
+      const r0 = ringR(m.from - 1, m.a), r1 = ringR(m.last, m.a), r2 = ringR(end, m.a);
       const yearW = Math.max(1e-3, ringR(m.from, m.a) - r0), wMax = Math.max((2.2 * px * Z) / v.s, yearW * (0.7 + 0.3 * Math.sqrt(Math.min(8, m.size)))) * TAKES[kind].knot;
-      const left: [number, number][] = [], right: [number, number][] = [], N = 24;
-      for (let j = 0; j <= N; j++) {
-        const f = j / N, r = r0 + (r2 - r0) * f, rise = smooth((r - r0) / Math.max(1e-3, r1 - r0)), fall = alive ? 1 : 1 - smooth((r - r1) / Math.max(1e-3, r2 - r1));
-        const w = wMax * (0.25 + 0.75 * rise) * fall * (0.9 + 0.2 * h1(m.seed + j * 0.7)), da = w / 2 / Math.max(1e-3, r);
-        left.push(P(m.a + da, r)); right.push(P(m.a - da, r));
+      const N = 40, width = (f: number) => {
+        const r = r0 + (r2 - r0) * f, rise = smooth((r - r0) / Math.max(1e-3, r1 - r0)), fall = alive ? 1 : 1 - smooth((r - r1) / Math.max(1e-3, r2 - r1));
+        return wMax * (0.2 + 0.8 * rise) * fall;
+      };
+      const outline = (k: number, side: number) => {
+        const pts: [number, number][] = [];
+        for (let j = 0; j <= N; j++) {
+          const f = j / N, r = r0 + (r2 - r0) * f, wob = 1 + 0.18 * (vnoise(f * 9 + m.seed * 0.01 + side * 3.3, k * 1.7) - 0.5);
+          const da = (side * width(f) * k * wob) / 2 / Math.max(1e-3, r);
+          pts.push(P(m.a + da, r));
+        }
+        return pts;
+      };
+      const shape = (k: number) => {
+        const L = outline(k, 1), R = outline(k, -1);
+        g.beginPath(); g.moveTo(...L[0]); for (const q of L) g.lineTo(...q); for (let j = R.length - 1; j >= 0; j--) g.lineTo(...R[j]); g.closePath();
+      };
+      shape(1); g.fillStyle = ink(0.96); g.fill();
+      // (Its grain: a few fine pale lines nested inside, broken here and there.)
+      g.lineJoin = 'round'; g.lineCap = 'round';
+      for (const k of [0.55, 0.22]) {
+        shape(k); g.setLineDash([(6 + 9 * h1(m.seed + k)) * px * Z, (2.5 + 3 * h1(m.seed * 1.3 + k)) * px * Z]);
+        g.strokeStyle = paperInk(0.3); g.lineWidth = 0.5 * px * Z; g.stroke();
       }
-      g.beginPath(); g.moveTo(...left[0]); for (const q of left) g.lineTo(...q); for (let j = right.length - 1; j >= 0; j--) g.lineTo(...right[j]); g.closePath();
-      g.lineJoin = 'round'; g.strokeStyle = 'rgba(244,239,228,0.75)'; g.lineWidth = 1.4 * px * Z; g.stroke();
-      g.fillStyle = ink(0.97); g.fill();
-      // (Still growing: the branch's own small slice at its tip, pale-ringed.)
+      g.setLineDash([]);
+      // (Still growing: the branch's own small slice at its tip, a few tight rings round a dark pith.)
       if (alive) {
-        const [x, y] = P(m.a, r2), e = Math.max(1.6 * px * Z, (v.s * wMax) * 0.45);
-        g.beginPath(); g.ellipse(x, y, e, e * 0.8, -(m.a + v.turn), 0, TAU); g.fillStyle = ink(0.97); g.fill();
-        g.beginPath(); g.ellipse(x, y, e * 0.62, e * 0.5, -(m.a + v.turn), 0, TAU); g.strokeStyle = 'rgba(244,239,228,0.85)'; g.lineWidth = 0.7 * px * Z; g.stroke();
-        g.beginPath(); g.arc(x, y, 0.8 * px * Z, 0, TAU); g.fillStyle = 'rgba(244,239,228,0.9)'; g.fill();
+        const [x, y] = P(m.a, r2), e = Math.max(1.4 * px * Z, (v.s * wMax) * 0.4), rot = -(m.a + v.turn);
+        for (const [k, fill] of [[1, ink(0.96)], [0.62, null], [0.3, ink(0.96)]] as [number, string | null][]) {
+          g.beginPath();
+          for (let j = 0; j <= 14; j++) {
+            const t = (j / 14) * TAU, rr = e * k * (1 + 0.16 * (vnoise(Math.cos(t) * 2 + m.seed * 0.1, Math.sin(t) * 2 + k * 5) - 0.5));
+            const ex = rr * Math.cos(t), ey = rr * 0.78 * Math.sin(t), xx = x + ex * Math.cos(rot) - ey * Math.sin(rot), yy = y + ex * Math.sin(rot) + ey * Math.cos(rot);
+            if (j) g.lineTo(xx, yy); else g.moveTo(xx, yy);
+          }
+          g.closePath();
+          if (fill) { g.fillStyle = fill; g.fill(); } else { g.strokeStyle = paperInk(0.55); g.lineWidth = 0.5 * px * Z; g.stroke(); }
+        }
       }
     } else {
-      // (A burl: through the years it swelled, round its middle, the eyes of buds that never grew.)
-      const end = Math.min(n - 1, m.last + 3), spread = 0.2 + 0.025 * Math.min(6, m.size), count = Math.min(60, Math.round((6 + 7 * m.size) * TAKES[kind].burl));
+      // (A burl: through the years it swelled, crowded toward its middle, the eyes of buds that never grew,
+      // small dark specks, each in a faint pale ring of its own grain; never circles drawn round.)
+      const end = Math.min(n - 1, m.last + 3), sz = Math.min(6, m.size), spread = 0.18 + 0.025 * sz;
+      const count = Math.min(140, Math.round((18 + 14 * sz) * TAKES[kind].burl));
       for (let q = 0; q < count; q++) {
-        const fa = (h1(m.seed + q * 1.37) - 0.5) * 2, a = m.a + fa * spread;
+        // (Crowded to the middle: a bell, not a box.)
+        const u1 = h1(m.seed + q * 1.37), u2 = h1(m.seed * 0.31 + q * 2.71), fa = Math.sqrt(-2 * Math.log(Math.max(1e-4, u1))) * Math.cos(TAU * u2) * 0.45;
+        const a = m.a + Math.max(-1, Math.min(1, fa)) * spread;
         const i = m.from + Math.floor(h1(m.seed * 0.7 + q * 3.3) * (end - m.from + 1)), rin = ringR(i - 1, a), rout = ringR(i, a);
-        const r = rin + (rout - rin) * (0.2 + 0.6 * h1(q * 5.1 + m.seed)), [x, y] = P(a, r);
-        const e = (0.9 + 1.6 * h1(q * 7.7 + 1)) * px * Z * (1 - 0.4 * Math.abs(fa));
-        g.beginPath(); g.arc(x, y, e * 1.7, 0, TAU); g.fillStyle = 'rgba(244,239,228,0.8)'; g.fill();
-        g.beginPath(); g.arc(x, y, e, 0, TAU); g.fillStyle = ink(0.95); g.fill();
+        const r = rin + (rout - rin) * (0.1 + 0.8 * h1(q * 5.1 + m.seed)), [x, y] = P(a, r);
+        const e = (0.45 + 0.8 * h1(q * 7.7 + 1) ** 2) * px * Z, rot = h1(q * 9.1) * TAU;
+        g.beginPath(); g.ellipse(x, y, e * 2.3, e * 1.7, rot, 0, TAU); g.strokeStyle = paperInk(0.4); g.lineWidth = 0.45 * px * Z; g.stroke();
+        g.beginPath(); g.ellipse(x, y, e, e * 0.8, rot, 0, TAU); g.fillStyle = ink(0.95); g.fill();
       }
     }
   }
@@ -238,17 +272,18 @@ function drawMarks(v: View, Z: number): void {
 /** While drawing: the knot or burl forming under the brush, at once (pressed into the wood when the ring closes). */
 function drawPendingMarks(v: View, t: number): void {
   for (const p of pendingMarks) {
-    const [x, y] = at(v, p.a, p.r), k = smooth((t - p.at) / 0.4);
+    const k = smooth((t - p.at) / 0.4);
     if (p.kind === 'knot') {
-      const e = (2.4 + 2.6 * Math.min(1, p.grow)) * px * k;
-      g.beginPath(); g.ellipse(x, y, e, e * 0.8, -(p.a + v.turn), 0, TAU); g.fillStyle = ink(0.95); g.fill();
-      g.beginPath(); g.ellipse(x, y, e * 0.6, e * 0.48, -(p.a + v.turn), 0, TAU); g.strokeStyle = 'rgba(244,239,228,0.8)'; g.lineWidth = 0.8 * px; g.stroke();
+      // (A dark eye gathering under the brush, its own tight ring round it.)
+      const [x, y] = at(v, p.a, p.r), e = (2 + 2.4 * Math.min(1, p.grow)) * px * k, rot = -(p.a + v.turn);
+      g.beginPath(); g.ellipse(x, y, e, e * 0.78, rot, 0, TAU); g.fillStyle = ink(0.92); g.fill();
+      g.beginPath(); g.ellipse(x, y, e * 0.55, e * 0.42, rot, 0, TAU); g.strokeStyle = 'rgba(244,239,228,0.5)'; g.lineWidth = 0.5 * px; g.stroke();
     } else {
-      for (let q = 0; q < 5 + Math.round(3 * p.grow); q++) {
-        const da = (h1(q * 1.9 + p.at) - 0.5) * 0.18, dr = (h1(q * 3.7 + p.at) - 0.5) * 0.6 * tree.wRef, [ex, ey] = at(v, p.a + da, p.r + dr);
-        const e = (1 + 1.2 * h1(q * 5.3)) * px * k;
-        g.beginPath(); g.arc(ex, ey, e * 1.7, 0, TAU); g.fillStyle = 'rgba(244,239,228,0.8)'; g.fill();
-        g.beginPath(); g.arc(ex, ey, e, 0, TAU); g.fillStyle = ink(0.95); g.fill();
+      for (let q = 0; q < 8 + Math.round(5 * p.grow); q++) {
+        const da = (h1(q * 1.9 + p.at) - 0.5) * 0.16, dr = (h1(q * 3.7 + p.at) - 0.5) * 0.5 * tree.wRef, [ex, ey] = at(v, p.a + da, p.r + dr);
+        const e = (0.5 + 0.7 * h1(q * 5.3)) * px * k;
+        g.beginPath(); g.arc(ex, ey, e * 2.2, 0, TAU); g.strokeStyle = 'rgba(244,239,228,0.4)'; g.lineWidth = 0.45 * px; g.stroke();
+        g.beginPath(); g.arc(ex, ey, e, 0, TAU); g.fillStyle = ink(0.92); g.fill();
       }
     }
   }
