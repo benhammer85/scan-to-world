@@ -159,6 +159,8 @@ export function drawMarks(g: CanvasRenderingContext2D, tree: TreeSim, v: View, u
 // ---------------------------------------------------------------- the paper
 /** The paper's tooth: a small tile of noise, made once, laid faintly over the sheet in watercolour. */
 let paperTile: HTMLCanvasElement | null = null;
+/** The paper's tooth, one tile of it (192 device px square). */
+export function paperTooth(): HTMLCanvasElement { return tile(); }
 function tile(): HTMLCanvasElement {
   if (paperTile) return paperTile;
   const n = 192, c = document.createElement('canvas');
