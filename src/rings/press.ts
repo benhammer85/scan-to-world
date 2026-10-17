@@ -2802,6 +2802,10 @@ function meets(pts: [number, number][], all: [number, number][][], self: number)
   });
 }
 function renderGrove(c: CanvasRenderingContext2D, cam: Cam, sprites?: Sprite[]): void {
+  for (const _ of groveSteps(c, cam, sprites)) { /* all at once */ }
+}
+/** The grove drawn a piece at a time (the ground, the water, the shadows, each crown), to be spread over frames. */
+function* groveSteps(c: CanvasRenderingContext2D, cam: Cam, sprites?: Sprite[]): Generator<void> {
   const w = worldOf(), season = seasonNow(), { sun } = sunNow();
   c.clearRect(0, 0, W, H);
   const height = (x: number, y: number) => heightAt((x - cam.X0) / cam.S, (y - cam.Y0) / cam.S, w.hills, w.seed);
@@ -2809,8 +2813,11 @@ function renderGrove(c: CanvasRenderingContext2D, cam: Cam, sprites?: Sprite[]):
   const ref = (x: number, y: number): [number, number] => [w.whole.X0 + ((x - cam.X0) / cam.S) * w.whole.S, w.whole.Y0 + ((y - cam.Y0) / cam.S) * w.whole.S];
   washHill(c, W, H, px, height, w.seed, season, cam.S, ref);
   if (season === 'winter') snowHill(c, W, H, px, height, ref);
+  yield;
   drawMeadow(c, W, H, px, height, w.seed, ref);
+  yield;
   drawHill(c, W, H, px, height, w.seed, ref);
+  yield;
   const u = px * Math.pow(Math.max(1, cam.S / w.whole.S), 0.8);
   const at = (wx: number, wy: number): [number, number] => [cam.X0 + wx * cam.S, cam.Y0 + wy * cam.S];
   // (The banks greener, where the ground is damp.)
@@ -2821,10 +2828,12 @@ function renderGrove(c: CanvasRenderingContext2D, cam: Cam, sprites?: Sprite[]):
     c.restore();
   }
   drawStream(c, w.stream.map(([x, y]) => at(x, y)), Math.max(6 * px, 0.55 * cam.S), u, w.seed);
+  yield;
   // Paths drawn, as walked: wider the more, fading as they grow over.
   // Paths worn to the trees opened often, from today's: each a little wider where another meets it.
   const worn = trackWays(cam), lines = worn.map((t) => t.pts);
   for (const [j, t] of worn.entries()) drawTrack(c, t.pts.map(([x, y]) => at(x, y)), pathWidth(t.v) * cam.S, u, t.k, { wear: smooth((t.v - 3) / 8), wide: meets(t.pts, lines, j), sun });
+  yield;
   const L = groveLayout(cam).trees;
   // Moss, between trees long standing side by side.
   for (let a = 0; a < L.length; a++) for (let b = a + 1; b < L.length; b++) {
@@ -2840,6 +2849,7 @@ function renderGrove(c: CanvasRenderingContext2D, cam: Cam, sprites?: Sprite[]):
     c.beginPath(); c.arc(x, y, r, 0, TAU); c.stroke(); c.restore();
   }
   for (const s of w.seedlings) { const [x, y] = at(s.wx, s.wy); drawSeedling(c, x, y, Math.max(3 * px, 0.18 * cam.S), u); }
+  yield;
   const order = [...L].sort((p, q) => p.y - q.y), shown = order.filter((t) => !(t.x < -t.r * 2 || t.x > W + t.r * 2 || t.y < -t.r * 2 || t.y > H + t.r * 2));
   const wildShown = w.wild.map((t) => ({ ...t, x: cam.X0 + t.wx * cam.S, y: cam.Y0 + t.wy * cam.S, r: t.wr * cam.S })).filter((t) => !(t.x < -t.r * 2 || t.x > W + t.r * 2 || t.y < -t.r * 2 || t.y > H + t.r * 2)).sort((p, q) => p.y - q.y);
   // (The shadows all on the ground first; then the crowns over them, each to be stirred on its own.)
@@ -2865,14 +2875,17 @@ function renderGrove(c: CanvasRenderingContext2D, cam: Cam, sprites?: Sprite[]):
       }
       lc.stroke();
     }
+    yield;
     lc.globalCompositeOperation = 'destination-in'; lc.fillStyle = '#000'; lc.fill(all, 'nonzero');
     c.save(); c.globalAlpha = 0.5 * sun.strength; c.drawImage(lay, 0, 0); c.restore();
+    yield;
   }
   // (The wood round it: ink and a faint wash only, quieter than the trees grown here.)
   for (const t of wildShown) {
     drawCrown(c, t.x, t.y, t.r, t.sp, t.k, u, 0.7, undefined, sun, 'crown');
     washFlat(c, t.x, t.y, t.r, t.sp, t.k, season, 0.8);
   }
+  yield;
   for (const t of shown) {
     // (A tree of a day or more is a crown, however small; only a seed just planted is a seedling.)
     if (t.n < 1) { drawSeedling(c, t.x, t.y, Math.min(6 * px, Math.max(3 * px, t.r * 0.8)), px); continue; }
@@ -2888,12 +2901,16 @@ function renderGrove(c: CanvasRenderingContext2D, cam: Cam, sprites?: Sprite[]):
     // (Coloured over the ink, by hand: today's still wet.)
     washCrown(sx, m, m, t.r, t.sp, t.k, px, season, t.i === -1, 1, form);
     sprites.push({ c: sc, x: t.x, y: t.y, m, r: t.r, k: t.k });
+    yield;
   }
 }
 /** The grove drawn for the whole view (kept, to lay under any other while it moves), and for the view now. */
 const seasonKey = () => `${worldKey}:${seasonNow()}:${sunNow().key}:${JSON.stringify(visitsOf())}`;
 let groveWarmAt = -1e9;
-let baseG: { c: HTMLCanvasElement; cam: Cam; key: string; sprites: Sprite[] } | null = null, sharpG: { c: HTMLCanvasElement; cam: Cam; key: string; sprites: Sprite[] } | null = null;
+type GroveSheet = { c: HTMLCanvasElement; cam: Cam; key: string; sprites: Sprite[] };
+let baseG: GroveSheet | null = null, sharpG: GroveSheet | null = null;
+/** The view being drawn for itself, a piece a frame; the one it replaces, fading out; a canvas to reuse. */
+let groveJob: (GroveSheet & { steps: Generator<void> }) | null = null, groveFade: { from: GroveSheet; at: number } | null = null, groveSpare: HTMLCanvasElement | null = null;
 /** The whole grove drawn, if it isn't already (as it is: its trees, its season, the sheet's size). */
 function groveBase(): NonNullable<typeof baseG> {
   const w = worldOf(), key = seasonKey();
@@ -2945,14 +2962,31 @@ function layGrove(cam: Cam, still: boolean): void {
     }
   };
   if (same(cam, w.whole)) { lay(baseG); return; }
-  if (still && (!sharpG || sharpG.key !== key || !same(sharpG.cam, cam))) {
-    sharpG ??= { c: document.createElement('canvas'), cam, key, sprites: [] };
-    sharpG.c.width = W; sharpG.c.height = H; sharpG.cam = { ...cam }; sharpG.key = key; sharpG.sprites = [];
-    renderGrove(sharpG.c.getContext('2d')!, cam, sharpG.sprites);
+  // (Still, the view drawn for itself: begun at once, a piece at a time in what's left of each frame, so a
+  // pinch never freezes; the last view, scaled, shown till it's done, then fading out over it.)
+  if (still && !(sharpG && sharpG.key === key && same(sharpG.cam, cam))) {
+    if (!groveJob || groveJob.key !== key || !same(groveJob.cam, cam) || groveJob.c.width !== W || groveJob.c.height !== H) {
+      const c = groveSpare ?? document.createElement('canvas'); groveSpare = null;
+      c.width = W; c.height = H;
+      const sprites: Sprite[] = [];
+      groveJob = { c, cam: { ...cam }, key, sprites, steps: groveSteps(c.getContext('2d')!, cam, sprites) };
+    }
+    const t0 = performance.now(), left = Math.min(8, 11 - (t0 - frameStart));
+    do { if (groveJob.steps.next().done) { groveFade = sharpG && sharpG.key === key ? { from: sharpG, at: clock() } : null; if (!groveFade && sharpG) groveSpare = sharpG.c; sharpG = groveJob; groveJob = null; break; } } while (performance.now() - t0 < left);
   }
-  // (Still, the view drawn for itself; moving, the whole laid under, and the last drawn over it.)
-  if (sharpG && sharpG.key === key && same(sharpG.cam, cam)) { lay(sharpG); return; }
-  if (sharpG && sharpG.key === key) { lay(baseG, sharpG); lay(sharpG); } else lay(baseG);
+  const before = () => { if (sharpG && sharpG.key === key) { lay(baseG!, sharpG); lay(sharpG); } else lay(baseG!); };
+  if (sharpG && sharpG.key === key && same(sharpG.cam, cam)) {
+    const a = groveFade ? smooth((clock() - groveFade.at) / 0.3) : 1;
+    if (a < 1 && groveFade) {
+      lay(baseG, groveFade.from); lay(groveFade.from);
+      const ga = g.globalAlpha; g.globalAlpha = ga * a; lay(sharpG); g.globalAlpha = ga;
+      return;
+    }
+    if (groveFade) { groveSpare = groveFade.from.c; groveFade = null; }
+    lay(sharpG); return;
+  }
+  // (Moving, the whole laid under, and the last drawn over it.)
+  before();
 }
 /**
  * The grove alive while it's looked at: in autumn, a leaf or two drifting from each broadleaf on the wind;

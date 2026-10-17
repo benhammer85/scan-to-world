@@ -367,7 +367,12 @@ function washOf(r: number, sp: string, k: number, U: number, season: Season, wet
   const c = document.createElement('canvas'); c.width = size; c.height = size;
   const cx = c.getContext('2d')!, img = cx.createImageData(size, size), d = img.data;
   const base = wet ? 0.55 : 0.44;
-  for (let py = 0; py < size; py++) for (let px = 0; px < size; px++) {
+  // (Only within the edge's farthest reach: the square's corners left bare without asking.)
+  let far = 0; for (const v of E) far = Math.max(far, v);
+  const reach = far * r * 0.97, y0 = Math.max(0, Math.floor(m - reach)), y1 = Math.min(size, Math.ceil(m + reach) + 1);
+  for (let py = y0; py < y1; py++) {
+    const half = Math.sqrt(Math.max(0, reach * reach - (py - m) ** 2)), x0 = Math.max(0, Math.floor(m - half)), x1 = Math.min(size, Math.ceil(m + half) + 1);
+    for (let px = x0; px < x1; px++) {
     const dx = px - m, dy = py - m, rho = Math.hypot(dx, dy), a = ((Math.atan2(dy, dx) % TAU) + TAU) % TAU;
     const j = (a / TAU) * N, j0 = Math.floor(j), f = j - j0, e = (E[j0] * (1 - f) + E[Math.min(N, j0 + 1)] * f) * r * (0.93 + 0.04 * vn(a * 4 + k, 1)) - 0.6 * U;
     if (rho > e) continue;
@@ -379,6 +384,7 @@ function washOf(r: number, sp: string, k: number, U: number, season: Season, wet
     al *= 0.82 + 0.3 * Math.max(0, Math.min(1, 0.5 + 0.5 * ((dx / r) * 0.6 + (dy / r) * 0.8)));
     const o = (py * size + px) * 4;
     d[o] = col[0]; d[o + 1] = col[1]; d[o + 2] = col[2]; d[o + 3] = Math.round(255 * Math.min(0.85, al));
+  }
   }
   cx.putImageData(img, 0, 0);
   // (Still wet: a bloom, where the water crept back and pushed the pigment out.)
