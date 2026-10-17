@@ -608,7 +608,7 @@ canvas.addEventListener('pointermove', (e) => {
     if (!tree.stroke) break;
     // The finger come back round to where it began: the circle is drawn, whatever the angle says.
     loop.len += Math.hypot(c.clientX - loop.x, c.clientY - loop.y); loop.x = c.clientX; loop.y = c.clientY;
-    if (loop.len > 160 && Math.hypot(loop.x - loop.x0, loop.y - loop.y0) < Math.max(28, loop.len / 16)) {
+    if (loop.len > 160 && Math.hypot(loop.x - loop.x0, loop.y - loop.y0) < Math.max(24, loop.len / 32)) {
       loop.closed = true;
       if (tree.finish(0.5)) break;
     }
@@ -921,10 +921,28 @@ function readDay(v: View, x: number, y: number): void {
   lit = i; litAt = clock();
 }
 
+/**
+ * The ring closed: the line drawn is closed too, its end carried on round to where it began (the ring was
+ * closed for the hand a little short of there), and its start, tapered as the brush touched down, filled
+ * out, so the loop drying into the year is whole.
+ */
+function closeTrail(): void {
+  if (trail.length < 10) return;
+  const first = trail[0], last = trail[trail.length - 1], d = ((((first.a - last.a + Math.PI) % TAU) + TAU) % TAU) - Math.PI;
+  const full = trail[Math.min(trail.length - 1, 9)].w;
+  for (let i = 0; i < Math.min(9, trail.length); i++) trail[i].w = Math.max(trail[i].w, full);
+  if (Math.abs(d) > 1.2) return;
+  const steps = Math.ceil(Math.abs(d) / 0.02);
+  for (let k = 1; k <= steps; k++) {
+    const f = k / steps;
+    trail.push({ a: (((last.a + d * f) % TAU) + TAU) % TAU, r: last.r + (first.r - last.r) * f, t: last.t, w: last.w + (full - last.w) * f, fast: last.fast });
+  }
+}
 /** The paint, laid exactly where the brush is (angle a, u steady widths from the bark). */
 function trailAt(a: number, u: number): void {
   if (!strokeView) return;
-  const t = clock(), last = trail[trail.length - 1], joined = last && Math.abs(last.a - a) < 0.5;
+  // (Joined across the circle's own seam too, where the angle comes round from a full turn to nothing.)
+  const t = clock(), last = trail[trail.length - 1], joined = last && angleOff(last.a, a) < 0.5;
   const r = radiusAt((i) => tree.inner(i), a) + Math.max(0, GROWN ? u : Math.min(WIDEST, u)) * tree.wRef;
   // Speed on the screen, in CSS px a second, eased so the width swells and thins smoothly.
   let fast = last ? last.fast : 0;
@@ -951,6 +969,7 @@ function hear(): void {
     // next can be begun as soon as the finger comes down again.)
     painter = null;
     settle = { ring: tree.rings.length - 1, at: clock() };
+    closeTrail();
     settleTap = clock() + (GROWN && !closer() ? 0.8 * SEASON : BLOOM);
     if (GROWN) {
       inward = { ring: tree.rings.length - 1, at: clock() };
@@ -1071,7 +1090,7 @@ function drawBrush(g: CanvasRenderingContext2D, v: View, t: number): void {
     const life = GROWN ? (going ? dry : tree.stroke ? (tree.resting ? 1 - smooth((t - restAt - 4) / 2) : 1) : Math.exp(-(t - q.t) / 3.5)) : Math.exp(-(t - q.t) / 3.5) * dry;
     return { x, y, life, q, nx: 0, ny: 0, hw: 0 };
   });
-  const lap = (i: number) => Math.abs(trail[i].a - trail[i - 1].a) > 0.5;
+  const lap = (i: number) => angleOff(trail[i].a, trail[i - 1].a) > 0.5;
   for (let i = 0; i < n; i++) {
     const a = pts[i > 0 && !lap(i) ? i - 1 : i], b = pts[i + 1 < n && !lap(i + 1) ? i + 1 : i];
     const dx = b.x - a.x, dy = b.y - a.y, l = Math.hypot(dx, dy) || 1, p = pts[i];
