@@ -475,18 +475,3 @@ export function drawStream(g: CanvasRenderingContext2D, pts: [number, number][],
   }
   g.restore();
 }
-/** A low wall of field stones, laid along a field's edge: small rounded stones, inked, touching. */
-export function drawWall(g: CanvasRenderingContext2D, pts: [number, number][], U: number, seed: number): void {
-  g.save();
-  let carry = 0;
-  for (let i = 1; i < pts.length; i++) {
-    const [ax, ay] = pts[i - 1], [bx, by] = pts[i], l = Math.hypot(bx - ax, by - ay);
-    for (let d = carry; d < l; ) {
-      const s = (1.3 + 1.1 * h1(seed + i * 7 + d)) * U, f = d / l, x = ax + (bx - ax) * f, y = ay + (by - ay) * f;
-      g.beginPath(); g.ellipse(x, y, s, s * (0.7 + 0.25 * h1(d + i)), Math.atan2(by - ay, bx - ax) + (h1(d * 3 + i) - 0.5) * 0.6, 0, TAU);
-      g.fillStyle = 'rgb(240,234,222)'; g.fill(); g.strokeStyle = ink(0.7); g.lineWidth = 0.55 * U; g.stroke();
-      d += s * 1.8; carry = d - l;
-    }
-  }
-  g.restore();
-}

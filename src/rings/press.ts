@@ -26,7 +26,7 @@ import { at, drawPaper } from './draw';
 import { Paper } from './paint';
 import { dayDate, dayOf } from './days';
 import { climate, growth as growthOf, season } from './growing';
-import { crownSize, drawCrown, drawHill, drawMoss, drawSeedling, drawStream, drawTrack, drawWall, heightAt, land, pigment, seasonOf, snowHill, washCrown, washHill, type CrownForm, type Hill, type Season, type Sun } from './grove';
+import { crownSize, drawCrown, drawHill, drawMoss, drawSeedling, drawStream, drawTrack, heightAt, land, pigment, seasonOf, snowHill, washCrown, washHill, type CrownForm, type Hill, type Season, type Sun } from './grove';
 import { holdStill, steadySize } from './steady';
 import { fromText, grove, keepInGrove, keepTree, recallTree, setGrove, snapshotTree, toText, treeFrom, type KeptTree, type WoodMark } from './save';
 
@@ -2077,7 +2077,7 @@ interface Cam { S: number; X0: number; Y0: number }
 let groveCam: Cam | null = null;
 const GROVE_CLOSEST = 8;
 /** The land, every tree on it (world units), and the view of the whole of it, kept until a tree changes. */
-let worldKey = '', world: { hills: Hill[]; seed: number; trees: Omit<Stand, 'x' | 'y' | 'r'>[]; next: { wx: number; wy: number }; whole: Cam; box: [number, number, number, number]; seedlings: { wx: number; wy: number }[]; stream: [number, number][]; wall: [number, number][] } | null = null;
+let worldKey = '', world: { hills: Hill[]; seed: number; trees: Omit<Stand, 'x' | 'y' | 'r'>[]; next: { wx: number; wy: number }; whole: Cam; box: [number, number, number, number]; seedlings: { wx: number; wy: number }[]; stream: [number, number][] } | null = null;
 function worldOf() {
   const mine = visit ? visit.stash : { tree, days, kind };
   const all = [
@@ -2106,8 +2106,7 @@ function worldOf() {
     if (trees.some((o) => Math.hypot(o.wx - wx, o.wy - wy) < o.wr * 0.9 + 0.2) || Math.hypot(next.wx - wx, next.wy - wy) < 0.6) continue;
     seedlings.push({ wx, wy });
   }
-  // (The grove's own landmarks, from its seed: a stream winding past through the low ground, clear of the
-  // trees; and, as often as not, a low wall of field stones along the far side.)
+  // (The grove's own landmark, from its seed: a stream winding past through the low ground, clear of the trees.)
   let gx = 0, gy = 0;
   for (const t of trees) { gx += t.wx; gy += t.wy; }
   gx /= trees.length; gy /= trees.length;
@@ -2120,15 +2119,10 @@ function worldOf() {
     for (const o of trees) { const d = Math.hypot(x - o.wx, y - o.wy), need = o.wr + 0.8; if (d < need) { x += ((x - o.wx) / (d || 1)) * (need - d); y += ((y - o.wy) / (d || 1)) * (need - d); } }
     stream.push([x, y]);
   }
-  const wall: [number, number][] = [];
-  if (h1(seed * 0.91) > 0.35) {
-    const wa = sa + Math.PI + (h1(seed * 1.3) - 0.5) * 0.6, span = 0.9 + 0.5 * h1(seed * 2.1), R = reach + 0.55;
-    for (let q = 0; q <= 40; q++) { const a = wa - span / 2 + (span * q) / 40, rr = R + 0.25 * Math.sin(q * 0.4 + seed); wall.push([gx + Math.cos(a) * rr, gy + Math.sin(a) * rr]); }
-  }
   // (A tree on damp ground by the stream grows fuller.)
   const damp = (x: number, y: number) => { let d = Infinity; for (const [a, b] of stream) d = Math.min(d, Math.hypot(a - x, b - y)); return smooth(1 - (d - 0.6) / 2.2); };
   for (const t of trees) t.wr *= 1 + 0.12 * damp(t.wx, t.wy);
-  worldKey = key; world = { hills: L.hills, seed, trees, next, whole, box: [x0, y0, x1, y1], seedlings, stream, wall };
+  worldKey = key; world = { hills: L.hills, seed, trees, next, whole, box: [x0, y0, x1, y1], seedlings, stream };
   return world;
 }
 const camNow = (): Cam => groveCam ?? worldOf().whole;
@@ -2327,7 +2321,6 @@ function renderGrove(c: CanvasRenderingContext2D, cam: Cam, sprites?: Sprite[]):
   // Paths worn to the trees opened often, from today's: each a little wider where another meets it.
   const worn = trackWays(cam), lines = worn.map((t) => t.pts);
   for (const [j, t] of worn.entries()) drawTrack(c, t.pts.map(([x, y]) => at(x, y)), pathWidth(t.v) * cam.S, u, t.k, { wear: smooth((t.v - 3) / 8), wide: meets(t.pts, lines, j), sun });
-  if (w.wall.length) drawWall(c, w.wall.map(([x, y]) => at(x, y)), u, w.seed);
   const L = groveLayout(cam).trees;
   // Moss, between trees long standing side by side.
   for (let a = 0; a < L.length; a++) for (let b = a + 1; b < L.length; b++) {
