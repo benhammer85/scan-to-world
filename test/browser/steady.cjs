@@ -1,4 +1,4 @@
-// The loop the same size every day; a ring drawn while looking closer; the footer counting rings; a new
+// The loop the same size every day; a ring drawn while looking closer; where the name sits under it; a new
 // tree planted from the grove's empty circle.
 const { chromium } = require(process.env.PLAYWRIGHT || 'playwright');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -19,7 +19,7 @@ const out = process.argv[2], BASE = process.env.BASE || 'http://localhost:5199';
   for (let d = 0; d < 5; d++) { const g = await bark(); sizes.push(Math.round(g.R)); await loop(g.cx, g.cy, Math.max(g.R, 20) + 34); await sleep(5000); }
   const g = await bark(); sizes.push(Math.round(g.R));
   console.log('bark on the sheet after each day (css px):', sizes.join(', '), '| rings', g.n);
-  console.log('footer:', await p.evaluate(() => window.press.editionY), (await p.evaluate(() => window.press.tree.rings.length)));
+  console.log('name under the slice at y, rings:', await p.evaluate(() => window.press.editionY), (await p.evaluate(() => window.press.tree.rings.length)));
   // Closer, then a ring drawn round it.
   await p.mouse.move(195, 400); for (let i = 0; i < 4; i++) { await p.mouse.wheel(0, -60); await sleep(60); }
   await sleep(800);

@@ -1,3 +1,6 @@
 node_modules
 dist
 dist-app
+
+# Browser checks run without an output folder write their screenshots here.
+/undefined/

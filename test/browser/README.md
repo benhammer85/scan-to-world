@@ -2,7 +2,7 @@
 
 Each drives the page in a headless Chromium and prints what happened (and any page errors). Start the dev
 server first (`npx vite --port 5199`), then run from the repository root with an output folder for
-screenshots, e.g. `mkdir -p /tmp/wr && node test/browser/seeds.cjs /tmp/wr`.
+screenshots (without one, they're written to a folder named `undefined`), e.g. `mkdir -p /tmp/wr && node test/browser/seeds.cjs /tmp/wr`.
 
 | Script | Checks |
 | --- | --- |
@@ -10,6 +10,9 @@ screenshots, e.g. `mkdir -p /tmp/wr && node test/browser/seeds.cjs /tmp/wr`.
 | `replant.cjs` | the practice: a tap on the grove's empty circle goes straight to the seeds, nothing asked; drawn back, the tree is as it was; a seed touched, the old tree stands in the grove; no daily words on reload |
 | `seeds.cjs` | the practice: choosing a seed (oak, pine, birch) on a bare sheet, then six loops (screenshots of the choice, the planted seed, the first year, the sixth) |
 | `pinch.cjs` | the practice: zoom in, then a two-finger pinch back out (screenshots mid-pinch: the whole slice, never a cut edge) |
+| `steady.cjs` | the practice: the loop the same size every day; a ring drawn while looking closer; the name under the slice; a new tree planted from the grove's empty circle |
+| `grove.cjs` | the grove: drawn back past the slice, caught along the way; an older tree touched opens to its slice; double-tapped, back out; today's tree touched, home |
+| `year.cjs` | a year: the tree finished on its anniversary, standing in the grove, a new seed offered; the whole kept as a copy (a file) and taken back |
 
 Environment: `PLAYWRIGHT` (path to the playwright module, default `playwright`), `CHROME` (a Chromium to
 launch, default Playwright's own), `BASE` (default `http://localhost:5199`).
