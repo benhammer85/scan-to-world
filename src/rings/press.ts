@@ -106,7 +106,7 @@ function rounded(a: number, u: number): number {
   const roomU = Math.max(LOOSEST, (roomNow() - v.s * tree.radius) / (SEED_K * STEADY * px));
   // (The tree's own year (good, lean, now and then a hard one), and its youth: one way of growing all
   // through, never a step where it fills its room.)
-  return Math.max(LEAST, Math.min(roomU, loose)) * growth(a) * climate(tree.seed, tree.rings.length) * youth(tree.rings.length) + evenUp(a) + markSwell(a);
+  return Math.max(LEAST, Math.min(roomU, loose)) * growth(a) * climate(tree.seed, tree.rings.length) * youth(tree.rings.length) * (1 + 0.15 * dampHere()) + evenUp(a) + markSwell(a);
 }
 
 // ---------------------------------------------------------------- knots and burls
@@ -360,6 +360,12 @@ function drawPendingMarks(v: View, t: number): void {
       }
     }
   }
+}
+/** How damp today's tree's ground is (by the grove's stream, its years a little wider). */
+function dampHere(): number {
+  if (!GROWN || !canPull()) return 0;
+  const me = worldOf().trees.find((t) => t.i === -1);
+  return me ? moistAt(me.wx, me.wy) : 0;
 }
 /**
  * A young tree's vigour (a share of its years' width): its first year or two a little narrow, as a
@@ -692,6 +698,8 @@ canvas.addEventListener('pointerdown', (e) => {
     return;
   }
   if (fingers.size > 2 || painter !== null) return;
+  // (In the grove, a finger set down and held still a moment draws a path; moved at once, it moves the view.)
+  groveHold = far >= 1 && !farTo && !visit && fingers.size === 1 ? { id: e.pointerId, x: e.clientX, y: e.clientY, at: clock(), drawing: false, pts: [] } : null;
   // (Looked at closely: a finger moves the slice about, or taps; nothing is drawn. And on a bare sheet, a
   // tap plants the seed: see the tap, below.)
   if (tree.rings.length && brushAt(tree, viewNow(), 0, e.clientX * px, e.clientY * px).u < 0) inside = true;
@@ -725,6 +733,20 @@ canvas.addEventListener('pointermove', (e) => {
   if (f) {
     const x = e.clientX * px, y = e.clientY * px, dx = x - f.x, dy = y - f.y;
     f.x = x; f.y = y;
+    if (fingers.size >= 2) groveHold = null;
+    if (groveHold && groveHold.id === e.pointerId && far >= 1) {
+      const h = groveHold;
+      if (!h.drawing) {
+        if (Math.hypot(e.clientX - h.x, e.clientY - h.y) < 6) return;
+        if (clock() - h.at < PATH_HOLD) groveHold = null;
+        else { h.drawing = true; h.pts.push(groveWorld(h.x * px, h.y * px)); if (NATIVE) tap({ strength: 0.4, sharpness: 0.5 }); }
+      }
+      if (groveHold?.drawing) {
+        const q = groveWorld(x, y), last = h.pts[h.pts.length - 1];
+        if (Math.hypot(q[0] - last[0], q[1] - last[1]) > 0.08) h.pts.push(q);
+        return;
+      }
+    }
     if (pinch && fingers.size >= 2) {
       const now = spread();
       // (Only a deliberate pinch: two fingers resting, or brushing the glass, look no closer.)
@@ -764,6 +786,16 @@ for (const type of ['pointerup', 'pointercancel'] as const) canvas.addEventListe
   if (choosing() && fingers.size === 0 && Math.abs(choiceDx) > 2 * px && !choiceTo) {
     if (Math.abs(choiceDx) > W * 0.12) turnChoice(choiceDx < 0 ? 1 : -1);
     else choiceTo = { from: choiceDx, to: 0, at: clock() };
+  }
+  // (A path drawn in the grove, let go: laid, if it's long enough to be one.)
+  if (groveHold && groveHold.id === e.pointerId) {
+    const h = groveHold; groveHold = null;
+    if (h.drawing) {
+      let len = 0;
+      for (let i = 1; i < h.pts.length; i++) len += Math.hypot(h.pts[i][0] - h.pts[i - 1][0], h.pts[i][1] - h.pts[i - 1][1]);
+      if (len > 0.8) { const ps = pathsOf(); ps.push({ pts: h.pts.map(([a, b]) => [+a.toFixed(3), +b.toFixed(3)] as [number, number]), made: dayOf(), walked: dayOf(), walks: 0 }); keepPaths(ps); }
+      return;
+    }
   }
   // (Let go part way back: on to the grove, or home to today.)
   if (fingers.size === 0 && far > 0 && far < 1 && !farTo) settleFar();
@@ -2104,6 +2136,9 @@ function worldOf() {
     const wa = sa + Math.PI + (h1(seed * 1.3) - 0.5) * 0.6, span = 0.9 + 0.5 * h1(seed * 2.1), R = reach + 0.55;
     for (let q = 0; q <= 40; q++) { const a = wa - span / 2 + (span * q) / 40, rr = R + 0.25 * Math.sin(q * 0.4 + seed); wall.push([gx + Math.cos(a) * rr, gy + Math.sin(a) * rr]); }
   }
+  // (A tree on damp ground by the stream grows fuller.)
+  const damp = (x: number, y: number) => { let d = Infinity; for (const [a, b] of stream) d = Math.min(d, Math.hypot(a - x, b - y)); return smooth(1 - (d - 0.6) / 2.2); };
+  for (const t of trees) t.wr *= 1 + 0.12 * damp(t.wx, t.wy);
   worldKey = key; world = { hills: L.hills, seed, trees, next, whole, box: [x0, y0, x1, y1], seedlings, stream, wall };
   return world;
 }
@@ -2204,6 +2239,28 @@ const visitsOf = (): Record<string, number> => { try { return JSON.parse(localSt
 function noteVisit(seed: number): void {
   try { const v = visitsOf(); v[seed] = (v[seed] ?? 0) + 1; localStorage.setItem('annulus.visits', JSON.stringify(v)); } catch { /* not kept, then */ }
 }
+/**
+ * Paths drawn in the grove (world units): when each was laid, when last walked (a tree it passes opened),
+ * how often. One not walked grows over, fading out over some two months; one walked wears in, wider.
+ */
+interface DrawnPath { pts: [number, number][]; made: string; walked: string; walks: number }
+const PATH_HOLD = 0.35;
+let groveHold: { id: number; x: number; y: number; at: number; drawing: boolean; pts: [number, number][] } | null = null;
+const daysSince = (d: string) => Math.round((dayDate(dayOf()).getTime() - dayDate(d).getTime()) / 864e5);
+const pathAlpha = (p: DrawnPath) => 1 - smooth((daysSince(p.walked) - 21) / 40);
+function pathsOf(): DrawnPath[] {
+  try { return (JSON.parse(localStorage.getItem('annulus.paths') || '[]') as DrawnPath[]).filter((p) => pathAlpha(p) > 0.01); } catch { return []; }
+}
+function keepPaths(ps: DrawnPath[]): void { try { localStorage.setItem('annulus.paths', JSON.stringify(ps)); } catch { /* not kept, then */ } }
+/** A point on the sheet (device px) in the grove's own ground (world units). */
+const groveWorld = (x: number, y: number): [number, number] => { const c = camNow(); return [(x - c.X0) / c.S, (y - c.Y0) / c.S]; };
+/** How damp the ground is at a world point: by the stream, damp; some three crowns off, dry. */
+function moistAt(wx: number, wy: number): number {
+  const st = worldOf().stream;
+  let d = Infinity;
+  for (const [x, y] of st) d = Math.min(d, Math.hypot(x - wx, y - wy));
+  return smooth(1 - (d - 0.6) / 2.2);
+}
 function renderGrove(c: CanvasRenderingContext2D, cam: Cam, sprites?: Sprite[]): void {
   const w = worldOf(), season = seasonNow(), { sun } = sunNow();
   c.clearRect(0, 0, W, H);
@@ -2213,7 +2270,20 @@ function renderGrove(c: CanvasRenderingContext2D, cam: Cam, sprites?: Sprite[]):
   drawHill(c, W, H, px, height, w.seed);
   const u = px * Math.pow(Math.max(1, cam.S / w.whole.S), 0.8);
   const at = (wx: number, wy: number): [number, number] => [cam.X0 + wx * cam.S, cam.Y0 + wy * cam.S];
+  // (The banks greener, where the ground is damp.)
+  {
+    const pts = w.stream.map(([x, y]) => at(x, y));
+    c.save(); c.globalCompositeOperation = 'multiply'; c.lineCap = 'round'; c.lineJoin = 'round';
+    for (const [wd, al] of [[3.2, 0.06], [1.8, 0.08]] as [number, number][]) { c.beginPath(); pts.forEach((q, i) => (i ? c.lineTo(...q) : c.moveTo(...q))); c.strokeStyle = `rgba(120,150,96,${al})`; c.lineWidth = wd * cam.S; c.stroke(); }
+    c.restore();
+  }
   drawStream(c, w.stream.map(([x, y]) => at(x, y)), Math.max(4 * px, 0.32 * cam.S), u, w.seed);
+  // Paths drawn, as walked: wider the more, fading as they grow over.
+  for (const [i, pth] of pathsOf().entries()) {
+    c.save(); c.globalAlpha = pathAlpha(pth);
+    drawTrack(c, pth.pts.map(([x, y]) => at(x, y)), Math.min(0.3, 0.1 + 0.025 * pth.walks) * cam.S, u, i * 31 + 7);
+    c.restore();
+  }
   if (w.wall.length) drawWall(c, w.wall.map(([x, y]) => at(x, y)), u, w.seed);
   const L = groveLayout(cam).trees;
   // Paths worn to the trees opened often, from today's.
@@ -2270,7 +2340,7 @@ function renderGrove(c: CanvasRenderingContext2D, cam: Cam, sprites?: Sprite[]):
   }
 }
 /** The grove drawn for the whole view (kept, to lay under any other while it moves), and for the view now. */
-const seasonKey = () => `${worldKey}:${seasonNow()}:${sunNow().key}:${JSON.stringify(visitsOf())}`;
+const seasonKey = () => `${worldKey}:${seasonNow()}:${sunNow().key}:${JSON.stringify(visitsOf())}:${localStorage.getItem('annulus.paths') ?? ''}`;
 let groveWarmAt = -1e9;
 let baseG: { c: HTMLCanvasElement; cam: Cam; key: string; sprites: Sprite[] } | null = null, sharpG: { c: HTMLCanvasElement; cam: Cam; key: string; sprites: Sprite[] } | null = null;
 /** The whole grove drawn, if it isn't already (as it is: its trees, its season, the sheet's size). */
@@ -2337,6 +2407,14 @@ function drawLife(cam: Cam): void {
     }
   }
   g.globalAlpha = 1;
+  // (A path being drawn: the pencil's line as it goes; held still, a dot where it will begin.)
+  if (groveHold && clock() - groveHold.at >= PATH_HOLD) {
+    const pts = groveHold.drawing ? groveHold.pts.map(([x, y]) => [cam.X0 + x * cam.S, cam.Y0 + y * cam.S] as [number, number]) : [];
+    g.strokeStyle = 'rgba(92,88,84,0.7)'; g.lineWidth = 1.2 * px; g.lineCap = 'round'; g.lineJoin = 'round'; g.setLineDash([4 * px, 3 * px]);
+    if (pts.length > 1) { g.beginPath(); pts.forEach((q, i) => (i ? g.lineTo(...q) : g.moveTo(...q))); g.stroke(); }
+    g.setLineDash([]);
+    if (!groveHold.drawing) { g.fillStyle = 'rgba(92,88,84,0.7)'; g.beginPath(); g.arc(groveHold.x * px, groveHold.y * px, 2.5 * px, 0, TAU); g.fill(); }
+  }
   const { tint } = sunNow();
   if (tint[3] > 0.01) { g.globalCompositeOperation = 'multiply'; g.fillStyle = `rgba(${tint[0]},${tint[1]},${tint[2]},${tint[3].toFixed(3)})`; g.fillRect(0, 0, W, H); }
   g.restore();
@@ -2401,7 +2479,7 @@ function drawCopyWords(al: number): void {
   g.restore();
 }
 async function keepGroveCopy(): Promise<void> {
-  const all = { wellRounded: 1, diary: kept(), grove: groveKept };
+  const all = { wellRounded: 1, diary: kept(), grove: groveKept, paths: pathsOf() };
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([toText(all)], { type: 'application/json' })); a.download = `well-rounded-${dayOf()}.json`;
   document.body.append(a); a.click(); a.remove();
@@ -2427,10 +2505,11 @@ function placeBackInput(on: boolean): void {
 }
 async function takeGroveCopy(file: File): Promise<void> {
   try {
-    const all = fromText(await file.text()) as { wellRounded?: number; diary?: KeptTree; grove?: KeptTree[] };
+    const all = fromText(await file.text()) as { wellRounded?: number; diary?: KeptTree; grove?: KeptTree[]; paths?: DrawnPath[] };
     if (!all.wellRounded || !all.diary || !Array.isArray(all.grove) || !treeFrom(all.diary, DAILY) || all.grove.some((k) => !treeFrom(k, DAILY))) throw new Error('not a copy');
     if (!window.confirm(`Take back this copy (${all.grove.length + 1} trees)? What's here now will be replaced.`)) return;
     await setGrove(all.grove); await keepTree(all.diary, DIARY);
+    if (Array.isArray(all.paths)) keepPaths(all.paths);
     location.reload();
   } catch { say('That file isn’t a copy of a grove.', 4); }
 }
@@ -2458,6 +2537,8 @@ function tapGrove(x: number, y: number): void {
   const k = groveKept[hit.i], t2 = treeFrom(k, DAILY);
   if (!t2) return;
   noteVisit(k.seed);
+  // (A path that passes the tree opened is walked: it wears in, and won't grow over.)
+  { const ps = pathsOf(); let any = false; for (const pth of ps) if (pth.pts.some(([a, b]) => Math.hypot(a - hit!.wx, b - hit!.wy) < hit!.wr + 0.6)) { pth.walked = dayOf(); pth.walks++; any = true; } if (any) keepPaths(ps); }
   if (!visit) visit = { i: hit.i, stash: { tree, days, kind, marks, place: herePlace } };
   else visit.i = hit.i;
   tree = t2; days = (k.days ?? []).slice(0, t2.rings.length); kind = asKind(k.tree) ?? 'oak'; marks = (k.marks ?? []).map((m) => ({ ...m }));
