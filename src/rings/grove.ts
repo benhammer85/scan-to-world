@@ -34,6 +34,29 @@ const CONIFER = new Set(['pine', 'redwood', 'bristlecone']);
 /** How big a crown is for its kind and its days (a year's, full size), as a share of a full oak's. */
 export const crownSize = (sp: string, days: number) => habit(sp).size * (0.3 + 0.7 * Math.sqrt(Math.min(1.2, days / 365)));
 
+/**
+ * A tree's own crown, from its slice: its outline as its bark is (lopsided, lobed: the slice's shape round
+ * it, a little stronger), knobbly where it burled, a heavy limb where a branch grew; ragged after uneven
+ * years. `id` names it (for what's kept), `shape` the radius round it from the map's own angle (1 its mean,
+ * 241 samples), `rough` how ragged its edge.
+ */
+export interface CrownForm { id: string; shape: Float32Array; rough: number }
+/**
+ * The light: which way the shadows fall (a unit vector on the sheet), how long (a share of the crown's
+ * height), and how strong (0 at night). The default is the slice's own, from the upper left.
+ */
+export interface Sun { dx: number; dy: number; len: number; strength: number }
+export const SUN: Sun = { dx: 0.78, dy: 0.62, len: 0.51, strength: 1 };
+/** Its edge, as its kind grows it, then as its own tree is shaped. */
+function formed(E: Float32Array, form: CrownForm | undefined, k: number): Float32Array {
+  if (!form) return E;
+  const out = new Float32Array(E.length), N = E.length - 1;
+  for (let j = 0; j <= N; j++) {
+    const a = (j / N) * TAU;
+    out[j] = E[j] * form.shape[Math.round((j / N) * (form.shape.length - 1))] * (1 + form.rough * (n1(a * 9 + k * 1.3) - 0.5));
+  }
+  return out;
+}
 /** Its edge: the radius round it, 1 about its mean. */
 const edges = new Map<string, Float32Array>();
 function edgeOf(sp: string, k: number): Float32Array {
@@ -65,25 +88,35 @@ function path(g: CanvasRenderingContext2D, x: number, y: number, r: number, E: F
   g.closePath();
 }
 
-/** A crown from above, at (x, y), `r` across (device px), `U` a CSS px; `alpha` to fade it in. */
-export function drawCrown(g: CanvasRenderingContext2D, x: number, y: number, r: number, sp: string, k: number, U: number, alpha = 1): void {
+/**
+ * A crown from above, at (x, y), `r` across (device px), `U` a CSS px; `alpha` to fade it in; `form` its
+ * own tree's shape; `sun` the light; `part` its shadow on the ground alone, or the crown alone (to be laid
+ * over the ground and stirred by the wind), or both.
+ */
+export function drawCrown(g: CanvasRenderingContext2D, x: number, y: number, r: number, sp: string, k: number, U: number, alpha = 1, form?: CrownForm, sun: Sun = SUN, part: 'all' | 'shadow' | 'crown' = 'all'): void {
   if (r < 0.5) return;
-  const h = habit(sp), E = edgeOf(sp, k), sx = x + r * 0.4 * h.tall, sy = y + r * 0.32 * h.tall;
+  const h = habit(sp), E = formed(edgeOf(sp, k), form, k), SE = formed(edgeOf(sp, k + 3), form, k);
+  const sx = x + r * sun.dx * sun.len * h.tall, sy = y + r * sun.dy * sun.len * h.tall;
+  const shadeA = Math.atan2(sun.dy, sun.dx);
   g.save(); g.globalAlpha *= alpha; g.lineCap = 'round';
   if (r < 7 * U) {
     // (Far off, a crown is a dab: its shadow a tone, the crown paper ringed in ink, a mark or two.)
-    path(g, sx, sy, r * 0.96, edgeOf(sp, k + 3)); g.fillStyle = ink(0.32); g.fill();
+    if (part !== 'crown') { path(g, sx, sy, r * 0.96, SE); g.fillStyle = ink(0.32 * sun.strength); g.fill(); }
+    if (part === 'shadow') { g.restore(); return; }
     path(g, x, y, r, E); g.fillStyle = PAPER; g.fill();
     g.strokeStyle = ink(0.9); g.lineWidth = Math.min(1, r / (4 * U)) * 0.8 * U; g.stroke();
     if (r > 3 * U) { g.fillStyle = ink(0.8); g.beginPath(); g.arc(x + r * 0.3, y + r * 0.3, 0.5 * U, 0, TAU); g.arc(x + r * 0.05, y + r * 0.45, 0.4 * U, 0, TAU); g.fill(); }
     g.restore();
     return;
   }
-  // Its shadow on the ground, hatched.
-  g.save(); path(g, sx, sy, r * 0.96, edgeOf(sp, k + 3)); g.clip();
-  g.strokeStyle = ink(0.7); g.lineWidth = 0.7 * U; g.beginPath();
-  for (let d = -r * 3; d < r * 3; d += 2.2 * U) { g.moveTo(sx + d - r * 2, sy - r * 2); g.lineTo(sx + d + r * 2, sy + r * 2); }
-  g.stroke(); g.restore();
+  // Its shadow on the ground, hatched (faint as the light goes).
+  if (part !== 'crown' && sun.strength > 0.02) {
+    g.save(); path(g, sx, sy, r * 0.96, SE); g.clip();
+    g.strokeStyle = ink(0.7 * sun.strength); g.lineWidth = 0.7 * U; g.beginPath();
+    for (let d = -r * 3; d < r * 3; d += 2.2 * U) { g.moveTo(sx + d - r * 2, sy - r * 2); g.lineTo(sx + d + r * 2, sy + r * 2); }
+    g.stroke(); g.restore();
+  }
+  if (part === 'shadow') { g.restore(); return; }
   // The bristlecone's dead limbs, bare and twisted, out past its needles on the dying side.
   if (sp === 'bristlecone') {
     g.strokeStyle = ink(0.9);
@@ -101,7 +134,7 @@ export function drawCrown(g: CanvasRenderingContext2D, x: number, y: number, r: 
   const N = Math.min(3000, Math.round(((r * r) / (U * U)) * h.marks));
   for (let i = 0; i < N; i++) {
     const a = h1(k * 7 + i * 1.37) * TAU, rr = r * Math.sqrt(h1(k * 3 + i * 2.17)), px = x + Math.cos(a) * rr, py = y + Math.sin(a) * rr;
-    const s = Math.max(0, Math.min(1, 0.4 + 0.6 * (((px - x) / r) * 0.6 + ((py - y) / r) * 0.8)));
+    const s = Math.max(0, Math.min(1, 0.4 + 0.6 * (((px - x) / r) * sun.dx + ((py - y) / r) * sun.dy)));
     if (h1(i * 5.1 + k) > (0.12 + s) ** 2 * 1.1) continue;
     g.beginPath();
     if (CONIFER.has(sp)) {
@@ -127,7 +160,7 @@ export function drawCrown(g: CanvasRenderingContext2D, x: number, y: number, r: 
   const M = E.length - 1, light = sp === 'birch' || sp === 'olive' ? 0.6 : 1;
   g.strokeStyle = ink(1);
   for (let j = 0; j < M; j++) {
-    const a = (j / M) * TAU, b = ((j + 1) / M) * TAU, sh = 0.5 + 0.5 * Math.cos(a - 0.9);
+    const a = (j / M) * TAU, b = ((j + 1) / M) * TAU, sh = 0.5 + 0.5 * Math.cos(a - shadeA);
     if (sh < 0.25 && h1(j * 0.31 + k) < 0.35) continue;
     g.lineWidth = U * (0.35 + 0.8 * sh) * light;
     g.beginPath(); g.moveTo(x + Math.cos(a) * E[j] * r, y + Math.sin(a) * E[j] * r); g.lineTo(x + Math.cos(b) * E[j + 1] * r, y + Math.sin(b) * E[j + 1] * r); g.stroke();
@@ -224,18 +257,18 @@ const EVER = new Set(['pine', 'redwood', 'bristlecone', 'olive']);
 const AUTUMN: Record<string, [number, number, number]> = {
   oak: [158, 104, 58], ash: [196, 166, 82], maple: [192, 86, 52], cherry: [172, 78, 62], birch: [208, 174, 78],
 };
-function pigment(sp: string, season: Season): [number, number, number] | null {
+export function pigment(sp: string, season: Season): [number, number, number] | null {
   if (EVER.has(sp)) return sp === 'olive' ? [138, 146, 112] : sp === 'redwood' ? [92, 112, 84] : [96, 122, 90];
   if (season === 'winter') return null;
   if (season === 'autumn') return AUTUMN[sp] ?? AUTUMN.oak;
   return season === 'spring' ? [154, 178, 112] : [104, 136, 86];
 }
 /** A crown's wash, laid over its ink (multiplied, as watercolour over a print): `wet` for today's. */
-export function washCrown(g: CanvasRenderingContext2D, x: number, y: number, r: number, sp: string, k: number, U: number, season: Season, wet = false, scale = 1): void {
+export function washCrown(g: CanvasRenderingContext2D, x: number, y: number, r: number, sp: string, k: number, U: number, season: Season, wet = false, scale = 1, form?: CrownForm): void {
   // (Painted no larger than some 120 px across its radius, and laid larger: a close look magnifies the
   // wash, never paints millions of pixels afresh.)
   const CAP = 120, up = Math.max(1, r / CAP);
-  const w = washOf(r / up, sp, k, U / up, season, wet);
+  const w = washOf(r / up, sp, k, U / up, season, wet, form);
   if (!w) return;
   const sc = scale * up;
   g.save(); g.globalCompositeOperation = 'multiply';
@@ -244,12 +277,12 @@ export function washCrown(g: CanvasRenderingContext2D, x: number, y: number, r: 
 }
 /** A crown's wash, painted once (kept for the last few asked for), to be laid at any size. */
 const washes = new Map<string, { c: HTMLCanvasElement; m: number; ox: number; oy: number }>();
-function washOf(r: number, sp: string, k: number, U: number, season: Season, wet: boolean) {
+function washOf(r: number, sp: string, k: number, U: number, season: Season, wet: boolean, form?: CrownForm) {
   const col = pigment(sp, season);
   if (!col || r < 2) return null;
-  const key = `${sp}${k}:${Math.round(r)}:${U}:${season}:${wet}`, got = washes.get(key);
+  const key = `${sp}${k}:${Math.round(r)}:${U}:${season}:${wet}:${form?.id ?? ''}`, got = washes.get(key);
   if (got) return got;
-  const E = edgeOf(sp, k + 17), N = E.length - 1, m = Math.ceil(r * 1.5 + 6 * U), size = m * 2;
+  const E = formed(edgeOf(sp, k + 17), form, k), N = E.length - 1, m = Math.ceil(r * 1.9 + 6 * U), size = m * 2;
   const ox = (h1(k * 1.3) - 0.5) * 3 * U, oy = (h1(k * 2.9) - 0.5) * 3 * U;
   const c = document.createElement('canvas'); c.width = size; c.height = size;
   const cx = c.getContext('2d')!, img = cx.createImageData(size, size), d = img.data;
@@ -269,7 +302,7 @@ function washOf(r: number, sp: string, k: number, U: number, season: Season, wet
   }
   cx.putImageData(img, 0, 0);
   // (Still wet: a bloom, where the water crept back and pushed the pigment out.)
-  if (wet) { cx.strokeStyle = `rgba(${col[0]},${col[1]},${col[2]},0.35)`; cx.lineWidth = 1.4 * U; path(cx, m, m, Math.min(r * 1.08, m - U), edgeOf(sp, k + 29)); cx.stroke(); }
+  if (wet) { cx.strokeStyle = `rgba(${col[0]},${col[1]},${col[2]},0.35)`; cx.lineWidth = 1.4 * U; path(cx, m, m, Math.min(r * 1.08, m - U), formed(edgeOf(sp, k + 29), form, k)); cx.stroke(); }
   const out = { c, m, ox, oy };
   washes.set(key, out);
   if (washes.size > 40) washes.delete(washes.keys().next().value!);
@@ -293,4 +326,51 @@ export function washHill(g: CanvasRenderingContext2D, w: number, h: number, U: n
   }
   cx2.putImageData(img, 0, 0);
   g.save(); g.globalCompositeOperation = 'multiply'; g.imageSmoothingEnabled = true; g.drawImage(c, 0, 0, nx * step, ny * step); g.restore();
+}
+
+// ---------------------------------------------------------------- the ground's own record
+/** Snow, in winter, lying on the high ground and the hill's tops: the paper whiter there, softly. */
+export function snowHill(g: CanvasRenderingContext2D, w: number, h: number, U: number, height: (x: number, y: number) => number): void {
+  const step = 5 * U, nx = Math.ceil(w / step) + 1, ny = Math.ceil(h / step) + 1;
+  const c = document.createElement('canvas'); c.width = nx; c.height = ny;
+  const cx = c.getContext('2d')!, img = cx.createImageData(nx, ny), d = img.data;
+  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+    const z = height(i * step, j * step), al = Math.max(0, Math.min(1, (z - 0.35) / 0.4)) * (0.55 + 0.45 * vn(i * 0.4, j * 0.4));
+    const o = (j * nx + i) * 4; d[o] = 253; d[o + 1] = 252; d[o + 2] = 250; d[o + 3] = Math.round(255 * 0.75 * al);
+  }
+  cx.putImageData(img, 0, 0);
+  g.save(); g.imageSmoothingEnabled = true; g.drawImage(c, 0, 0, nx * step, ny * step); g.restore();
+}
+/** Moss, between trees long standing: a soft green-grey wash where it's thickest, a few fine flecks in it. */
+export function drawMoss(g: CanvasRenderingContext2D, x: number, y: number, rx: number, ry: number, rot: number, amount: number, U: number, seed: number): void {
+  g.save(); g.translate(x, y); g.rotate(rot); g.scale(1, ry / Math.max(1e-3, rx));
+  const gr = g.createRadialGradient(0, 0, 0, 0, 0, rx);
+  gr.addColorStop(0, `rgba(122,142,98,${(0.22 * amount).toFixed(3)})`); gr.addColorStop(0.6, `rgba(122,142,98,${(0.1 * amount).toFixed(3)})`); gr.addColorStop(1, 'rgba(122,142,98,0)');
+  g.globalCompositeOperation = 'multiply'; g.fillStyle = gr; g.beginPath(); g.arc(0, 0, rx, 0, TAU); g.fill();
+  g.globalCompositeOperation = 'source-over'; g.scale(1, rx / Math.max(1e-3, ry));
+  const n = Math.round(Math.min(160, (rx * ry) / (U * U) * 0.05 * amount));
+  for (let q = 0; q < n; q++) {
+    const a = h1(seed + q * 1.37) * TAU, f = Math.sqrt(h1(seed * 1.7 + q * 2.11)) * 0.7, px = Math.cos(a) * rx * f, py = Math.sin(a) * ry * f;
+    g.fillStyle = `rgba(88,104,70,${0.3 + 0.2 * h1(q)})`;
+    g.beginPath(); g.arc(px, py, (0.3 + 0.3 * h1(q * 3.3)) * U, 0, TAU); g.fill();
+  }
+  g.restore();
+}
+/** A path worn through the grass to a tree often visited: a pale track, its edges dotted where it's trodden. */
+export function drawTrack(g: CanvasRenderingContext2D, pts: [number, number][], width: number, U: number, seed: number): void {
+  if (pts.length < 2) return;
+  const line = () => { g.beginPath(); g.moveTo(...pts[0]); for (let i = 1; i < pts.length; i++) g.lineTo(...pts[i]); };
+  g.save(); g.lineCap = 'round'; g.lineJoin = 'round';
+  line(); g.strokeStyle = 'rgba(244,239,228,0.92)'; g.lineWidth = width; g.stroke();
+  g.setLineDash([1.2 * U, 2.6 * U]);
+  for (const side of [-1, 1]) {
+    g.beginPath();
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)], dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy) || 1;
+      const off = (width / 2) * (0.9 + 0.2 * h1(seed + i * 1.7 + side)), x = pts[i][0] - (dy / l) * off * side, y = pts[i][1] + (dx / l) * off * side;
+      if (i) g.lineTo(x, y); else g.moveTo(x, y);
+    }
+    g.strokeStyle = ink(0.4); g.lineWidth = 0.6 * U; g.stroke();
+  }
+  g.restore();
 }

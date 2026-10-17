@@ -26,7 +26,7 @@ import { at, drawPaper } from './draw';
 import { Paper } from './paint';
 import { dayDate, dayOf } from './days';
 import { climate, growth as growthOf, season } from './growing';
-import { crownSize, drawCrown, drawHill, drawSeedling, heightAt, land, seasonOf, washCrown, washHill, type Hill, type Season } from './grove';
+import { crownSize, drawCrown, drawHill, drawMoss, drawSeedling, drawTrack, heightAt, land, pigment, seasonOf, snowHill, washCrown, washHill, type CrownForm, type Hill, type Season, type Sun } from './grove';
 import { holdStill, steadySize } from './steady';
 import { fromText, grove, keepInGrove, keepTree, recallTree, setGrove, snapshotTree, toText, treeFrom, type KeptTree, type WoodMark } from './save';
 
@@ -490,11 +490,11 @@ async function recall(): Promise<void> {
   if (params.has('fresh')) return;
   const k = await recallTree(DIARY), t = k && treeFrom(k, DAILY);
   if (!k || !t) return;
-  tree = t; days = (k.days ?? []).slice(0, t.rings.length); kind = asKind(k.tree) ?? 'oak'; marks = (k.marks ?? []).map((m) => ({ ...m }));
+  tree = t; days = (k.days ?? []).slice(0, t.rings.length); kind = asKind(k.tree) ?? 'oak'; marks = (k.marks ?? []).map((m) => ({ ...m })); herePlace = k.place ?? null;
   seedAt = k.at ?? (t.rings.length ? [0.5, 0.47] : null);
   while (days.length < t.rings.length) days.unshift(days[0] ?? dayOf());
   // (The practice: a year from its first ring, the tree is finished, and stands in the grove.)
-  if (GROWN && days.length && dayOf() >= yearOn(days[0])) { await keepInGrove(kept()); finishedYear = true; tree = new TreeSim(1 + Math.floor(Math.random() * 1e6), DAILY); days = []; seedAt = null; marks = []; keep(); }
+  if (GROWN && days.length && dayOf() >= yearOn(days[0])) { await keepInGrove(kept()); finishedYear = true; tree = new TreeSim(1 + Math.floor(Math.random() * 1e6), DAILY); days = []; seedAt = null; marks = []; herePlace = null; keep(); }
 }
 /** A day a year on from the given one (as 2027-10-14). */
 const yearOn = (d: string) => { const x = dayDate(d); x.setFullYear(x.getFullYear() + 1); return dayOf(x); };
@@ -506,7 +506,7 @@ function keep(): void {
 }
 /** The tree as kept (and as a copy is kept). */
 function kept(): KeptTree {
-  return { tree: kind, seed: tree.seed, wander: false, turn: 0, sim: snapshotTree(tree), days: days.slice(), ...(seedAt ? { at: seedAt } : {}), ...(marks.length ? { marks: marks.map((m) => ({ ...m })) } : {}) };
+  return { tree: kind, seed: tree.seed, wander: false, turn: 0, sim: snapshotTree(tree), days: days.slice(), ...(seedAt ? { at: seedAt } : {}), ...(marks.length ? { marks: marks.map((m) => ({ ...m })) } : {}), ...(herePlace ? { place: herePlace } : {}) };
 }
 
 /**
@@ -2012,20 +2012,22 @@ let editionY = -1e9, stampAt: [number, number] = [-1e9, -1e9];
  * A new tree: straight to the seeds, nothing asked. The tree drawn so far waits, kept as it was, until a
  * seed is touched (then it stands in the grove); drawn back to the grove instead, it's as it was.
  */
-let parting: { k: KeptTree; tree: TreeSim; days: string[]; kind: Kind; seedAt: [number, number] | null; marks: WoodMark[] } | null = null;
-function plantAgain(): void {
+let parting: { k: KeptTree; tree: TreeSim; days: string[]; kind: Kind; seedAt: [number, number] | null; marks: WoodMark[]; place: [number, number] | null } | null = null;
+/** Where today's tree stands in the grove, if it was planted somewhere chosen (world units). */
+let herePlace: [number, number] | null = null;
+function plantAgain(at: [number, number] | null = null): void {
   if (painter !== null) { tree.cancel(); trail = []; painter = null; }
   if (visit) unvisit();
   fingers.clear();
   if (parting) return;
-  parting = { k: kept(), tree, days, kind, seedAt, marks };
-  tree = new TreeSim(1 + Math.floor(Math.random() * 1e6), DAILY); days = []; seedAt = null; folding = null; marks = []; pendingMarks = [];
+  parting = { k: kept(), tree, days, kind, seedAt, marks, place: herePlace };
+  tree = new TreeSim(1 + Math.floor(Math.random() * 1e6), DAILY); days = []; seedAt = null; folding = null; marks = []; pendingMarks = []; herePlace = at;
   lookAfresh(); groveCam = null; farTo = { from: far, to: 0, at: clock() };
   say('Swipe through the woods. Touch one to plant it.', 1e5);
 }
 function unpart(): void {
   if (!parting) return;
-  ({ tree, days, kind, seedAt, marks } = parting); parting = null;
+  ({ tree, days, kind, seedAt, marks } = parting); herePlace = parting.place; parting = null;
   lookAfresh(); words.classList.remove('shown');
 }
 
@@ -2041,10 +2043,10 @@ let groveKept: KeptTree[] = [];
 /** How far drawn back (0 the slice, 1 the grove), and easing to where it settles. */
 let far = 0, farPull = 0, farTo: { from: number; to: number; at: number } | null = null;
 /** An older tree looked at, and today's, kept aside meanwhile. */
-let visit: { i: number; stash: { tree: TreeSim; days: string[]; kind: Kind; marks: WoodMark[] } } | null = null;
+let visit: { i: number; stash: { tree: TreeSim; days: string[]; kind: Kind; marks: WoodMark[]; place?: [number, number] | null } } | null = null;
 const canPull = () => GROWN && (tree.rings.length > 0 || (!!seedAt && groveKept.length > 0));
 const settleFar = () => { farTo = { from: far, to: far > 0.45 ? 1 : 0, at: clock() }; };
-interface Stand { sp: Kind; n: number; i: number; k: number; wx: number; wy: number; wr: number; x: number; y: number; r: number }
+interface Stand { sp: Kind; n: number; i: number; k: number; wx: number; wy: number; wr: number; x: number; y: number; r: number; place: [number, number] | null }
 /** The season washed into the grove: today's (`?season=winter` and so on, to look). */
 const SEASONS: Season[] = ['spring', 'summer', 'autumn', 'winter'];
 const seasonNow = (): Season => SEASONS.find((x) => x === params.get('season')) ?? seasonOf();
@@ -2054,20 +2056,20 @@ interface Cam { S: number; X0: number; Y0: number }
 let groveCam: Cam | null = null;
 const GROVE_CLOSEST = 8;
 /** The land, every tree on it (world units), and the view of the whole of it, kept until a tree changes. */
-let worldKey = '', world: { hills: Hill[]; seed: number; trees: Omit<Stand, 'x' | 'y' | 'r'>[]; next: { wx: number; wy: number }; whole: Cam; box: [number, number, number, number] } | null = null;
+let worldKey = '', world: { hills: Hill[]; seed: number; trees: Omit<Stand, 'x' | 'y' | 'r'>[]; next: { wx: number; wy: number }; whole: Cam; box: [number, number, number, number]; seedlings: { wx: number; wy: number }[] } | null = null;
 function worldOf() {
   const mine = visit ? visit.stash : { tree, days, kind };
   const all = [
-    ...groveKept.map((k, i) => ({ sp: asKind(k.tree) ?? 'oak', n: ((k.sim.rings as unknown[] | undefined) ?? []).length, i, k: (k.seed % 9973) + 11 })),
+    ...groveKept.map((k, i) => ({ sp: asKind(k.tree) ?? 'oak', n: ((k.sim.rings as unknown[] | undefined) ?? []).length, i, k: (k.seed % 9973) + 11, place: k.place ?? null })),
     // (Choosing a new seed: the tree drawn so far still stands where it stood, and the new one is the
     // empty circle's, so the view comes down to where it was touched.)
-    ...(parting ? [{ sp: parting.kind, n: parting.tree.rings.length, i: -2, k: (parting.tree.seed % 9973) + 11 }] : []),
-    { sp: mine.kind, n: mine.tree.rings.length, i: -1, k: (mine.tree.seed % 9973) + 11 },
+    ...(parting ? [{ sp: parting.kind, n: parting.tree.rings.length, i: -2, k: (parting.tree.seed % 9973) + 11, place: parting.place }] : []),
+    { sp: mine.kind, n: mine.tree.rings.length, i: -1, k: (mine.tree.seed % 9973) + 11, place: visit ? (visit.stash.place ?? null) : herePlace },
   ];
-  const seed = groveKept[0]?.seed ?? (parting ? parting.tree.seed : mine.tree.seed), key = `${W}x${H}:${seed}:${all.map((t) => `${t.sp}${t.n}`).join(',')}`;
+  const seed = groveKept[0]?.seed ?? (parting ? parting.tree.seed : mine.tree.seed), key = `${W}x${H}:${seed}:${all.map((t) => `${t.sp}${t.n}${t.place ? `@${t.place.join(',')}` : ''}`).join(',')}`;
   if (world && worldKey === key) return world;
   const L = land(all.length, seed);
-  const trees = all.map((a, j) => ({ ...a, wx: L.places[j].x, wy: L.places[j].y, wr: 1.4 * L.places[j].scale * crownSize(a.sp, a.n) }));
+  const trees = all.map((a, j) => ({ ...a, wx: a.place ? a.place[0] : L.places[j].x, wy: a.place ? a.place[1] : L.places[j].y, wr: 1.4 * L.places[j].scale * crownSize(a.sp, a.n) }));
   // (And where the next will stand, when it's planted.)
   const nx = land(all.length + 1, seed).places[all.length], next = { wx: nx.x, wy: nx.y };
   // (The whole of it in view, the trees and a little ground round them; never so close a crown fills the sheet.)
@@ -2075,7 +2077,15 @@ function worldOf() {
   for (const t of [...trees, { ...next, wr: 0 }]) { x0 = Math.min(x0, t.wx - 1.6); x1 = Math.max(x1, t.wx + 1.6); y0 = Math.min(y0, t.wy - 1.6); y1 = Math.max(y1, t.wy + 1.6); }
   const S = Math.min((W * 0.86) / (x1 - x0), (H * 0.5) / (y1 - y0), W * 0.12);
   const whole = { S, X0: W / 2 - ((x0 + x1) / 2) * S, Y0: H * 0.46 - ((y0 + y1) / 2) * S };
-  worldKey = key; world = { hills: L.hills, seed, trees, next, whole, box: [x0, y0, x1, y1] };
+  // (Beside a tree long standing, now and then, a seedling of its own: touched, a tree is planted there.)
+  const seedlings: { wx: number; wy: number }[] = [];
+  for (const t of trees) {
+    if (t.n < 200 || h1(t.k * 3.3) < 0.35) continue;
+    const a = h1(t.k * 5.1) * TAU, d = t.wr * 1.25 + 0.35, wx = t.wx + Math.cos(a) * d, wy = t.wy + Math.sin(a) * d;
+    if (trees.some((o) => Math.hypot(o.wx - wx, o.wy - wy) < o.wr * 0.9 + 0.2) || Math.hypot(next.wx - wx, next.wy - wy) < 0.6) continue;
+    seedlings.push({ wx, wy });
+  }
+  worldKey = key; world = { hills: L.hills, seed, trees, next, whole, box: [x0, y0, x1, y1], seedlings };
   return world;
 }
 const camNow = (): Cam => groveCam ?? worldOf().whole;
@@ -2107,44 +2117,138 @@ function tellGrove(): void {
   if (groveTold) return;
   groveTold = true;
   try { localStorage.setItem('annulus.grove1', '1'); } catch { /* said again next time, then */ }
-  say('Touch the empty circle to plant a new tree.', 6);
+  say('Touch the ground to plant a new tree.', 6);
 }
 /** The land and its trees, drawn for a view: inked and coloured (slow: drawn when the view is still). */
-function renderGrove(c: CanvasRenderingContext2D, cam: Cam): void {
-  const w = worldOf(), season = seasonNow();
+/** A crown as laid over the ground, to be stirred by the wind: its picture, where its middle is, its size. */
+interface Sprite { c: HTMLCanvasElement; x: number; y: number; m: number; r: number; k: number }
+/**
+ * Each tree's own crown, from its slice (cached by tree): the bark's shape round it, made a little
+ * stronger and seen from the map's side (the slice's angles run the other way round); a knobbly clump where
+ * it burled, a heavy limb where a branch grew; its edge as ragged as its years were uneven.
+ */
+const forms = new Map<string, CrownForm>();
+function formOf(i: number): CrownForm | undefined {
+  const src = i >= 0 ? (() => { const k = groveKept[i]; return k ? { rings: (k.sim.rings as ArrayLike<number>[] | undefined) ?? [], marks: k.marks ?? [], seed: k.seed } : null; })()
+    : i === -2 ? (parting ? { rings: parting.tree.rings, marks: parting.marks, seed: parting.tree.seed } : null)
+    : visit ? { rings: visit.stash.tree.rings, marks: visit.stash.marks, seed: visit.stash.tree.seed } : { rings: tree.rings, marks, seed: tree.seed };
+  if (!src || src.rings.length < 3) return undefined;
+  const n = src.rings.length, id = `${src.seed}:${n}:${src.marks.map((m) => `${m.kind}${m.last}${m.size.toFixed(1)}`).join(',')}`;
+  const got = forms.get(id);
+  if (got) return got;
+  const last = src.rings[n - 1], L = last.length;
+  let mean = 0;
+  for (let j = 0; j < L; j++) mean += last[j];
+  mean /= L;
+  const N = 240, raw = new Float32Array(N + 1);
+  for (let j = 0; j <= N; j++) {
+    const am = (j / N) * TAU, as = (TAU - am) % TAU, idx = Math.round((as / TAU) * L) % L;
+    let u = (last[idx] / mean) ** 2;
+    for (const m of src.marks) {
+      const d = angleOff(as, m.a), f = Math.min(1, m.size / 8);
+      if (m.kind === 'burl') u *= 1 + 0.2 * f * Math.exp(-((d / 0.32) ** 2)) * (1 + 0.6 * Math.sin(d * 26 + m.seed));
+      else u *= 1 + 0.14 * f * Math.exp(-((d / 0.07) ** 2));
+    }
+    raw[j] = u;
+  }
+  // (Eased round a little, so it's a crown's shape and not the bark's every wrinkle.)
+  const shape = new Float32Array(N + 1);
+  for (let j = 0; j <= N; j++) { let t = 0; for (let q = -4; q <= 4; q++) t += raw[(((j + q) % N) + N) % N]; shape[j] = t / 9; }
+  let w0 = 0, w1 = 0, cnt = 0, prev = 0;
+  for (let i = Math.max(0, n - 40); i < n; i++) {
+    let r = 0; const ring = src.rings[i]; for (let j = 0; j < ring.length; j += 8) r += ring[j]; r /= Math.ceil(ring.length / 8);
+    if (i > Math.max(0, n - 40)) { const w = r - prev; w0 += w; w1 += w * w; cnt++; }
+    prev = r;
+  }
+  const mw = cnt ? w0 / cnt : 1, cv = cnt ? Math.sqrt(Math.max(0, w1 / cnt - mw * mw)) / Math.max(1e-3, mw) : 0;
+  const form = { id, shape, rough: Math.min(0.3, 0.03 + 0.35 * cv) };
+  forms.set(id, form);
+  if (forms.size > 300) forms.delete(forms.keys().next().value!);
+  return form;
+}
+/**
+ * The light as it is now (`?hour=19` to try another): the sun's way across the sky, from the east in the
+ * morning to the west at evening, the shadows falling away from it, long when it's low, gone at night.
+ */
+function sunNow(): { sun: Sun; tint: [number, number, number, number]; key: string } {
+  const d = new Date(), h = params.has('hour') ? Number(params.get('hour')) : d.getHours() + d.getMinutes() / 60;
+  const f = (h - 6) / 14, up = Math.sin(Math.PI * Math.max(0, Math.min(1, f)));
+  const az = Math.PI / 2 + Math.PI * Math.max(0, Math.min(1, f)), dir = az + Math.PI, elev = Math.max(0.1, up * 0.95);
+  const sun: Sun = { dx: Math.sin(dir), dy: -Math.cos(dir), len: Math.min(1.6, 0.36 / Math.tan(elev)), strength: smooth(up / 0.2) };
+  // (Warm as the sun sets or rises; a cool wash at night.)
+  const low = smooth(1 - up / 0.35) * (f > -0.05 && f < 1.05 ? 1 : 0), night = smooth((0.12 - up) / 0.12) * (f < 0 || f > 1 ? 1 : 0);
+  const tint: [number, number, number, number] = night > low ? [168, 178, 204, 0.38 * night] : [236, 196, 150, 0.35 * low];
+  return { sun, tint, key: `${Math.round(h * 4)}` };
+}
+/** How often each kept tree has been opened (by its seed): a path is worn to those opened often. */
+const visitsOf = (): Record<string, number> => { try { return JSON.parse(localStorage.getItem('annulus.visits') || '{}'); } catch { return {}; } };
+function noteVisit(seed: number): void {
+  try { const v = visitsOf(); v[seed] = (v[seed] ?? 0) + 1; localStorage.setItem('annulus.visits', JSON.stringify(v)); } catch { /* not kept, then */ }
+}
+function renderGrove(c: CanvasRenderingContext2D, cam: Cam, sprites?: Sprite[]): void {
+  const w = worldOf(), season = seasonNow(), { sun } = sunNow();
   c.clearRect(0, 0, W, H);
   const height = (x: number, y: number) => heightAt((x - cam.X0) / cam.S, (y - cam.Y0) / cam.S, w.hills, w.seed);
   washHill(c, W, H, px, height, w.seed, season, cam.S);
+  if (season === 'winter') snowHill(c, W, H, px, height);
   drawHill(c, W, H, px, height, w.seed);
-  // (Looked closer, the crowns are the same drawings magnified, nearly: their marks grow with the view,
-  // never multiplying into thousands, so a close look is drawn in a moment.)
   const u = px * Math.pow(Math.max(1, cam.S / w.whole.S), 0.8);
+  const at = (wx: number, wy: number): [number, number] => [cam.X0 + wx * cam.S, cam.Y0 + wy * cam.S];
+  const L = groveLayout(cam).trees;
+  // Paths worn to the trees opened often, from today's.
+  const visits = visitsOf(), home = L.find((t) => t.i === -1);
+  if (home) for (const t of L) {
+    const v = t.i >= 0 ? visits[groveKept[t.i]?.seed ?? -1] ?? 0 : 0;
+    if (v < 3) continue;
+    const pts: [number, number][] = [], bend = (h1(t.k * 2.3) - 0.5) * 0.5, dx = t.wx - home.wx, dy = t.wy - home.wy;
+    for (let q = 0; q <= 16; q++) { const f = q / 16, off = Math.sin(Math.PI * f) * bend; pts.push(at(home.wx + dx * f - dy * off, home.wy + dy * f + dx * off)); }
+    drawTrack(c, pts, Math.min(0.32, 0.1 + 0.025 * v) * cam.S, u, t.k);
+  }
+  // Moss, between trees long standing side by side.
+  for (let a = 0; a < L.length; a++) for (let b = a + 1; b < L.length; b++) {
+    const p = L[a], q = L[b], d = Math.hypot(p.wx - q.wx, p.wy - q.wy), old = Math.min(p.n, q.n);
+    if (old < 120 || d > (p.wr + q.wr) * 1.7) continue;
+    const [x, y] = at((p.wx + q.wx) / 2, (p.wy + q.wy) / 2);
+    drawMoss(c, x, y, d * cam.S * 0.55, d * cam.S * 0.28, Math.atan2(q.wy - p.wy, q.wx - p.wx), Math.min(1, (old - 120) / 220), u, p.k * 7 + q.k);
+  }
   // The ground for the next tree: a faint pencil ring, to be touched when one is wanted.
   {
-    const x = cam.X0 + w.next.wx * cam.S, y = cam.Y0 + w.next.wy * cam.S, r = Math.max(7 * px, 0.45 * cam.S);
+    const [x, y] = at(w.next.wx, w.next.wy), r = Math.max(7 * px, 0.45 * cam.S);
     c.save(); c.strokeStyle = 'rgba(92,88,84,0.5)'; c.lineWidth = 0.8 * px; c.setLineDash([2.5 * px, 2.5 * px]);
     c.beginPath(); c.arc(x, y, r, 0, TAU); c.stroke(); c.restore();
   }
-  for (const t of [...groveLayout(cam).trees].sort((p, q) => p.y - q.y)) {
-    if (t.x < -t.r * 2 || t.x > W + t.r * 2 || t.y < -t.r * 2 || t.y > H + t.r * 2) continue;
+  for (const s of w.seedlings) { const [x, y] = at(s.wx, s.wy); drawSeedling(c, x, y, Math.max(3 * px, 0.18 * cam.S), u); }
+  const order = [...L].sort((p, q) => p.y - q.y), shown = order.filter((t) => !(t.x < -t.r * 2 || t.x > W + t.r * 2 || t.y < -t.r * 2 || t.y > H + t.r * 2));
+  // (The shadows all on the ground first; then the crowns over them, each to be stirred on its own.)
+  for (const t of shown) if (t.n >= 1) drawCrown(c, t.x, t.y, t.r, t.sp, t.k, u, 1, formOf(t.i), sun, 'shadow');
+  for (const t of shown) {
     // (A tree of a day or more is a crown, however small; only a seed just planted is a seedling.)
     if (t.n < 1) { drawSeedling(c, t.x, t.y, Math.min(6 * px, Math.max(3 * px, t.r * 0.8)), px); continue; }
-    drawCrown(c, t.x, t.y, t.r, t.sp, t.k, u);
+    const form = formOf(t.i);
+    if (!sprites) {
+      drawCrown(c, t.x, t.y, t.r, t.sp, t.k, u, 1, form, sun, 'crown');
+      washCrown(c, t.x, t.y, t.r, t.sp, t.k, px, season, t.i === -1, 1, form);
+      continue;
+    }
+    const m = Math.ceil(t.r * 2 + 10 * px), sc = document.createElement('canvas'); sc.width = sc.height = 2 * m;
+    const sx = sc.getContext('2d')!;
+    drawCrown(sx, m, m, t.r, t.sp, t.k, u, 1, form, sun, 'crown');
     // (Coloured over the ink, by hand: today's still wet.)
-    washCrown(c, t.x, t.y, t.r, t.sp, t.k, px, season, t.i < 0);
+    washCrown(sx, m, m, t.r, t.sp, t.k, px, season, t.i === -1, 1, form);
+    sprites.push({ c: sc, x: t.x, y: t.y, m, r: t.r, k: t.k });
   }
 }
 /** The grove drawn for the whole view (kept, to lay under any other while it moves), and for the view now. */
-const seasonKey = () => `${worldKey}:${seasonNow()}`;
+const seasonKey = () => `${worldKey}:${seasonNow()}:${sunNow().key}:${JSON.stringify(visitsOf())}`;
 let groveWarmAt = -1e9;
-let baseG: { c: HTMLCanvasElement; cam: Cam; key: string } | null = null, sharpG: { c: HTMLCanvasElement; cam: Cam; key: string } | null = null;
+let baseG: { c: HTMLCanvasElement; cam: Cam; key: string; sprites: Sprite[] } | null = null, sharpG: { c: HTMLCanvasElement; cam: Cam; key: string; sprites: Sprite[] } | null = null;
 /** The whole grove drawn, if it isn't already (as it is: its trees, its season, the sheet's size). */
 function groveBase(): NonNullable<typeof baseG> {
   const w = worldOf(), key = seasonKey();
   if (!baseG || baseG.key !== key || baseG.c.width !== W || baseG.c.height !== H) {
-    baseG ??= { c: document.createElement('canvas'), cam: w.whole, key };
-    baseG.c.width = W; baseG.c.height = H; baseG.cam = w.whole; baseG.key = key;
-    renderGrove(baseG.c.getContext('2d')!, w.whole);
+    baseG ??= { c: document.createElement('canvas'), cam: w.whole, key, sprites: [] };
+    baseG.c.width = W; baseG.c.height = H; baseG.cam = w.whole; baseG.key = key; baseG.sprites = [];
+    renderGrove(baseG.c.getContext('2d')!, w.whole, baseG.sprites);
   }
   return baseG;
 }
@@ -2152,17 +2256,59 @@ function layGrove(cam: Cam, still: boolean): void {
   const w = worldOf(), key = seasonKey();
   baseG = groveBase();
   const same = (a: Cam, b: Cam) => Math.abs(a.S - b.S) < 1e-3 * b.S && Math.abs(a.X0 - b.X0) < 0.5 && Math.abs(a.Y0 - b.Y0) < 0.5;
-  const lay = (from: { c: HTMLCanvasElement; cam: Cam }) => { const q = cam.S / from.cam.S; g.drawImage(from.c, cam.X0 - from.cam.X0 * q, cam.Y0 - from.cam.Y0 * q, W * q, H * q); };
-  if (same(cam, w.whole)) { g.drawImage(baseG.c, 0, 0); return; }
+  // (Each crown stirred a little by the wind, its own way, the gusts coming and going.)
+  const t = clock(), wind = 0.55 + 0.45 * vnoise(t * 0.12, 3.7);
+  const lay = (from: { c: HTMLCanvasElement; cam: Cam; sprites: Sprite[] }) => {
+    const q = cam.S / from.cam.S, X = (x: number) => cam.X0 + (x - from.cam.X0) * q, Y = (y: number) => cam.Y0 + (y - from.cam.Y0) * q;
+    g.drawImage(from.c, cam.X0 - from.cam.X0 * q, cam.Y0 - from.cam.Y0 * q, W * q, H * q);
+    for (const s of from.sprites) {
+      const amp = Math.min(1.8 * px, s.r * 0.035) * wind * q, ph = s.k * 0.37;
+      const dx = amp * (Math.sin(t * 0.8 + ph) + 0.35 * Math.sin(t * 2.1 + ph * 1.7)), dy = amp * 0.6 * Math.sin(t * 0.7 + ph * 2.3);
+      g.drawImage(s.c, X(s.x) - s.m * q + dx, Y(s.y) - s.m * q + dy, 2 * s.m * q, 2 * s.m * q);
+    }
+  };
+  if (same(cam, w.whole)) { lay(baseG); return; }
   if (still && (!sharpG || sharpG.key !== key || !same(sharpG.cam, cam))) {
-    sharpG ??= { c: document.createElement('canvas'), cam, key };
-    sharpG.c.width = W; sharpG.c.height = H; sharpG.cam = { ...cam }; sharpG.key = key;
-    renderGrove(sharpG.c.getContext('2d')!, cam);
+    sharpG ??= { c: document.createElement('canvas'), cam, key, sprites: [] };
+    sharpG.c.width = W; sharpG.c.height = H; sharpG.cam = { ...cam }; sharpG.key = key; sharpG.sprites = [];
+    renderGrove(sharpG.c.getContext('2d')!, cam, sharpG.sprites);
   }
   // (Still, the view drawn for itself; moving, the whole laid under, and the last drawn over it.)
   if (sharpG && sharpG.key === key && same(sharpG.cam, cam)) { lay(sharpG); return; }
   lay(baseG);
   if (sharpG && sharpG.key === key) lay(sharpG);
+}
+/**
+ * The grove alive while it's looked at: in autumn, a leaf or two drifting from each broadleaf on the wind;
+ * in spring, a cherry's petals; in winter, snow falling over all of it. And the light's own colour: warm as
+ * the sun rises or sets, cool at night.
+ */
+function drawLife(cam: Cam): void {
+  const t = clock(), season = seasonNow(), L = groveLayout(cam).trees, wind = 0.55 + 0.45 * vnoise(t * 0.12, 3.7), U = px * Math.sqrt(Math.max(1, cam.S / worldOf().whole.S));
+  g.save();
+  if (season === 'autumn' || season === 'spring') {
+    for (const tr of L) {
+      const col = season === 'spring' ? (tr.sp === 'cherry' ? [236, 196, 204] : null) : pigment(tr.sp, 'autumn');
+      if (!col || tr.n < 30 || ['pine', 'redwood', 'bristlecone', 'olive'].includes(tr.sp)) continue;
+      for (let q = 0; q < 3; q++) {
+        const per = 6 + 3 * h1(tr.k + q), p = ((t / per + h1(tr.k * 1.3 + q * 0.7)) % 1), a0 = h1(tr.k + q * 2.9) * TAU, r0 = tr.r * 0.6 * Math.sqrt(h1(q + tr.k));
+        const x = tr.x + Math.cos(a0) * r0 + p * tr.r * 1.4 * wind + Math.sin(p * 9 + q) * 2 * U, y = tr.y + Math.sin(a0) * r0 + p * tr.r * 0.6;
+        g.globalAlpha = Math.sin(Math.PI * p) * 0.9;
+        g.save(); g.translate(x, y); g.rotate(p * 6 + q); g.beginPath(); g.ellipse(0, 0, 1.6 * U, 0.8 * U, 0, 0, TAU);
+        g.fillStyle = `rgb(${col[0]},${col[1]},${col[2]})`; g.fill(); g.strokeStyle = ink(0.5); g.lineWidth = 0.4 * U; g.stroke(); g.restore();
+      }
+    }
+  } else if (season === 'winter') {
+    for (let q = 0; q < 70; q++) {
+      const x = (((h1(q * 1.7) * W + t * (6 + 10 * wind) * U * (0.6 + h1(q))) % W) + W) % W, y = (h1(q * 3.1) * H + t * 14 * U * (0.6 + 0.6 * h1(q * 5))) % H;
+      g.globalAlpha = 0.85; g.beginPath(); g.arc(x + Math.sin(t + q) * 3 * U, y, (0.8 + 0.8 * h1(q * 7)) * U, 0, TAU);
+      g.fillStyle = '#fdfcf9'; g.fill(); g.strokeStyle = ink(0.25); g.lineWidth = 0.4 * U; g.stroke();
+    }
+  }
+  g.globalAlpha = 1;
+  const { tint } = sunNow();
+  if (tint[3] > 0.01) { g.globalCompositeOperation = 'multiply'; g.fillStyle = `rgba(${tint[0]},${tint[1]},${tint[2]},${tint[3].toFixed(3)})`; g.fillRect(0, 0, W, H); }
+  g.restore();
 }
 let snapC: HTMLCanvasElement | null = null;
 function drawFar(v: View): void {
@@ -2184,16 +2330,16 @@ function drawFar(v: View): void {
   const rest = smooth((far - 0.45) / 0.4);
   if (rest > 0.01) {
     const still = far >= 1 && !farTo && fingers.size === 0 && clock() - groveMoved > 0.18;
-    g.save(); g.globalAlpha = rest; layGrove(cam, still); g.restore();
+    g.save(); g.globalAlpha = rest; layGrove(cam, still); drawLife(cam); g.restore();
   }
   // Its own crown, drawn afresh at its size (sharp, however close), coming in round the slice.
   const own = smooth(far / 0.22) * (1 - rest), fx = X, fy = Y;
   if (own > 0.01) {
     if (f.n >= 1) {
-      drawCrown(g, fx, fy, fr * k, f.sp, f.k, px * Math.min(k, 2.2), own);
+      drawCrown(g, fx, fy, fr * k, f.sp, f.k, px * Math.min(k, 2.2), own, formOf(f.i), sunNow().sun);
       // (The colour comes with the years: only as the view rises off the day.)
       const tint = smooth((far - 0.55) / 0.35);
-      if (tint > 0.01) { g.save(); g.globalAlpha = tint * own; { const r0 = Math.min(fr * k, 0.5 * W), u0 = px * Math.min(k, 2.2) * (r0 / (fr * k)); washCrown(g, fx, fy, r0, f.sp, f.k, u0, seasonNow(), f.i < 0, (fr * k) / r0); } g.restore(); }
+      if (tint > 0.01) { g.save(); g.globalAlpha = tint * own; { const r0 = Math.min(fr * k, 0.5 * W), u0 = px * Math.min(k, 2.2) * (r0 / (fr * k)); washCrown(g, fx, fy, r0, f.sp, f.k, u0, seasonNow(), f.i === -1, (fr * k) / r0, formOf(f.i)); } g.restore(); }
     } else drawSeedling(g, fx, fy, Math.min(8 * px, Math.max(4 * px, fr * 0.8) * k), px, own);
   }
   drawCopyWords(smooth((far - 0.9) / 0.1)); placeBackInput(far >= 0.99 && !farTo);
@@ -2265,11 +2411,23 @@ function tapGrove(x: number, y: number): void {
   if (!visit && Math.hypot(x - (L.cam.X0 + w.next.wx * L.cam.S), y - (L.cam.Y0 + w.next.wy * L.cam.S)) < Math.max(22 * px, 0.6 * L.cam.S)) { plantAgain(); return; }
   let hit: Stand | null = null, best = Infinity;
   for (const t of L.trees) { const d = Math.hypot(x - t.x, y - t.y) / Math.max(t.r * 1.15, 20 * px); if (d < 1 && d < best) { best = d; hit = t; } }
-  if (!hit) return;
+  if (!hit) {
+    // (Open ground, or a seedling: a new tree, planted just there.)
+    if (visit) return;
+    const wx = (x - L.cam.X0) / L.cam.S, wy = (y - L.cam.Y0) / L.cam.S;
+    const sd = w.seedlings.find((q) => Math.hypot(q.wx - wx, q.wy - wy) * L.cam.S < Math.max(18 * px, 0.3 * L.cam.S));
+    if (sd) { plantAgain([sd.wx, sd.wy]); return; }
+    const [bx0, by0, bx1, by1] = w.box;
+    if (wx < bx0 - 1.5 || wx > bx1 + 1.5 || wy < by0 - 1.5 || wy > by1 + 1.5) return;
+    if (w.trees.some((t) => Math.hypot(t.wx - wx, t.wy - wy) < t.wr + 0.35)) return;
+    plantAgain([wx, wy]);
+    return;
+  }
   if (hit.i < 0) { groveCam = null; farTo = { from: far, to: 0, at: clock() }; return; }
   const k = groveKept[hit.i], t2 = treeFrom(k, DAILY);
   if (!t2) return;
-  if (!visit) visit = { i: hit.i, stash: { tree, days, kind, marks } };
+  noteVisit(k.seed);
+  if (!visit) visit = { i: hit.i, stash: { tree, days, kind, marks, place: herePlace } };
   else visit.i = hit.i;
   tree = t2; days = (k.days ?? []).slice(0, t2.rings.length); kind = asKind(k.tree) ?? 'oak'; marks = (k.marks ?? []).map((m) => ({ ...m }));
   lookAfresh(); openedAt = clock(); idleSince = openedAt + OPEN;
@@ -2278,7 +2436,7 @@ function tapGrove(x: number, y: number): void {
 /** Back from an older tree to today's. */
 function unvisit(): void {
   if (!visit) return;
-  ({ tree, days, kind, marks } = visit.stash); visit = null;
+  ({ tree, days, kind, marks } = visit.stash); herePlace = visit.stash.place ?? null; visit = null;
   lookAfresh();
 }
 function lookAfresh(): void {

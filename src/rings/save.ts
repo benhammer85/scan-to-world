@@ -41,6 +41,8 @@ export interface WoodMark { kind: 'knot' | 'burl'; a: number; from: number; last
 export interface KeptTree {
   tree: string; seed: number; wander: boolean; turn: number; sim: Record<string, unknown>; days?: string[]; at?: [number, number];
   marks?: WoodMark[];
+  /** Where it stands in the grove (world units), if planted somewhere chosen rather than the next place. */
+  place?: [number, number];
   name?: string; birth?: string; whole?: number;
   /** (A child's tree, as well: whether the sound of the moment shapes each day; their height at each
    * birthday by age; the years finished, each its own tree; this year's age; the words kept with its days.) */
