@@ -898,7 +898,8 @@ const BREATH = PRINT && GROWN, IN = 4, OUT = 6;
 let breathShown = 0, stillSince = 0, breathNow = 0;
 /** Where in the breath it is now, 0 (out) to 1 (in), and how present the breath is (0 to 1). */
 function breathe(t: number, dt: number): void {
-  const still = BREATH && fingers.size === 0 && !tree.stroke && !growing && settle.ring < 0 && !lookBack && tree.rings.length > 0;
+  // (Never while looked into: so near, its swell would be a pumping of the lines.)
+  const still = BREATH && fingers.size === 0 && !tree.stroke && !growing && settle.ring < 0 && !lookBack && !closer() && tree.rings.length > 0;
   // (Its own stillness: the slice slowly making room doesn't count; a finger, a ring growing, does.)
   if (!still) stillSince = t;
   breathShown = still && t - stillSince > 3 ? Math.min(1, breathShown + dt / 3) : Math.max(0, breathShown - dt / 0.25);
@@ -2341,8 +2342,10 @@ function pressSlowly(slot: string, v: View, key: string, follow = true, budget =
     job.row = r1;
   }
   if (job.row >= job.end) {
+    // (The picture it replaces fades out over the new one, so a view grown sharper never jumps.)
     const old = printCaches[slot];
-    if (old) spare[slot] = old.c;
+    if (fading[slot]) spare[slot] = fading[slot]!.c;
+    if (old) fading[slot] = { c: old.c, v: old.v, at: clock() };
     printCaches[slot] = { c: job.c, key, v: job.v, at: clock() };
     presses.push(-Math.round(performance.now() - job.t0)); if (presses.length > 50) presses.shift();
     delete pressing[slot];
@@ -2423,9 +2426,18 @@ function drawGrowing(v: View, t: number, moving: boolean, drift: boolean): void 
   drawKept(now, v, 1, k0 + (1 - k0) * f);
   g.restore();
 }
+/** A picture just replaced by a sharper one, fading out over it (a quarter second or so). */
+const fading: Record<string, { c: HTMLCanvasElement; v: View; at: number } | undefined> = {};
+const FADE = 0.6;
 function drawPrintCached(v: View, moving: boolean, slot = 'drawing', alpha = 1, drift = false, grow = 1): void {
   const pc = printFor(v, moving, slot, drift);
   drawKept(pc, v, alpha, grow);
+  const f = fading[slot];
+  if (f) {
+    const k = 1 - smooth((clock() - f.at) / FADE);
+    if (k <= 0.01) { spare[slot] = f.c; fading[slot] = undefined; }
+    else drawKept(f, v, alpha * k, grow);
+  }
 }
 
 /**
