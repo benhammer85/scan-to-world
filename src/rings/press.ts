@@ -1794,12 +1794,17 @@ const ANATOMY: Partial<Record<Kind, Anatomy>> = {
  */
 const RAYS: Partial<Record<Kind, number>> = { oak: 0.95, ash: 0.7, cherry: 0.75, maple: 0.8, birch: 0.45, olive: 0.55, pine: 0.3, redwood: 0.25, bristlecone: 0.25 };
 /**
+ * How long a wood's rays run before breaking off (in the slice's own px): oak's broad rays long, the others'
+ * short flecks a few years tall, staggered; and how much of each ray's way is broken.
+ */
+const RAY_RUN: Partial<Record<Kind, [number, number]>> = { oak: [26, 0.25], ash: [12, 0.4], cherry: [5, 0.55], maple: [5, 0.5], birch: [4, 0.6], olive: [5, 0.55], pine: [7, 0.6], redwood: [7, 0.6], bristlecone: [7, 0.6] };
+/**
  * The rays at a point (tree angle `a`, `rho` px out at the slice's own size), 0 to 1. Real rays keep about the
  * same distance apart all the way out: a few begin at the heart, and as the wood widens new ones begin between
  * them, each at its own radius; each wanders a little and breaks now and then. Laid out by levels, each twice
  * the last's, a ray begun at one level running on through all the rest, so none ever jumps.
  */
-function rayAt(a: number, rho: number): number {
+function rayAt(a: number, rho: number, run: [number, number] = [20, 0.3]): number {
   const R0 = 10, GAP = 3.6;
   if (rho < R0 * 0.6) return 0;
   const lv = Math.max(0, Math.floor(Math.log2(rho / R0))), N0 = Math.max(6, Math.round((TAU * R0) / GAP)), N = N0 * 2 ** lv;
@@ -1812,11 +1817,14 @@ function rayAt(a: number, rho: number): number {
     const id = bk * 7.31 + bl * 31.7, nb = N0 * 2 ** bl, born = R0 * 2 ** bl * (bl ? 0.7 + 0.6 * h1(id * 1.9) : 0.6);
     if (rho < born) continue;
     // (Where it lies: its birth place, a little off even, wandering slowly outward.)
-    const at = ((bk + 0.5 + (h1(id) - 0.5) * 0.5) / nb + (Math.sin(rho / (40 + 30 * h1(id * 2.3)) + id) * 0.25) / nb) * N;
+    // (Never ruled: it bends a little as the years about it swell and pinch, slowly and in small jogs.)
+    const wander = Math.sin(rho / (40 + 30 * h1(id * 2.3)) + id) * 0.45 + (vnoise(id * 0.71, rho / 9) - 0.5) * 0.7;
+    const at = ((bk + 0.5 + (h1(id) - 0.5) * 0.5) / nb + wander / N) * N;
     let dd = Math.abs(sAt - at); dd = Math.min(dd, N - dd);
     const dist = (dd * TAU * rho) / N + (vnoise(rho * 0.9 + id, id * 0.13) - 0.5) * 0.35, half = 0.07 + 0.16 * h1(id * 3.7) ** 2;
     if (dist > half + 0.6) continue;
-    if (vnoise(id * 0.37, rho / 14) < 0.3) continue;
+    // (A run, then broken off: short flecks in most woods, long runs in oak's.)
+    if (vnoise(id * 0.37, rho / run[0]) < run[1]) continue;
     best = Math.max(best, Math.min(1, smooth(1 - (dist - half) / 0.6)) * Math.min(1, (rho - born) / 3));
   }
   return best;
@@ -1955,7 +1963,7 @@ function printYears(v: View, oak: Years | null): void {
       }
       // The rays: the wood's fine radial lines, open to the paper, crossing every year, so the latewood prints
       // as a run of small bricks.
-      if (RAY && !heart) ink *= 1 - RAY * rayAt(a, r / U);
+      if (RAY && !heart) ink *= 1 - RAY * rayAt(a, r / U, RAY_RUN[kind]);
       const k = (y * w + x) * 4;
       d[k] = INK[0]; d[k + 1] = INK[1]; d[k + 2] = INK[2]; d[k + 3] = Math.round(255 * Math.min(1, ink));
     }
@@ -3257,7 +3265,11 @@ function frame(): void {
   const restWanted = PRINT && !busy && t - idleSince > 1.4 && !!v.warp && v.warp.beta > 0;
   // (Left a while on the slice, the grove is drawn ready, out of sight, so drawing back to it never stalls.)
   if (GROWN && far === 0 && !intro && !busy && t - idleSince > 2.5 && t - groveWarmAt > 5 && canPull()) { groveWarmAt = t; groveBase(); }
-  relax = restWanted ? Math.min(1, relax + dt / STEADY_T) : Math.max(0, relax - dt / 0.22);
+  // (Only drawing brings the magnifier back: a pinch, or looking closer, leaves the slice as it is, never
+  // changing under the fingers or a moment after they lift.)
+  const drawingNow = !!tree.stroke || painter !== null || settle.ring >= 0 || !!ease;
+  const looking = fingers.size > 0 || closer() || !!lookBack;
+  relax = drawingNow ? Math.max(0, relax - dt / 0.22) : restWanted && !looking ? Math.min(1, relax + dt / STEADY_T) : relax;
   const moving = (!!ease && !GROWN) || !!lookBack || fingers.size >= 2, drift = !!ease && GROWN;
   if (PRINT && growing && (growing.ring !== tree.rings.length - 1 || t - growing.at > SEASON || closer())) growing = null;
   // (A finger the phone never said was lifted (a pinch's, now and then): let go after a still second and a half.)
