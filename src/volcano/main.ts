@@ -1317,8 +1317,10 @@ for (const s of [readyInk, readyPencil]) { s.byDirection = true; s.linger = 0.35
 const READY_GOALS = new Set(['plumes', 'feed', 'calm', 'orbit', 'thaw', 'waves', 'antipode', 'streaks', 'chaos', 'sea', 'nests']);
 /** How far the circle has inked in: 1 when it's time to let go; null where the aim asks for no eruption. */
 function readyShare(): number | null {
-  // (The glass world: the circle fills as the blob grows, and closed, it bursts: a warning, where it had none.)
-  if (LAMP) return Math.max(0, Math.min(0.999, planet.pressure / planet.capNow));
+  // (The glass world: as everywhere, full is when to let go: the blob big enough to stay warm the way to the shore.
+  // Held on, it empties again, as Europa's does, towards the burst. It used to fill towards the burst: full meant
+  // "too late" here and "now" everywhere else.)
+  if (LAMP) { const ripe = planet.k.explosive, p = planet.pressure; return p <= ripe ? Math.max(0, p / ripe) : 1 + Math.min(0.999, (p - ripe) / (planet.capNow - ripe)); }
   if (!READY_GOALS.has(WORLD.goal)) return null; // (only where the aim asks for an eruption: on the worlds that want pouring it was one more dotted ring, round the volcano, asking for a tap that wasn't wanted)
   const k = planet.k, p = planet.pressure;
   // (Surtsey: eruptions are wanted only while the sea still reaches the vent and makes them all ash; after, the lava is poured.)
@@ -1844,7 +1846,7 @@ const TIP: Record<string, string> = {
   feed: `Saturn is the big ringed planet at the top left. Turn the volcano towards it. ${ERUPT} Ice from a burst facing Saturn reaches its ring; facing anywhere else, it falls back. The ring fades, so keep going.`,
   round: `Fill the dotted hollows. Turn one to just below the volcano, and ${HOLD.toLowerCase()} to pour into it. Keep off the hatched high ground: lava there makes the surface more uneven.`,
   ridge: 'Lava runs to the dotted line by itself. Turn a bare part of the line to the top.',
-  lamp: `Hot blobs float towards the small ring just above the middle of your view. Turn the planet so the dotted shore is on that ring. A blob grows at the volcano: let it grow big, because big blobs stay warm long enough to reach the shore. Then ${COMPUTER ? 'click' : 'tap'} to let it go, before the circle around it fills, or it bursts.`,
+  lamp: `Hot blobs float towards the small ring just above the middle of your view. Turn the planet so the dotted shore is on that ring. A blob grows at the volcano. When the circle around it is full, the blob is big enough to stay warm all the way: ${COMPUTER ? 'click' : 'tap'} to let it go. Wait too long and the circle empties again, and the blob bursts.`,
   calm: `The dotted line is where the ground sweeps past fastest. Turn it to the top, under the volcano. ${ERUPT}`,
   bank: `The undersea mountain's top is dotted in pencil. Turn the planet so it's just below the volcano, and ${HOLD.toLowerCase()} to pour there, the same way again and again, without long rests: each flow runs further over the last.`,
   orbit: `Pour first, to build the volcano tall: a taller one holds more. When the circle round it closes, wait a little longer, then ${COMPUTER ? 'click' : 'tap'} the planet to erupt: the longer you wait, the more rock flies up.`,
@@ -2471,7 +2473,7 @@ const CUES: Cue[] = [
   // (Only where a burst is the way: on the worlds that want pouring, or a release short of a burst, or none
   // at all, it pointed the wrong way, and on the hollow world it emptied the ground.)
   // (When the circle says so: on Io only at high tide, on Europa before it empties again.)
-  { hand: 'tap', ready: () => { const r = readyShare(); return !LAMP && BURST_WORLDS.has(WORLD.goal) && r !== null && r >= 1 && r < 2 && !planet.pouring; }, say: WORLD.goal === 'feed' ? `The circle around the volcano is full: turn the volcano towards the big planet, and ${TAP.toLowerCase()} the world` : WORLD.goal === 'chaos' ? `The circle around the volcano is full: ${TAP.toLowerCase()} the world now, before it empties` : `The circle around the volcano is full: ${TAP.toLowerCase()} the planet to erupt`, done: (s) => planet.tally.bursts > 0 || s > 40 },
+  { hand: 'tap', ready: () => { const r = readyShare(); return (LAMP || BURST_WORLDS.has(WORLD.goal)) && r !== null && r >= 1 && r < 2 && !planet.pouring; }, say: LAMP ? `The circle around the volcano is full: ${TAP.toLowerCase()} the world to let the blob go, before it empties` : WORLD.goal === 'feed' ? `The circle around the volcano is full: turn the volcano towards the big planet, and ${TAP.toLowerCase()} the world` : WORLD.goal === 'chaos' ? `The circle around the volcano is full: ${TAP.toLowerCase()} the world now, before it empties` : `The circle around the volcano is full: ${TAP.toLowerCase()} the planet to erupt`, done: (s) => planet.tally.bursts > 0 || (LAMP && planet.tally.flows > 0) || s > 40 },
     ...(WORLD.goal === 'orbit' ? [
     { ready: () => planet.tally.bursts > 0, say: 'The taller the volcano, the more rock an eruption throws up', done: (s: number) => s > 25 },
   ] : []),
@@ -4059,7 +4061,7 @@ const OPENINGS: Partial<Record<WorldId, ShowLook>> = {
   giant: { len: 4.5, zoom: 1.35, words: () => `Goal: keep a mountain ${HEIGHT.target} km tall on the dark side until the volcano runs out of heat. The planet turns by itself, and the sunny side melts whatever is on it` },
   surtsey: { len: 4.5, zoom: 0.72, words: () => `Goal: an island where ${NESTS} seabirds nest at once. Birds nest only on cooled lava; ash builds land fast but the sea washes it away` },
   hollow: { len: 4.6, zoom: 0.95, dir: ventDir, at: HORIZON, turn: [1.2, 2.2, 1.2], words: () => `Goal: a mountain ${HEIGHT.target} km tall. Pour a little, then stop: if cracks appear around the volcano, wait for them to fade, or the top caves in` },
-  lamp: { len: 5.2, zoom: 1.1, dir: () => planet.shore, at: TOWARD_US, turn: [1.4, 2.4, 1.4], words: () => `Goal: fill this dotted shore with glowing blobs. Blobs float towards the small ring just above the middle of your view, so turn the planet to put the shore there. Let each blob grow big, then ${COMPUTER ? 'click' : 'tap'} to let it go` },
+  lamp: { len: 5.2, zoom: 1.1, dir: () => planet.shore, at: TOWARD_US, turn: [1.4, 2.4, 1.4], words: () => `Goal: fill this dotted shore with glowing blobs. Blobs float towards the small ring just above the middle of your view, so turn the planet to put the shore there. When the circle around the volcano is full, ${COMPUTER ? 'click' : 'tap'} to let the blob go` },
   rogue: { len: 4.5, zoom: 0.85, words: () => 'Goal: keep a large area of life alive. Life grows along the edges of fresh lava and dies under it, so pour next to the green, never on it' },
 };
 const WINS: Partial<Record<WorldId, ShowLook>> = {
