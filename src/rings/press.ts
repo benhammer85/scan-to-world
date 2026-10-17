@@ -104,9 +104,9 @@ function rounded(a: number, u: number): number {
   // (Never stopped short of the hand: a loop as wide as the room, however loose, is laid; the tree only
   // draws back the more for it.)
   const roomU = Math.max(LOOSEST, (roomNow() - v.s * tree.radius) / (SEED_K * STEADY * px));
-  if (growingOut()) return Math.max(LEAST, Math.min(roomU, loose)) * (growth(a) / SPEC[kind].width) + evenUp(a) + markSwell(a);
-  // (And the tree's own year: good, lean, now and then a hard one.)
-  return Math.max(LEAST, Math.min(roomU, loose)) * growth(a) * climate(tree.seed, tree.rings.length) + evenUp(a) + markSwell(a);
+  // (The tree's own year (good, lean, now and then a hard one), and its youth: one way of growing all
+  // through, never a step where it fills its room.)
+  return Math.max(LEAST, Math.min(roomU, loose)) * growth(a) * climate(tree.seed, tree.rings.length) * youth(tree.rings.length) + evenUp(a) + markSwell(a);
 }
 
 // ---------------------------------------------------------------- knots and burls
@@ -123,8 +123,8 @@ let marks: WoodMark[] = [];
 let pendingMarks: { kind: WoodMark['kind']; a: number; r: number; at: number; grow: number }[] = [];
 /** How each wood takes them: its knots' and burls' strength. */
 const TAKES: Record<Kind, { knot: number; burl: number }> = {
-  oak: { knot: 1.1, burl: 1 }, ash: { knot: 0.9, burl: 0.7 }, cherry: { knot: 0.9, burl: 1 }, maple: { knot: 1, burl: 1.3 },
-  birch: { knot: 1, burl: 1.2 }, pine: { knot: 1.3, burl: 0.6 }, redwood: { knot: 0.8, burl: 1.6 }, bristlecone: { knot: 0.9, burl: 1.1 }, olive: { knot: 1, burl: 2 },
+  oak: { knot: 1.1, burl: 2.2 }, ash: { knot: 0.9, burl: 1.6 }, cherry: { knot: 0.9, burl: 2.2 }, maple: { knot: 1, burl: 2.5 },
+  birch: { knot: 1, burl: 2.3 }, pine: { knot: 1.3, burl: 1.4 }, redwood: { knot: 0.8, burl: 2.6 }, bristlecone: { knot: 0.9, burl: 2 }, olive: { knot: 1, burl: 2.6 },
 };
 const angleOff = (a: number, b: number) => Math.abs(((a - b + Math.PI) % TAU + TAU) % TAU - Math.PI);
 /** How much a ring swells here (steady widths) for the knots and burls alive at it. */
@@ -201,17 +201,146 @@ function noteHand(x: number, y: number, a: number, t: number): void {
   }
 }
 /**
- * The knots and burls, in the print: only what the rings themselves do (see `markSwell`), nothing laid
- * over them, but for a growing knot's pith, a small dark point at the branch's tip, the size of the tree's
- * own (left, it's grown over and gone).
+ * The knots and burls, in the print, made of the rings themselves. The printed wood is pulled about where
+ * each lies (`warpMarks`), then a little is inked: a burl's bud specks, the rings swirled round each; a
+ * knot's streak, the branch's own wood, darker, out through the years from where it began, the trunk's
+ * rings bunched along its sides, its tip (still growing) a few tight rings of the branch's own round its
+ * pith, or (left, grown over) a fine dark line of the bark it was buried in.
  */
 function drawMarks(v: View, Z: number): void {
   const n = tree.rings.length;
+  if (!n || !marks.length) return;
+  warpMarks(v, Z);
   for (const m of marks) {
-    if (m.kind !== 'knot' || m.from >= n || n - 1 - m.last > 1) continue;
-    const r = radiusAt(tree.rings[n - 1], m.a), R = v.s * warpR(v.warp, r) - 2.2 * px * Z, t = m.a + v.turn;
-    g.beginPath(); g.arc(v.cx + R * Math.cos(t), v.cy - R * Math.sin(t), 1.4 * px * Z, 0, TAU); g.fillStyle = ink(0.85); g.fill();
+    if (m.from >= n) continue;
+    if (m.kind === 'burl') {
+      for (const e of burlEyes(m, v, Z)) { g.beginPath(); g.ellipse(e.x, e.y, e.e * 0.55, e.e * 0.42, e.rot, 0, TAU); g.fillStyle = ink(0.92); g.fill(); }
+      continue;
+    }
+    // (The branch cut across, as a knot shows in sawn wood: its own few rings, darker and a little off
+    // round, round its pith; the trunk's rings swirled round it (see `warpMarks`). Grown over once left:
+    // a fine dark ring of the bark caught round it.)
+    const k = knotSpot(m, v, Z), alive = n - 1 - m.last <= 2;
+    const oval = (s: number, seed: number) => {
+      g.beginPath();
+      for (let j = 0; j <= 24; j++) {
+        const t = (j / 24) * TAU, rr = k.e * s * (1 + 0.22 * (vnoise(Math.cos(t) * 1.6 + m.seed * 0.01, Math.sin(t) * 1.6 + seed) - 0.5));
+        const ex = rr * Math.cos(t), ey = rr * 0.82 * Math.sin(t);
+        const xx = k.x + ex * Math.cos(k.rot) - ey * Math.sin(k.rot), yy = k.y + ex * Math.sin(k.rot) + ey * Math.cos(k.rot);
+        if (j) g.lineTo(xx, yy); else g.moveTo(xx, yy);
+      }
+      g.closePath();
+    };
+    g.save(); g.globalCompositeOperation = 'destination-out'; oval(1.05, 0); g.fillStyle = '#000'; g.fill(); g.restore();
+    const N = k.rings, band = 1 / (N + 0.6);
+    for (let j = 0; j < N; j++) {
+      oval(1 - j * band - band * 0.3, j * 2.7 + 1);
+      g.strokeStyle = ink(0.92); g.lineWidth = Math.max(0.9 * px * Z, k.e * band * (0.62 + 0.3 * h1(m.seed + j))); g.stroke();
+    }
+    oval(band * 0.55, 9.1); g.fillStyle = ink(0.95); g.fill();
+    if (!alive) { oval(1.08, 4.4); g.strokeStyle = ink(0.95); g.lineWidth = 0.9 * px * Z; g.stroke(); }
   }
+}
+/** A knot on the sheet: where (device px), how large, turned how, and how many of its own rings. */
+function knotSpot(m: WoodMark, v: View, Z: number): { x: number; y: number; e: number; rot: number; rings: number } {
+  // (Where the branch, rising, crosses the cut: partway along its years, never at the bark.)
+  const n = tree.rings.length, i = Math.max(0, Math.min(n - 3, Math.round((m.from + Math.min(n - 1, m.last)) / 2)));
+  const rin = i <= 0 ? tree.k.pith : radiusAt(tree.rings[i - 1], m.a), rout = radiusAt(tree.rings[i], m.a);
+  const R = v.s * warpR(v.warp, (rin + rout) / 2), t = m.a + v.turn, sz = Math.min(12, m.size);
+  // (As large as it grew, but never more than a fifth of the slice across.)
+  const e = Math.min(0.2 * v.s * warpR(v.warp, radiusAt(tree.rings[n - 1], m.a)), (4 + 2.6 * Math.sqrt(sz)) * px * Z * TAKES[kind].knot);
+  return { x: v.cx + R * Math.cos(t), y: v.cy - R * Math.sin(t), e, rot: -t + h1(m.seed) * 0.6, rings: Math.max(2, Math.min(7, Math.round(1.5 + sz / 2.5))) };
+}
+/** A burl's bud specks on the sheet (device px): where, how large, turned how. Steady for the tree. */
+function burlEyes(m: WoodMark, v: View, Z: number): { x: number; y: number; e: number; rot: number }[] {
+  const n = tree.rings.length, end = Math.min(n - 1, m.last + 3), sz = Math.min(8, m.size), spread = 0.16 + 0.02 * sz;
+  const ringR = (i: number, a: number) => (i < 0 ? tree.k.pith : radiusAt(tree.rings[Math.min(n - 1, i)], a));
+  const out: { x: number; y: number; e: number; rot: number }[] = [], count = Math.min(70, Math.round((8 + 7 * sz) * TAKES[kind].burl));
+  for (let q = 0; q < count; q++) {
+    const u1 = h1(m.seed + q * 1.37), u2 = h1(m.seed * 0.31 + q * 2.71), fa = Math.max(-1, Math.min(1, Math.sqrt(-2 * Math.log(Math.max(1e-4, u1))) * Math.cos(TAU * u2) * 0.45));
+    const a = m.a + fa * spread, i = m.from + Math.floor(h1(m.seed * 0.7 + q * 3.3) * (end - m.from + 1));
+    const rin = ringR(i - 1, a), rout = ringR(i, a), r = rin + (rout - rin) * (0.15 + 0.7 * h1(q * 5.1 + m.seed));
+    const R = v.s * warpR(v.warp, r), t = a + v.turn;
+    out.push({ x: v.cx + R * Math.cos(t), y: v.cy - R * Math.sin(t), e: (1.6 + 2.6 * h1(q * 7.7 + 1) ** 2) * px * Z, rot: h1(q * 9.1) * TAU });
+  }
+  return out;
+}
+/**
+ * The printed wood pulled about, as tangled grain is: round each of a burl's bud specks, the rings part and
+ * close again (each read from nearer the speck, so they bow round it), and over the whole burl a slow
+ * tangling; along a knot, the trunk's rings drawn in toward the branch, bunching at its sides.
+ */
+function warpMarks(v: View, Z: number): void {
+  const c = g.canvas as HTMLCanvasElement;
+  type Eye = { x: number; y: number; e: number };
+  const eyes: Eye[] = [], burls: { x0: number; y0: number; x1: number; y1: number; amp: number; seed: number }[] = [];
+  const knots: { x: number; y: number; e: number }[] = [];
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  const grow = (x: number, y: number, r: number) => { x0 = Math.min(x0, x - r); y0 = Math.min(y0, y - r); x1 = Math.max(x1, x + r); y1 = Math.max(y1, y + r); };
+  for (const m of marks) {
+    if (m.from >= tree.rings.length) continue;
+    if (m.kind === 'burl') {
+      const es = burlEyes(m, v, Z);
+      let bx0 = Infinity, by0 = Infinity, bx1 = -Infinity, by1 = -Infinity;
+      const amp = (1.2 + 0.5 * Math.min(8, m.size)) * px * Z;
+      for (const e of es) { eyes.push({ x: e.x, y: e.y, e: e.e }); grow(e.x, e.y, Math.max(e.e * 6, amp * 9)); bx0 = Math.min(bx0, e.x); by0 = Math.min(by0, e.y); bx1 = Math.max(bx1, e.x); by1 = Math.max(by1, e.y); }
+      burls.push({ x0: bx0, y0: by0, x1: bx1, y1: by1, amp, seed: m.seed });
+    } else {
+      const k = knotSpot(m, v, Z);
+      grow(k.x, k.y, k.e * 7); knots.push({ x: k.x, y: k.y, e: k.e });
+    }
+  }
+  x0 = Math.max(0, Math.floor(x0)); y0 = Math.max(0, Math.floor(y0)); x1 = Math.min(c.width, Math.ceil(x1)); y1 = Math.min(c.height, Math.ceil(y1));
+  const w = x1 - x0, h = y1 - y0;
+  if (w <= 2 || h <= 2) return;
+  const ctx = c.getContext('2d')!, src = ctx.getImageData(x0, y0, w, h), out = ctx.createImageData(w, h), s = src.data, d = out.data;
+  // (Never at the bark: the slice's own edge stays where it is, and the bark round it.)
+  const last = tree.rings[tree.rings.length - 1], edgeAt = (X: number, Y: number) => {
+    const t = Math.atan2(v.cy - Y, X - v.cx) - v.turn;
+    return v.s * warpR(v.warp, radiusAt(last, ((t % TAU) + TAU) % TAU));
+  };
+  const pick = (x: number, y: number, k: number) => {
+    // (Bilinear, inside the piece read.)
+    x = Math.max(0, Math.min(w - 1.001, x)); y = Math.max(0, Math.min(h - 1.001, y));
+    const xi = Math.floor(x), yi = Math.floor(y), fx = x - xi, fy = y - yi, i00 = (yi * w + xi) * 4;
+    for (let ch = 0; ch < 4; ch++) {
+      const a = s[i00 + ch], b = s[i00 + 4 + ch], cc = s[i00 + w * 4 + ch], e = s[i00 + w * 4 + 4 + ch];
+      d[k + ch] = a + (b - a) * fx + (cc - a) * fy + (a - b - cc + e) * fx * fy;
+    }
+  };
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const X = x + x0, Y = y + y0;
+    let sx = X, sy = Y;
+    for (const b of burls) {
+      // (The tangle: a slow wander of the grain, fading out beyond the burl.)
+      const dx = Math.max(b.x0 - X, 0, X - b.x1), dy = Math.max(b.y0 - Y, 0, Y - b.y1), fade = Math.exp(-((Math.hypot(dx, dy) / (b.amp * 4)) ** 2));
+      if (fade < 0.02) continue;
+      const L = 1 / (b.amp * 3.5);
+      sx += fade * b.amp * 1.6 * (vnoise(X * L + b.seed * 0.001, Y * L) - 0.5) * 2;
+      sy += fade * b.amp * 1.6 * (vnoise(X * L + 37.1, Y * L + b.seed * 0.001) - 0.5) * 2;
+    }
+    for (const e of eyes) {
+      const dx = X - e.x, dy = Y - e.y, dd = Math.hypot(dx, dy) || 1e-3, R = e.e * 2.2;
+      if (dd > R * 2.5) continue;
+      // (Read from nearer the speck: the rings bow out round it.)
+      const pull = Math.min(0.85 * dd, R * Math.exp(-((dd / R) ** 2)));
+      sx -= (dx / dd) * pull; sy -= (dy / dd) * pull;
+    }
+    for (const k of knots) {
+      // (The trunk's rings swept round the branch: read from nearer it, so they part and close round it in
+      // wide smooth curves.)
+      const dx = X - k.x, dy = Y - k.y, dd = Math.hypot(dx, dy) || 1e-3, R = k.e * 1.7;
+      if (dd > R * 3) continue;
+      const pull = Math.min(0.7 * dd, R * Math.exp(-((dd / (R * 1.1)) ** 2)));
+      sx -= (dx / dd) * pull; sy -= (dy / dd) * pull;
+    }
+    if (sx !== X || sy !== Y) {
+      const r = Math.hypot(X - v.cx, Y - v.cy), keep = smooth((edgeAt(X, Y) - r) / (16 * px * Z));
+      sx = X + (sx - X) * keep; sy = Y + (sy - Y) * keep;
+    }
+    pick(sx - x0, sy - y0, (y * w + x) * 4);
+  }
+  ctx.putImageData(out, x0, y0);
 }
 /** While drawing: the knot or burl forming under the brush, at once (pressed into the wood when the ring closes). */
 function drawPendingMarks(v: View, t: number): void {
@@ -232,6 +361,12 @@ function drawPendingMarks(v: View, t: number): void {
     }
   }
 }
+/**
+ * A young tree's vigour (a share of its years' width): its first year or two a little narrow, as a
+ * seedling establishes; then its widest, easing down over its first weeks to its own (the narrowing after
+ * that is the wood spread round an ever wider trunk).
+ */
+const youth = (n: number) => (0.72 + 0.28 * smooth(n / 2.5)) * (1 + 0.32 * Math.exp(-Math.max(0, n - 2) / 9));
 /**
  * A tree evens out its lumps, slowly: where it's short of round, a year a little wider (in proportion to
  * how far short, of the whole radius: never so strong that the swells below can't build a lobe).
@@ -339,7 +474,7 @@ function demoYear(count = 365, start = (() => { const d = new Date(); d.setDate(
     const R = (b: number) => tree.radius + width * tree.wRef * lean(b), u = GROWN
       // (Growing true to scale, the loop's looseness is the year's width wherever it's drawn, the tree's
       // own swells on it, eased a little toward round.)
-      ? (b: number) => Math.max(LEAST, width * growth(b) * climate(tree.seed, tree.rings.length) * (1 + 0.3 * wob * Math.sin(2 * b + ph)) + evenUp(b))
+      ? (b: number) => Math.max(LEAST, width * growth(b) * climate(tree.seed, tree.rings.length) * youth(tree.rings.length) * (1 + 0.3 * wob * Math.sin(2 * b + ph)) + evenUp(b))
       : (b: number) => Math.max(0.1, (R(b) - radiusAt((i) => tree.inner(i), b)) / tree.wRef + wob * Math.sin(2 * b + ph));
     let a = r() * TAU;
     tree.begin(time, a, u(a));
@@ -411,8 +546,6 @@ function fitScale(): number {
   // well inside the screen's edge.)
   return tree.rings.length ? Math.min((BARK * room) / (0.25 * barkMax() + 0.75 * barkMean()), (0.7 * room) / barkMax()) : (BARK * room) / (barkMax() + tree.wRef);
 }
-/** Whether the young tree is still growing out on the sheet, its rings where the hand put them. */
-const growingOut = () => GROWN && fitScale() > seedScale() * 1.001;
 function barkMean(): number {
   const last = tree.rings[tree.rings.length - 1];
   if (!last) return tree.k.pith;
