@@ -1328,24 +1328,61 @@ function drawBrush(g: CanvasRenderingContext2D, v: View, t: number): void {
     g.closePath(); g.fill();
   };
   if (GROWN) {
-    // (Growing true to scale, the line is one even ink along its length: laid as one shape, never in
-    // pieces whose joins would show.)
+    // (Growing true to scale, a brush's line: the hand's path eased of its jitter; fine where it touched
+    // down, swelling where the hand went slowly and thinning where it hurried, its head drawn to a point
+    // while it's moving; laid in a few bristles side by side, each one shape along its run, so no joins
+    // show; and where the hand hurried, the outer bristles run dry and leave the paper between them.)
     const life = pts[n - 1].life;
     if (life < 0.02) return;
-    const wet = life * life;
-    const run = (from: number, to: number, k: number) => {
-      g.beginPath();
-      for (let i = from; i <= to; i++) { const p = pts[i]; if (i === from) g.moveTo(p.x + p.nx * k * p.hw, p.y + p.ny * k * p.hw); else g.lineTo(p.x + p.nx * k * p.hw, p.y + p.ny * k * p.hw); }
-      for (let i = to; i >= from; i--) { const p = pts[i]; g.lineTo(p.x - p.nx * k * p.hw, p.y - p.ny * k * p.hw); }
-      g.closePath(); g.fill();
-    };
+    const wet = life * life, live = !!tree.stroke && !going;
+    const PAPER_RGB = [244, 239, 228], INK_RGB = [24, 20, 18];
+    const opaque = (a: number) => { const k = Math.max(0, Math.min(1, a)); return `rgb(${PAPER_RGB.map((c, j) => Math.round(c + (INK_RGB[j] - c) * k)).join(',')})`; };
+    const B = [-1, -0.62, -0.22, 0.22, 0.62, 1];
     let from = 0;
     for (let i = 1; i <= n; i++) {
       if (i < n && !lap(i)) continue;
-      if (i - 1 > from) {
-        g.fillStyle = `rgba(140,96,62,${(0.1 * wet).toFixed(3)})`; run(from, i - 1, 1.4);
-        g.fillStyle = ink(0.55 * life + 0.3 * wet); run(from, i - 1, 1);
-        g.fillStyle = ink(0.3 * wet); run(from, i - 1, 0.6);
+      const to = i - 1;
+      if (to - from >= 2) {
+        // (Eased: each point the mean of its neighbours, twice over; the ends kept where they were.)
+        // (Laid out finer first, each step halved, so the easing rounds its corners rather than cutting them.)
+        const raw = pts.slice(from, to + 1), xs: number[][] = [], src: typeof pts = [];
+        for (let j = 0; j < raw.length; j++) {
+          xs.push([raw[j].x, raw[j].y]); src.push(raw[j]);
+          if (j + 1 < raw.length) { xs.push([(raw[j].x + raw[j + 1].x) / 2, (raw[j].y + raw[j + 1].y) / 2]); src.push(raw[j]); }
+        }
+        for (let pass = 0; pass < 6; pass++) for (let j = 1; j < xs.length - 1; j++) {
+          xs[j] = [(xs[j - 1][0] + 2 * xs[j][0] + xs[j + 1][0]) / 4, (xs[j - 1][1] + 2 * xs[j][1] + xs[j + 1][1]) / 4];
+        }
+        const m = xs.length, sAt = [0];
+        for (let j = 1; j < m; j++) sAt.push(sAt[j - 1] + Math.hypot(xs[j][0] - xs[j - 1][0], xs[j][1] - xs[j - 1][1]));
+        const L = sAt[m - 1];
+        const P = xs.map((q, j) => {
+          const a0 = xs[Math.max(0, j - 1)], b0 = xs[Math.min(m - 1, j + 1)], dx = b0[0] - a0[0], dy = b0[1] - a0[1], l = Math.hypot(dx, dy) || 1, q0 = src[j];
+          const taper = smooth(sAt[j] / (22 * px)) * (live ? 0.25 + 0.75 * smooth((L - sAt[j]) / (16 * px)) : 0.4 + 0.6 * smooth((L - sAt[j]) / (8 * px)));
+          return { x: q[0], y: q[1], nx: -dy / l, ny: dx / l, hw: 0.5 * q0.q.w * 0.72 * (0.6 + 0.4 * life) * px * Math.max(0.12, taper) * (0.8 + 0.4 * vnoise(sAt[j] / (70 * px) + from * 0.37, 4.1)), s: sAt[j], fast: q0.q.fast };
+        });
+        const band = (j0: number, j1: number, k0: number, k1: number) => {
+          g.beginPath();
+          // (Its edges a little ragged where the hair of the brush is, never ruled.)
+          const rag = (p: typeof P[0], k: number) => k * p.hw * (Math.abs(k) > 0.9 ? 1 + 0.1 * (vnoise(p.s / (2.2 * px) + k * 13, 2.7) - 0.5) * 2 : 1);
+          for (let j = j0; j <= j1; j++) { const p = P[j], d = rag(p, k1); if (j === j0) g.moveTo(p.x + p.nx * d, p.y + p.ny * d); else g.lineTo(p.x + p.nx * d, p.y + p.ny * d); }
+          for (let j = j1; j >= j0; j--) { const p = P[j], d = rag(p, k0); g.lineTo(p.x + p.nx * d, p.y + p.ny * d); }
+          g.closePath(); g.fill();
+        };
+        // (A breath of wet ink beyond it, while it's fresh.)
+        if (wet > 0.05) { g.fillStyle = `rgba(140,96,62,${(0.07 * wet).toFixed(3)})`; band(0, m - 1, -1.35, 1.35); }
+        for (let bj = 0; bj < B.length - 1; bj++) {
+          const k0 = B[bj] - 0.03, k1 = B[bj + 1] + 0.03, outer = Math.abs((B[bj] + B[bj + 1]) / 2);
+          // (The one ink in every bristle; dry where the hand hurried, the edges first.)
+          g.fillStyle = opaque(0.92 * (0.55 + 0.45 * life));
+          let run0 = -1;
+          for (let j = 0; j < m; j++) {
+            const p = P[j], dryness = Math.max(0, p.fast - 0.35) * (0.4 + 0.9 * outer) * (0.6 + 0.4 * (1 - wet));
+            const on = vnoise(p.s / (9 * px) + bj * 7.3, bj * 1.9) >= dryness;
+            if (on && run0 < 0) run0 = j;
+            if ((!on || j === m - 1) && run0 >= 0) { const e = on ? j : j - 1; if (e > run0) band(run0, e, k0, k1); run0 = -1; }
+          }
+        }
       }
       from = i;
     }
@@ -2249,7 +2286,7 @@ function pulledReach(v: View): { x0: number; y0: number; x1: number; y1: number;
   return x1 < x0 ? null : { x0, y0, x1, y1, pad: Math.ceil(pad) + 4 };
 }
 /** Pictures being pressed a strip at a time, a slot each, and the one to be drawn over next. */
-const pressing: Record<string, { c: HTMLCanvasElement; v: View; key: string; row: number; t0: number; end: number; c0: number; c1: number; pulled: [number, number, number] | null }> = {};
+const pressing: Record<string, { c: HTMLCanvasElement; v: View; key: string; row: number; t0: number; end: number; c0: number; c1: number; pulled: [number, number, number] | null; last?: number }> = {};
 /** Where the wood's pulled about, in a kept picture's own pixels for view `v`: its rows, and the margin it needs. */
 function pulledRows(v: View): [number, number, number] | null {
   const Q = QUALITY(), was = px;
@@ -2290,8 +2327,13 @@ function pressSlowly(slot: string, v: View, key: string, follow = true, budget =
   }
   // (Strips of the one height, as many a frame as fit in some eight milliseconds, one at least: on an older
   // phone a frame a little slow while it's pressed, never a stall.)
+  // (Only in what's left of the frame, so the frame is never late: pressed when the frame's own drawing has
+  // left room, a strip at least now and then so it always arrives.)
   const t = performance.now(), rows = Math.max(12, Math.ceil(16 * QUALITY() * px / 2));
-  while (job.row < job.end && performance.now() - t < budget) {
+  const left = budget === Infinity ? Infinity : Math.min(budget, 11 - (t - frameStart));
+  if (left <= 0 && t - (job.last ?? 0) < 0.25e3) return;
+  job.last = t;
+  while (job.row < job.end && performance.now() - t < Math.max(left, 0.1)) {
     // (Across a knot or burl, a deeper strip, so its margin is pressed fewer times over.)
     const pl = job.pulled, deep = pl && job.row + rows > pl[0] && job.row < pl[1] ? Math.max(rows, 3 * pl[2]) : rows;
     const r1 = Math.min(job.end, job.row + deep);
@@ -3267,15 +3309,15 @@ let openedAt = 0;
 // (`?slow=5` plays the opening and the bloom five times slower, to look at them.)
 const SLOW = Number(params.get('slow')) || 1, OPEN = STEADY_T * SLOW, BLOOM = STEADY_T * SLOW;
 
-let lastFrame = 0;
+let lastFrame = 0, frameStart = 0;
 function frame(): void {
   // (Time as it passes, whatever the screen's rate: a slower phone's frames come further apart.)
   const t = clock(), dt = lastFrame ? Math.min(0.1, Math.max(1 / 240, t - lastFrame)) : 1 / 60;
   // (Nothing being done and nothing quick moving: half the frames are enough, for the slow things (the
   // breath, the crowns stirring), and the phone kept cool.)
   const calm = fingers.size === 0 && !tree.stroke && !ease && !lookBack && !farTo && !intro && settle.ring < 0 && !growing && !gusts.length && !lifted.length && !choiceTo && !ruffle.some((r) => r > 0.02);
-  if (calm && lastFrame && t - lastFrame < 1 / 30 - 0.004) { requestAnimationFrame(frame); return; }
-  lastFrame = t;
+  void calm;
+  lastFrame = t; frameStart = performance.now();
   // (The wood's own way with the hand's line.)
   if (GROWN) { const sm = SMOOTH[kind] ?? DAILY.smooth; if (tree.k.smooth !== sm) (tree.k as { smooth: number }).smooth = sm; }
   // (The practice: the wood is as much as the hand draws, so the ink lasts all the way round and the ring
