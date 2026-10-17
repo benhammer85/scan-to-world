@@ -81,3 +81,10 @@ mahaleb cherry, bird cherry, Norway maple and silver birch. Their rings show fro
 the grain, at the resolution to hand, to trace into clean years; those woods keep their years drawn from their
 anatomy (`ANATOMY` in `press.ts`).
 
+
+**The ink's speckle** (`ink-speckle.png`): from real tree-ring prints, from
+photographs of them he provided for this, used with his permission. The fine flecks of paper inside the inked
+latewood, where the ink broke on the wood, lifted from six patches (the rays and ring lines, larger shapes, taken
+out; the gaps filled from round them), laid in a tile with feathered seams and wrapped to repeat, its level matched
+to Munch's sea and its spread a little over twice his. It takes the sea's place in the press (`inkGrain`);
+`?ink=munch` gives Munch's again. Munch's field still gives the plank's grain.
