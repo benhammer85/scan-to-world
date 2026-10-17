@@ -1568,7 +1568,7 @@ function drawPrint(v: View): void {
       }
     }
   }
-  drawMarks(v, Z);
+  drawMarks(v, markK || Z);
   const bk = SPEC[kind].bark;
   if (bk === 'papery') drawBirchBark(v, pt, scr(Rb));
   else {
@@ -2866,6 +2866,12 @@ function demoGrove(count = 5): KeptTree[] {
 const INTRO = GROWN && (params.has('intro') || (!navigator.webdriver && !matchMedia('(prefers-reduced-motion: reduce)').matches));
 /** Pores and flecks pressed: all of them (1), or, for the opening, seen only for a moment, a scatter. */
 let SPARSE = 1;
+/**
+ * How much closer than the slice as it's shown the knots and burls are pressed: their specks and rings are
+ * measured in the screen's pixels, as looked into; the opening presses the wood far larger than it's shown,
+ * at its own scale, so they're pressed that much larger with it (0: as looked into).
+ */
+let markK = 0;
 const INTRO_GROW = 1.4, INTRO_HOLD = 0.25, INTRO_PULL = STEADY_T, INTRO_FADE = QUICK;
 /**
  * The opening: today's own tree, if it has a few days, else one of today's wood grown in a moment. Pressed
@@ -2918,8 +2924,8 @@ function startIntro(): void {
       const c = document.createElement('canvas'); c.width = cw; c.height = ch;
       g = c.getContext('2d')!; px = was.px * S; W = cw; H = ch;
       const v: View = { cx: ox, cy: oy, s: s * S, turn: 0, px, warp: undefined };
-      SPARSE = 0.35;
-      try { drawPrint(v); } finally { SPARSE = 1; g = was.g; px = was.px; W = was.W; H = was.H; }
+      SPARSE = 0.35; markK = end ? s / end.s : 0;
+      try { drawPrint(v); } finally { SPARSE = 1; markK = 0; g = was.g; px = was.px; W = was.W; H = was.H; }
       return { c, S, cx: ox, cy: oy, v, done: 0, all: Math.max(oy, ch - oy) };
     };
     // (Sharp: some 1.6 to a CSS px, the screen's own at most, just the sheet: seen whole, it must hold up.)
