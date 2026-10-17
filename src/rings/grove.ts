@@ -366,20 +366,84 @@ export function drawMoss(g: CanvasRenderingContext2D, x: number, y: number, rx: 
   g.restore();
 }
 /** A path worn through the grass to a tree often visited: a pale track, its edges dotted where it's trodden. */
-export function drawTrack(g: CanvasRenderingContext2D, pts: [number, number][], width: number, U: number, seed: number): void {
-  if (pts.length < 2) return;
-  const line = () => { g.beginPath(); g.moveTo(...pts[0]); for (let i = 1; i < pts.length; i++) g.lineTo(...pts[i]); };
+/**
+ * A footpath, as it lies on the ground: bare earth between grassy edges, wider at the bends (corners cut) and where
+ * paths meet (`wide`, per point), thinning into the grass at both ends. Walked often (`wear`, 0..1), a darker line
+ * packed down its middle; left (`grown`, 0..1), the grass comes back in patches, closing over it in stretches.
+ */
+export function drawTrack(g: CanvasRenderingContext2D, pts: [number, number][], width: number, U: number, seed: number, o: { wear?: number; grown?: number; wide?: number[] } = {}): void {
+  const n = pts.length;
+  if (n < 2) return;
+  const wear = o.wear ?? 0, grown = o.grown ?? 0;
+  // (Along it: distance, direction, how sharply it bends.)
+  const s = [0], tx: number[] = [], ty: number[] = [];
+  for (let i = 1; i < n; i++) s.push(s[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+  const len = s[n - 1] || 1;
+  for (let i = 0; i < n; i++) {
+    const a = pts[Math.max(0, i - 1)], b = pts[Math.min(n - 1, i + 1)], dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy) || 1;
+    tx.push(dx / l); ty.push(dy / l);
+  }
+  const bend = pts.map((_, i) => {
+    const j = Math.max(0, i - 2), k = Math.min(n - 1, i + 2);
+    return Math.min(1, Math.abs(tx[j] * ty[k] - ty[j] * tx[k]) * 1.6);
+  });
+  const sm = (x: number) => { const c = Math.max(0, Math.min(1, x)); return c * c * (3 - 2 * c); };
+  // (Where the grass has come back: patches, the first ones small, joining as it's left longer.)
+  const cover = s.map((d) => grown <= 0 ? 0 : sm((grown * 1.25 - n1(d / (width * 2.2) + seed * 3.1)) / 0.12));
+  const wAt = s.map((d, i) => {
+    const ends = sm(d / (width * 1.6)) * sm((len - d) / (width * 1.6));
+    return width * (0.82 + 0.3 * n1(d / (width * 1.3) + seed)) * (1 + 0.45 * bend[i]) * (o.wide?.[i] ?? 1) * (0.12 + 0.88 * ends) * (1 - cover[i]);
+  });
+  const side = (k: number, f = 1): [number, number][] => pts.map((p, i) => [p[0] - ty[i] * wAt[i] * 0.5 * f * k, p[1] + tx[i] * wAt[i] * 0.5 * f * k]);
+  const L = side(1), R = side(-1);
   g.save(); g.lineCap = 'round'; g.lineJoin = 'round';
-  line(); g.strokeStyle = 'rgba(244,239,228,0.92)'; g.lineWidth = width; g.stroke();
-  g.setLineDash([1.2 * U, 2.6 * U]);
-  for (const side of [-1, 1]) {
-    g.beginPath();
-    for (let i = 0; i < pts.length; i++) {
-      const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)], dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy) || 1;
-      const off = (width / 2) * (0.9 + 0.2 * h1(seed + i * 1.7 + side)), x = pts[i][0] - (dy / l) * off * side, y = pts[i][1] + (dx / l) * off * side;
-      if (i) g.lineTo(x, y); else g.moveTo(x, y);
+  // The bare earth: paper, then a faint warm wash.
+  g.beginPath(); g.moveTo(...L[0]); for (const q of L) g.lineTo(...q); for (let i = n - 1; i >= 0; i--) g.lineTo(...R[i]); g.closePath();
+  g.fillStyle = 'rgba(244,239,228,0.9)'; g.fill();
+  g.globalCompositeOperation = 'multiply'; g.fillStyle = `rgba(180,164,130,${(0.24 + 0.12 * wear).toFixed(3)})`; g.fill();
+  // Packed down the middle, where it's walked: a broken darker line, wandering a little.
+  if (wear > 0.05) {
+    g.strokeStyle = `rgba(118,102,84,${(0.2 * wear).toFixed(3)})`;
+    for (let i = 1; i < n; i++) {
+      if (n1(s[i] / (width * 0.9) + seed * 1.7) < 0.3 || cover[i] > 0.3) continue;
+      const off = (n1(s[i] / (width * 2) + seed) - 0.5) * wAt[i] * 0.3, off0 = (n1(s[i - 1] / (width * 2) + seed) - 0.5) * wAt[i - 1] * 0.3;
+      g.lineWidth = Math.max(0.5 * U, wAt[i] * 0.16);
+      g.beginPath(); g.moveTo(pts[i - 1][0] - ty[i - 1] * off0, pts[i - 1][1] + tx[i - 1] * off0); g.lineTo(pts[i][0] - ty[i] * off, pts[i][1] + tx[i] * off); g.stroke();
     }
-    g.strokeStyle = ink(0.4); g.lineWidth = 0.6 * U; g.stroke();
+  }
+  g.globalCompositeOperation = 'source-over';
+  // The grass at its edges: short blades rooted just outside, leaning in, uneven, here and there none.
+  const step = 2 * U;
+  for (const k of [1, -1]) {
+    let i = 0;
+    for (let d = step * h1(seed + k); d < len; d += step * (0.6 + 0.8 * h1(d * 0.37 + seed + k))) {
+      while (i < n - 2 && s[i + 1] < d) i++;
+      const f = Math.min(1, (d - s[i]) / ((s[i + 1] - s[i]) || 1));
+      const lerp = (a: number[], b: number[]) => [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f];
+      const c = lerp(pts[i], pts[i + 1]), w = wAt[i] + (wAt[i + 1] - wAt[i]) * f, cv = cover[i];
+      if (w < 0.6 * U && cv < 0.5) continue;
+      if (n1(d / (9 * U) + seed * 2.3 + k) < 0.4 || h1(d * 5.7 + seed + k) < 0.25) continue;
+      const nx = -ty[i] * k, ny = tx[i] * k, r = h1(d * 1.3 + seed * 5 + k);
+      const blade = Math.min(U * 2.2, Math.max(U * 0.8, width * 0.45)), base = w * 0.5 + blade * (0.2 + 0.4 * r), tip = w * 0.5 - blade * (0.3 + 0.6 * h1(d * 2.1 + seed + k)) * (1 + cv);
+      const lean = (h1(d * 0.71 + seed + k * 3) - 0.5) * 1.6 * blade;
+      g.strokeStyle = ink(0.2 + 0.25 * h1(d * 3.3 + seed + k)); g.lineWidth = U * (0.3 + 0.3 * h1(d * 4.1 + seed));
+      g.beginPath(); g.moveTo(c[0] + nx * base, c[1] + ny * base);
+      g.quadraticCurveTo(c[0] + nx * (base + tip) * 0.5 + tx[i] * lean * 0.3, c[1] + ny * (base + tip) * 0.5 + ty[i] * lean * 0.3, c[0] + nx * tip + tx[i] * lean, c[1] + ny * tip + ty[i] * lean);
+      g.stroke();
+    }
+  }
+  // And grown back across it: tufts in the middle where the grass has returned.
+  if (grown > 0) {
+    for (let d = 0; d < len; d += 2.2 * U) {
+      let i = 0; while (i < n - 2 && s[i + 1] < d) i++;
+      const cv = cover[i];
+      if (cv < 0.2 || h1(d * 0.9 + seed) > cv * 0.8) continue;
+      const across = (h1(d * 1.9 + seed * 7) - 0.5) * width * 0.9, x = pts[i][0] - ty[i] * across, y = pts[i][1] + tx[i] * across;
+      g.strokeStyle = ink(0.25 + 0.25 * h1(d + seed)); g.lineWidth = 0.4 * U;
+      g.beginPath();
+      for (let b = -1; b <= 1; b++) { g.moveTo(x + b * 0.8 * U, y + 0.6 * U); g.lineTo(x + b * 1.4 * U, y - (1 + 0.8 * h1(d + b)) * U); }
+      g.stroke();
+    }
   }
   g.restore();
 }

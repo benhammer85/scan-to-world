@@ -739,7 +739,7 @@ canvas.addEventListener('pointermove', (e) => {
       if (!h.drawing) {
         if (Math.hypot(e.clientX - h.x, e.clientY - h.y) < 6) return;
         if (clock() - h.at < PATH_HOLD) groveHold = null;
-        else { h.drawing = true; h.pts.push(groveWorld(h.x * px, h.y * px)); if (NATIVE) tap({ strength: 0.4, sharpness: 0.5 }); }
+        else { h.drawing = true; h.pts.push(groveWorld(h.x * px, h.y * px)); if (NATIVE) tap({ strength: 0.2, sharpness: 0.2 }); }
       }
       if (groveHold?.drawing) {
         const q = groveWorld(x, y), last = h.pts[h.pts.length - 1];
@@ -793,7 +793,12 @@ for (const type of ['pointerup', 'pointercancel'] as const) canvas.addEventListe
     if (h.drawing) {
       let len = 0;
       for (let i = 1; i < h.pts.length; i++) len += Math.hypot(h.pts[i][0] - h.pts[i - 1][0], h.pts[i][1] - h.pts[i - 1][1]);
-      if (len > 0.8) { const ps = pathsOf(); ps.push({ pts: h.pts.map(([a, b]) => [+a.toFixed(3), +b.toFixed(3)] as [number, number]), made: dayOf(), walked: dayOf(), walks: 0 }); keepPaths(ps); }
+      if (len > 0.8) {
+        const way = pathWay(h.pts), id = Date.now(), ps = pathsOf();
+        ps.push({ pts: way.to.map(([a, b]) => [+a.toFixed(3), +b.toFixed(3)] as [number, number]), made: dayOf(), walked: dayOf(), walks: 0, id });
+        settling = { id, ...way, at: clock() };
+        keepPaths(ps);
+      }
       return;
     }
   }
@@ -2243,11 +2248,48 @@ function noteVisit(seed: number): void {
  * Paths drawn in the grove (world units): when each was laid, when last walked (a tree it passes opened),
  * how often. One not walked grows over, fading out over some two months; one walked wears in, wider.
  */
-interface DrawnPath { pts: [number, number][]; made: string; walked: string; walks: number }
+interface DrawnPath { pts: [number, number][]; made: string; walked: string; walks: number; id?: number }
 const PATH_HOLD = 0.35;
 let groveHold: { id: number; x: number; y: number; at: number; drawing: boolean; pts: [number, number][] } | null = null;
+/** A path just let go, settling from the hand's line into the way feet would go (some 1.6 s). */
+let settling: { id: number; from: [number, number][]; to: [number, number][]; at: number } | null = null;
+const SETTLE = 1.6;
+/**
+ * The way a path would really go, from a hand's line: laid out evenly, its wobbles eased into long bends, and
+ * kept off the trunks, going round them.
+ */
+function pathWay(raw: [number, number][]): { from: [number, number][]; to: [number, number][] } {
+  const step = 0.1, from: [number, number][] = [raw[0]];
+  let carry = 0;
+  for (let i = 1; i < raw.length; i++) {
+    const [ax, ay] = raw[i - 1], [bx, by] = raw[i], l = Math.hypot(bx - ax, by - ay);
+    let d = step - carry;
+    while (d <= l) { from.push([ax + ((bx - ax) * d) / l, ay + ((by - ay) * d) / l]); d += step; }
+    carry = l - (d - step);
+  }
+  const last = raw[raw.length - 1];
+  if (Math.hypot(last[0] - from[from.length - 1][0], last[1] - from[from.length - 1][1]) > step * 0.4) from.push(last);
+  const to = from.map((p) => [...p] as [number, number]), trees = worldOf().trees;
+  const ease = (times: number) => {
+    for (let k = 0; k < times; k++) for (let i = 1; i < to.length - 1; i++) {
+      to[i][0] += 0.5 * ((to[i - 1][0] + to[i + 1][0]) / 2 - to[i][0]);
+      to[i][1] += 0.5 * ((to[i - 1][1] + to[i + 1][1]) / 2 - to[i][1]);
+    }
+  };
+  ease(24);
+  for (let round = 0; round < 3; round++) {
+    for (const p of to) for (const t of trees) {
+      const d = Math.hypot(p[0] - t.wx, p[1] - t.wy), need = 0.3 * t.wr + 0.2;
+      if (d < need) { const dd = d || 1e-3; p[0] = t.wx + ((p[0] - t.wx) / dd) * need; p[1] = t.wy + ((p[1] - t.wy) / dd) * need; }
+    }
+    ease(8);
+  }
+  return { from, to };
+}
 const daysSince = (d: string) => Math.round((dayDate(dayOf()).getTime() - dayDate(d).getTime()) / 864e5);
-const pathAlpha = (p: DrawnPath) => 1 - smooth((daysSince(p.walked) - 21) / 40);
+/** How far the grass has come back over a path: none for three weeks unwalked, then closing over some six more. */
+const pathGrown = (p: DrawnPath) => smooth((daysSince(p.walked) - 21) / 40);
+const pathAlpha = (p: DrawnPath) => 1 - smooth((pathGrown(p) - 0.85) / 0.15);
 function pathsOf(): DrawnPath[] {
   try { return (JSON.parse(localStorage.getItem('annulus.paths') || '[]') as DrawnPath[]).filter((p) => pathAlpha(p) > 0.01); } catch { return []; }
 }
@@ -2260,6 +2302,31 @@ function moistAt(wx: number, wy: number): number {
   let d = Infinity;
   for (const [x, y] of st) d = Math.min(d, Math.hypot(x - wx, y - wy));
   return smooth(1 - (d - 0.6) / 2.2);
+}
+/** A path's width (world units): narrow when new, wider the more it's walked. */
+const pathWidth = (walks: number) => Math.min(0.32, 0.14 + 0.022 * walks);
+/** The paths worn on their own (world units), from today's tree to each opened three times or more. */
+function trackWays(cam: Cam): { pts: [number, number][]; v: number; k: number }[] {
+  const L = groveLayout(cam).trees, visits = visitsOf(), home = L.find((t) => t.i === -1), out: { pts: [number, number][]; v: number; k: number }[] = [];
+  if (home) for (const t of L) {
+    const v = t.i >= 0 ? visits[groveKept[t.i]?.seed ?? -1] ?? 0 : 0;
+    if (v < 3) continue;
+    const pts: [number, number][] = [], bend = (h1(t.k * 2.3) - 0.5) * 0.5, dx = t.wx - home.wx, dy = t.wy - home.wy, m = Math.max(8, Math.ceil(Math.hypot(dx, dy) / 0.1));
+    for (let q = 0; q <= m; q++) { const f = q / m, off = Math.sin(Math.PI * f) * bend; pts.push([home.wx + dx * f - dy * off, home.wy + dy * f + dx * off]); }
+    out.push({ pts, v, k: t.k });
+  }
+  return out;
+}
+/** Along a path, how much wider for another meeting or crossing it there: up to half again. */
+function meets(pts: [number, number][], all: [number, number][][], self: number): number[] {
+  return pts.map(([x, y]) => {
+    let near = 0;
+    for (const [j, o] of all.entries()) {
+      if (j === self) continue;
+      for (const [a, b] of o) near = Math.max(near, smooth(1 - Math.hypot(a - x, b - y) / 0.45));
+    }
+    return 1 + 0.5 * near;
+  });
 }
 function renderGrove(c: CanvasRenderingContext2D, cam: Cam, sprites?: Sprite[]): void {
   const w = worldOf(), season = seasonNow(), { sun } = sunNow();
@@ -2279,22 +2346,17 @@ function renderGrove(c: CanvasRenderingContext2D, cam: Cam, sprites?: Sprite[]):
   }
   drawStream(c, w.stream.map(([x, y]) => at(x, y)), Math.max(4 * px, 0.32 * cam.S), u, w.seed);
   // Paths drawn, as walked: wider the more, fading as they grow over.
-  for (const [i, pth] of pathsOf().entries()) {
+  // (Each a little wider where another meets it.)
+  const ways = pathsOf().filter((pth) => !settling || pth.id !== settling.id), worn = trackWays(cam);
+  const lines = [...ways.map((pth) => pth.pts), ...worn.map((t) => t.pts)];
+  for (const [i, pth] of ways.entries()) {
     c.save(); c.globalAlpha = pathAlpha(pth);
-    drawTrack(c, pth.pts.map(([x, y]) => at(x, y)), Math.min(0.3, 0.1 + 0.025 * pth.walks) * cam.S, u, i * 31 + 7);
+    drawTrack(c, pth.pts.map(([x, y]) => at(x, y)), pathWidth(pth.walks) * cam.S, u, (pth.id ?? i * 31) % 997 + 7, { wear: smooth(pth.walks / 8), grown: pathGrown(pth), wide: meets(pth.pts, lines, i) });
     c.restore();
   }
+  for (const [j, t] of worn.entries()) drawTrack(c, t.pts.map(([x, y]) => at(x, y)), pathWidth(t.v) * cam.S, u, t.k, { wear: smooth((t.v - 3) / 8), wide: meets(t.pts, lines, ways.length + j) });
   if (w.wall.length) drawWall(c, w.wall.map(([x, y]) => at(x, y)), u, w.seed);
   const L = groveLayout(cam).trees;
-  // Paths worn to the trees opened often, from today's.
-  const visits = visitsOf(), home = L.find((t) => t.i === -1);
-  if (home) for (const t of L) {
-    const v = t.i >= 0 ? visits[groveKept[t.i]?.seed ?? -1] ?? 0 : 0;
-    if (v < 3) continue;
-    const pts: [number, number][] = [], bend = (h1(t.k * 2.3) - 0.5) * 0.5, dx = t.wx - home.wx, dy = t.wy - home.wy;
-    for (let q = 0; q <= 16; q++) { const f = q / 16, off = Math.sin(Math.PI * f) * bend; pts.push(at(home.wx + dx * f - dy * off, home.wy + dy * f + dx * off)); }
-    drawTrack(c, pts, Math.min(0.32, 0.1 + 0.025 * v) * cam.S, u, t.k);
-  }
   // Moss, between trees long standing side by side.
   for (let a = 0; a < L.length; a++) for (let b = a + 1; b < L.length; b++) {
     const p = L[a], q = L[b], d = Math.hypot(p.wx - q.wx, p.wy - q.wy), old = Math.min(p.n, q.n);
@@ -2340,7 +2402,7 @@ function renderGrove(c: CanvasRenderingContext2D, cam: Cam, sprites?: Sprite[]):
   }
 }
 /** The grove drawn for the whole view (kept, to lay under any other while it moves), and for the view now. */
-const seasonKey = () => `${worldKey}:${seasonNow()}:${sunNow().key}:${JSON.stringify(visitsOf())}:${localStorage.getItem('annulus.paths') ?? ''}`;
+const seasonKey = () => `${worldKey}:${seasonNow()}:${sunNow().key}:${JSON.stringify(visitsOf())}:${localStorage.getItem('annulus.paths') ?? ''}:${settling ? settling.id : ''}`;
 let groveWarmAt = -1e9;
 let baseG: { c: HTMLCanvasElement; cam: Cam; key: string; sprites: Sprite[] } | null = null, sharpG: { c: HTMLCanvasElement; cam: Cam; key: string; sprites: Sprite[] } | null = null;
 /** The whole grove drawn, if it isn't already (as it is: its trees, its season, the sheet's size). */
@@ -2407,13 +2469,23 @@ function drawLife(cam: Cam): void {
     }
   }
   g.globalAlpha = 1;
-  // (A path being drawn: the pencil's line as it goes; held still, a dot where it will begin.)
+  // (A path being drawn: a soft pencil line as it goes, a little grainy; held still, a dot where it will begin.)
   if (groveHold && clock() - groveHold.at >= PATH_HOLD) {
     const pts = groveHold.drawing ? groveHold.pts.map(([x, y]) => [cam.X0 + x * cam.S, cam.Y0 + y * cam.S] as [number, number]) : [];
-    g.strokeStyle = 'rgba(92,88,84,0.7)'; g.lineWidth = 1.2 * px; g.lineCap = 'round'; g.lineJoin = 'round'; g.setLineDash([4 * px, 3 * px]);
-    if (pts.length > 1) { g.beginPath(); pts.forEach((q, i) => (i ? g.lineTo(...q) : g.moveTo(...q))); g.stroke(); }
-    g.setLineDash([]);
-    if (!groveHold.drawing) { g.fillStyle = 'rgba(92,88,84,0.7)'; g.beginPath(); g.arc(groveHold.x * px, groveHold.y * px, 2.5 * px, 0, TAU); g.fill(); }
+    g.lineCap = 'round'; g.lineJoin = 'round';
+    if (pts.length > 1) for (const [o, al, wd] of [[0, 0.32, 1.4], [0.5, 0.18, 0.8], [-0.5, 0.14, 0.7]] as [number, number, number][]) {
+      g.beginPath(); pts.forEach((q, i) => { const j = (h1(i * 1.3 + o) - 0.5) * 0.6 * px; i ? g.lineTo(q[0] + o * px + j, q[1] + o * px - j) : g.moveTo(q[0] + o * px, q[1] + o * px); });
+      g.strokeStyle = `rgba(92,88,84,${al})`; g.lineWidth = wd * px; g.stroke();
+    }
+    if (!groveHold.drawing) { g.fillStyle = 'rgba(92,88,84,0.45)'; g.beginPath(); g.arc(groveHold.x * px, groveHold.y * px, 2.2 * px, 0, TAU); g.fill(); }
+  }
+  // (A path let go, settling: the hand's line easing into its bends, the pencil fading as the ground takes it.)
+  if (settling) {
+    const f = smooth((clock() - settling.at) / SETTLE), st = settling;
+    const pts = st.from.map(([x, y], i) => { const [a, b] = st.to[i]; return [cam.X0 + (x + (a - x) * f) * cam.S, cam.Y0 + (y + (b - y) * f) * cam.S] as [number, number]; });
+    if (f < 1) { g.beginPath(); pts.forEach((q, i) => (i ? g.lineTo(...q) : g.moveTo(...q))); g.strokeStyle = `rgba(92,88,84,${(0.32 * (1 - f)).toFixed(3)})`; g.lineWidth = 1.4 * px; g.stroke(); }
+    g.save(); g.globalAlpha = f; drawTrack(g, pts, pathWidth(0) * cam.S, px * Math.pow(Math.max(1, cam.S / worldOf().whole.S), 0.8), st.id % 997 + 7, { wide: meets(st.to, [...pathsOf().map((p) => p.pts), ...trackWays(cam).map((w) => w.pts)], pathsOf().findIndex((p) => p.id === st.id)) }); g.restore();
+    if (clock() - st.at >= SETTLE) settling = null;
   }
   const { tint } = sunNow();
   if (tint[3] > 0.01) { g.globalCompositeOperation = 'multiply'; g.fillStyle = `rgba(${tint[0]},${tint[1]},${tint[2]},${tint[3].toFixed(3)})`; g.fillRect(0, 0, W, H); }
