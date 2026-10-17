@@ -26,7 +26,7 @@ import { at, drawPaper } from './draw';
 import { Paper } from './paint';
 import { dayDate, dayOf } from './days';
 import { climate, growth as growthOf, season } from './growing';
-import { crownSize, drawCrown, drawHill, drawMoss, drawSeedling, drawTrack, heightAt, land, pigment, seasonOf, snowHill, washCrown, washHill, type CrownForm, type Hill, type Season, type Sun } from './grove';
+import { crownSize, drawCrown, drawHill, drawMoss, drawSeedling, drawStream, drawTrack, drawWall, heightAt, land, pigment, seasonOf, snowHill, washCrown, washHill, type CrownForm, type Hill, type Season, type Sun } from './grove';
 import { holdStill, steadySize } from './steady';
 import { fromText, grove, keepInGrove, keepTree, recallTree, setGrove, snapshotTree, toText, treeFrom, type KeptTree, type WoodMark } from './save';
 
@@ -2056,7 +2056,7 @@ interface Cam { S: number; X0: number; Y0: number }
 let groveCam: Cam | null = null;
 const GROVE_CLOSEST = 8;
 /** The land, every tree on it (world units), and the view of the whole of it, kept until a tree changes. */
-let worldKey = '', world: { hills: Hill[]; seed: number; trees: Omit<Stand, 'x' | 'y' | 'r'>[]; next: { wx: number; wy: number }; whole: Cam; box: [number, number, number, number]; seedlings: { wx: number; wy: number }[] } | null = null;
+let worldKey = '', world: { hills: Hill[]; seed: number; trees: Omit<Stand, 'x' | 'y' | 'r'>[]; next: { wx: number; wy: number }; whole: Cam; box: [number, number, number, number]; seedlings: { wx: number; wy: number }[]; stream: [number, number][]; wall: [number, number][] } | null = null;
 function worldOf() {
   const mine = visit ? visit.stash : { tree, days, kind };
   const all = [
@@ -2069,7 +2069,7 @@ function worldOf() {
   const seed = groveKept[0]?.seed ?? (parting ? parting.tree.seed : mine.tree.seed), key = `${W}x${H}:${seed}:${all.map((t) => `${t.sp}${t.n}${t.place ? `@${t.place.join(',')}` : ''}`).join(',')}`;
   if (world && worldKey === key) return world;
   const L = land(all.length, seed);
-  const trees = all.map((a, j) => ({ ...a, wx: a.place ? a.place[0] : L.places[j].x, wy: a.place ? a.place[1] : L.places[j].y, wr: 1.4 * L.places[j].scale * crownSize(a.sp, a.n) }));
+  const trees = all.map((a, j) => ({ ...a, wx: a.place ? a.place[0] : L.places[j].x, wy: a.place ? a.place[1] : L.places[j].y, wr: 1.3 * L.places[j].scale * crownSize(a.sp, a.n) }));
   // (And where the next will stand, when it's planted.)
   const nx = land(all.length + 1, seed).places[all.length], next = { wx: nx.x, wy: nx.y };
   // (The whole of it in view, the trees and a little ground round them; never so close a crown fills the sheet.)
@@ -2085,7 +2085,26 @@ function worldOf() {
     if (trees.some((o) => Math.hypot(o.wx - wx, o.wy - wy) < o.wr * 0.9 + 0.2) || Math.hypot(next.wx - wx, next.wy - wy) < 0.6) continue;
     seedlings.push({ wx, wy });
   }
-  worldKey = key; world = { hills: L.hills, seed, trees, next, whole, box: [x0, y0, x1, y1], seedlings };
+  // (The grove's own landmarks, from its seed: a stream winding past through the low ground, clear of the
+  // trees; and, as often as not, a low wall of field stones along the far side.)
+  let gx = 0, gy = 0;
+  for (const t of trees) { gx += t.wx; gy += t.wy; }
+  gx /= trees.length; gy /= trees.length;
+  let reach = 0;
+  for (const t of [...trees, { wx: next.wx, wy: next.wy, wr: 0.5 }]) reach = Math.max(reach, Math.hypot(t.wx - gx, t.wy - gy) + t.wr);
+  const sa = 0.6 + h1(seed * 0.37) * 1.9, sx = Math.cos(sa), sy = Math.sin(sa), D = reach + 0.75, stream: [number, number][] = [];
+  for (let q = -60; q <= 60; q++) {
+    const t = q * 0.25, off = D + 0.9 * Math.sin(t * 0.32 + seed) + 0.4 * Math.sin(t * 0.85 + seed * 2);
+    let x = gx + sx * off - sy * t, y = gy + sy * off + sx * t;
+    for (const o of trees) { const d = Math.hypot(x - o.wx, y - o.wy), need = o.wr + 0.8; if (d < need) { x += ((x - o.wx) / (d || 1)) * (need - d); y += ((y - o.wy) / (d || 1)) * (need - d); } }
+    stream.push([x, y]);
+  }
+  const wall: [number, number][] = [];
+  if (h1(seed * 0.91) > 0.35) {
+    const wa = sa + Math.PI + (h1(seed * 1.3) - 0.5) * 0.6, span = 0.9 + 0.5 * h1(seed * 2.1), R = reach + 0.55;
+    for (let q = 0; q <= 40; q++) { const a = wa - span / 2 + (span * q) / 40, rr = R + 0.25 * Math.sin(q * 0.4 + seed); wall.push([gx + Math.cos(a) * rr, gy + Math.sin(a) * rr]); }
+  }
+  worldKey = key; world = { hills: L.hills, seed, trees, next, whole, box: [x0, y0, x1, y1], seedlings, stream, wall };
   return world;
 }
 const camNow = (): Cam => groveCam ?? worldOf().whole;
@@ -2194,6 +2213,8 @@ function renderGrove(c: CanvasRenderingContext2D, cam: Cam, sprites?: Sprite[]):
   drawHill(c, W, H, px, height, w.seed);
   const u = px * Math.pow(Math.max(1, cam.S / w.whole.S), 0.8);
   const at = (wx: number, wy: number): [number, number] => [cam.X0 + wx * cam.S, cam.Y0 + wy * cam.S];
+  drawStream(c, w.stream.map(([x, y]) => at(x, y)), Math.max(4 * px, 0.32 * cam.S), u, w.seed);
+  if (w.wall.length) drawWall(c, w.wall.map(([x, y]) => at(x, y)), u, w.seed);
   const L = groveLayout(cam).trees;
   // Paths worn to the trees opened often, from today's.
   const visits = visitsOf(), home = L.find((t) => t.i === -1);
@@ -2220,7 +2241,17 @@ function renderGrove(c: CanvasRenderingContext2D, cam: Cam, sprites?: Sprite[]):
   for (const s of w.seedlings) { const [x, y] = at(s.wx, s.wy); drawSeedling(c, x, y, Math.max(3 * px, 0.18 * cam.S), u); }
   const order = [...L].sort((p, q) => p.y - q.y), shown = order.filter((t) => !(t.x < -t.r * 2 || t.x > W + t.r * 2 || t.y < -t.r * 2 || t.y > H + t.r * 2));
   // (The shadows all on the ground first; then the crowns over them, each to be stirred on its own.)
-  for (const t of shown) if (t.n >= 1) drawCrown(c, t.x, t.y, t.r, t.sp, t.k, u, 1, formOf(t.i), sun, 'shadow');
+  // (All the shadows as one: their shapes laid solid, then hatched once, finely and lightly, so where two
+  // meet it's never darker.)
+  if (sun.strength > 0.02) {
+    const lay = document.createElement('canvas'); lay.width = W; lay.height = H;
+    const lc = lay.getContext('2d')!;
+    for (const t of shown) if (t.n >= 1) drawCrown(lc, t.x, t.y, t.r, t.sp, t.k, u, 1, formOf(t.i), sun, 'shade');
+    lc.globalCompositeOperation = 'source-in'; lc.strokeStyle = ink(1); lc.lineWidth = 0.55 * u; lc.beginPath();
+    for (let d = -H; d < W + H; d += 1.9 * u) { lc.moveTo(d, 0); lc.lineTo(d + H, H); }
+    lc.stroke();
+    c.save(); c.globalAlpha = 0.5 * sun.strength; c.drawImage(lay, 0, 0); c.restore();
+  }
   for (const t of shown) {
     // (A tree of a day or more is a crown, however small; only a seed just planted is a seedling.)
     if (t.n < 1) { drawSeedling(c, t.x, t.y, Math.min(6 * px, Math.max(3 * px, t.r * 0.8)), px); continue; }

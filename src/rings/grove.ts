@@ -93,11 +93,13 @@ function path(g: CanvasRenderingContext2D, x: number, y: number, r: number, E: F
  * own tree's shape; `sun` the light; `part` its shadow on the ground alone, or the crown alone (to be laid
  * over the ground and stirred by the wind), or both.
  */
-export function drawCrown(g: CanvasRenderingContext2D, x: number, y: number, r: number, sp: string, k: number, U: number, alpha = 1, form?: CrownForm, sun: Sun = SUN, part: 'all' | 'shadow' | 'crown' = 'all'): void {
+export function drawCrown(g: CanvasRenderingContext2D, x: number, y: number, r: number, sp: string, k: number, U: number, alpha = 1, form?: CrownForm, sun: Sun = SUN, part: 'all' | 'shadow' | 'crown' | 'shade' = 'all'): void {
   if (r < 0.5) return;
   const h = habit(sp), E = formed(edgeOf(sp, k), form, k), SE = formed(edgeOf(sp, k + 3), form, k);
   const sx = x + r * sun.dx * sun.len * h.tall, sy = y + r * sun.dy * sun.len * h.tall;
   const shadeA = Math.atan2(sun.dy, sun.dx);
+  // (Its shadow's shape alone, solid: for all the grove's shadows to be hatched as one, never darker where they meet.)
+  if (part === 'shade') { path(g, sx, sy, r * 0.96, SE); g.fillStyle = '#000'; g.fill(); return; }
   g.save(); g.globalAlpha *= alpha; g.lineCap = 'round';
   if (r < 7 * U) {
     // (Far off, a crown is a dab: its shadow a tone, the crown paper ringed in ink, a mark or two.)
@@ -168,12 +170,18 @@ export function drawCrown(g: CanvasRenderingContext2D, x: number, y: number, r: 
   g.restore();
 }
 
-/** A seedling, small: the tree being drawn, before it has a crown to speak of. */
+/** A seedling, small: two first leaves on a short stem, a dab of fresh green over them, its little shadow. */
 export function drawSeedling(g: CanvasRenderingContext2D, x: number, y: number, r: number, U: number, alpha = 1): void {
-  g.save(); g.globalAlpha *= alpha; g.strokeStyle = ink(0.85); g.lineWidth = 0.8 * U; g.lineCap = 'round';
-  g.beginPath();
-  for (let i = 0; i < 5; i++) { const a = (i / 5) * TAU + 0.3 + 0.4 * h1(i * 3.1), L = r * (0.5 + 0.5 * h1(i * 7.7)); g.moveTo(x, y); g.quadraticCurveTo(x + Math.cos(a + 0.4) * L * 0.6, y + Math.sin(a + 0.4) * L * 0.6, x + Math.cos(a) * L, y + Math.sin(a) * L * 0.9); }
-  g.stroke(); g.fillStyle = ink(1); g.beginPath(); g.arc(x, y, 1.1 * U, 0, TAU); g.fill(); g.restore();
+  g.save(); g.globalAlpha *= alpha; g.lineCap = 'round';
+  const L = Math.max(2.2 * U, r), a = -0.5 + 0.3 * h1(x * 0.13 + y * 0.07);
+  g.fillStyle = ink(0.18); g.beginPath(); g.ellipse(x + L * 0.35, y + L * 0.3, L * 0.55, L * 0.25, 0.6, 0, TAU); g.fill();
+  for (const s of [-1, 1]) {
+    const lx = x + Math.cos(a + (s > 0 ? 0 : Math.PI)) * L * 0.45, ly = y + Math.sin(a + (s > 0 ? 0 : Math.PI)) * L * 0.45;
+    g.beginPath(); g.ellipse(lx, ly, L * 0.45, L * 0.24, a, 0, TAU);
+    g.fillStyle = 'rgba(150,176,108,0.75)'; g.fill(); g.strokeStyle = ink(0.8); g.lineWidth = 0.6 * U; g.stroke();
+  }
+  g.fillStyle = ink(0.9); g.beginPath(); g.arc(x, y, 0.7 * U, 0, TAU); g.fill();
+  g.restore();
 }
 
 // ---------------------------------------------------------------- the land
@@ -185,7 +193,7 @@ export function drawSeedling(g: CanvasRenderingContext2D, x: number, y: number, 
  * trees need.
  */
 export const PER_HILL = 20;
-const SPACING = 1.4, GOLD = Math.PI * (3 - Math.sqrt(5));
+const SPACING = 1.85, GOLD = Math.PI * (3 - Math.sqrt(5));
 export interface Hill { x: number; y: number; R: number; n: number }
 export interface Place { x: number; y: number; hill: number; scale: number }
 export function land(count: number, seed: number): { hills: Hill[]; places: Place[] } {
@@ -282,18 +290,19 @@ function washOf(r: number, sp: string, k: number, U: number, season: Season, wet
   if (!col || r < 2) return null;
   const key = `${sp}${k}:${Math.round(r)}:${U}:${season}:${wet}:${form?.id ?? ''}`, got = washes.get(key);
   if (got) return got;
-  const E = formed(edgeOf(sp, k + 17), form, k), N = E.length - 1, m = Math.ceil(r * 1.9 + 6 * U), size = m * 2;
-  const ox = (h1(k * 1.3) - 0.5) * 3 * U, oy = (h1(k * 2.9) - 0.5) * 3 * U;
+  // (Its own edge, the ink's, kept just inside it, and laid barely off: clean, as a careful hand colours.)
+  const E = formed(edgeOf(sp, k), form, k), N = E.length - 1, m = Math.ceil(r * 1.9 + 6 * U), size = m * 2;
+  const ox = (h1(k * 1.3) - 0.5) * 1 * U, oy = (h1(k * 2.9) - 0.5) * 1 * U;
   const c = document.createElement('canvas'); c.width = size; c.height = size;
   const cx = c.getContext('2d')!, img = cx.createImageData(size, size), d = img.data;
-  const base = wet ? 0.5 : 0.36;
+  const base = wet ? 0.55 : 0.44;
   for (let py = 0; py < size; py++) for (let px = 0; px < size; px++) {
     const dx = px - m, dy = py - m, rho = Math.hypot(dx, dy), a = ((Math.atan2(dy, dx) % TAU) + TAU) % TAU;
-    const j = (a / TAU) * N, j0 = Math.floor(j), f = j - j0, e = (E[j0] * (1 - f) + E[Math.min(N, j0 + 1)] * f) * r * (0.97 + 0.06 * vn(a * 4 + k, 1));
+    const j = (a / TAU) * N, j0 = Math.floor(j), f = j - j0, e = (E[j0] * (1 - f) + E[Math.min(N, j0 + 1)] * f) * r * (0.93 + 0.04 * vn(a * 4 + k, 1)) - 0.6 * U;
     if (rho > e) continue;
     const inEdge = e - rho;
     // (Dried darker at its edge; granulating; thinner where the brush ran dry.)
-    let al = base * (0.7 + 0.5 * vn((px + k) / (9 * U), py / (9 * U))) * (0.75 + 0.5 * vn(px / (1.1 * U) + k, py / (1.1 * U)));
+    let al = base * (0.82 + 0.3 * vn((px + k) / (9 * U), py / (9 * U))) * (0.9 + 0.2 * vn(px / (1.1 * U) + k, py / (1.1 * U)));
     al *= 1 + (wet ? 0.9 : 0.55) * Math.max(0, 1 - inEdge / (2.2 * U));
     // (Light falls from the upper left: the wash a touch thinner there.)
     al *= 0.82 + 0.3 * Math.max(0, Math.min(1, 0.5 + 0.5 * ((dx / r) * 0.6 + (dy / r) * 0.8)));
@@ -371,6 +380,46 @@ export function drawTrack(g: CanvasRenderingContext2D, pts: [number, number][], 
       if (i) g.lineTo(x, y); else g.moveTo(x, y);
     }
     g.strokeStyle = ink(0.4); g.lineWidth = 0.6 * U; g.stroke();
+  }
+  g.restore();
+}
+/** A stream winding through the low ground: paper between its banks, a cool wash, its banks inked, broken now and then. */
+export function drawStream(g: CanvasRenderingContext2D, pts: [number, number][], width: number, U: number, seed: number): void {
+  if (pts.length < 2) return;
+  const wAt = (i: number) => width * (0.8 + 0.4 * n1(i * 0.35 + seed));
+  const side = (s: number): [number, number][] => pts.map((p, i) => {
+    const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)], dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy) || 1;
+    return [p[0] - (dy / l) * wAt(i) * 0.5 * s, p[1] + (dx / l) * wAt(i) * 0.5 * s];
+  });
+  const L = side(1), R = side(-1);
+  g.save(); g.lineCap = 'round'; g.lineJoin = 'round';
+  g.beginPath(); g.moveTo(...L[0]); for (const q of L) g.lineTo(...q); for (let i = R.length - 1; i >= 0; i--) g.lineTo(...R[i]); g.closePath();
+  g.fillStyle = 'rgb(244,239,228)'; g.fill();
+  g.globalCompositeOperation = 'multiply'; g.fillStyle = 'rgba(150,176,190,0.45)'; g.fill(); g.globalCompositeOperation = 'source-over';
+  // (Ripples, a few, along it.)
+  g.strokeStyle = 'rgba(92,110,120,0.45)'; g.lineWidth = 0.5 * U;
+  for (let i = 2; i < pts.length - 2; i += 3) { if (h1(i + seed) < 0.5) continue; const p = pts[i], q = pts[i + 1]; g.beginPath(); g.moveTo(p[0], p[1]); g.lineTo(p[0] + (q[0] - p[0]) * 0.6, p[1] + (q[1] - p[1]) * 0.6); g.stroke(); }
+  for (const bank of [L, R]) {
+    g.strokeStyle = ink(0.75);
+    for (let i = 1; i < bank.length; i++) {
+      if (n1(i * 0.5 + seed + bank[0][0]) < 0.18) continue;
+      g.lineWidth = U * (0.5 + 0.5 * n1(i * 0.3 + seed)); g.beginPath(); g.moveTo(...bank[i - 1]); g.lineTo(...bank[i]); g.stroke();
+    }
+  }
+  g.restore();
+}
+/** A low wall of field stones, laid along a field's edge: small rounded stones, inked, touching. */
+export function drawWall(g: CanvasRenderingContext2D, pts: [number, number][], U: number, seed: number): void {
+  g.save();
+  let carry = 0;
+  for (let i = 1; i < pts.length; i++) {
+    const [ax, ay] = pts[i - 1], [bx, by] = pts[i], l = Math.hypot(bx - ax, by - ay);
+    for (let d = carry; d < l; ) {
+      const s = (1.3 + 1.1 * h1(seed + i * 7 + d)) * U, f = d / l, x = ax + (bx - ax) * f, y = ay + (by - ay) * f;
+      g.beginPath(); g.ellipse(x, y, s, s * (0.7 + 0.25 * h1(d + i)), Math.atan2(by - ay, bx - ax) + (h1(d * 3 + i) - 0.5) * 0.6, 0, TAU);
+      g.fillStyle = 'rgb(240,234,222)'; g.fill(); g.strokeStyle = ink(0.7); g.lineWidth = 0.55 * U; g.stroke();
+      d += s * 1.8; carry = d - l;
+    }
   }
   g.restore();
 }
