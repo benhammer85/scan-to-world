@@ -87,7 +87,7 @@ export function loadWood(then: () => void): void {
   // their nearest kin's: a red pine's, a cherry's.)
   const fibre = (url: string, ...as: string[]) => pixels(url).then((l) => { for (const k of as) wood.fibre[k] = l; then(); }).catch(() => {});
   fibre(URLS.cherry, 'cherry', 'olive'); fibre(URLS.maple, 'maple'); fibre(URLS.birch, 'birch'); fibre(URLS.redwood, 'redwood');
-  pixels(URLS.pine).then((l) => { wood.pine = l; wood.fibre.pine = l; wood.fibre.bristlecone = l; then(); }).catch(() => {});
+  pixels(URLS.pine).then((l) => { wood.pine = l; wood.fibre.pine = l; wood.fibre.bristlecone = l; wood.fibre.fir = l; wood.fibre.juniper = l; then(); }).catch(() => {});
   // (The ink's speckle, from real tree-ring prints; Munch's sea where asked, `?ink=munch`.)
   pixels(location.search.includes('ink=munch') ? URLS.sea : URLS.speckle).then((l) => { wood.sea = l; then(); }).catch(() => {});
   pixels(URLS.field).then((l) => { wood.field = l; then(); }).catch(() => {});

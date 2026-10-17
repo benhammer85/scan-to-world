@@ -133,6 +133,7 @@ let pendingMarks: { kind: WoodMark['kind']; a: number; r: number; at: number; gr
 const TAKES: Record<Kind, { knot: number; burl: number }> = {
   oak: { knot: 1.1, burl: 2.2 }, ash: { knot: 0.9, burl: 1.6 }, cherry: { knot: 0.9, burl: 2.2 }, maple: { knot: 1, burl: 2.5 },
   birch: { knot: 1, burl: 2.3 }, pine: { knot: 1.3, burl: 1.4 }, redwood: { knot: 0.8, burl: 2.6 }, bristlecone: { knot: 0.9, burl: 2 }, olive: { knot: 1, burl: 2.6 },
+  fir: { knot: 1.3, burl: 1.5 }, juniper: { knot: 1.1, burl: 2.4 },
 };
 const angleOff = (a: number, b: number) => Math.abs(((a - b + Math.PI) % TAU + TAU) % TAU - Math.PI);
 /** How much a ring swells here (steady widths) for the knots and burls alive at it. */
@@ -397,7 +398,7 @@ const youth = (n: number) => (0.72 + 0.28 * smooth(n / 2.5)) * (1 + 0.32 * Math.
  */
 const evenUp = (a: number) => (0.8 * SPEC[kind].even * (tree.radius - radiusAt((i) => tree.inner(i), a))) / Math.max(1e-3, tree.radius);
 /** How the tree itself grows round its girth, besides the hand (see `growing.ts`), and its lean. */
-const growth = (a: number, n = tree.rings.length) => Math.pow(growthOf(tree.seed, a, n), SPEC[kind].amp) * SPEC[kind].width * alive(a, n) * leanOf(a, n);
+const growth = (a: number, n = tree.rings.length) => Math.pow(growthOf(tree.seed, a, n), SPEC[kind].amp) * SPEC[kind].width * alive(a, n) * leanOf(a, n) * fluteOf(a, n);
 /**
  * A tree is never grown evenly round: it leans, or the light comes from one side, and year after year it lays
  * more wood on that side than the other, so its heart sits off the middle, the years wide on one side and close
@@ -405,6 +406,17 @@ const growth = (a: number, n = tree.rings.length) => Math.pow(growthOf(tree.seed
  * sapling's core is near its middle), gathering over the next sixty or so, then a third to two-thirds again as wide on the one side as the other. (`lean`, below, is
  * the first game's.)
  */
+/**
+ * A juniper's trunk is fluted: it lays its wood in lobes, a few to five round it, each its own size, the bays
+ * between them deepening as it ages; so its outline is never a circle. Every other wood, 1.
+ */
+const fluteOf = (a: number, n: number) => {
+  if (kind !== 'juniper') return 1;
+  const s0 = tree.seed * 0.0193, deep = 0.6 * smooth((n - 6) / 70);
+  let e = 0;
+  for (let m = 3; m <= 6; m++) e += (0.55 + 0.9 * h1(s0 + m)) / (m - 1.5) * Math.cos(m * (a - h1(s0 * 2 + m) * TAU) + 0.3 * Math.sin(n / 60 + m));
+  return Math.exp(deep * e);
+};
 const leanOf = (a: number, n: number) => {
   const side = h1(tree.seed * 0.0417) * TAU + 0.5 * Math.sin(n / 90 + tree.seed), k = (0.12 + 0.12 * h1(tree.seed * 0.29)) * smooth((n - 12) / 60);
   return Math.exp(k * Math.cos(a - side));
@@ -442,7 +454,7 @@ const DIARY = 'diary', params = new URLSearchParams(location.search);
  * And each its own bark, and its own way of growing: the olive gnarled and lopsided, the bristlecone's
  * years very fine and, once it's old, dying back to a strip of living bark; the redwood broad and even.
  */
-type Kind = 'oak' | 'ash' | 'cherry' | 'maple' | 'birch' | 'pine' | 'redwood' | 'bristlecone' | 'olive';
+type Kind = 'oak' | 'ash' | 'cherry' | 'maple' | 'birch' | 'pine' | 'redwood' | 'bristlecone' | 'olive' | 'fir' | 'juniper';
 type Bark = { lumps: number; plate: boolean; mean: number; deep: [number, number, number]; wide: number } | 'papery';
 const FISSURED: Bark = { lumps: 140, plate: false, mean: 7, deep: [0.15, 0.8, 1.5], wide: 1 };
 const PLATES: Bark = { lumps: 70, plate: true, mean: 13, deep: [0.1, 0.25, 1], wide: 1.4 };
@@ -462,6 +474,11 @@ const SPEC: Record<Kind, {
   redwood: { family: 'conifer', bark: { lumps: 220, plate: false, mean: 4, deep: [0.3, 0.6, 1], wide: 0.7 }, barkCss: [5, 0.08, 16], amp: 0.7, width: 1.3, even: 1.2, line: 0.85, tone: 1, resin: false },
   bristlecone: { family: 'conifer', bark: { ...PLATES, lumps: 60, mean: 15 }, barkCss: [2, 0.03, 6], amp: 1.8, width: 0.45, even: 0.3, line: 0.85, tone: 1, resin: true },
   olive: { family: 'diffuse', bark: { lumps: 160, plate: false, mean: 11, deep: [0.1, 0.4, 1], wide: 1 }, barkCss: [1.5, 0.02, 4], amp: 2.2, width: 0.8, even: 0.15, line: 0.85, tone: 1, resin: false },
+  // Douglas fir: wide years when young, each a pale earlywood ending in a sharp, very dark latewood; a thick,
+  // corky bark, deeply furrowed.
+  fir: { family: 'conifer', bark: { lumps: 110, plate: false, mean: 6, deep: [0.35, 0.9, 1.6], wide: 1.2 }, barkCss: [4.5, 0.07, 15], amp: 0.9, width: 1.15, even: 1, line: 0.85, tone: 1, resin: true },
+  // Juniper: close, fine years, uneven round it, the trunk fluted into lobes; a thin bark in long shreds.
+  juniper: { family: 'conifer', bark: { lumps: 260, plate: false, mean: 3, deep: [0.2, 0.5, 0.9], wide: 0.5 }, barkCss: [1.6, 0.02, 4], amp: 1.5, width: 0.6, even: 0.25, line: 0.85, tone: 1, resin: false },
 };
 const KINDS = Object.keys(SPEC) as Kind[];
 /** (Each wood answers the same loop its own way, never said: found by drawing.) */
@@ -917,14 +934,14 @@ function drawPressMark(_v: View, _t: number, dt: number): void {
  * begins alike, a long one never longer than a share more (`ART_H` keeps only the names); until one has
  * loaded, its seed is drawn as below.
  */
-const ART_H: Record<Kind, number> = { oak: 84, ash: 112, cherry: 62, maple: 92, birch: 52, pine: 64, redwood: 72, bristlecone: 118, olive: 66 };
+const ART_H: Partial<Record<Kind, number>> = { oak: 84, ash: 112, cherry: 62, maple: 92, birch: 52, pine: 64, redwood: 72, bristlecone: 118, olive: 66 };
 const SEED_ART: Partial<Record<Kind, HTMLImageElement>> = {};
 for (const sp of Object.keys(ART_H) as Kind[]) {
   const im = new Image();
   im.onload = () => { SEED_ART[sp] = im; };
   im.src = new URL(`./seeds/${sp}.png`, import.meta.url).href;
 }
-const TILT: Record<Kind, number> = { oak: -0.25, ash: 0.45, cherry: 0.15, maple: 0, birch: 0.1, pine: 0.5, redwood: -0.2, bristlecone: 0.25, olive: -0.4 };
+const TILT: Record<Kind, number> = { oak: -0.25, ash: 0.45, cherry: 0.15, maple: 0, birch: 0.1, pine: 0.5, redwood: -0.2, bristlecone: 0.25, olive: -0.4, fir: 0.1, juniper: -0.15 };
 function drawSeedOf(sp: Kind, x: number, y: number, k = 1, z = 1, standing = false): void {
   // (Printed, from its plate: centred at (x, y), or standing on it.)
   const art = SEED_ART[sp];
@@ -993,6 +1010,25 @@ function drawSeedOf(sp: Kind, x: number, y: number, k = 1, z = 1, standing = fal
       g.moveTo(xx, yy); g.lineTo(xx + sgn * 1.8 * u, yy - 0.8 * u);
     }
     g.stroke();
+  } else if (sp === 'fir') {
+    // A Douglas fir's cone: long, its scales round-edged, and from under each a three-pointed bract.
+    g.beginPath(); g.ellipse(0, 0, 4.2 * u, 9 * u, 0, 0, TAU); g.fill();
+    g.strokeStyle = 'rgba(244,239,228,0.5)'; g.lineWidth = 0.55 * u; g.beginPath();
+    for (let i = -3; i <= 3; i++) { g.moveTo(-4 * u, i * 2.6 * u); g.quadraticCurveTo(0, i * 2.6 * u + 2.2 * u, 4 * u, i * 2.6 * u); }
+    g.stroke(); g.strokeStyle = ink(0.85); g.lineWidth = 0.5 * u; g.beginPath();
+    for (let i = -3; i <= 3; i++) for (const sgn of [-1, 1]) {
+      const yy = i * 2.6 * u + 1.2 * u, xx = sgn * 4 * Math.sqrt(Math.max(0, 1 - (yy / (9 * u)) ** 2)) * u, ex = xx + sgn * 2.4 * u;
+      g.moveTo(xx, yy); g.lineTo(ex, yy - 1.4 * u); g.moveTo(ex - sgn * 0.8 * u, yy - 0.6 * u); g.lineTo(ex + sgn * 0.6 * u, yy + 0.2 * u);
+    }
+    g.stroke();
+  } else if (sp === 'juniper') {
+    // A sprig of juniper's berries (its cones), round and dusted pale, on a scaled twig.
+    g.strokeStyle = ink(0.85); g.lineWidth = 1 * u; g.beginPath(); g.moveTo(-8 * u, 8 * u); g.quadraticCurveTo(-2 * u, 2 * u, 6 * u, -9 * u); g.stroke();
+    g.lineWidth = 0.5 * u; g.beginPath(); for (let i = 0; i < 7; i++) { const f = i / 6, x = -8 * u + 14 * u * f, y = 8 * u - 17 * u * f; g.moveTo(x, y); g.lineTo(x + 1.6 * u, y + 0.4 * u); } g.stroke();
+    for (const [bx, by, br] of [[-3, 1, 3.4], [2.6, -3.6, 3], [3.4, 2.2, 2.6]] as [number, number, number][]) {
+      g.fillStyle = ink(0.88); g.beginPath(); g.arc(bx * u, by * u, br * u, 0, TAU); g.fill();
+      g.fillStyle = 'rgba(244,239,228,0.35)'; g.beginPath(); g.ellipse((bx - br * 0.35) * u, (by - br * 0.35) * u, br * 0.35 * u, br * 0.5 * u, -0.5, 0, TAU); g.fill();
+    }
   } else if (sp === 'olive') {
     // The fruit, oval, a light on it, a narrow leaf from its stalk.
     g.beginPath(); g.moveTo(0, -4.6 * u); g.bezierCurveTo(3 * u, -8 * u, 9 * u, -11 * u, 13 * u, -11.5 * u); g.bezierCurveTo(9 * u, -8.6 * u, 3.5 * u, -5.6 * u, 0, -4.6 * u);
@@ -1028,7 +1064,8 @@ function drawSeed(v: View, t: number): void {
  * pencil, a row of dots for where it is among them. A finger swipes from one to the next, as the pages of
  * a specimen book are turned; touched, it's chosen, and draws in to its seed.
  */
-const SEEDS: Kind[] = ['oak', 'ash', 'cherry', 'maple', 'birch', 'pine', 'redwood', 'bristlecone', 'olive'];
+// (Birch is no longer offered, its print too plain to be worth the choosing; a birch already grown is kept.)
+const SEEDS: Kind[] = ['oak', 'ash', 'cherry', 'maple', 'fir', 'pine', 'redwood', 'juniper', 'bristlecone', 'olive'];
 const SLICE_ART: Partial<Record<Kind, HTMLImageElement>> = {}, sliceAsked = new Set<Kind>();
 function sliceArt(sp: Kind): HTMLImageElement | undefined {
   if (!sliceAsked.has(sp)) {
@@ -1774,7 +1811,7 @@ function vnoise(x: number, y: number): number {
  * own px), its pores (how many, how large, whether gathered in the earlywood), how strongly its real fibre
  * shows, and a mottle (the olive's figure).
  */
-type Anatomy = { early: number; late: number; share: number; edge: number; rays: number; rayW: number; pores: number; poreR: number; poreEarly: number; fibre: number; mottle: number };
+type Anatomy = { early: number; late: number; share: number; edge: number; rays: number; rayW: number; pores: number; poreR: number; poreEarly: number; fibre: number; mottle: number; sharp?: number };
 const ANATOMY: Partial<Record<Kind, Anatomy>> = {
   // Cherry: semi-diffuse, its pores a little crowded at each year's start, fine rays, a clear but soft edge.
   cherry: { early: 0.47, late: 1.0, share: 0.3, edge: 1.05, rays: 0.9, rayW: 0.42, pores: 0.11, poreR: 0.5, poreEarly: 0.6, fibre: 0.5, mottle: 0 },
@@ -1788,16 +1825,20 @@ const ANATOMY: Partial<Record<Kind, Anatomy>> = {
   bristlecone: { early: 0.32, late: 1.05, share: 0.42, edge: 1.08, rays: 0, rayW: 0, pores: 0, poreR: 0, poreEarly: 0, fibre: 0.45, mottle: 0 },
   // Olive: dense, close and irregular, its figure a dark mottle wandering through the years.
   olive: { early: 0.6, late: 0.96, share: 0.22, edge: 1.0, rays: 0.6, rayW: 0.3, pores: 0.05, poreR: 0.3, poreEarly: 0, fibre: 0.35, mottle: 0.45 },
+  // Douglas fir: a pale, soft earlywood, then all at once a dark latewood: the boldest year of them all.
+  fir: { early: 0.1, late: 1.12, share: 0.3, edge: 1.12, rays: 0, rayW: 0, pores: 0, poreR: 0, poreEarly: 0, fibre: 0.4, mottle: 0, sharp: 3.2 },
+  // Juniper: fine and close, its latewood thin and its years irregular, a soft figure through them.
+  juniper: { early: 0.3, late: 1.0, share: 0.26, edge: 1.04, rays: 0, rayW: 0, pores: 0, poreR: 0, poreEarly: 0, fibre: 0.45, mottle: 0.25 },
 };
 /**
  * How strongly each wood's rays print: oak's many and plain, a conifer's barely there.
  */
-const RAYS: Partial<Record<Kind, number>> = { oak: 0.95, ash: 0.7, cherry: 0.75, maple: 0.8, birch: 0.45, olive: 0.55, pine: 0.3, redwood: 0.25, bristlecone: 0.25 };
+const RAYS: Partial<Record<Kind, number>> = { fir: 0.3, juniper: 0.2, oak: 0.95, ash: 0.7, cherry: 0.75, maple: 0.8, birch: 0.45, olive: 0.55, pine: 0.3, redwood: 0.25, bristlecone: 0.25 };
 /**
  * How long a wood's rays run before breaking off (in the slice's own px): oak's broad rays long, the others'
  * short flecks a few years tall, staggered; and how much of each ray's way is broken.
  */
-const RAY_RUN: Partial<Record<Kind, [number, number]>> = { oak: [26, 0.25], ash: [12, 0.4], cherry: [5, 0.55], maple: [5, 0.5], birch: [4, 0.6], olive: [5, 0.55], pine: [7, 0.6], redwood: [7, 0.6], bristlecone: [7, 0.6] };
+const RAY_RUN: Partial<Record<Kind, [number, number]>> = { fir: [7, 0.6], juniper: [5, 0.65], oak: [26, 0.25], ash: [12, 0.4], cherry: [5, 0.55], maple: [5, 0.5], birch: [4, 0.6], olive: [5, 0.55], pine: [7, 0.6], redwood: [7, 0.6], bristlecone: [7, 0.6] };
 /**
  * The rays at a point (tree angle `a`, `rho` px out at the slice's own size), 0 to 1. Real rays keep about the
  * same distance apart all the way out: a few begin at the heart, and as the wood widens new ones begin between
@@ -1894,9 +1935,11 @@ function printYears(v: View, oak: Years | null): void {
     // The year: earlywood, a little deeper as it goes, then darkening into the latewood, ending sharp.
     const share = conifer ? Math.min(0.85, A.share * (0.6 + 0.8 * calmOf(i))) : A.share;
     const t = Math.max(0, Math.min(1, (across - (1 - share)) / share));
-    let ink = A.early * (0.85 + 0.3 * across) + (A.late - A.early) * Math.pow(t, 1.4);
+    let ink = A.early * (0.85 + 0.3 * across) + (A.late - A.early) * Math.pow(t, A.sharp ?? 1.4);
     // (Its edge: a line a pixel or so wide at the slice's own size, darker than the latewood.)
-    if (!heart && width > 0) ink = Math.max(ink, A.edge * smooth((across - (1 - (1.3 * U) / width)) / Math.max(1e-3, (0.8 * U) / width)));
+    // (Never more than a quarter of a fine year: its line is in proportion to it.)
+    const eW = Math.min(1.3 * U, 0.25 * width);
+    if (!heart && width > 0) ink = Math.max(ink, A.edge * smooth((across - (1 - eW / width)) / Math.max(1e-3, Math.min(0.8 * U, 0.15 * width) / width)));
     // The real fibre, streaking along the year.
     if (fib && A.fibre) ink *= 1 + A.fibre * 0.45 * (tile(fib, a * rho * 0.5, rho * 0.5) - 0.5) * 2;
     // (And the wood's own fine grain, finer than the scan holds: long thin streaks along the year, in the wood's
@@ -1918,7 +1961,7 @@ function printYears(v: View, oak: Years | null): void {
   // (A fine year's line on its edge, drawn smooth across the pixels, a little heavier or lighter than the
   // next, and its weight wandering with the press.)
   const half = new Float32Array(n);
-  for (let j = 0; j < n; j++) half[j] = 0.3 * gapOf[j] * (0.85 + 0.3 * h1(j * 3.7 + 1.1));
+  for (let j = 0; j < n; j++) half[j] = 0.19 * gapOf[j] * (0.85 + 0.3 * h1(j * 3.7 + 1.1));
   const lineAt = (j: number, dist: number) => (j < 0 || !edge[j] ? 0 : Math.max(0, Math.min(1, (half[j] + 0.5 * px - dist) / px)) * thin[j]);
   for (let y = 0; y < h; y++) {
     const dy = v.cy - (y + y0);
@@ -1956,7 +1999,7 @@ function printYears(v: View, oak: Years | null): void {
       } else ink = drawnInk(i, a, r, across, heart, rout - rin, dx, dy) * tone(i);
       if (!heart && thin[i] > 0) {
         // (As dark as the wide years: lines as wide as some three-fifths of the space they stand for.)
-        ink *= 1 - 0.5 * thin[i];
+        ink *= 1 - 0.65 * thin[i];
         const jo = edgeOut[i], ji = edgeIn[i];
         const cov = Math.max(jo < 0 ? 0 : lineAt(jo, at(jo, b, f) - r), ji < 0 ? 0 : lineAt(ji, r - at(ji, b, f))) * (0.75 + 0.35 * vnoise(dx * 0.11 + i, dy * 0.11));
         if (cov > 0) ink = Math.max(ink, 0.95 * cov);
@@ -2617,7 +2660,7 @@ function blow(h: NonNullable<typeof breezeHand>, x: number, y: number): void {
   // (Something blown from the crown it passed through, as the season has it: never from the bare ground.)
   const season = seasonNow(), near = worldOf().trees.find((o) => o.n >= 1 && Math.hypot(o.wx - wx, o.wy - wy) < o.wr * 1.05);
   if (!near) return;
-  const ever = ['pine', 'redwood', 'bristlecone', 'olive'].includes(near.sp);
+  const ever = ['pine', 'redwood', 'bristlecone', 'olive', 'fir', 'juniper'].includes(near.sp);
   const col: [number, number, number] | null = season === 'winter' ? [253, 252, 249] : season === 'spring' ? (near.sp === 'cherry' ? [236, 196, 204] : [150, 176, 110])
     : season === 'autumn' ? (ever ? [128, 140, 100] : pigment(near.sp, 'autumn') ?? [176, 112, 60]) : [128, 158, 96];
   if (col && lifted.length < 50 && h1(t * 13.1) < 0.7) {
@@ -2815,7 +2858,7 @@ function drawLife(cam: Cam): void {
   if (season === 'autumn' || season === 'spring') {
     for (const tr of L) {
       const col = season === 'spring' ? (tr.sp === 'cherry' ? [236, 196, 204] : null) : pigment(tr.sp, 'autumn');
-      if (!col || tr.n < 30 || ['pine', 'redwood', 'bristlecone', 'olive'].includes(tr.sp)) continue;
+      if (!col || tr.n < 30 || ['pine', 'redwood', 'bristlecone', 'olive', 'fir', 'juniper'].includes(tr.sp)) continue;
       for (let q = 0; q < 3; q++) {
         const per = 6 + 3 * h1(tr.k + q), p = ((t / per + h1(tr.k * 1.3 + q * 0.7)) % 1), a0 = h1(tr.k + q * 2.9) * TAU, r0 = tr.r * 0.6 * Math.sqrt(h1(q + tr.k));
         const x = tr.x + Math.cos(a0) * r0 + p * tr.r * 1.4 * wind + Math.sin(p * 9 + q) * 2 * U, y = tr.y + Math.sin(a0) * r0 + p * tr.r * 0.6;

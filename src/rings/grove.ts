@@ -28,9 +28,11 @@ const HABIT: Record<string, Habit> = {
   pine: { clumps: 0, spread: 0, rough: 0.08, tip: 0.16, size: 0.62, tall: 1.4, marks: 0.5, squash: 1 },
   redwood: { clumps: 0, spread: 0, rough: 0.05, tip: 0.1, size: 0.48, tall: 2.1, marks: 0.8, squash: 1 },
   bristlecone: { clumps: 0, spread: 0, rough: 0.14, tip: 0.24, size: 0.52, tall: 0.45, marks: 0.4, squash: 1 },
+  fir: { clumps: 0, spread: 0, rough: 0.07, tip: 0.13, size: 0.58, tall: 1.8, marks: 0.6, squash: 1 },
+  juniper: { clumps: 0, spread: 0, rough: 0.2, tip: 0.18, size: 0.5, tall: 0.6, marks: 0.5, squash: 0.85 },
 };
 const habit = (sp: string) => HABIT[sp] ?? HABIT.oak;
-const CONIFER = new Set(['pine', 'redwood', 'bristlecone']);
+const CONIFER = new Set(['pine', 'redwood', 'bristlecone', 'fir', 'juniper']);
 /** How big a crown is for its kind and its days (a year's, full size), as a share of a full oak's. */
 export const crownSize = (sp: string, days: number) => habit(sp).size * (0.3 + 0.7 * Math.sqrt(Math.min(1.2, days / 365)));
 
@@ -268,12 +270,12 @@ export function drawHill(g: CanvasRenderingContext2D, w: number, h: number, U: n
  */
 export type Season = 'spring' | 'summer' | 'autumn' | 'winter';
 export const seasonOf = (d = new Date()): Season => (['winter', 'winter', 'spring', 'spring', 'spring', 'summer', 'summer', 'summer', 'autumn', 'autumn', 'autumn', 'winter'] as Season[])[d.getMonth()];
-const EVER = new Set(['pine', 'redwood', 'bristlecone', 'olive']);
+const EVER = new Set(['pine', 'redwood', 'bristlecone', 'olive', 'fir', 'juniper']);
 const AUTUMN: Record<string, [number, number, number]> = {
   oak: [158, 104, 58], ash: [196, 166, 82], maple: [192, 86, 52], cherry: [172, 78, 62], birch: [208, 174, 78],
 };
 export function pigment(sp: string, season: Season): [number, number, number] | null {
-  if (EVER.has(sp)) return sp === 'olive' ? [138, 146, 112] : sp === 'redwood' ? [92, 112, 84] : [96, 122, 90];
+  if (EVER.has(sp)) return sp === 'olive' ? [138, 146, 112] : sp === 'redwood' ? [92, 112, 84] : sp === 'fir' ? [78, 106, 80] : sp === 'juniper' ? [112, 132, 116] : [96, 122, 90];
   if (season === 'winter') return null;
   if (season === 'autumn') return AUTUMN[sp] ?? AUTUMN.oak;
   return season === 'spring' ? [154, 178, 112] : [104, 136, 86];

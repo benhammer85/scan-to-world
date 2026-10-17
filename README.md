@@ -382,7 +382,7 @@ Locally, run `npm run dev` and open `/volcano.html`. The simulation (`src/volcan
 * **Knots and burls.** Hold the brush still a moment on the loop and a branch begins there: a knot, the branch cut across, its own few rings with the trunk's swept round it, grown over once left. Scribble back and forth and the wood burls: the rings swell and swirl round dark bud specks. Both are made of the rings themselves, pulled about where they lie (`markSwell`, `warpMarks`).
 * **The wood answers.** Each kind takes the same gesture its own way (`TEMPER`, `SMOOTH`); the tree has its own good and lean years besides the hand (`climate`), a seedling's first years narrow (`youth`), and a tree on damp ground by the stream grows a little wider.
 
-**Choosing and planting.** On a bare sheet, swipe through nine woods (oak, ash, cherry, maple, birch, pine, redwood, bristlecone, olive), each shown as a slice of its own; touch one to plant it. A year from its first ring the tree is finished and stands in the grove, and the sheet offers the next seed.
+**Choosing and planting.** On a bare sheet, swipe through ten woods (oak, ash, cherry, maple, Douglas fir, pine, redwood, juniper, bristlecone, olive; a birch already grown is kept), each shown as a slice of its own; touch one to plant it. A year from its first ring the tree is finished and stands in the grove, and the sheet offers the next seed.
 
 **The opening.** Each time it's opened, the slice is pressed at its own large scale, filling the sheet, and draws back to the day's view, a print of the thing itself, never a magnified copy. Its name and a blind stamp are pencilled under it while it's seen whole.
 
