@@ -1880,7 +1880,7 @@ const ANATOMY: Partial<Record<Kind, Anatomy>> = {
   // Olive: dense, close and irregular, its figure a dark mottle wandering through the years.
   olive: { early: 0.6, late: 0.96, share: 0.22, edge: 1.0, rays: 0.6, rayW: 0.3, pores: 0.05, poreR: 0.3, poreEarly: 0, fibre: 0.35, mottle: 0.45 },
   // Douglas fir: a pale, soft earlywood, then all at once a dark latewood: the boldest year of them all.
-  fir: { early: 0.3, late: 1.15, share: 0.5, edge: 1.12, rays: 0, rayW: 0, pores: 0, poreR: 0, poreEarly: 0, fibre: 0.7, mottle: 0.15, sharp: 1.8 },
+  fir: { early: 0.24, late: 1.15, share: 0.5, edge: 1.12, rays: 0, rayW: 0, pores: 0, poreR: 0, poreEarly: 0, fibre: 0.3, mottle: 0, sharp: 1.8 },
   // Juniper: fine and close, its latewood thin and its years irregular, a soft figure through them.
   juniper: { early: 0.3, late: 1.0, share: 0.26, edge: 1.04, rays: 0, rayW: 0, pores: 0, poreR: 0, poreEarly: 0, fibre: 0.45, mottle: 0.25 },
 };
@@ -1998,7 +1998,7 @@ function printYears(v: View, oak: Years | null): void {
     if (fib && A.fibre) ink *= 1 + A.fibre * 0.45 * (tile(fib, a * rho * 0.5, rho * 0.5) - 0.5) * 2;
     // (And the wood's own fine grain, finer than the scan holds: long thin streaks along the year, in the wood's
     // place, too fine to see whole and showing as it's looked into, so looking closer finds more, never a blur.)
-    ink *= 1 + 0.5 * (vnoise(rho * 1.6 + i * 5.3, a * rho * 0.09) - 0.5) * 2 * (0.5 + 0.5 * vnoise(rho * 0.25, a * rho * 0.03 + 9.1));
+    ink *= 1 + 0.2 * (vnoise(rho * 1.6 + i * 5.3, a * rho * 0.09) - 0.5) * 2 * (0.5 + 0.5 * vnoise(rho * 0.25, a * rho * 0.03 + 9.1));
     if (A.mottle) ink *= 1 + A.mottle * (vnoise(dx / (22 * U) + 3.1, dy / (22 * U) + 7.7) - 0.5) * 2;
     // Pores: open vessels, paper in the print, scattered (or gathered at the year's start), in the wood's place.
     if (A.pores) {
