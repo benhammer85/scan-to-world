@@ -225,7 +225,14 @@ export function heightAt(x: number, y: number, hills: Hill[], seed: number): num
  * The land in contours, drawn by hand (the pen's weight wandering, now and then lifting), its height given
  * at each screen point by `height`, on a canvas `w` × `h` (`seed` for the wander of the pen).
  */
-export function drawHill(g: CanvasRenderingContext2D, w: number, h: number, U: number, height: (x: number, y: number) => number, seed: number): void {
+/**
+ * Where a point on the canvas lies on the ground, in the pixels of the grove seen whole: so the pen's
+ * wander and the wash's mottle belong to the ground, the same however close it's looked at. (Without it, the
+ * canvas's own pixels.)
+ */
+export type Ref = (x: number, y: number) => [number, number];
+const SAME: Ref = (x, y) => [x, y];
+export function drawHill(g: CanvasRenderingContext2D, w: number, h: number, U: number, height: (x: number, y: number) => number, seed: number, ref: Ref = SAME): void {
   const step = 3 * U, nx = Math.ceil(w / step) + 1, ny = Math.ceil(h / step) + 1, Z = new Float32Array(nx * ny);
   for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) Z[j * nx + i] = height(i * step, j * step);
   const SEG: Record<number, [number, number][]> = { 1: [[3, 0]], 2: [[0, 1]], 3: [[3, 1]], 4: [[1, 2]], 5: [[3, 0], [1, 2]], 6: [[0, 2]], 7: [[3, 2]], 8: [[2, 3]], 9: [[0, 2]], 10: [[0, 1], [2, 3]], 11: [[1, 2]], 12: [[1, 3]], 13: [[0, 1]], 14: [[0, 3]] };
@@ -242,7 +249,7 @@ export function drawHill(g: CanvasRenderingContext2D, w: number, h: number, U: n
       const x = i * step, y = j * step;
       const e: [number, number][] = [[x + (step * (L - a)) / (b - a), y], [x + step, y + (step * (L - b)) / (c - b)], [x + (step * (L - d)) / (c - d), y + step], [x, y + (step * (L - a)) / (d - a)]];
       for (const [p, q] of SEG[idx]) {
-        const mx = (e[p][0] + e[q][0]) / 2, my = (e[p][1] + e[q][1]) / 2;
+        const [mx, my] = ref((e[p][0] + e[q][0]) / 2, (e[p][1] + e[q][1]) / 2);
         if (vn(mx / (40 * U) + li * 7, my / (40 * U)) < (major ? 0.12 : 0.2)) continue;
         g.lineWidth = U * (major ? 0.8 : 0.5) * (0.75 + 0.5 * vn(mx / (25 * U), my / (25 * U) + li));
         g.beginPath(); g.moveTo(e[p][0], e[p][1]); g.lineTo(e[q][0], e[q][1]); g.stroke();
@@ -318,18 +325,21 @@ function washOf(r: number, sp: string, k: number, U: number, season: Season, wet
   return out;
 }
 /** The hill's wash: pale, pooling darker in its folds, fading out into the paper at its foot. */
-export function washHill(g: CanvasRenderingContext2D, w: number, h: number, U: number, height: (x: number, y: number) => number, seed: number, season: Season, scale = 1): void {
+export function washHill(g: CanvasRenderingContext2D, w: number, h: number, U: number, height: (x: number, y: number) => number, seed: number, season: Season, scale = 1, ref: Ref = SAME): void {
   const col: [number, number, number] = season === 'winter' ? [176, 172, 150] : season === 'autumn' ? [184, 168, 112] : season === 'spring' ? [168, 182, 122] : [150, 166, 106];
   const step = 4 * U, nx = Math.ceil(w / step) + 1, ny = Math.ceil(h / step) + 1;
   const c = document.createElement('canvas'); c.width = nx; c.height = ny;
   const cx2 = c.getContext('2d')!, img = cx2.createImageData(nx, ny), d = img.data;
+  // (How much larger the ground is drawn here than seen whole: its folds measured the same either way.)
+  const big = step / Math.max(1e-6, Math.hypot(ref(step, 0)[0] - ref(0, 0)[0], ref(step, 0)[1] - ref(0, 0)[1])), base = scale / big;
   for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
     const x = i * step, y = j * step, z = height(x, y);
     if (z < 0.1) continue;
     // (Pooled in the folds: where the ground turns, a little darker; thin on the tops.)
-    const zx = height(x + step, y) - z, zy = height(x, y + step) - z, slope = Math.min(1, (Math.hypot(zx, zy) * 9 * 58) / Math.max(1, scale));
-    let al = 0.2 * Math.min(1, (z - 0.1) / 0.25) * (0.6 + 0.6 * slope) * (0.7 + 0.6 * vn(x / (60 * U) + (seed % 50), y / (60 * U)));
-    al *= 0.93 + 0.14 * vn(x / (14 * U), y / (14 * U));
+    const zx = height(x + step, y) - z, zy = height(x, y + step) - z, slope = Math.min(1, (Math.hypot(zx, zy) * big * 9 * 58) / Math.max(1, base));
+    const [rx, ry] = ref(x, y);
+    let al = 0.2 * Math.min(1, (z - 0.1) / 0.25) * (0.6 + 0.6 * slope) * (0.7 + 0.6 * vn(rx / (60 * U) + (seed % 50), ry / (60 * U)));
+    al *= 0.93 + 0.14 * vn(rx / (14 * U), ry / (14 * U));
     const o = (j * nx + i) * 4;
     d[o] = col[0]; d[o + 1] = col[1]; d[o + 2] = col[2]; d[o + 3] = Math.round(255 * al);
   }
@@ -339,12 +349,12 @@ export function washHill(g: CanvasRenderingContext2D, w: number, h: number, U: n
 
 // ---------------------------------------------------------------- the ground's own record
 /** Snow, in winter, lying on the high ground and the hill's tops: the paper whiter there, softly. */
-export function snowHill(g: CanvasRenderingContext2D, w: number, h: number, U: number, height: (x: number, y: number) => number): void {
+export function snowHill(g: CanvasRenderingContext2D, w: number, h: number, U: number, height: (x: number, y: number) => number, ref: Ref = SAME): void {
   const step = 5 * U, nx = Math.ceil(w / step) + 1, ny = Math.ceil(h / step) + 1;
   const c = document.createElement('canvas'); c.width = nx; c.height = ny;
   const cx = c.getContext('2d')!, img = cx.createImageData(nx, ny), d = img.data;
   for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
-    const z = height(i * step, j * step), al = Math.max(0, Math.min(1, (z - 0.35) / 0.4)) * (0.55 + 0.45 * vn(i * 0.4, j * 0.4));
+    const [rx, ry] = ref(i * step, j * step), z = height(i * step, j * step), al = Math.max(0, Math.min(1, (z - 0.35) / 0.4)) * (0.55 + 0.45 * vn(rx / (12.5 * U), ry / (12.5 * U)));
     const o = (j * nx + i) * 4; d[o] = 253; d[o + 1] = 252; d[o + 2] = 250; d[o + 3] = Math.round(255 * 0.75 * al);
   }
   cx.putImageData(img, 0, 0);

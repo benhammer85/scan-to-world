@@ -2380,6 +2380,8 @@ interface Gust { x: number; y: number; vx: number; vy: number; at: number }
 const BREEZE_HOLD = 0.3, GUST_LIFE = 2.6, GUST_R = 1.3;
 let breezeHand: { id: number; x: number; y: number; at: number; on: boolean; last: { x: number; y: number; t: number } | null } | null = null;
 let gusts: Gust[] = [];
+/** How ruffled the stream is along its length (0 calm), and when that was last looked at. */
+let ruffle = new Float32Array(0), ruffledAt = 0;
 /** Lifted on it: a leaf, a petal, a flake (world units), drifting down and gone. */
 let lifted: { x: number; y: number; vx: number; vy: number; at: number; life: number; col: [number, number, number]; k: number }[] = [];
 function blow(h: NonNullable<typeof breezeHand>, x: number, y: number): void {
@@ -2391,12 +2393,14 @@ function blow(h: NonNullable<typeof breezeHand>, x: number, y: number): void {
   h.last = { x: wx, y: wy, t };
   gusts.push({ x: wx, y: wy, vx, vy, at: t });
   if (gusts.length > 60) gusts.shift();
-  // (Something lifted from the crown it passed through, or the ground: as the season has it.)
-  const season = seasonNow(), near = worldOf().trees.find((o) => Math.hypot(o.wx - wx, o.wy - wy) < o.wr * 1.1);
-  const col: [number, number, number] | null = season === 'winter' ? [253, 252, 249] : season === 'spring' ? (near?.sp === 'cherry' ? [236, 196, 204] : near ? [150, 176, 110] : null)
-    : season === 'autumn' ? (near ? pigment(near.sp, 'autumn') ?? [176, 112, 60] : [170, 130, 80]) : near ? [128, 158, 96] : null;
-  if (col && lifted.length < 50 && h1(t * 13.1) < (near ? 0.7 : 0.3)) {
-    const ox = near ? near.wx + (wx - near.wx) * 0.7 : wx, oy = near ? near.wy + (wy - near.wy) * 0.7 : wy;
+  // (Something blown from the crown it passed through, as the season has it: never from the bare ground.)
+  const season = seasonNow(), near = worldOf().trees.find((o) => o.n >= 1 && Math.hypot(o.wx - wx, o.wy - wy) < o.wr * 1.05);
+  if (!near) return;
+  const ever = ['pine', 'redwood', 'bristlecone', 'olive'].includes(near.sp);
+  const col: [number, number, number] | null = season === 'winter' ? [253, 252, 249] : season === 'spring' ? (near.sp === 'cherry' ? [236, 196, 204] : [150, 176, 110])
+    : season === 'autumn' ? (ever ? [128, 140, 100] : pigment(near.sp, 'autumn') ?? [176, 112, 60]) : [128, 158, 96];
+  if (col && lifted.length < 50 && h1(t * 13.1) < 0.7) {
+    const ox = near.wx + (wx - near.wx) * 0.7, oy = near.wy + (wy - near.wy) * 0.7;
     lifted.push({ x: ox, y: oy, vx: vx * 0.25, vy: vy * 0.25, at: t, life: 2.2 + 1.6 * h1(t * 7.7), col, k: h1(t * 3.3) * 100 });
   }
 }
@@ -2453,9 +2457,11 @@ function renderGrove(c: CanvasRenderingContext2D, cam: Cam, sprites?: Sprite[]):
   const w = worldOf(), season = seasonNow(), { sun } = sunNow();
   c.clearRect(0, 0, W, H);
   const height = (x: number, y: number) => heightAt((x - cam.X0) / cam.S, (y - cam.Y0) / cam.S, w.hills, w.seed);
-  washHill(c, W, H, px, height, w.seed, season, cam.S);
-  if (season === 'winter') snowHill(c, W, H, px, height);
-  drawHill(c, W, H, px, height, w.seed);
+  // (The ground's own marks read where they lie on it, as in the grove seen whole: looked into, the same.)
+  const ref = (x: number, y: number): [number, number] => [w.whole.X0 + ((x - cam.X0) / cam.S) * w.whole.S, w.whole.Y0 + ((y - cam.Y0) / cam.S) * w.whole.S];
+  washHill(c, W, H, px, height, w.seed, season, cam.S, ref);
+  if (season === 'winter') snowHill(c, W, H, px, height, ref);
+  drawHill(c, W, H, px, height, w.seed, ref);
   const u = px * Math.pow(Math.max(1, cam.S / w.whole.S), 0.8);
   const at = (wx: number, wy: number): [number, number] => [cam.X0 + wx * cam.S, cam.Y0 + wy * cam.S];
   // (The banks greener, where the ground is damp.)
@@ -2525,7 +2531,18 @@ function groveBase(): NonNullable<typeof baseG> {
   if (!baseG || baseG.key !== key || baseG.c.width !== W || baseG.c.height !== H) {
     baseG ??= { c: document.createElement('canvas'), cam: w.whole, key, sprites: [] };
     baseG.c.width = W; baseG.c.height = H; baseG.cam = w.whole; baseG.key = key; baseG.sprites = [];
-    renderGrove(baseG.c.getContext('2d')!, w.whole, baseG.sprites);
+    const bc = baseG.c.getContext('2d')!;
+    renderGrove(bc, w.whole, baseG.sprites);
+    // (Its ground thinning out at the sheet's edges, so a view moved past them fades to the paper, never a cut.)
+    const e = Math.round(0.07 * Math.min(W, H));
+    bc.save(); bc.globalCompositeOperation = 'destination-in';
+    for (const [x0, y0, x1, y1] of [[0, 0, W, 0], [0, 0, 0, H]] as [number, number, number, number][]) {
+      const gr = bc.createLinearGradient(x0, y0, x1 || x0, y1 || y0);
+      const span = x1 ? W : H;
+      gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(e / span, '#000'); gr.addColorStop(1 - e / span, '#000'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+      bc.fillStyle = gr; bc.fillRect(0, 0, W, H);
+    }
+    bc.restore();
   }
   return baseG;
 }
@@ -2535,10 +2552,20 @@ function layGrove(cam: Cam, still: boolean): void {
   const same = (a: Cam, b: Cam) => Math.abs(a.S - b.S) < 1e-3 * b.S && Math.abs(a.X0 - b.X0) < 0.5 && Math.abs(a.Y0 - b.Y0) < 0.5;
   // (Each crown stirred a little by the wind, its own way, the gusts coming and going.)
   const t = clock(), wind = 0.55 + 0.45 * vnoise(t * 0.12, 3.7);
-  const lay = (from: { c: HTMLCanvasElement; cam: Cam; sprites: Sprite[] }) => {
+  // (`over`: a view drawn for itself lies over this one there, so this is laid only round it, and none of
+  // its crowns that view has too: never the ground washed twice, nor a crown doubled.)
+  const lay = (from: { c: HTMLCanvasElement; cam: Cam; sprites: Sprite[] }, over?: { c: HTMLCanvasElement; cam: Cam; sprites: Sprite[] }) => {
     const q = cam.S / from.cam.S, X = (x: number) => cam.X0 + (x - from.cam.X0) * q, Y = (y: number) => cam.Y0 + (y - from.cam.Y0) * q;
+    g.save();
+    if (over) {
+      const k = cam.S / over.cam.S, ox = cam.X0 - over.cam.X0 * k, oy = cam.Y0 - over.cam.Y0 * k;
+      g.beginPath(); g.rect(0, 0, W, H); g.rect(ox, oy, W * k, H * k); g.clip('evenodd');
+    }
     g.drawImage(from.c, cam.X0 - from.cam.X0 * q, cam.Y0 - from.cam.Y0 * q, W * q, H * q);
+    g.restore();
+    const doubled = new Set(over?.sprites.map((s) => s.k));
     for (const s of from.sprites) {
+      if (doubled.has(s.k)) continue;
       const amp = Math.min(1.8 * px, s.r * 0.035) * wind * q, ph = s.k * 0.37;
       // (And leaning in a breeze drawn across it, tossing a little as it goes by.)
       const [bx, by] = gusts.length ? breezeAt((s.x - from.cam.X0) / from.cam.S, (s.y - from.cam.Y0) / from.cam.S, t) : [0, 0], lean = Math.min(5 * px, s.r * 0.09) * q * (1 + 0.25 * Math.sin(t * 6 + ph));
@@ -2554,8 +2581,7 @@ function layGrove(cam: Cam, still: boolean): void {
   }
   // (Still, the view drawn for itself; moving, the whole laid under, and the last drawn over it.)
   if (sharpG && sharpG.key === key && same(sharpG.cam, cam)) { lay(sharpG); return; }
-  lay(baseG);
-  if (sharpG && sharpG.key === key) lay(sharpG);
+  if (sharpG && sharpG.key === key) { lay(baseG, sharpG); lay(sharpG); } else lay(baseG);
 }
 /**
  * The grove alive while it's looked at: in autumn, a leaf or two drifting from each broadleaf on the wind;
@@ -2585,25 +2611,45 @@ function drawLife(cam: Cam): void {
     }
   }
   g.globalAlpha = 1;
-  // (The breeze: ripples running over the stream where it blows; what it lifted, drifting down and gone.)
+  // (The breeze over the stream: its water ruffled where it blows, as the stream's own ripples are drawn,
+  // short wavering strokes running with the water, more of them, each with a glint of light beside it,
+  // drifting with the air and gone as it passes.)
   gusts = gusts.filter((q) => t - q.at < GUST_LIFE);
-  if (gusts.length) {
-    const st = worldOf().stream;
-    g.strokeStyle = 'rgba(70,92,104,0.6)'; g.lineCap = 'round';
+  // (The water holds the ruffle a while after the air has gone by, calming over some two and a half seconds.)
+  const st = worldOf().stream;
+  if (ruffle.length !== st.length) ruffle = new Float32Array(st.length);
+  const calmBy = Math.exp(-Math.min(0.1, t - (ruffledAt || t)) / 0.9);
+  ruffledAt = t;
+  let ruffled = false;
+  for (let i = 0; i < st.length; i++) {
+    const m = gusts.length ? Math.hypot(...breezeAt(st[i][0], st[i][1], t)) : 0;
+    ruffle[i] = Math.max(ruffle[i] * calmBy, m);
+    if (ruffle[i] > 0.02) ruffled = true;
+  }
+  if (ruffled) {
+    const half = 0.13, S = cam.S;
+    const P = (x: number, y: number): [number, number] => [cam.X0 + x * S, cam.Y0 + y * S];
+    g.lineCap = 'round';
     for (let i = 1; i < st.length - 1; i++) {
-      const [bx, by] = breezeAt(st[i][0], st[i][1], t), m = Math.hypot(bx, by);
-      if (m < 0.04) continue;
-      const tx = st[i + 1][0] - st[i - 1][0], ty = st[i + 1][1] - st[i - 1][1], tl = Math.hypot(tx, ty) || 1;
+      const m = ruffle[i];
+      if (m < 0.03) continue;
+      const [bx, by] = gusts.length ? breezeAt(st[i][0], st[i][1], t) : [0, 0];
+      const tx0 = st[i + 1][0] - st[i - 1][0], ty0 = st[i + 1][1] - st[i - 1][1], tl = Math.hypot(tx0, ty0) || 1, tx = tx0 / tl, ty = ty0 / tl, nx = -ty, ny = tx;
+      const drift = Math.sign(bx * tx + by * ty || 1), seg = tl / 2;
       for (let q = 0; q < 3; q++) {
-        // (Catspaws: short ripples across the way the air goes, running with it.)
-        const run = ((t * 0.9 + h1(i * 3.1 + q)) % 1), along = (q - 1) * 0.07 + (h1(i + q * 7) - 0.5) * 0.06, across = (run - 0.5) * 0.18;
-        const cx = st[i][0] + (tx / tl) * along + (bx / m) * across, cy = st[i][1] + (ty / tl) * along + (by / m) * across;
-        const half = 0.05 + 0.04 * h1(i * 5 + q), nx = -by / m, ny = bx / m;
-        g.globalAlpha = Math.min(1, m * 2.2) * Math.sin(Math.PI * run);
-        g.lineWidth = 0.6 * U; g.beginPath();
-        g.moveTo(cam.X0 + (cx - nx * half) * cam.S, cam.Y0 + (cy - ny * half) * cam.S);
-        g.quadraticCurveTo(cam.X0 + (cx + (bx / m) * 0.02) * cam.S, cam.Y0 + (cy + (by / m) * 0.02) * cam.S, cam.X0 + (cx + nx * half) * cam.S, cam.Y0 + (cy + ny * half) * cam.S);
-        g.stroke();
+        if (h1(i * 5.3 + q) > 0.25 + m * 1.2) continue;
+        // (Each ripple's own life: rising, held, gone, then again a little way on.)
+        const per = 1.6 + 0.8 * h1(i + q * 9.1), ph = (t / per + h1(i * 2.7 + q)) % 1, life = Math.sin(Math.PI * ph);
+        const along = (h1(i * 1.9 + q * 3.3) - 0.5) * seg + drift * ph * seg * 0.6, across = (h1(i * 3.7 + q * 1.3) - 0.5) * 2 * half * 0.8;
+        const cx = st[i][0] + tx * along + nx * across, cy = st[i][1] + ty * along + ny * across;
+        const L = (0.05 + 0.07 * h1(i * 7.1 + q)) * (0.7 + 0.6 * m), wv = 0.012 * Math.sin(t * 3 + i + q);
+        const al = Math.min(1, m * 2.5) * life;
+        const stroke = (o: number, col: string, wd: number) => {
+          const [ax, ay] = P(cx - tx * L / 2 + nx * o, cy - ty * L / 2 + ny * o), [mx, my] = P(cx + nx * (o + wv), cy + ny * (o + wv)), [ex, ey] = P(cx + tx * L / 2 + nx * o, cy + ty * L / 2 + ny * o);
+          g.strokeStyle = col; g.lineWidth = wd; g.beginPath(); g.moveTo(ax, ay); g.quadraticCurveTo(2 * mx - (ax + ex) / 2, 2 * my - (ay + ey) / 2, ex, ey); g.stroke();
+        };
+        g.globalAlpha = al * 0.65; stroke(0, 'rgb(84,104,116)', 0.6 * U);
+        if (h1(i * 4.1 + q) < 0.5) { g.globalAlpha = al * 0.6; stroke(-0.016, 'rgb(250,249,244)', 0.5 * U); }
       }
     }
     g.globalAlpha = 1;
@@ -2957,7 +3003,7 @@ function frame(): void {
   const t = clock(), dt = lastFrame ? Math.min(0.1, Math.max(1 / 240, t - lastFrame)) : 1 / 60;
   // (Nothing being done and nothing quick moving: half the frames are enough, for the slow things (the
   // breath, the crowns stirring), and the phone kept cool.)
-  const calm = fingers.size === 0 && !tree.stroke && !ease && !lookBack && !farTo && !intro && settle.ring < 0 && !growing && !gusts.length && !lifted.length && !choiceTo;
+  const calm = fingers.size === 0 && !tree.stroke && !ease && !lookBack && !farTo && !intro && settle.ring < 0 && !growing && !gusts.length && !lifted.length && !choiceTo && !ruffle.some((r) => r > 0.02);
   if (calm && lastFrame && t - lastFrame < 1 / 30 - 0.004) { requestAnimationFrame(frame); return; }
   lastFrame = t;
   // (The wood's own way with the hand's line.)
