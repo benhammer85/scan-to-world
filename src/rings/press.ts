@@ -2597,16 +2597,18 @@ function drawSharp(pc: Kept, v: View, slot: string, alpha = 1, grow = 1): void {
 const blends: HTMLCanvasElement[] = [];
 let blendDepth = 0;
 function crossfade(a: () => void, b: () => void, alpha = 1): void {
-  const was = g, c = (blends[blendDepth] = sized(blends[blendDepth], W, H));
-  blendDepth++;
-  g = c.getContext('2d')!; g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.clearRect(0, 0, W, H);
-  try {
-    a();
-    g.globalCompositeOperation = 'lighter';
-    b();
-    g.globalCompositeOperation = 'source-over';
-  } finally { g = was; blendDepth--; }
-  g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = alpha; g.drawImage(c, 0, 0); g.restore();
+  // (Each composed whole on its own sheet, then the two added: never one's marks added onto the other's ground.)
+  const sheet = (draw: () => void) => {
+    const c = (blends[blendDepth] = sized(blends[blendDepth], W, H)), was = g;
+    blendDepth++;
+    g = c.getContext('2d')!; g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.clearRect(0, 0, W, H);
+    try { draw(); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; } finally { g = was; }
+    return c;
+  };
+  const d0 = blendDepth, ca = sheet(a), cb = sheet(b);
+  const cx = ca.getContext('2d')!; cx.save(); cx.setTransform(1, 0, 0, 1, 0, 0); cx.globalAlpha = 1; cx.globalCompositeOperation = 'lighter'; cx.drawImage(cb, 0, 0); cx.restore();
+  blendDepth = d0;
+  g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = alpha; g.drawImage(ca, 0, 0); g.restore();
 }
 
 /**
@@ -3156,7 +3158,9 @@ function layGrove(cam: Cam, still: boolean): void {
   if (same(cam, w.whole)) { lay(baseG); return; }
   // (Still, the view drawn for itself: begun at once, a piece at a time in what's left of each frame, so a
   // pinch never freezes; the last view, scaled, shown till it's done, then fading out over it.)
-  if (still && !(sharpG && sharpG.key === key && same(sharpG.cam, cam))) {
+  // (A view drawn for itself holds until the view has really moved: a finger settling never sets it drawing anew.)
+  const near = (a: Cam, b: Cam) => Math.abs(a.S - b.S) < 0.015 * b.S && Math.abs(a.X0 - b.X0) < 3 * px && Math.abs(a.Y0 - b.Y0) < 3 * px;
+  if (still && !(sharpG && sharpG.key === key && near(sharpG.cam, cam))) {
     if (!groveJob || groveJob.key !== key || !same(groveJob.cam, cam) || groveJob.c.width !== W || groveJob.c.height !== H) {
       const c = groveSpare ?? document.createElement('canvas'); groveSpare = null;
       c.width = W; c.height = H;
@@ -3167,11 +3171,13 @@ function layGrove(cam: Cam, still: boolean): void {
     do { if (groveJob.steps.next().done) { groveFade = sharpG && sharpG.key === key ? { from: sharpG, at: clock() } : null; if (!groveFade && sharpG) groveSpare = sharpG.c; sharpG = groveJob; groveJob = null; break; } } while (performance.now() - t0 < left);
   }
   const before = () => { if (sharpG && sharpG.key === key) { lay(baseG!, sharpG); lay(sharpG); } else lay(baseG!); };
-  if (sharpG && sharpG.key === key && same(sharpG.cam, cam)) {
+  if (sharpG && sharpG.key === key && near(sharpG.cam, cam)) {
     const a = groveFade ? smooth((clock() - groveFade.at) / 0.3) : 1;
     if (a < 1 && groveFade) {
-      lay(baseG, groveFade.from); lay(groveFade.from);
-      const ga = g.globalAlpha; g.globalAlpha = ga * a; lay(sharpG); g.globalAlpha = ga;
+      // (A true crossfade: never both laid at once, whose inks would add up to a darker grove for a moment.)
+      const from = groveFade.from, to = sharpG, ga = g.globalAlpha;
+      crossfade(() => { g.globalAlpha = 1 - a; lay(baseG!, from); lay(from); }, () => { g.globalAlpha = a; lay(to); }, ga);
+      g.globalAlpha = ga;
       return;
     }
     if (groveFade) { groveSpare = groveFade.from.c; groveFade = null; }
@@ -3244,18 +3250,22 @@ function drawLife(cam: Cam): void {
       const lit = litterOf(tr, cam, season);
       if (!lit.length) continue;
       for (let q = 0; q < 2; q++) {
-        const per = 7 + 4 * h1(tr.k + q), cyc = Math.floor(t / per + h1(tr.k * 1.3 + q * 0.7)), p = (t / per + h1(tr.k * 1.3 + q * 0.7)) % 1;
-        const fall = Math.min(1, p / 0.7), to = lit[Math.floor(h1(cyc * 3.1 + q + tr.k) * lit.length)];
-        // (It drops from the crown's edge just above where it lands, never across the tree: a short way down,
-        // seen from above, swinging a little side to side and turning over, a little larger nearer the eye.)
-        const ta = Math.atan2(to.y - tr.y, to.x - tr.x), r0 = tr.r * 0.8;
-        const x0 = tr.x + Math.cos(ta) * r0, y0 = tr.y + Math.sin(ta) * r0, e = fall * (2 - fall);
-        const sw = Math.sin(fall * 7 + q * 2) * (1 - fall) * to.len * 0.6;
-        const x = x0 + (to.x - x0) * e + sw * Math.cos(ta + Math.PI / 2), y = y0 + (to.y - y0) * e + sw * Math.sin(ta + Math.PI / 2);
-        const air = 1 - fall, flip = fall < 1 ? Math.cos(fall * 14 + q) : 1, rot = to.rot + air * (1 + h1(cyc + q)) * Math.sin(fall * 4);
-        // (It comes out from among the leaves, and, once down, is one of the pile, gone into it.)
-        const al = Math.min(1, p / 0.08) * (p > 0.9 ? (1 - p) / 0.1 : 1);
-        leafAt(g, x, y, to.len * (1 + 0.25 * air), rot, flip, to.col, U, al);
+        const per = 6 + 4 * h1(tr.k + q), cyc = Math.floor(t / per + h1(tr.k * 1.3 + q * 0.7)), p = (t / per + h1(tr.k * 1.3 + q * 0.7)) % 1;
+        const to = lit[Math.floor(h1(cyc * 3.1 + q + tr.k) * lit.length)];
+        // (A leaf comes down softly: it lets go slowly, then falls at a gentle, steady pace, rocking side to side
+        // as a pendulum does and now and then turning over, drifting a little with the air. Seen from above it
+        // hardly travels; it's larger while it's high, nearer the eye, and its shadow closes on it as it lands.)
+        const fall = Math.min(1, p / 0.75), e = fall < 0.15 ? (fall * fall) / 0.3 : (fall - 0.075) / 0.925;
+        const ta = Math.atan2(to.y - tr.y, to.x - tr.x), x0 = tr.x + Math.cos(ta) * tr.r * 0.85, y0 = tr.y + Math.sin(ta) * tr.r * 0.85;
+        const air = 1 - e, ph = fall * 5.5 + q * 2 + h1(cyc + q) * 3, rock = Math.sin(ph);
+        const nx = -Math.sin(ta), ny = Math.cos(ta), sw = rock * to.len * 1.1 * air;
+        const x = x0 + (to.x - x0) * e + nx * sw, y = y0 + (to.y - y0) * e + ny * sw;
+        // (Tilting into each swing; turning over only now and then, slowly.)
+        const flip = fall < 1 ? 0.35 + 0.65 * Math.abs(Math.cos(ph * 0.5 + q)) : 1, rot = to.rot + air * 0.6 * Math.cos(ph);
+        const al = Math.min(1, p / 0.06) * (p > 0.92 ? (1 - p) / 0.08 : 1);
+        // (Its shadow on the ground beneath, drawn in as it comes down.)
+        if (air > 0.02) { g.save(); g.globalAlpha = al * 0.25 * (1 - air * 0.6); g.beginPath(); g.ellipse(x + air * to.len * 2.2, y + air * to.len * 1.8, to.len * 0.45, to.len * 0.2, to.rot, 0, TAU); g.fillStyle = ink(1); g.fill(); g.restore(); }
+        leafAt(g, x, y, to.len * (1 + 0.35 * air), rot, flip, to.col, U, al);
       }
     }
   } else if (season === 'winter') {
