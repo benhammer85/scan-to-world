@@ -3377,19 +3377,21 @@ function startIntro(): void {
       for (let j = 0; j <= N; j++) ring[j] = s * r((j / N) * TAU);
       rings.push(ring);
     }
-    // (Pressed at its own size, every year its own, as a slice that large would print: never today's print
-    // magnified, which is a woodcut's blocks.)
-    const k = 1;
+    // (Pressed as the slice looked into closely (as close as a pinch goes, about): every mark, every speck of paper and fray of ink sized as
+    // the finished print's, only larger, so the opening is the print it settles into, never a finer, paler one.)
+    const k = Math.max(1, Math.min(3, s / (end ? end.s : baseNow().s)));
+    look = { k, ox: 0, oy: 0 };
     const press = (cw: number, ch: number, S: number, ox: number, oy: number): IntroLayer => {
       const c = document.createElement('canvas'); c.width = cw; c.height = ch;
       g = c.getContext('2d')!; px = was.px * S; W = cw; H = ch;
       const v: View = { cx: ox, cy: oy, s: s * S, turn: 0, px, warp: undefined };
-      SPARSE = 0.35; markK = end ? s / end.s : 0;
+      SPARSE = 0.35; markK = end ? s / end.s : 0; look = { k, ox: 0, oy: 0 };
       try { drawPrint(v); } finally { SPARSE = 1; markK = 0; g = was.g; px = was.px; W = was.W; H = was.H; }
       return { c, S, cx: ox, cy: oy, v, done: 0, all: Math.max(oy, ch - oy) };
     };
     // (Sharp: some 1.6 to a CSS px, the screen's own at most, just the sheet: seen whole, it must hold up.)
-    const SA = Math.min(1, 1.6 / was.px);
+    // (On the graphics chip, the screen's own resolution: never a softer picture enlarged.)
+    const SA = gpu.ready() ? 1 : Math.min(1, 1.6 / was.px);
     const near = press(Math.ceil(W * SA), Math.ceil(H * SA), SA, cx * SA, cy * SA);
     // (Whole: the bark too, never over some 900 px a side.)
     let whole: IntroLayer | null = null;
@@ -3406,15 +3408,15 @@ function startIntro(): void {
 /** Press the opening's grain, out from the middle, for about `ms`: the sharp press first, then the whole. */
 function grainIntro(ms: number): void {
   if (!intro) return;
-  const it = intro, was = { tree, kind, look, px }, until = performance.now() + ms, step = 12;
+  const it = intro, was = { tree, kind, look, px }, until = performance.now() + ms, step = gpu.ready() ? 1e5 : 12;
   try {
     tree = it.as.tree; kind = it.as.kind; look = { k: it.as.k, ox: 0, oy: 0 };
     for (const L of [it.near, it.whole]) {
       if (!L) continue;
       px = L.v.px;
       while (L.done < L.all && performance.now() < until) {
-        inkGrain(L.c, L.v, [L.cy - L.done - step, L.cy - L.done], 1.7);
-        inkGrain(L.c, L.v, [L.cy + L.done, L.cy + L.done + step], 1.7);
+        inkGrain(L.c, L.v, [L.cy - L.done - step, L.cy - L.done], L.S < 1 ? 1.7 : 1);
+        inkGrain(L.c, L.v, [L.cy + L.done, L.cy + L.done + step], L.S < 1 ? 1.7 : 1);
         L.done += step;
       }
       if (L.done < L.all) break;
