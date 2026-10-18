@@ -1238,8 +1238,10 @@ function hear(): void {
       inward = { ring: tree.rings.length - 1, at: clock() };
       // (The new year simply there, where it settled, never growing out.)
       yearClosed = true;
+      // (The year's wood grows out to the loop before the slice draws back to make room.)
+      if (PRINT && !closer()) yearGrow = { ring: tree.rings.length - 1, at: clock() };
     }
-    makeRoom();
+    if (!yearGrow) makeRoom();
   }
   tree.news.length = 0;
 }
@@ -1260,8 +1262,9 @@ function groundOf(): HTMLCanvasElement {
 }
 
 /** A closed path round a ring (or the heart, ring -1), r(a) given; `dr(a)` CSS px out from it. */
-function ringPath(v: View, r: (a: number) => number, dr: number | ((a: number) => number) = 0, n = K): void {
-  g.beginPath();
+function ringPath(v: View, r: (a: number) => number, dr: number | ((a: number) => number) = 0, n = K, more = false): void {
+  // (`more`: added to the path already begun.)
+  if (!more) g.beginPath();
   for (let j = 0; j <= n; j++) {
     const a = (j / n) * TAU, rr = v.s * warpR(v.warp, r(a)) + (typeof dr === 'number' ? dr : dr(a)) * px, t = a + v.turn;
     const x = v.cx + rr * Math.cos(t), y = v.cy - rr * Math.sin(t);
@@ -1360,7 +1363,7 @@ function drawBrush(g: CanvasRenderingContext2D, v: View, t: number): void {
   const going = inward && inward.ring < tree.rings.length ? inward : null;
   const dry = going ? 1 - smooth((t - going.at) / 2.6) : 1;
   // (And as it dries it draws in onto the year it made, never left standing apart from it.)
-  const into = going ? smooth((t - going.at) / STEADY_T) : 0, edge = going ? barkOf(going.ring) : null;
+  const into = going ? smooth((t - going.at) / (yearGrow ? GROW_T : STEADY_T)) : 0, edge = going ? barkOf(going.ring) : null;
   const pts = trail.map((q) => {
     const [x, y] = at(v, q.a, edge ? q.r + (edge(q.a) - q.r) * into : q.r);
     // (Growing true to scale, the loop stays wet all the way round while it's drawn, however slow the
@@ -2362,6 +2365,28 @@ function pulledRows(v: View, Q = QUALITY()): [number, number, number] | null {
   } finally { px = was; }
 }
 const spare: Record<string, HTMLCanvasElement> = {};
+/**
+ * The year just closed, its wood growing out from the old bark to where the loop was drawn: fast in spring,
+ * slowing through the summer, the bark carried out on its edge. The years before never move.
+ */
+let yearGrow: { ring: number; at: number } | null = null;
+const GROW_T = 2.6;
+function drawGrowth(v: View, t: number, moving: boolean, drift: boolean): boolean {
+  const gr = yearGrow!, n = tree.rings.length;
+  const f = 1 - Math.pow(1 - Math.min(1, (t - gr.at) / GROW_T), 2.2);
+  if (gr.ring !== n - 1 || f >= 1 || closer() || fingers.size >= 2) { yearGrow = null; makeRoom(); return false; }
+  const pc = printFor(v, moving, 'drawing', drift);
+  if (pc.key !== printKey(v)) return false;
+  const old = barkOf(n - 2), neu = barkOf(n - 1), front = (a: number) => old(a) + (neu(a) - old(a)) * f;
+  // (The wood, up to the growing edge.)
+  g.save(); ringPath(v, front, 0, K * 2); g.clip(); drawKept(pc, v); g.restore();
+  // (The bark, carried out on it: the print beyond its own bark, drawn as much smaller as the edge is in.)
+  let k = 0;
+  for (let j = 0; j < 24; j++) { const a = (j / 24) * TAU; k += warpR(v.warp, front(a)) / Math.max(1e-6, warpR(v.warp, neu(a))); }
+  k /= 24;
+  g.save(); g.beginPath(); g.rect(0, 0, W, H); ringPath(v, front, 0, K * 2, true); g.clip('evenodd'); drawKept(pc, v, 1, k); g.restore();
+  return true;
+}
 /** A year just closed, to be pressed at once (see printFor). */
 let yearClosed = false;
 /** When a view was last pressed live, and how long that takes (ms), as it went. */
@@ -3651,6 +3676,7 @@ function frame(): void {
   breathe(t, dt);
   // (Out in the grove, the slice is gone from view: not printed under it.)
   if (far >= 0.6) { /* the grove covers the sheet */ }
+  else if (PRINT && yearGrow && drawGrowth(v, t, moving, drift)) { /* the year growing out */ }
   else if (PRINT) {
     // (The print at rest pressed a strip at a time when it's new; the slice only settles into it once it's whole.)
     const rv = restOf(v), rest = relax > 0 ? printFor(rv, moving, 'rest', false, true) : undefined;
