@@ -42,6 +42,8 @@ const canvas = document.getElementById('press') as HTMLCanvasElement;
 // (The drawing goes to the page, or for a moment to a picture of the slice: see `picture`.)
 let g = canvas.getContext('2d')!;
 const words = document.getElementById('words')!;
+// (The type the sheet's words are written in, asked for at once: drawn on the sheet, it's there from the first, never swapped in.)
+try { void document.fonts?.load('italic 13px Newsreader'); } catch { /* the fallback, then */ }
 let W = 1, H = 1, px = 1;
 function fit(): void {
   // (Laid out again only when the size really changes: not as Safari's toolbar comes and goes.)
@@ -757,7 +759,9 @@ function makeRoom(): void {
   if (GROWN && PRINT && kept && !closer() && Math.abs(ease.from / v.s - 1) < 0.08 && Math.hypot(kept.v.cx - now.cx, kept.v.cy - now.cy) < 2 * px && Math.abs(kept.v.s / now.s - 1) < 0.08) {
     ease = null;
     if (fading.drawing) spare.drawing = fading.drawing.c;
-    fading.drawing = { c: kept.c, v: { ...kept.v }, at: clock(), still: true };
+    // (Held whole till the new one is pressed, a strip a frame, then faded from: never all of it pressed in the
+    // one frame, at the calmest moment.)
+    fading.drawing = { c: kept.c, v: { ...kept.v }, at: Infinity, still: true };
     delete printCaches.drawing;
   }
 }
@@ -793,10 +797,16 @@ let loop = { x0: 0, y0: 0, x: 0, y: 0, len: 0, closed: false };
 function say(text: string, fade = 10): void {
   // (Nothing to read while the hand is drawing.)
   if (painter !== null) return;
-  words.textContent = text; words.classList.add('shown');
-  clearTimeout(sayT); sayT = window.setTimeout(() => words.classList.remove('shown'), fade * 1000);
+  clearTimeout(sayT); clearTimeout(swapT);
+  const show = () => { if (painter !== null) return; words.classList.remove('swap'); words.textContent = text; words.classList.add('shown'); sayT = window.setTimeout(() => words.classList.remove('shown'), fade * 1000); };
+  // (Other words already there: let go of first, quickly, then the new ones come; never one swapped for the other.)
+  if (words.classList.contains('shown') && words.textContent && words.textContent !== text && Number(getComputedStyle(words).opacity) > 0.05) {
+    words.classList.add('swap'); words.classList.remove('shown'); swapT = window.setTimeout(show, 450);
+  } else show();
 }
-let sayT = 0;
+let sayT = 0, swapT = 0;
+/** The words let go of, and any about to come. */
+function hush(): void { clearTimeout(swapT); words.classList.remove('shown'); }
 
 /** The fingers down (device px), a pinch in progress, and the touch that might be a tap. */
 const fingers = new Map<number, { x: number; y: number }>();
@@ -828,7 +838,7 @@ canvas.addEventListener('pointerdown', (e) => {
   // tap plants the seed: see the tap, below.)
   if (tree.rings.length && brushAt(tree, viewNow(), 0, e.clientX * px, e.clientY * px).u < 0) inside = true;
   if ((closer() && inside) || far > 0 || visit || (GROWN && !seedAt)) return;
-  words.classList.remove('shown');
+  hush();
   const x = e.clientX * px, y = e.clientY * px;
   holdView();
   const v = viewNow();
@@ -1417,6 +1427,8 @@ function drawBrush(g: CanvasRenderingContext2D, v: View, t: number): void {
   // the sheet, while the year grows on the slice.)
   const going = inward && inward.ring < tree.rings.length ? inward : null;
   const dry = going ? 1 - smooth((t - going.at) / 2.6) : 1;
+  // (Dried away: let go of, never mapped again each frame for nothing.)
+  if (!tree.stroke && painter === null && (going ? dry < 0.01 : t - trail[n - 1].t > 14)) { trail = []; return; }
   // (And as it dries it draws in onto the year it made, never left standing apart from it.)
   const into = going ? smooth((t - going.at) / (yearGrow ? GROW_T : STEADY_T)) : 0, edge = going ? barkOf(going.ring) : null;
   const pts = trail.map((q) => {
@@ -1949,50 +1961,58 @@ function drawBirchBark(v: View, pt: (a: number, r: number, dr?: number) => [numb
  * rays run on from year to year, and where the slice has doubled in size, a new run begins (as new rays
  * do). Fine rings take a smaller copy of the year, so they never shimmer.
  */
+let yearsMemo: { key: string; oak: Years | null; rad: Float32Array; reps: Float32Array; off: Float32Array; yr: Int32Array; lvl: Int32Array; runR: Float32Array; thin: Float32Array; edge: Uint8Array; gapOf: Float32Array; edgeIn: Int32Array; edgeOut: Int32Array } | null = null;
 function printYears(v: View, oak: Years | null): void {
   const n = tree.rings.length, c = g.canvas as HTMLCanvasElement, B = 720, Z = Math.max(1, look.k);
   const scr = (r: number) => v.s * warpR(v.warp, r);
-  // The rings' radii on the screen, round the slice (ring -1 the heart).
-  const rad = new Float32Array((n + 1) * (B + 1));
-  for (let i = -1; i < n; i++) { const r = barkOf(i); for (let b = 0; b <= B; b++) rad[(i + 1) * (B + 1) + b] = scr(r((b / B) * TAU)); }
-  // Each ring's year, scale round and where round it starts; its mip level from its width on the screen.
-  // (Round the ring, the wood keeps its own proportions: as many texels to the mm as across the run's
-  // years, so a pore stays round and a ray fine.)
   const W0 = oak ? oak.levels[0].w : 1;
-  // (On the screen, as the fisheye widens a ring without lengthening it.)
-  const reps = new Float32Array(n), off = new Float32Array(n), yr = new Int32Array(n), lvl = new Int32Array(n), runR = new Float32Array(n);
-  const widthAt = (i: number) => (scr(meanR(i)) - scr(meanR(i - 1)));
-  if (oak) for (let i = 0; i < n; i++) {
-    // (Each year's scale from its own place and the last few years' widths, so the wood's
-    // grain changes size smoothly out from the heart, never in a step where the slice has doubled; and only
-    // from the years before, so a year added never changes them.)
-    let wAvg = 0, k = 0;
-    for (let j = Math.max(0, i - 8); j <= i; j++) { wAvg += widthAt(j); k++; }
-    const R = scr((meanR(i) + meanR(i - 1)) / 2), perPx = oak.year / Math.max(0.5, wAvg / k);
-    reps[i] = Math.max(1, Math.round((TAU * R * perPx) / W0)); runR[i] = R;
-    // (Its rays: mostly the last year's, drifting a little; now and then a fresh set, as rays end and begin.)
-    const fresh = i === 0 || (reps[i] !== reps[i - 1] && h1(i * 1.9) < 0.5) || h1(i * 3.71 + tree.seed * 0.013) < 0.3;
-    off[i] = fresh ? h1(i * 7.3 + tree.seed * 0.01) * W0 : off[i - 1] + (h1(i * 5.9) - 0.5) * 0.06 * W0;
-    yr[i] = (i * 3) % oak.n;
-    const w = (scr(meanR(i)) - scr(meanR(i - 1)));
-    lvl[i] = Math.max(0, Math.min(oak.levels.length - 1, Math.ceil(Math.log2(oak.year / Math.max(0.5, w)))));
+  // (Worked out once for a press, never again for each strip of it: the same years, the same view.)
+  const last = n ? tree.rings[n - 1] : null;
+  const yKey = `${n}|${v.s}|${v.warp?.R ?? 0}|${v.warp?.beta ?? 0}|${Z}|${px}|${kind}|${last ? last[0] + last[K >> 1] : 0}`;
+  if (yearsMemo?.key !== yKey || yearsMemo.oak !== oak) {
+    // The rings' radii on the screen, round the slice (ring -1 the heart).
+    const rad = new Float32Array((n + 1) * (B + 1));
+    for (let i = -1; i < n; i++) { const r = barkOf(i); for (let b = 0; b <= B; b++) rad[(i + 1) * (B + 1) + b] = scr(r((b / B) * TAU)); }
+    // Each ring's year, scale round and where round it starts; its mip level from its width on the screen.
+    // (Round the ring, the wood keeps its own proportions: as many texels to the mm as across the run's
+    // years, so a pore stays round and a ray fine.)
+    // (On the screen, as the fisheye widens a ring without lengthening it.)
+    const reps = new Float32Array(n), off = new Float32Array(n), yr = new Int32Array(n), lvl = new Int32Array(n), runR = new Float32Array(n);
+    const widthAt = (i: number) => (scr(meanR(i)) - scr(meanR(i - 1)));
+    if (oak) for (let i = 0; i < n; i++) {
+      // (Each year's scale from its own place and the last few years' widths, so the wood's
+      // grain changes size smoothly out from the heart, never in a step where the slice has doubled; and only
+      // from the years before, so a year added never changes them.)
+      let wAvg = 0, k = 0;
+      for (let j = Math.max(0, i - 8); j <= i; j++) { wAvg += widthAt(j); k++; }
+      const R = scr((meanR(i) + meanR(i - 1)) / 2), perPx = oak.year / Math.max(0.5, wAvg / k);
+      reps[i] = Math.max(1, Math.round((TAU * R * perPx) / W0)); runR[i] = R;
+      // (Its rays: mostly the last year's, drifting a little; now and then a fresh set, as rays end and begin.)
+      const fresh = i === 0 || (reps[i] !== reps[i - 1] && h1(i * 1.9) < 0.5) || h1(i * 3.71 + tree.seed * 0.013) < 0.3;
+      off[i] = fresh ? h1(i * 7.3 + tree.seed * 0.01) * W0 : off[i - 1] + (h1(i * 5.9) - 0.5) * 0.06 * W0;
+      yr[i] = (i * 3) % oak.n;
+      const w = (scr(meanR(i)) - scr(meanR(i - 1)));
+      lvl[i] = Math.max(0, Math.min(oak.levels.length - 1, Math.ceil(Math.log2(oak.year / Math.max(0.5, w)))));
+    }
+    // (Years too fine to print apart, a day's ring at the grown tree's scale: the wood, so many years to a
+    // pixel, would print solid; so it prints at about half its tone, and as many of its years as the screen
+    // can part (one every 3 to 5 px, never evenly) print as a line at their edge, as the drawn woods' fine years do.)
+    const thin = new Float32Array(n), edge = new Uint8Array(n), gapOf = new Float32Array(n);
+    let lastR = scr(meanR(-1));
+    for (let i = 0; i < n; i++) {
+      thin[i] = 1 - smooth((widthAt(i) / Z - 1.2 * px) / (3 * px));
+      const R = scr(meanR(i));
+      // (Never a regular comb of lines, which would beat against the screen's pixels in waves: as far apart
+      // as a hand would rule them, each its own distance.)
+      if (thin[i] > 0 && R - lastR >= (3.2 + 1.4 * h1(i * 1.37 + 0.5)) * px * Z) { edge[i] = 1; gapOf[i] = R - lastR; lastR = R; }
+    }
+    // (A line is wider than the years it lies among: each ring knows the nearest lines in and out.)
+    const edgeIn = new Int32Array(n).fill(-1), edgeOut = new Int32Array(n).fill(-1);
+    for (let i = 0, e = -1; i < n; i++) { edgeIn[i] = e; if (edge[i]) e = i; }
+    for (let i = n - 1, e = -1; i >= 0; i--) { if (edge[i]) e = i; edgeOut[i] = e; }
+    yearsMemo = { key: yKey, oak, rad, reps, off, yr, lvl, runR, thin, edge, gapOf, edgeIn, edgeOut };
   }
-  // (Years too fine to print apart, a day's ring at the grown tree's scale: the wood, so many years to a
-  // pixel, would print solid; so it prints at about half its tone, and as many of its years as the screen
-  // can part (one every 3 to 5 px, never evenly) print as a line at their edge, as the drawn woods' fine years do.)
-  const thin = new Float32Array(n), edge = new Uint8Array(n), gapOf = new Float32Array(n);
-  let lastR = scr(meanR(-1));
-  for (let i = 0; i < n; i++) {
-    thin[i] = 1 - smooth((widthAt(i) / Z - 1.2 * px) / (3 * px));
-    const R = scr(meanR(i));
-    // (Never a regular comb of lines, which would beat against the screen's pixels in waves: as far apart
-    // as a hand would rule them, each its own distance.)
-    if (thin[i] > 0 && R - lastR >= (3.2 + 1.4 * h1(i * 1.37 + 0.5)) * px * Z) { edge[i] = 1; gapOf[i] = R - lastR; lastR = R; }
-  }
-  // (A line is wider than the years it lies among: each ring knows the nearest lines in and out.)
-  const edgeIn = new Int32Array(n).fill(-1), edgeOut = new Int32Array(n).fill(-1);
-  for (let i = 0, e = -1; i < n; i++) { edgeIn[i] = e; if (edge[i]) e = i; }
-  for (let i = n - 1, e = -1; i >= 0; i--) { if (edge[i]) e = i; edgeOut[i] = e; }
+  const { rad, reps, off, yr, lvl, runR, thin, edge, gapOf, edgeIn, edgeOut } = yearsMemo;
   // (The sapwood, paler, fading into the heartwood over some eight years: a year added shifts it by a hair.)
   const tone = (i: number) => 1 - 0.16 * smooth((i - (n - 9)) / 8) * smooth((n - 12) / 8);
   let rmax = 0;
@@ -2323,7 +2343,7 @@ function printFor(v: View, moving: boolean, slot = 'drawing', drift = false, pat
   // loop while it's pressed.)
   const now = slot === 'drawing' && yearClosed && gpu.ready();
   if (now) yearClosed = false;
-  if (!same && !now && (patient || pc)) { pressSlowly(slot, v, key, false); return printCaches[slot]; }
+  if (!same && !now && (patient || pc || fading[slot]?.at === Infinity)) { pressSlowly(slot, v, key, false); return printCaches[slot]!; }
   if (!same || quick) {
     // (Wanted now: a new year, or nothing to show there. Pressed at once; or, if it's already being
     // pressed for these years, the rest of it at once.)
@@ -2352,7 +2372,9 @@ function printFor(v: View, moving: boolean, slot = 'drawing', drift = false, pat
   } else if ((!moving && !drift && !exact) || far) {
     // (Only sharper wanted, for a view already shown: pressed a strip a frame, the picture there meanwhile
     // scaled to it, and put in its place once whole, so a pinch let go never stalls.)
-    pressSlowly(slot, v, key);
+    // (Drifting, as the slice eases into its room: finished for the view it was begun at, never begun again
+    // each frame.)
+    pressSlowly(slot, v, key, !drift);
   }
   return pc;
 }
@@ -2440,7 +2462,8 @@ function drawGrowth(v: View, t: number, moving: boolean, drift: boolean): boolea
   const f = 1 - Math.pow(1 - Math.min(1, (t - gr.at) / GROW_T), 2.2);
   if (gr.ring !== n - 1 || f >= 1 || closer() || fingers.size >= 2) { yearGrow = null; makeRoom(); return false; }
   const pc = printFor(v, moving, 'drawing', drift);
-  if (pc.key !== printKey(v)) return false;
+  // (Its clock held till the new year's print is there: the growing begins at its beginning, never part way.)
+  if (pc.key !== printKey(v)) { gr.at = t; return false; }
   const old = barkOf(n - 2), neu = barkOf(n - 1), front = (a: number) => old(a) + (neu(a) - old(a)) * f;
   // (The wood, up to the growing edge.)
   g.save(); ringPath(v, front, 0, K * 2); g.clip(); drawKept(pc, v); g.restore();
@@ -2461,8 +2484,9 @@ function pressSlowly(slot: string, v: View, key: string, follow = true, budget =
   // (`follow`: begun again for the view as it is now; otherwise finished for the view it was begun for,
   // to be scaled to the view as it moves, as a slice eases into its new room.)
   if (!job || job.key !== key || (follow && (job.v.s !== v.s || job.v.cx !== v.cx || job.v.cy !== v.cy)) || job.c.width !== cw || job.c.height !== ch) {
-    const c = sized(free(slot, spare[slot]), cw, ch);
-    delete spare[slot];
+    // (A job begun again: its own canvas pressed into afresh, never let go to be made anew each frame.)
+    const c = job ? sized(job.c, cw, ch) : sized(free(slot, spare[slot]), cw, ch);
+    if (!job) delete spare[slot];
     // (Only the rows the slice lies across: above and below it, the bare sheet.)
     const Q2 = Q, my = (H * (MARGIN - 1)) / 2, n = tree.rings.length;
     let rmax = tree.k.pith;
@@ -2515,6 +2539,8 @@ function pressSlowly(slot: string, v: View, key: string, follow = true, budget =
     // seen sharpening already, a band at a time.)
     // (`fadeOld` false: a view pressed live, the last only a frame behind it, kept to be drawn over next.)
     const old = printCaches[slot];
+    // (One held till this was pressed: faded from now.)
+    if (!old && fading[slot]?.at === Infinity) fading[slot]!.at = clock();
     if (old && fadeOld) {
       if (fading[slot]) spare[slot] = fading[slot]!.c;
       fading[slot] = { c: old.c, v: old.v, at: clock() };
@@ -2534,7 +2560,7 @@ function drawKept(pc: { c: HTMLCanvasElement; v: View }, v: View, alpha = 1, gro
   if (hole) { g.restore(); g.globalAlpha = alpha; }
   if (pressShown > 0.01) {
     const m = markOf(pc), k = w / pc.c.width;
-    if (m) { g.globalAlpha = alpha * pressShown; g.drawImage(m.c, ox + m.x * k, oy + m.y * k, m.c.width * k, m.c.height * k); }
+    if (m) { g.globalAlpha = alpha * pressShown; g.drawImage(m.c, ox + m.x * k, oy + m.y * k, m.c.width * k * (m.s ?? 1), m.c.height * k * (m.s ?? 1)); }
   }
   g.globalAlpha = 1;
 }
@@ -2549,9 +2575,19 @@ const marksMade = new WeakMap<object, { c: HTMLCanvasElement; x: number; y: numb
  * past the bark it began (mm). The press mark fills them in, so a check is never edged by the block's rim.
  */
 let cracksCut: [number, number, number, number, number, number][] = [];
-function markOf(pc: { c: HTMLCanvasElement; v: View }): { c: HTMLCanvasElement; x: number; y: number } | null {
+let lastMark: { pc: { c: HTMLCanvasElement; v: View; key?: string }; m: { c: HTMLCanvasElement; x: number; y: number; s?: number } } | null = null;
+function markOf(pc: { c: HTMLCanvasElement; v: View; key?: string }): { c: HTMLCanvasElement; x: number; y: number; s?: number } | null {
   if (marksMade.has(pc)) return marksMade.get(pc)!;
   const Q = pc.c.width / (W * MARGIN), mx = (W * (MARGIN - 1)) / 2, my = (H * (MARGIN - 1)) / 2;
+  // (Under a pinch, pressed afresh each frame: the last mark carried to it, scaled about the heart, never
+  // made anew each frame.)
+  const lm = lastMark;
+  if (lm && fingers.size >= 2 && lm.pc.key && lm.pc.key === pc.key && lm.pc.c.width === pc.c.width && lm.pc.v.turn === pc.v.turn) {
+    const r = pc.v.s / lm.pc.v.s, ax = (lm.pc.v.cx + mx) * Q, ay = (lm.pc.v.cy + my) * Q, bx = (pc.v.cx + mx) * Q, by = (pc.v.cy + my) * Q, s0 = lm.m.s ?? 1;
+    const out = { c: lm.m.c, x: bx + (lm.m.x - ax) * r, y: by + (lm.m.y - ay) * r, s: s0 * r };
+    marksMade.set(pc, out);
+    return out;
+  }
   const R = (pc.v.s * warpR(pc.v.warp, barkMax()) + (barkCss(pc.v) * 1.6 + 12) * px) * Q, cx = (pc.v.cx + mx) * Q, cy = (pc.v.cy + my) * Q;
   const x = Math.max(0, Math.floor(cx - R)), y = Math.max(0, Math.floor(cy - R)), w = Math.min(pc.c.width, Math.ceil(cx + R)) - x, h = Math.min(pc.c.height, Math.ceil(cy + R)) - y;
   if (!tree.rings.length || w <= 0 || h <= 0) { marksMade.set(pc, null); return null; }
@@ -2594,6 +2630,7 @@ function markOf(pc: { c: HTMLCanvasElement; v: View }): { c: HTMLCanvasElement; 
   t.width = 0; t.height = 0; sil.width = 0; sil.height = 0;
   const out = { c, x, y };
   marksMade.set(pc, out);
+  lastMark = { pc, m: out };
   return out;
 }
 /** A picture just replaced by a sharper one, fading out over it (a quarter second or so). */
@@ -2603,8 +2640,10 @@ function drawPrintCached(v: View, moving: boolean, slot = 'drawing', alpha = 1, 
   drawSharp(printFor(v, moving, slot, drift), v, slot, alpha, grow);
 }
 /** A slot's kept print as it's shown, the last fading out over it. */
-function drawSharp(pc: Kept, v: View, slot: string, alpha = 1, grow = 1): void {
+function drawSharp(pc: Kept | undefined, v: View, slot: string, alpha = 1, grow = 1): void {
   const f = fading[slot], k = f ? 1 - smooth((clock() - f.at) / FADE) : 0;
+  // (Nothing new pressed yet: the last, held as it was.)
+  if (!pc) { if (f) drawKept(f, f.still ? f.v : v, alpha, grow); return; }
   if (f && k <= 0.01) { spare[slot] = f.c; fading[slot] = undefined; }
   if (!f || k <= 0.01) { drawKept(pc, v, alpha, grow); return; }
   // (`still`: the print as it was, where and as large as it was, never moved to the new view.)
@@ -2708,7 +2747,7 @@ function plantAgain(at: [number, number] | null = null): void {
 function unpart(): void {
   if (!parting) return;
   ({ tree, days, kind, seedAt, marks } = parting); herePlace = parting.place; parting = null;
-  lookAfresh(); words.classList.remove('shown');
+  lookAfresh(); hush();
 }
 
 // ---------------------------------------------------------------- the grove
@@ -2784,12 +2823,14 @@ function worldOf() {
   // (Round it, the wood it stands in: trees no one planted, older and taller, thinning out with the distance,
   // never on the stream, never on the next tree's ground.)
   const wild: { wx: number; wy: number; wr: number; sp: Kind; k: number }[] = [], WILD: Kind[] = ['oak', 'oak', 'maple', 'ash', 'pine', 'fir', 'cherry', 'birch'];
-  const tries = 60 + 3 * trees.length;
+  const tries = 60 + 3 * trees.length, wildAge = Math.min(400, Math.max(80, 1.5 * Math.max(0, ...trees.map((t) => t.n))));
   for (let q = 0; q < tries; q++) {
     const a = h1(seed * 0.013 + q * 1.618) * TAU, d = reach + 0.6 + 4.5 * h1(q * 2.71 + seed * 0.07) ** 1.3;
     if (h1(q * 9.1 + seed) > 1.15 - (d - reach) / 5) continue;
     const wx = gx + Math.cos(a) * d, wy = gy + Math.sin(a) * d * 0.9, sp = WILD[Math.floor(h1(q * 4.3 + seed) * WILD.length)];
-    const wr = 1.3 * (0.8 + 0.35 * h1(q * 6.1)) * crownSize(sp, 400);
+    // (Older than the grove's own, never towering over a young grove: as old as half again its oldest, at most
+    // four hundred years.)
+    const wr = 1.3 * (0.8 + 0.35 * h1(q * 6.1)) * crownSize(sp, wildAge);
     if (stream.some(([sx2, sy2]) => Math.hypot(sx2 - wx, sy2 - wy) < wr + 0.45)) continue;
     if (Math.hypot(next.wx - wx, next.wy - wy) < wr + 1) continue;
     if ([...trees, ...wild].some((o) => Math.hypot(o.wx - wx, o.wy - wy) < (o.wr + wr) * 0.85)) continue;
@@ -2808,15 +2849,19 @@ function groveLayout(cam = camNow()): { trees: Stand[]; cam: Cam } {
 function zoomGrove(x: number, y: number, f: number): void {
   const w = worldOf(), c = camNow(), S = Math.max(w.whole.S, Math.min(w.whole.S * GROVE_CLOSEST, c.S * f)), q = S / c.S;
   groveCam = S <= w.whole.S * 1.001 ? null : { S, X0: x - (x - c.X0) * q, Y0: y - (y - c.Y0) * q };
-  if (groveCam) { panGrove(0, 0); words.classList.remove('shown'); }
+  if (groveCam) { panGrove(0, 0); hush(); }
   groveMoved = clock();
 }
 /** Moved about in the grove, never so far its trees leave the sheet. */
 function panGrove(dx: number, dy: number): void {
   if (!groveCam) return;
-  const [x0, y0, x1, y1] = worldOf().box, c = groveCam;
-  c.X0 = Math.min(W * 0.8 - x0 * c.S, Math.max(W * 0.2 - x1 * c.S, c.X0 + dx));
-  c.Y0 = Math.min(H * 0.8 - y0 * c.S, Math.max(H * 0.2 - y1 * c.S, c.Y0 + dy));
+  // (Never past what the whole grove, drawn ahead, covers: no faded edge nor bare paper moved into view.)
+  const wh = worldOf().whole, c = groveCam, e = 0.035 * Math.min(W, H);
+  const fit = (o: number, d: number, span: number, o0: number) => {
+    const b0 = (e - o0) / wh.S, b1 = (span - e - o0) / wh.S, lo = span - b1 * c.S, hi = -b0 * c.S;
+    return lo <= hi ? Math.min(hi, Math.max(lo, o + d)) : (lo + hi) / 2;
+  };
+  c.X0 = fit(c.X0, dx, W, wh.X0); c.Y0 = fit(c.Y0, dy, H, wh.Y0);
   groveMoved = clock();
 }
 let groveMoved = 0;
@@ -2978,7 +3023,7 @@ function meets(pts: [number, number][], all: [number, number][][], self: number)
   });
 }
 /** The grove drawn a piece at a time (the ground, the water, the shadows, each crown), to be spread over frames. */
-function* groveSteps(c: CanvasRenderingContext2D, cam: Cam, sprites?: Sprite[]): Generator<void> {
+function* groveSteps(c: CanvasRenderingContext2D, cam: Cam, sprites?: Sprite[], edge = 0): Generator<void> {
   const w = worldOf(), season = seasonNow(), { sun } = sunNow();
   c.clearRect(0, 0, W, H);
   const height = (x: number, y: number) => heightAt((x - cam.X0) / cam.S, (y - cam.Y0) / cam.S, w.hills, w.seed);
@@ -3009,6 +3054,9 @@ function* groveSteps(c: CanvasRenderingContext2D, cam: Cam, sprites?: Sprite[]):
   // Paths worn to the trees opened often, from today's: each a little wider where another meets it.
   const worn = trackWays(cam), lines = worn.map((t) => t.pts);
   for (const [j, t] of worn.entries()) drawTrack(c, t.pts.map(([x, y]) => at(x, y)), pathWidth(t.v) * cam.S, u, t.k, { wear: smooth((t.v - 3) / 8), wide: meets(t.pts, lines, j), sun });
+  // (The ground alone thinned out at the sheet's edges, so it fades into the one under it, never a cut: the
+  // trees whole, never half faded where they stand at the edge.)
+  if (edge) feather(c.canvas as HTMLCanvasElement, edge);
   yield;
   const L = groveLayout(cam).trees;
   // Moss, between trees long standing side by side.
@@ -3042,7 +3090,7 @@ function* groveSteps(c: CanvasRenderingContext2D, cam: Cam, sprites?: Sprite[]):
     if (gpu.ready()) {
       lc.fillStyle = '#000'; lc.fill(all, 'nonzero');
       const pic = gpu.run('hatch', W, H, {}, { uH: H, uU: u }, {}, lay);
-      if (pic) { c.save(); c.globalAlpha = 0.5 * sun.strength; gpu.lay(c, pic, 0, 0); c.restore(); hatched = true; }
+      if (pic) { c.save(); c.globalAlpha = 0.5 * sun.strength; gpu.lay(c, pic, 0, 0); c.restore(); hatched = true; lay.width = lay.height = 0; }
       else lc.clearRect(0, 0, W, H);
     }
     if (hatched) yield;
@@ -3064,16 +3112,19 @@ function* groveSteps(c: CanvasRenderingContext2D, cam: Cam, sprites?: Sprite[]):
     yield;
     lc.globalCompositeOperation = 'destination-in'; lc.fillStyle = '#000'; lc.fill(all, 'nonzero');
     c.save(); c.globalAlpha = 0.5 * sun.strength; c.drawImage(lay, 0, 0); c.restore();
+    lay.width = lay.height = 0;
     yield;
     }
   }
   // (The leaves down round the trees, beneath their crowns' edges.)
-  for (const t of shown) for (const l of litterOf(t, cam, season)) leafAt(c, l.x, l.y, l.len, l.rot, 1, l.col, u);
-  yield;
+  // (A tree's at a time, and a few of the wood's crowns at a time: never one piece too long for a frame.)
+  for (const t of shown) { for (const l of litterOf(t, cam, season)) leafAt(c, l.x, l.y, l.len, l.rot, 1, l.col, u); yield; }
   // (The wood round it: ink and a faint wash only, quieter than the trees grown here.)
+  let wi = 0;
   for (const t of wildShown) {
     drawCrown(c, t.x, t.y, t.r, t.sp, t.k, u, 0.7, undefined, sun, 'crown');
     washFlat(c, t.x, t.y, t.r, t.sp, t.k, season, 0.8);
+    if (++wi % 4 === 0) yield;
   }
   yield;
   for (const t of shown) {
@@ -3085,8 +3136,9 @@ function* groveSteps(c: CanvasRenderingContext2D, cam: Cam, sprites?: Sprite[]):
       washCrown(c, t.x, t.y, t.r, t.sp, t.k, px, season, t.i === -1, 1, form);
       continue;
     }
-    const m = Math.ceil(t.r * 2 + 10 * px), sc = document.createElement('canvas'); sc.width = sc.height = 2 * m;
-    const sx = sc.getContext('2d')!;
+    // (Never larger than the phone allows a picture to be: looked at very close, painted at most so large, laid larger.)
+    const m = Math.ceil(t.r * 2 + 10 * px), f = Math.min(1, 2048 / (2 * m)), sc = document.createElement('canvas'); sc.width = sc.height = Math.ceil(2 * m * f);
+    const sx = sc.getContext('2d')!; sx.scale(f, f);
     drawCrown(sx, m, m, t.r, t.sp, t.k, u, 1, form, sun, 'crown');
     // (Coloured over the ink, by hand: today's still wet.)
     washCrown(sx, m, m, t.r, t.sp, t.k, px, season, t.i === -1, 1, form);
@@ -3095,7 +3147,9 @@ function* groveSteps(c: CanvasRenderingContext2D, cam: Cam, sprites?: Sprite[]):
   }
 }
 /** The grove drawn for the whole view (kept, to lay under any other while it moves), and for the view now. */
-const seasonKey = () => `${worldKey}:${seasonNow()}:${sunNow().key}:${JSON.stringify(visitsOf())}`;
+// (Worked out once a frame: it reads the visits kept on the phone.)
+let seasonAt = -1, seasonWas = '';
+const seasonKey = () => { if (seasonAt !== frameStart) { seasonAt = frameStart; seasonWas = `${worldKey}:${seasonNow()}:${sunNow().key}:${JSON.stringify(visitsOf())}`; } return seasonWas; };
 let groveWarmAt = -1e9;
 type GroveSheet = { c: HTMLCanvasElement; cam: Cam; key: string; sprites: Sprite[] };
 let baseG: GroveSheet | null = null, sharpG: GroveSheet | null = null;
@@ -3104,8 +3158,20 @@ let groveJob: (GroveSheet & { steps: Generator<void> }) | null = null, groveFade
 /** The whole grove drawn, if it isn't already (as it is: its trees, its season, the sheet's size). */
 /** The whole grove being drawn ahead, a piece a frame, while the slice is looked at (see `warmGrove`). */
 let baseJob: (GroveSheet & { steps: Generator<void> }) | null = null;
+/** A sheet done with: its pictures let go at once, never left for the phone's browser to find. */
+function dropSheet(sh: GroveSheet): void { sh.c.width = sh.c.height = 0; for (const sp of sh.sprites) sp.c.width = sp.c.height = 0; }
+/** The whole grove as it was, fading out under the one drawn afresh (a new year, the light moved on). */
+let baseFade: { from: GroveSheet; at: number } | null = null;
 function groveBase(): NonNullable<typeof baseG> {
   const key = seasonKey();
+  // (Out of date but the right size: kept shown while the new one is drawn a piece a frame, then faded into,
+  // never all of it drawn in one frame and swapped.)
+  if (baseG && baseG.key !== key && baseG.c.width === W && baseG.c.height === H) {
+    const old = baseG;
+    warmGrove();
+    if (baseG !== old) { if (baseFade) dropSheet(baseFade.from); baseFade = { from: old, at: clock() }; }
+    return baseG;
+  }
   if (!baseG || baseG.key !== key || baseG.c.width !== W || baseG.c.height !== H) {
     // (Wanted now: what's left of one being drawn ahead, finished at once; or drawn afresh.)
     if (!baseJob || baseJob.key !== key || baseJob.c.width !== W || baseJob.c.height !== H) startBase();
@@ -3117,7 +3183,7 @@ function groveBase(): NonNullable<typeof baseG> {
 function startBase(): void {
   const w = worldOf(), c = document.createElement('canvas'), sprites: Sprite[] = [];
   c.width = W; c.height = H;
-  baseJob = { c, cam: w.whole, key: seasonKey(), sprites, steps: groveSteps(c.getContext('2d')!, w.whole, sprites) };
+  baseJob = { c, cam: w.whole, key: seasonKey(), sprites, steps: groveSteps(c.getContext('2d')!, w.whole, sprites, 0.07) };
 }
 /**
  * The whole grove drawn ahead, while the slice rests, a piece in what's left of each frame, so pinching out to
@@ -3131,23 +3197,26 @@ function warmGrove(): void {
   do { if (baseJob!.steps.next().done) { finishBase(); return; } } while (performance.now() - t0 < left);
 }
 function finishBase(): void {
-  const job = baseJob!;
+  const job = baseJob!, prev = baseG;
   baseJob = null;
   baseG = { c: job.c, cam: job.cam, key: job.key, sprites: job.sprites };
-  {
-    const bc = job.c.getContext('2d')!;
-    // (Its ground thinning out at the sheet's edges, so a view moved past them fades to the paper, never a cut.)
-    const e = Math.round(0.07 * Math.min(W, H));
-    bc.save(); bc.globalCompositeOperation = 'destination-in';
-    for (const [x0, y0, x1, y1] of [[0, 0, W, 0], [0, 0, 0, H]] as [number, number, number, number][]) {
-      const gr = bc.createLinearGradient(x0, y0, x1 || x0, y1 || y0);
-      const span = x1 ? W : H;
-      gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(e / span, '#000'); gr.addColorStop(1 - e / span, '#000'); gr.addColorStop(1, 'rgba(0,0,0,0)');
-      bc.fillStyle = gr; bc.fillRect(0, 0, W, H);
-    }
-    bc.restore();
-  }
+  // (Drawn ahead out of sight: the one it replaces let go at once.)
+  if (prev && far === 0) dropSheet(prev);
 }
+/** A sheet's ground thinned out at its edges, `f` of the sheet's shorter side in. */
+function feather(c: HTMLCanvasElement, f: number): void {
+  const bc = c.getContext('2d')!, e = Math.round(f * Math.min(W, H));
+  bc.save(); bc.globalCompositeOperation = 'destination-in';
+  for (const [x0, y0, x1, y1] of [[0, 0, W, 0], [0, 0, 0, H]] as [number, number, number, number][]) {
+    const gr = bc.createLinearGradient(x0, y0, x1 || x0, y1 || y0);
+    const span = x1 ? W : H;
+    gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(e / span, '#000'); gr.addColorStop(1 - e / span, '#000'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+    bc.fillStyle = gr; bc.fillRect(0, 0, W, H);
+  }
+  bc.restore();
+}
+/** The view drawn for itself that's faded out: its canvas kept to draw the next into, its crowns let go. */
+function dropFade(): void { if (!groveFade) return; groveSpare = groveFade.from.c; for (const sp of groveFade.from.sprites) sp.c.width = sp.c.height = 0; groveFade = null; }
 function layGrove(cam: Cam, still: boolean): void {
   const w = worldOf(), key = seasonKey();
   baseG = groveBase();
@@ -3158,20 +3227,15 @@ function layGrove(cam: Cam, still: boolean): void {
   // its crowns that view has too: never the ground washed twice, nor a crown doubled.)
   const lay = (from: { c: HTMLCanvasElement; cam: Cam; sprites: Sprite[] }, over?: { c: HTMLCanvasElement; cam: Cam; sprites: Sprite[] }) => {
     const q = cam.S / from.cam.S, X = (x: number) => cam.X0 + (x - from.cam.X0) * q, Y = (y: number) => cam.Y0 + (y - from.cam.Y0) * q;
-    g.save();
-    if (over) {
-      const k = cam.S / over.cam.S, ox = cam.X0 - over.cam.X0 * k, oy = cam.Y0 - over.cam.Y0 * k;
-      g.beginPath(); g.rect(0, 0, W, H); g.rect(ox, oy, W * k, H * k); g.clip('evenodd');
-    }
+    // (Laid whole, even under a view drawn for itself: that one's edge is feathered into it, never a cut.)
     g.drawImage(from.c, cam.X0 - from.cam.X0 * q, cam.Y0 - from.cam.Y0 * q, W * q, H * q);
-    g.restore();
-    const doubled = new Set(over?.sprites.map((s) => s.k));
+    const doubled = over ? new Set(over.sprites.map((s) => s.k)) : null;
     for (const s of from.sprites) {
-      if (doubled.has(s.k)) continue;
+      if (doubled?.has(s.k)) continue;
       // (Still, as a map's trees are: they move only in a breeze drawn across them.)
       const ph = (s.x / W) * 2.2 + h1(s.k) * 0.4;
       // (And leaning in a breeze drawn across it, tossing a little as it goes by.)
-      const [bx, by] = gusts.length ? breezeAt((s.x - from.cam.X0) / from.cam.S, (s.y - from.cam.Y0) / from.cam.S, t) : [0, 0], lean = Math.min(5 * px, s.r * 0.09) * q * (1 + 0.25 * Math.sin(t * 6 + ph));
+      const [bx, by] = gusts.length ? breezeAt((s.x - from.cam.X0) / from.cam.S, (s.y - from.cam.Y0) / from.cam.S, t) : [0, 0], lean = Math.min(5 * px, s.r * 0.09) * q * (1 + 0.25 * Math.sin(t * 2.4 + ph));
       const dx = bx * lean, dy = by * lean;
       g.drawImage(s.c, X(s.x) - s.m * q + dx, Y(s.y) - s.m * q + dy, 2 * s.m * q, 2 * s.m * q);
     }
@@ -3186,23 +3250,33 @@ function layGrove(cam: Cam, still: boolean): void {
       const c = groveSpare ?? document.createElement('canvas'); groveSpare = null;
       c.width = W; c.height = H;
       const sprites: Sprite[] = [];
-      groveJob = { c, cam: { ...cam }, key, sprites, steps: groveSteps(c.getContext('2d')!, cam, sprites) };
+      groveJob = { c, cam: { ...cam }, key, sprites, steps: groveSteps(c.getContext('2d')!, cam, sprites, 0.03) };
     }
     const t0 = performance.now(), left = Math.min(8, 11 - (t0 - frameStart));
-    do { if (groveJob.steps.next().done) { groveFade = sharpG && sharpG.key === key ? { from: sharpG, at: clock() } : null; if (!groveFade && sharpG) groveSpare = sharpG.c; sharpG = groveJob; groveJob = null; break; } } while (performance.now() - t0 < left);
+    do { if (groveJob.steps.next().done) { if (groveFade) dropFade(); groveFade = sharpG && near(sharpG.cam, cam) ? { from: sharpG, at: clock() } : null; if (!groveFade && sharpG) { groveSpare = sharpG.c; for (const sp of sharpG.sprites) sp.c.width = sp.c.height = 0; } sharpG = groveJob; groveJob = null; break; } } while (performance.now() - t0 < left);
   }
-  const before = () => { if (sharpG && sharpG.key === key) { lay(baseG!, sharpG); lay(sharpG); } else lay(baseG!); };
-  if (sharpG && sharpG.key === key && near(sharpG.cam, cam)) {
-    const a = groveFade ? smooth((clock() - groveFade.at) / 0.3) : 1;
+  // (The whole grove, crossfaded from the one it replaces while that fades.)
+  const layBase = (over?: GroveSheet) => {
+    const bf = baseFade, ba = bf ? smooth((clock() - bf.at) / STEADY_T) : 1;
+    if (bf && ba >= 1) { dropSheet(bf.from); baseFade = null; }
+    if (!bf || ba >= 1) { lay(baseG!, over); return; }
+    const ga = g.globalAlpha;
+    crossfade(() => { g.globalAlpha = 1 - ba; lay(bf.from, over); }, () => { g.globalAlpha = ba; lay(baseG!, over); }, ga);
+    g.globalAlpha = ga;
+  };
+  // (A view drawn for itself, even of the grove as it was a moment ago, shown till its new one is done.)
+  const before = () => { if (sharpG) { layBase(sharpG); lay(sharpG); } else layBase(); };
+  if (sharpG && near(sharpG.cam, cam)) {
+    const a = groveFade ? smooth((clock() - groveFade.at) / 0.6) : 1;
     if (a < 1 && groveFade) {
       // (A true crossfade: never both laid at once, whose inks would add up to a darker grove for a moment.)
       const from = groveFade.from, to = sharpG, ga = g.globalAlpha;
-      crossfade(() => { g.globalAlpha = 1 - a; lay(baseG!, from); lay(from); }, () => { g.globalAlpha = a; lay(to); }, ga);
+      crossfade(() => { g.globalAlpha = 1 - a; layBase(from); lay(from); }, () => { g.globalAlpha = a; layBase(to); lay(to); }, ga);
       g.globalAlpha = ga;
       return;
     }
-    if (groveFade) { groveSpare = groveFade.from.c; groveFade = null; }
-    lay(sharpG); return;
+    if (groveFade) dropFade();
+    layBase(sharpG); lay(sharpG); return;
   }
   // (Moving, the whole laid under, and the last drawn over it.)
   before();
@@ -3246,8 +3320,9 @@ function litterCol(sp: string, season: Season): number[] | null {
  */
 function litterOf(tr: { x: number; y: number; r: number; k: number; sp: string; n: number }, cam: Cam, season: Season): { x: number; y: number; len: number; rot: number; col: number[] }[] {
   const col = litterCol(tr.sp, season);
-  if (!col || tr.n < 30) return [];
-  const N = Math.round(60 * fallen(season) * Math.min(1.4, tr.r / Math.max(1, cam.S * 0.5))), out = [];
+  if (!col || tr.n < 8) return [];
+  // (A young tree drops a few, more each year it grows: never none, then a whole pile.)
+  const N = Math.round(60 * fallen(season) * Math.min(1.4, tr.r / Math.max(1, cam.S * 0.5)) * Math.min(1, (tr.n - 8) / 40)), out = [];
   const len = Math.max(3 * px, 0.075 * cam.S);
   for (let j = 0; j < N; j++) {
     const h = (q: number) => h1(tr.k * 1.7 + j * 7.13 + q);
@@ -3259,16 +3334,20 @@ function litterOf(tr: { x: number; y: number; r: number; k: number; sp: string; 
   }
   return out;
 }
+const litterMemo = new Map<number, { key: string; lit: ReturnType<typeof litterOf> }>();
 function drawLife(cam: Cam): void {
   const t = clock(), season = seasonNow(), L = groveLayout(cam).trees, wind = 0.55 + 0.45 * vnoise(t * 0.12, 3.7), U = px * Math.sqrt(Math.max(1, cam.S / worldOf().whole.S));
   g.save();
   if (season === 'autumn' || season === 'spring') {
     for (const tr of L) {
       const col = season === 'spring' ? (tr.sp === 'cherry' ? [236, 196, 204] : null) : pigment(tr.sp, 'autumn');
-      if (!col || tr.n < 30 || ['pine', 'redwood', 'bristlecone', 'olive', 'fir', 'juniper'].includes(tr.sp)) continue;
+      if (!col || tr.n < 8 || ['pine', 'redwood', 'bristlecone', 'olive', 'fir', 'juniper'].includes(tr.sp)) continue;
       // (Now and then one comes down: out of the crown, swinging side to side and turning over as it falls, to
       // land on the ground round the tree, among those already there, where it stays.)
-      const lit = litterOf(tr, cam, season);
+      // (Worked out again only when the grove is looked at anew.)
+      const lk = `${cam.S}|${cam.X0}|${cam.Y0}|${season}|${tr.n}`, got = litterMemo.get(tr.k);
+      const lit = got && got.key === lk ? got.lit : litterOf(tr, cam, season);
+      if (!got || got.key !== lk) litterMemo.set(tr.k, { key: lk, lit });
       if (!lit.length) continue;
       for (let q = 0; q < 2; q++) {
         const per = 6 + 4 * h1(tr.k + q), cyc = Math.floor(t / per + h1(tr.k * 1.3 + q * 0.7)), p = (t / per + h1(tr.k * 1.3 + q * 0.7)) % 1;
@@ -3283,7 +3362,8 @@ function drawLife(cam: Cam): void {
         const x = x0 + (to.x - x0) * e + nx * sw, y = y0 + (to.y - y0) * e + ny * sw;
         // (Tilting into each swing; turning over only now and then, slowly.)
         const flip = fall < 1 ? 0.35 + 0.65 * Math.abs(Math.cos(ph * 0.5 + q)) : 1, rot = to.rot + air * 0.6 * Math.cos(ph);
-        const al = Math.min(1, p / 0.06) * (p > 0.92 ? (1 - p) / 0.08 : 1);
+        // (Down, it's one with the leaf already lying there: gone into it at once, never two inked over one.)
+        const al = Math.min(1, p / 0.06) * (p > 0.75 ? Math.max(0, 1 - (p - 0.75) / 0.03) : 1);
         // (Its shadow on the ground beneath, drawn in as it comes down.)
         if (air > 0.02) { g.save(); g.globalAlpha = al * 0.25 * (1 - air * 0.6); g.beginPath(); g.ellipse(x + air * to.len * 2.2, y + air * to.len * 1.8, to.len * 0.45, to.len * 0.2, to.rot, 0, TAU); g.fillStyle = ink(1); g.fill(); g.restore(); }
         leafAt(g, x, y, to.len * (1 + 0.35 * air), rot, flip, to.col, U, al);
@@ -3291,8 +3371,10 @@ function drawLife(cam: Cam): void {
     }
   } else if (season === 'winter') {
     for (let q = 0; q < 70; q++) {
-      const x = (((h1(q * 1.7) * W + t * (6 + 10 * wind) * U * (0.6 + h1(q))) % W) + W) % W, y = (h1(q * 3.1) * H + t * 14 * U * (0.6 + 0.6 * h1(q * 5))) % H;
-      g.globalAlpha = 0.85; g.beginPath(); g.arc(x + Math.sin(t + q) * 3 * U, y, (0.8 + 0.8 * h1(q * 7)) * U, 0, TAU);
+      // (Coming in past the sheet's edge and going out past it, fading as it goes: never there and then not.)
+      const m = 8 * U, Wm = W + 2 * m, Hm = H + 2 * m;
+      const x = (((h1(q * 1.7) * Wm + t * (6 + 10 * wind) * U * (0.6 + h1(q))) % Wm) + Wm) % Wm - m, y = (h1(q * 3.1) * Hm + t * 14 * U * (0.6 + 0.6 * h1(q * 5))) % Hm - m;
+      g.globalAlpha = 0.85 * Math.max(0, Math.min(1, (y + m) / (0.06 * H), (H + m - y) / (0.06 * H))); g.beginPath(); g.arc(x + Math.sin(t + q) * 3 * U, y, (0.8 + 0.8 * h1(q * 7)) * U, 0, TAU);
       g.fillStyle = '#fdfcf9'; g.fill(); g.strokeStyle = ink(0.25); g.lineWidth = 0.4 * U; g.stroke();
     }
   }
@@ -3365,7 +3447,7 @@ function drawFar(v: View): void {
     if (snapC.width !== c.width || snapC.height !== c.height) { snapC.width = c.width; snapC.height = c.height; }
     const sc = snapC.getContext('2d')!;
     sc.setTransform(1, 0, 0, 1, 0, 0); sc.clearRect(0, 0, snapC.width, snapC.height); sc.drawImage(c, 0, 0);
-  }
+  } else if (snapC && snapC.width) snapC.width = snapC.height = 0;
   g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(groundOf(), 0, 0);
   const L = groveLayout(), f = L.trees.find((t) => t.i === (visit ? visit.i : -1)) ?? L.trees[L.trees.length - 1];
   // The camera: at first close over the tree, its crown about the slice; rising (evenly, as a scale is
@@ -3705,7 +3787,14 @@ function frame(): void {
   // (Nothing being done and nothing quick moving: half the frames are enough, for the slow things (the
   // breath, the crowns stirring), and the phone kept cool.)
   const calm = fingers.size === 0 && !tree.stroke && !ease && !lookBack && !farTo && !intro && settle.ring < 0 && !gusts.length && !lifted.length && !choiceTo && !ruffle.some((r) => r > 0.02);
-  void calm;
+  // (Still on the slice, nothing pressing or fading: a quarter of the frames, the breath being slow. Out in
+  // the grove, half, for the crowns stirring and the leaves.)
+  const still = calm && trail.length < 2 && !Object.keys(pressing).length && !Object.values(fading).some(Boolean) && !yearGrow && (relax <= 0 || relax >= 1)
+    && !(lit >= 0 && t - litAt < 2 + STEADY_T) && t - openedAt > OPEN && !groveJob && !baseJob && !groveFade;
+  const every = !calm ? 0 : far >= 1 ? 1 / 30 : still && far === 0 ? 1 / 15 : 0;
+  if (every && t - lastFrame < every - 0.004) { requestAnimationFrame(frame); return; }
+  // (Nothing crossfading on a still slice: the sheets for it let go.)
+  if (still && far === 0 && blends.length) { for (const b of blends) b.width = b.height = 0; blends.length = 0; }
   lastFrame = t; frameStart = performance.now();
   // (The wood's own way with the hand's line.)
   if (GROWN) { const sm = SMOOTH[kind] ?? DAILY.smooth; if (tree.k.smooth !== sm) (tree.k as { smooth: number }).smooth = sm; }
@@ -3755,7 +3844,10 @@ function frame(): void {
   else if (PRINT) {
     // (The print at rest pressed a strip at a time when it's new; the slice only settles into it once it's whole.)
     const rv = restOf(v), rest = relax > 0 ? printFor(rv, moving, 'rest', false, true) : undefined;
-    if (relax > 0 && rest?.key !== printKey(rv)) relax = Math.min(relax, 0.01);
+    // (Only its years or marks out of date hold the slice back from rest; pressed again for a new size of
+    // sheet, the last rest print is shown meanwhile, never a snap back to the magnified one.)
+    const yearsOf = (k: string) => { const q = k.split('|'); return `${q[0]}|${q[4]}`; };
+    if (relax > 0 && (!rest || yearsOf(rest.key) !== yearsOf(printKey(rv)))) relax = Math.min(relax, 0.01);
     const rk = smooth(relax);
     // (Settling from the magnified print to the true-scale one: crossfaded, never both at once.)
     if (rk > 0 && rk < 1 && rest) crossfade(() => drawPrintCached(v, moving, 'drawing', 1 - rk, drift, breathGrow()), () => drawSharp(rest, rv, 'rest', rk, breathGrow()));

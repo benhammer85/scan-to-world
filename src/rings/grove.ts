@@ -124,7 +124,7 @@ export function drawCrown(g: CanvasRenderingContext2D, x: number, y: number, r: 
     if (part === 'shadow') { g.restore(); return; }
     path(g, x, y, r, E); g.fillStyle = PAPER; g.fill();
     g.strokeStyle = ink(0.9); g.lineWidth = Math.min(1, r / (4 * U)) * 0.8 * U; g.stroke();
-    if (r > 3 * U) { g.fillStyle = ink(0.8); g.beginPath(); g.arc(x + r * 0.3, y + r * 0.3, 0.5 * U, 0, TAU); g.arc(x + r * 0.05, y + r * 0.45, 0.4 * U, 0, TAU); g.fill(); }
+    if (r > 3 * U) { g.fillStyle = ink(0.8 * Math.min(1, (r / U - 3) / 1.5)); g.beginPath(); g.arc(x + r * 0.3, y + r * 0.3, 0.5 * U, 0, TAU); g.arc(x + r * 0.05, y + r * 0.45, 0.4 * U, 0, TAU); g.fill(); }
     g.restore();
     return;
   }
@@ -164,7 +164,8 @@ export function drawCrown(g: CanvasRenderingContext2D, x: number, y: number, r: 
     for (let i = 0; i < masses; i++) {
       const a = h1(k + i * 3.3) * TAU, rr = r * (0.15 + 0.5 * Math.sqrt(h1(k * 2 + i))), mr = r * (0.22 + 0.16 * h1(i * 1.7 + k));
       const cx = x + Math.cos(a) * rr, cy = y + Math.sin(a) * rr, steps = Math.max(8, Math.round(mr / (1.5 * U)));
-      g.lineWidth = 0.55 * U; g.strokeStyle = ink(0.55);
+      // (Coming in as the crown grows past them, never all at once.)
+      g.lineWidth = 0.55 * U; g.strokeStyle = ink(0.55 * Math.min(1, (r / U - 10) / 6));
       g.beginPath();
       for (let q = 0; q <= steps; q++) {
         const t = shadeA - 1.3 + (2.6 * q) / steps, bump = 1 + 0.08 * Math.abs(Math.sin(q * 1.9 + i));
@@ -188,7 +189,7 @@ export function drawCrown(g: CanvasRenderingContext2D, x: number, y: number, r: 
       const ra = Math.atan2(py - y, px - x) + (h1(i) - 0.5) * 0.5, L = U * (1.8 + 2.4 * h1(i * 3));
       const ex = px + Math.cos(ra) * L, ey = py + Math.sin(ra) * L;
       g.lineWidth = (0.35 + 0.35 * s) * U; g.moveTo(px, py); g.lineTo(ex, ey);
-      if (r > 18 * U) for (let q = 1; q <= 3; q++) { const f = q / 4, nx = px + (ex - px) * f, ny = py + (ey - py) * f, nl = 0.9 * U * (1 - f * 0.5);
+      if (r > 18 * U) for (let q = 1; q <= 3; q++) { const f = q / 4, nx = px + (ex - px) * f, ny = py + (ey - py) * f, nl = 0.9 * U * (1 - f * 0.5) * Math.min(1, (r / U - 18) / 8);
         g.moveTo(nx, ny); g.lineTo(nx + Math.cos(ra + 0.9) * nl, ny + Math.sin(ra + 0.9) * nl); g.moveTo(nx, ny); g.lineTo(nx + Math.cos(ra - 0.9) * nl, ny + Math.sin(ra - 0.9) * nl); }
       g.stroke();
     } else if (h1(i * 2.9 + k) < leafy) {
@@ -349,7 +350,9 @@ export function washCrown(g: CanvasRenderingContext2D, x: number, y: number, r: 
   // (And painted at one of a few sizes, a step apart, so a look closer or further reuses one already painted.)
   // (On the graphics chip, painted larger: it costs next to nothing there, and holds up looked into.)
   const CAP = gpu.ready() ? 360 : 120, rq = Math.min(CAP, 2 ** (Math.round(Math.log2(Math.max(2, r)) * 2) / 2)), up = r / rq;
-  const w = washOf(rq, sp, k, U / up, season, wet, form);
+  // (Its grain too at one of a few steps, so a look closer never paints the same wash afresh each frame.)
+  const Uq = 2 ** (Math.round(Math.log2(Math.max(1e-3, U / up)) * 4) / 4);
+  const w = washOf(rq, sp, k, Uq, season, wet, form);
   if (!w) return;
   const sc = scale * up;
   g.save(); g.globalCompositeOperation = 'multiply';
@@ -358,11 +361,12 @@ export function washCrown(g: CanvasRenderingContext2D, x: number, y: number, r: 
 }
 /** A crown's wash, painted once (kept for the last few asked for), to be laid at any size. */
 const washes = new Map<string, { c: HTMLCanvasElement; m: number; ox: number; oy: number }>();
+let washPx = 0;
 function washOf(r: number, sp: string, k: number, U: number, season: Season, wet: boolean, form?: CrownForm) {
   const col = pigment(sp, season);
   if (!col || r < 2) return null;
   const key = `${sp}${k}:${Math.round(r)}:${U.toFixed(2)}:${season}:${wet}:${form?.id ?? ''}`, got = washes.get(key);
-  if (got) return got;
+  if (got) { washes.delete(key); washes.set(key, got); return got; }
   // (Its own edge, the ink's, kept just inside it, and laid barely off: clean, as a careful hand colours.)
   const E = formed(edgeOf(sp, k), form, k), N = E.length - 1, m = Math.ceil(r * 1.9 + 6 * U), size = m * 2;
   const ox = (h1(k * 1.3) - 0.5) * 1 * U, oy = (h1(k * 2.9) - 0.5) * 1 * U;
@@ -395,8 +399,12 @@ function washOf(r: number, sp: string, k: number, U: number, season: Season, wet
   // (Still wet: a bloom, where the water crept back and pushed the pigment out.)
   if (wet) { cx.strokeStyle = `rgba(${col[0]},${col[1]},${col[2]},0.35)`; cx.lineWidth = 1.4 * U; path(cx, m, m, Math.min(r * 1.08, m - U), formed(edgeOf(sp, k + 29), form, k)); cx.stroke(); }
   const out = { c, m, ox, oy };
-  washes.set(key, out);
-  if (washes.size > 160) washes.delete(washes.keys().next().value!);
+  washes.set(key, out); washPx += size * size;
+  // (Kept within so many pixels, not so many washes: the phone's browser allows only so much picture.)
+  while ((washes.size > 160 || washPx > 40e6) && washes.size > 1) {
+    const k0 = washes.keys().next().value!, w0 = washes.get(k0)!;
+    washPx -= w0.c.width * w0.c.height; w0.c.width = w0.c.height = 0; washes.delete(k0);
+  }
   return out;
 }
 /**
@@ -596,7 +604,8 @@ export function drawTrack(g: CanvasRenderingContext2D, pts: [number, number][], 
 export function drawStream(g: CanvasRenderingContext2D, pts: [number, number][], width: number, U: number, seed: number): void {
   if (pts.length < 2) return;
   const n = pts.length;
-  const wAt = (i: number) => width * (0.6 + 0.8 * n1(i * 0.22 + seed));
+  // (Narrowing to a trickle where it begins and ends, as a spring's water does, never ending in a blunt pool.)
+  const wAt = (i: number) => width * (0.6 + 0.8 * n1(i * 0.22 + seed)) * Math.min(1, 0.12 + i / 6, 0.12 + (n - 1 - i) / 6);
   const tan = pts.map((_, i) => { const a = pts[Math.max(0, i - 1)], b = pts[Math.min(n - 1, i + 1)], dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy) || 1; return [dx / l, dy / l]; });
   const side = (s: number, f = 0.5): [number, number][] => pts.map((p, i) => [p[0] - tan[i][1] * wAt(i) * f * s, p[1] + tan[i][0] * wAt(i) * f * s]);
   const L = side(1), R = side(-1);

@@ -424,15 +424,25 @@ export function ready(): boolean {
 }
 
 /** A table as a flat float texture, 4096 wide. */
+/** Each texture's rows, so one the same size is written into, never made again. */
+const rowsOf = new WeakMap<WebGLTexture, number>();
+/** A padded copy kept for each size of table, so a short table is never padded into a new array each press. */
+const padded = new Map<number, Float32Array>();
 function flat(g: WebGL2RenderingContext, data: Float32Array, tex?: WebGLTexture): WebGLTexture {
-  const w = 4096, h = Math.max(1, Math.ceil(data.length / w)), d = data.length === w * h ? data : new Float32Array(w * h);
-  if (d !== data) d.set(data);
+  const w = 4096, h = Math.max(1, Math.ceil(data.length / w));
+  let d = data;
+  if (data.length !== w * h) {
+    d = padded.get(h) ?? new Float32Array(w * h); padded.set(h, d);
+    d.set(data); d.fill(0, data.length);
+  }
   const t = tex ?? g.createTexture()!;
   g.bindTexture(g.TEXTURE_2D, t);
+  g.pixelStorei(g.UNPACK_ALIGNMENT, 4);
+  if (tex && rowsOf.get(tex) === h) { g.texSubImage2D(g.TEXTURE_2D, 0, 0, 0, w, h, g.RED, g.FLOAT, d); return t; }
   g.texParameteri(g.TEXTURE_2D, g.TEXTURE_MIN_FILTER, g.NEAREST); g.texParameteri(g.TEXTURE_2D, g.TEXTURE_MAG_FILTER, g.NEAREST);
   g.texParameteri(g.TEXTURE_2D, g.TEXTURE_WRAP_S, g.CLAMP_TO_EDGE); g.texParameteri(g.TEXTURE_2D, g.TEXTURE_WRAP_T, g.CLAMP_TO_EDGE);
-  g.pixelStorei(g.UNPACK_ALIGNMENT, 4);
   g.texImage2D(g.TEXTURE_2D, 0, g.R32F, w, h, 0, g.RED, g.FLOAT, d);
+  rowsOf.set(t, h);
   return t;
 }
 /** A table that lasts: uploaded once. `make` builds its data the first time. */
@@ -495,7 +505,8 @@ export function run(which: Pass, w: number, h: number, ints: Uniforms, floats: U
     else if (v.length === 3 && n.endsWith('RGB')) g.uniform3f(l, v[0], v[1], v[2]);
     else g.uniform1fv(l, v instanceof Float32Array ? v : new Float32Array(v));
   }
-  g.disable(g.BLEND); g.clearColor(0, 0, 0, 0); g.clear(g.COLOR_BUFFER_BIT);
+  // (Every pixel of the picture written by the pass, none blended: nothing to clear first.)
+  g.disable(g.BLEND);
   g.drawArrays(g.TRIANGLES, 0, 3);
   return { c: canvas, sx: 0, sy: canvas.height - h, w, h };
 }

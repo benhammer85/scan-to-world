@@ -9,7 +9,7 @@
     <meta name="apple-mobile-web-app-title" content="Well Rounded" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <link rel="apple-touch-icon" href="/src/rings/icon/icon-180.png" />
-    <link rel="icon" type="image/png" href="/src/rings/icon/icon-512.png" />
+    <link rel="icon" type="image/png" href="/src/rings/icon/icon-64.png" />
     <title>Well Rounded</title>
     <style>
       body { position: fixed; inset: 0; }
@@ -17,6 +17,7 @@
       #press { position: fixed; inset: 0; width: 100vw; height: 100dvh; display: block; }
       #words { position: fixed; top: calc(70px + env(safe-area-inset-top)); left: 24px; right: 24px; text-align: center; font: italic 15px "Newsreader", "Iowan Old Style", Georgia, serif; color: rgba(46,33,24,0.5); opacity: 0; transition: opacity 2s; pointer-events: none; text-wrap: balance; }
       #words.shown { opacity: 1; }
+      #words.swap { transition: opacity 0.4s; }
       /* (Never over the print: withheld while the slice lies under them; on the map, a clearing of paper.) */
       #words.covered { opacity: 0; transition: opacity 0.3s; }
       #words.onmap { padding: 14px 20px; margin: -14px auto 0; max-width: 340px; background: radial-gradient(closest-side, rgba(244,239,228,0.96) 70%, rgba(244,239,228,0)); }
