@@ -246,7 +246,10 @@ float heightC(vec2 p) { return heightW((p - vec2(uCamX0, uCamY0)) / uCamS); }
 float seg(vec2 p, vec2 a, vec2 b) { vec2 ab = b - a; float t = clamp(dot(p - a, ab) / max(1e-6, dot(ab, ab)), 0., 1.); return length(p - a - ab * t); }
 void main() {
   vec2 p = vec2(gl_FragCoord.x - 0.5, uH - gl_FragCoord.y - 0.5), rf = p * uRs + vec2(uRx0, uRy0);
-  float z = heightC(p), st = 4. * uU, zx = heightC(p + vec2(st, 0.)) - z, zy = heightC(p + vec2(0., st)) - z;
+  // (The height worked out once a pixel; how it changes from the chip's own neighbours.)
+  float z = heightC(p), st = 4. * uU;
+  vec2 dz = vec2(dFdx(z), -dFdy(z));
+  float zx = dz.x * st, zy = dz.y * st;
   vec4 col = vec4(0.);
   // The wash: pale, pooling darker in the folds, thin on the tops, fading out at the hill's foot.
   if (z >= 0.1) {
@@ -269,7 +272,7 @@ void main() {
     float hh = h1(float(i) * 127.1 + float(j) * 311.7 + uSeed37);
     vec2 c = ((vec2(float(i) + h1(hh * 91.7), float(j) + h1(hh * 53.3))) * G - vec2(uRx0, uRy0)) / uRs;
     if (length(p - c) > 6. * uU) continue;
-    float zc = heightC(c), dense = 0.05 + 0.2 * (1. - clamp((zc - 0.05) / 0.6, 0., 1.));
+    float zc = z + dot(dz, c - p), dense = 0.05 + 0.2 * (1. - clamp((zc - 0.05) / 0.6, 0., 1.));
     if (hh > dense) continue;
     if (uTufts > 0. && h1(hh * 17.9) < 0.7) {
       float L = uU * (0.9 + 0.9 * h1(hh * 7.7)) * min(uKz, 3.) * 0.7;
@@ -286,7 +289,7 @@ void main() {
   col = over(vec4(INK, 1.) * 0.32 * dots, col);
   col = over(vec4(INK, 1.) * 0.4 * uTufts * blades, col);
   // The contours, by hand: fine and pale, every fourth firmer, broken now and then in long stretches.
-  float gz = max(1e-6, length(vec2(heightC(p + vec2(1., 0.)) - z, heightC(p + vec2(0., 1.)) - z)));
+  float gz = max(1e-6, length(dz));
   for (int li = 0; li < 16; li++) {
     if (li >= uLvN) break;
     float L = uLv[li], major = uLvMajor[li], d = abs(z - L) / gz;
@@ -324,11 +327,40 @@ void main() {
 }
 `;
 
+/**
+ * The grove's shadows hatched by hand, inside a mask (uSrc): fine diagonal strokes, each its own distance from
+ * the last, a little off true, heavier or lighter, broken now and then (as press.ts strokes them by hand).
+ */
+const HATCH = COMMON + `
+uniform sampler2D uSrc;
+uniform float uH, uU;
+const vec3 INK = vec3(36., 28., 23.) / 255.;
+void main() {
+  float x = gl_FragCoord.x - 0.5, y = uH - gl_FragCoord.y - 0.5;
+  float m = texelFetch(uSrc, ivec2(int(x), int(y)), 0).a;
+  o = vec4(0.);
+  if (m <= 0.) return;
+  float sp = 1.75 * uU, seg = 14. * uU, t = x - y, cov = 0.;
+  float q0 = floor(t / sp);
+  for (int k = -1; k <= 1; k++) {
+    // (A little off true: each stroke's run wanders a fraction of the gap, never across its neighbours.)
+    float q = q0 + float(k), si = floor(y / seg), y0 = si * seg, f = (y - y0) / seg;
+    float c = (q + 0.5 + (h1(q * 1.37) - 0.5) * 0.5 + (h1(q * 2.9 + si) - 0.5) * 0.3 * (f - 0.5)) * sp;
+    float w = (0.28 + 0.22 * h1(q * 3.7)) * uU, d = abs(t - c) * 0.7071;
+    if (h1(q * 7.1 + y0 * 0.013) < 0.12) continue;
+    if (y - y0 > seg * (0.7 + 0.3 * h1(q + y0 * 0.07))) continue;
+    cov = max(cov, clamp(w * 0.5 + 0.5 - d, 0., 1.));
+  }
+  float al = cov * m;
+  o = vec4(INK * al, al);
+}
+`;
+
 const VERT = `#version 300 es
 void main() { vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2)); gl_Position = vec4(p * 2. - 1., 0., 1.); }
 `;
 
-export type Pass = 'years' | 'grain' | 'ground' | 'wash';
+export type Pass = 'years' | 'grain' | 'ground' | 'wash' | 'hatch';
 type Prog = { p: WebGLProgram; loc: Map<string, WebGLUniformLocation | null> };
 let canvas: HTMLCanvasElement | null = null, gl: WebGL2RenderingContext | null = null, failed = false;
 const progs: Record<string, Prog> = {};
@@ -350,7 +382,7 @@ function context(): WebGL2RenderingContext | null {
     for (const k in progs) delete progs[k];
     for (const k in fresh) delete fresh[k];
     srcTex = null;
-    progs.years = build(gl, YEARS); progs.grain = build(gl, GRAIN); progs.ground = build(gl, GROUND); progs.wash = build(gl, WASH);
+    progs.years = build(gl, YEARS); progs.grain = build(gl, GRAIN); progs.ground = build(gl, GROUND); progs.wash = build(gl, WASH); progs.hatch = build(gl, HATCH);
     return gl;
   } catch (e) {
     console.warn('press: no graphics chip, pressing by hand', e);

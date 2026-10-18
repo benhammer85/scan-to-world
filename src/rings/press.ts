@@ -2865,6 +2865,16 @@ function* groveSteps(c: CanvasRenderingContext2D, cam: Cam, sprites?: Sprite[]):
     const lc = lay.getContext('2d')!, all = new Path2D();
     for (const t of wildShown) all.addPath(shadeOf(t.x, t.y, t.r, t.sp, t.k, undefined, sun));
     for (const t of shown) if (t.n >= 1) all.addPath(shadeOf(t.x, t.y, t.r, t.sp, t.k, formOf(t.i), sun));
+    // (On the graphics chip, where there is one: the shadows' shape as a mask, hatched there all at once.)
+    let hatched = false;
+    if (gpu.ready()) {
+      lc.fillStyle = '#000'; lc.fill(all, 'nonzero');
+      const pic = gpu.run('hatch', W, H, {}, { uH: H, uU: u }, {}, lay);
+      if (pic) { c.save(); c.globalAlpha = 0.5 * sun.strength; gpu.lay(c, pic, 0, 0); c.restore(); hatched = true; }
+      else lc.clearRect(0, 0, W, H);
+    }
+    if (hatched) yield;
+    else {
     // (By hand: each stroke its own distance from the last, a little off true, broken now and then, heavier
     // or lighter, so it never reads as a ruled fill.)
     lc.strokeStyle = ink(1); lc.lineCap = 'round';
@@ -2883,6 +2893,7 @@ function* groveSteps(c: CanvasRenderingContext2D, cam: Cam, sprites?: Sprite[]):
     lc.globalCompositeOperation = 'destination-in'; lc.fillStyle = '#000'; lc.fill(all, 'nonzero');
     c.save(); c.globalAlpha = 0.5 * sun.strength; c.drawImage(lay, 0, 0); c.restore();
     yield;
+    }
   }
   // (The wood round it: ink and a faint wash only, quieter than the trees grown here.)
   for (const t of wildShown) {
