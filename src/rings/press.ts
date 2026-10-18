@@ -802,13 +802,16 @@ canvas.addEventListener('pointermove', (e) => {
       const h = breezeHand;
       if (!h.on) {
         if (Math.hypot(e.clientX - h.x, e.clientY - h.y) < 6) return;
-        if (groveCam && clock() - h.at < BREEZE_HOLD) breezeHand = null;
-        else h.on = true;
+        // (One finger is always the breeze, looked into or not: the grove's moved about with two.)
+        h.on = true;
       }
       if (breezeHand?.on) { blow(h, x, y); return; }
     }
     if (pinch && fingers.size >= 2) {
       const now = spread();
+      // (In the grove, two fingers move it about, drawing it closer or not.)
+      const inGrove = far >= 1 && !farTo;
+      if (inGrove) { panGrove(now.mx - pinch.mx, now.my - pinch.my); pinch = { ...pinch, mx: now.mx, my: now.my }; }
       // (Only a deliberate pinch: two fingers resting, or brushing the glass, look no closer.)
       if (!closer() && Math.abs(now.d - pinch.d) < 14 * px) return;
       zoomAbout(pinch.mx, pinch.my, now.d / pinch.d);
@@ -2880,7 +2883,7 @@ function noteVisit(seed: number): void {
  * is kept.
  */
 interface Gust { x: number; y: number; vx: number; vy: number; at: number }
-const BREEZE_HOLD = 0.3, GUST_LIFE = 2.6, GUST_R = 1.3;
+const GUST_LIFE = 2.6, GUST_R = 1.3;
 let breezeHand: { id: number; x: number; y: number; at: number; on: boolean; last: { x: number; y: number; t: number } | null } | null = null;
 let gusts: Gust[] = [];
 /** How ruffled the stream is along its length (0 calm), and when that was last looked at. */
