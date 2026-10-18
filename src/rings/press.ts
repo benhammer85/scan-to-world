@@ -1740,8 +1740,11 @@ function drawPrint(v: View): void {
         const hw = (wide * (1 - g0) ** 1.3 + 0.35 * px * Z) * (0.75 + 0.5 * h1(q * 3 + j * 0.71)) * (along.includes(j) ? 0.45 : 1);
         g.lineWidth = 2 * hw; g.beginPath();
         g.moveTo(...pt(pts[j - 1][0], pts[j - 1][1], atBark ? T + 2 * px * Z : 0)); g.lineTo(...pt(pts[j][0], pts[j][1])); g.stroke();
+        // (Kept in the wood's own measure, for the press mark: see markOf.)
+        cracksCut.push([pts[j - 1][0], pts[j - 1][1], pts[j][0], pts[j][1], hw / v.s, atBark ? (T + 2 * px * Z) / v.s : 0]);
       }
     };
+    cracksCut = [];
     g.save(); g.globalCompositeOperation = 'destination-out'; g.strokeStyle = '#000'; g.lineCap = 'round'; g.lineJoin = 'round';
     const count = Math.min(5, 1 + Math.floor((n - 20) / 70));
     for (let c = 0; c < count; c++) {
@@ -2408,6 +2411,11 @@ function drawKept(pc: { c: HTMLCanvasElement; v: View }, v: View, alpha = 1, gro
  * where the sheet steps down into the pressed part; a hairline of light on the far side, where it rises out.
  */
 const marksMade = new WeakMap<object, { c: HTMLCanvasElement; x: number; y: number } | null>();
+/**
+ * The checks as last cut, in the wood's own measure: (angle, mm) to (angle, mm), half its width (mm), and how far
+ * past the bark it began (mm). The press mark fills them in, so a check is never edged by the block's rim.
+ */
+let cracksCut: [number, number, number, number, number, number][] = [];
 function markOf(pc: { c: HTMLCanvasElement; v: View }): { c: HTMLCanvasElement; x: number; y: number } | null {
   if (marksMade.has(pc)) return marksMade.get(pc)!;
   const Q = pc.c.width / (W * MARGIN), mx = (W * (MARGIN - 1)) / 2, my = (H * (MARGIN - 1)) / 2;
@@ -2429,6 +2437,18 @@ function markOf(pc: { c: HTMLCanvasElement; v: View }): { c: HTMLCanvasElement; 
     if (j) sc.lineTo(X, Y); else sc.moveTo(X, Y);
   }
   sc.closePath(); sc.fillStyle = '#000'; sc.fill();
+  // (A check is the block's own, never its edge: filled in, so the rim isn't marked across it.)
+  sc.strokeStyle = '#000'; sc.lineCap = 'round';
+  const at2 = (a: number, r: number, out = 0): [number, number] => { const R = pc.v.s * warpR(pc.v.warp, r) + out * pc.v.s, tt = a + pc.v.turn; return [(pc.v.cx + R * Math.cos(tt) + mx) * Q - x, (pc.v.cy - R * Math.sin(tt) + my) * Q - y]; };
+  // (Only within the bark: where the check opens past it, a notch in the block's edge, marked as one.)
+  const Tb = barkCss(pc.v) * 0.45 / pc.v.s;
+  sc.save(); sc.beginPath();
+  for (let j = 0; j <= K; j++) { const [X, Y] = at2((j / K) * TAU, bark((j / K) * TAU), Tb); if (j) sc.lineTo(X, Y); else sc.moveTo(X, Y); }
+  sc.closePath(); sc.clip();
+  for (const [a0, r0, a1, r1, hw, out] of cracksCut) {
+    sc.lineWidth = 2 * hw * pc.v.s * Q + 2; sc.beginPath(); sc.moveTo(...at2(a0, r0, out)); sc.lineTo(...at2(a1, r1)); sc.stroke();
+  }
+  sc.restore();
   const lay = (dx: number, dy: number, col: string) => {
     tc.globalCompositeOperation = 'source-over'; tc.clearRect(0, 0, w, h); tc.drawImage(sil, dx, dy);
     tc.globalCompositeOperation = 'source-in'; tc.fillStyle = col; tc.fillRect(0, 0, w, h);
