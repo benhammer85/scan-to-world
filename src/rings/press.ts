@@ -2488,13 +2488,29 @@ function drawPrintCached(v: View, moving: boolean, slot = 'drawing', alpha = 1, 
 }
 /** A slot's kept print as it's shown, the last fading out over it. */
 function drawSharp(pc: Kept, v: View, slot: string, alpha = 1, grow = 1): void {
-  drawKept(pc, v, alpha, grow);
-  const f = fading[slot];
-  if (f) {
-    const k = 1 - smooth((clock() - f.at) / FADE);
-    if (k <= 0.01) { spare[slot] = f.c; fading[slot] = undefined; }
-    else drawKept(f, v, alpha * k, grow);
-  }
+  const f = fading[slot], k = f ? 1 - smooth((clock() - f.at) / FADE) : 0;
+  if (f && k <= 0.01) { spare[slot] = f.c; fading[slot] = undefined; }
+  if (!f || k <= 0.01) { drawKept(pc, v, alpha, grow); return; }
+  crossfade(() => drawKept(f, v, k, grow), () => drawKept(pc, v, 1 - k, grow), alpha);
+}
+/**
+ * A true crossfade, one print turning into the other (`a` drawn at its share, `b` at the rest, each with its
+ * own alpha): never both laid at once, whose inks, a hair out of register, would add up to a darker slice for
+ * a moment. Composed aside (a sheet for each depth, as one may hold another), then laid at `alpha`.
+ */
+const blends: HTMLCanvasElement[] = [];
+let blendDepth = 0;
+function crossfade(a: () => void, b: () => void, alpha = 1): void {
+  const was = g, c = (blends[blendDepth] = sized(blends[blendDepth], W, H));
+  blendDepth++;
+  g = c.getContext('2d')!; g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.clearRect(0, 0, W, H);
+  try {
+    a();
+    g.globalCompositeOperation = 'lighter';
+    b();
+    g.globalCompositeOperation = 'source-over';
+  } finally { g = was; blendDepth--; }
+  g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = alpha; g.drawImage(c, 0, 0); g.restore();
 }
 
 /**
@@ -3553,8 +3569,12 @@ function frame(): void {
     const rv = restOf(v), rest = relax > 0 ? printFor(rv, moving, 'rest', false, true) : undefined;
     if (relax > 0 && rest?.key !== printKey(rv)) relax = Math.min(relax, 0.01);
     const rk = smooth(relax);
-    if (rk < 1) drawPrintCached(v, moving, 'drawing', 1 - rk, drift, breathGrow());
-    if (rk > 0 && rest) drawSharp(rest, rv, 'rest', rk, breathGrow());
+    // (Settling from the magnified print to the true-scale one: crossfaded, never both at once.)
+    if (rk > 0 && rk < 1 && rest) crossfade(() => drawPrintCached(v, moving, 'drawing', 1 - rk, drift, breathGrow()), () => drawSharp(rest, rv, 'rest', rk, breathGrow()));
+    else {
+      if (rk < 1) drawPrintCached(v, moving, 'drawing', 1 - rk, drift, breathGrow());
+      if (rk > 0 && rest) drawSharp(rest, rv, 'rest', rk, breathGrow());
+    }
   } else { paper.draw(g, v); drawLatewood(v); }
   const n = tree.rings.length;
   // A ring touched: lit softly along its edge for a moment, as its day is read.
