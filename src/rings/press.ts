@@ -237,7 +237,7 @@ function drawMarks(v: View, Z: number): void {
     const k = knotSpot(m, v, Z), hs = (q: number) => h1(m.seed * 0.0137 + q);
     // (Only a branch no longer grown can have died: most of those left, never one still being added to.)
     const dead = n - 1 - m.last > 2 && hs(1) < 0.7;
-    const e = k.e * (0.55 + 0.6 * hs(3)), long = 1 + 1.6 * hs(4) ** 1.5, sq = 0.62 + 0.3 * hs(5);
+    const e = k.e * (0.45 + 0.45 * hs(3)), long = 1 + 1.6 * hs(4) ** 1.5, sq = 0.62 + 0.3 * hs(5);
     const ox = (hs(6) - 0.5) * 0.5, oy = (hs(7) - 0.2) * 0.55, rough = 0.12 + 0.25 * hs(8);
     const P = (s: number, t: number, seed: number): [number, number] => {
       // (Each ring of it off centre toward the branch's under side, more so the further in.)
@@ -250,31 +250,32 @@ function drawMarks(v: View, Z: number): void {
       for (let j = 0; j <= 32; j++) { const [xx, yy] = P(s, (j / 32) * TAU, seed); if (j) g.lineTo(xx, yy); else g.moveTo(xx, yy); }
       g.closePath();
     };
-    g.save(); g.globalCompositeOperation = 'destination-out'; oval(dead ? 1.02 : 0.72, 0); g.fillStyle = '#000'; g.fill(); g.restore();
-    // (Its own rings, fine and uneven, some broken off a while: never a target.)
-    const N = Math.max(2, Math.round(k.rings * (0.6 + 0.8 * hs(9)))), band = 1 / (N + 0.8);
-    g.lineCap = 'round';
+    // (As a knot prints: the branch's wood denser than the trunk's, so it takes the ink as a dark mass, its
+    // edge uneven and soft, flecked through with paper; its own rings only a few fine pale traces in it, broken;
+    // the trunk's rings swept round it (see warpMarks). Never an outline laid on the print.)
+    oval(1, 0); g.fillStyle = ink(dead ? 0.95 : 0.9); g.fill();
+    g.save(); g.globalCompositeOperation = 'destination-out'; g.strokeStyle = '#000'; g.fillStyle = '#000'; g.lineCap = 'round';
+    // (Its own rings: fine pale traces, broken, off centre.)
+    const N = Math.max(1, Math.round(k.rings * 0.5 * (0.6 + 0.8 * hs(9)))), band = 1 / (N + 1);
     for (let j = 0; j < N; j++) {
-      const s0 = 1 - j * band - band * 0.4, gap = hs(10 + j) < 0.35 ? hs(20 + j) * TAU : -1;
+      const s0 = 0.55 - j * band * 0.5, from = hs(10 + j) * TAU, span = TAU * (0.35 + 0.5 * hs(20 + j));
       g.beginPath();
-      for (let q = 0; q <= 32; q++) {
-        const t = (q / 32) * TAU;
-        if (gap >= 0 && Math.abs(((t - gap + Math.PI) % TAU + TAU) % TAU - Math.PI) < 0.5) { g.moveTo(...P(s0, t, j * 2.7 + 1)); continue; }
-        const [xx, yy] = P(s0, t, j * 2.7 + 1); if (q) g.lineTo(xx, yy); else g.moveTo(xx, yy);
-      }
-      g.strokeStyle = ink(dead || j > 0 ? 0.92 : 0.6); g.lineWidth = Math.max(0.8 * px * Z, e * band * (0.3 + 0.4 * hs(30 + j))); g.stroke();
+      for (let q = 0; q <= 24; q++) { const [xx, yy] = P(s0, from + (q / 24) * span, j * 2.7 + 1); if (q) g.lineTo(xx, yy); else g.moveTo(xx, yy); }
+      g.lineWidth = Math.max(0.6 * px * Z, e * 0.05 * (0.6 + 0.8 * hs(30 + j))); g.stroke();
     }
-    // (The pith: small, dark, a little off.)
-    { const [px0, py0] = P(0, 0, 0), pr = Math.max(1.2 * px * Z, e * (0.08 + 0.08 * hs(40))); g.beginPath(); g.ellipse(px0, py0, pr * long, pr * sq, k.rot, 0, TAU); g.fillStyle = ink(0.95); g.fill(); }
+    // (Flecks of paper through it, where the ink didn't take.)
+    for (let q = 0; q < 10; q++) {
+      const [xx, yy] = P(0.25 + 0.6 * hs(70 + q), hs(80 + q) * TAU, 0), r = Math.max(0.5 * px * Z, e * (0.03 + 0.05 * hs(90 + q)));
+      g.beginPath(); g.ellipse(xx, yy, r * 1.6, r, k.rot + hs(95 + q), 0, TAU); g.fill();
+    }
     if (dead) {
-      // (The bark it was buried in, dark and uneven; shrunk from the wood along one side; and split across.)
-      oval(1.02, 4.4); g.strokeStyle = ink(0.95); g.lineWidth = Math.max(1.2 * px * Z, e * (0.1 + 0.1 * hs(41))); g.stroke();
+      // (A dead one: shrunk from the wood along one side, and split across.)
       const t0 = hs(42) * TAU;
-      g.save(); g.globalCompositeOperation = 'destination-out'; g.strokeStyle = '#000'; g.lineWidth = Math.max(0.8 * px * Z, e * 0.06);
-      g.beginPath(); for (let q = 0; q <= 10; q++) { const [xx, yy] = P(1.13, t0 + (q / 10) * 1.6, 4.4); if (q) g.lineTo(xx, yy); else g.moveTo(xx, yy); } g.stroke();
-      const tc = hs(43) * TAU; g.beginPath(); g.moveTo(...P(0.08, tc, 0)); g.lineTo(...P(0.95, tc + 0.15, 0)); g.lineWidth = Math.max(0.7 * px * Z, e * 0.05); g.stroke();
-      g.restore();
+      g.lineWidth = Math.max(0.8 * px * Z, e * 0.07);
+      g.beginPath(); for (let q = 0; q <= 10; q++) { const [xx, yy] = P(1.06, t0 + (q / 10) * 1.6, 0); if (q) g.lineTo(xx, yy); else g.moveTo(xx, yy); } g.stroke();
+      const tc = hs(43) * TAU; g.beginPath(); g.moveTo(...P(0.1, tc, 0)); g.lineTo(...P(0.9, tc + 0.15, 0)); g.lineWidth = Math.max(0.7 * px * Z, e * 0.05); g.stroke();
     }
+    g.restore();
   }
 }
 /** A knot on the sheet: where (device px), how large, turned how, and how many of its own rings. */
@@ -285,7 +286,9 @@ function knotSpot(m: WoodMark, v: View, Z: number): { x: number; y: number; e: n
   const R = v.s * warpR(v.warp, (rin + rout) / 2), t = m.a + v.turn, sz = Math.min(12, m.size);
   // (As large as it grew, but never more than a fifth of the slice across.)
   const e = Math.min(0.2 * v.s * warpR(v.warp, radiusAt(tree.rings[n - 1], m.a)), (4 + 2.6 * Math.sqrt(sz)) * px * Z * TAKES[kind].knot);
-  return { x: v.cx + R * Math.cos(t), y: v.cy - R * Math.sin(t), e, rot: -t + h1(m.seed) * 0.6, rings: Math.max(2, Math.min(7, Math.round(1.5 + sz / 2.5))) };
+  // (Always within the wood: never across the bark, however long it is.)
+  const Rb = v.s * warpR(v.warp, radiusAt(tree.rings[n - 1], m.a)), Rk = Math.min(R, Rb - e * 2.8 - barkCss(v) * px);
+  return { x: v.cx + Rk * Math.cos(t), y: v.cy - Rk * Math.sin(t), e, rot: -t + h1(m.seed) * 0.6, rings: Math.max(2, Math.min(7, Math.round(1.5 + sz / 2.5))) };
 }
 /** A burl's bud specks on the sheet (device px): where, how large, turned how. Steady for the tree. */
 function burlEyes(m: WoodMark, v: View, Z: number): { x: number; y: number; e: number; rot: number }[] {
@@ -374,7 +377,7 @@ function warpMarks(v: View, Z: number): void {
       for (const k of knots) {
         // (The trunk's rings swept round the branch: read from nearer it, so they part and close round it in
         // wide smooth curves.)
-        const dx = X - k.x, dy = Y - k.y, dd = Math.hypot(dx, dy) || 1e-3, R = k.e * 1.7;
+        const dx = X - k.x, dy = Y - k.y, dd = Math.hypot(dx, dy) || 1e-3, R = k.e * 1.5;
         if (dd > R * 3) continue;
         const pull = Math.min(0.7 * dd, R * Math.exp(-((dd / (R * 1.1)) ** 2)));
         sx -= (dx / dd) * pull; sy -= (dy / dd) * pull;
