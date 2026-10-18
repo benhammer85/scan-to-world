@@ -679,7 +679,12 @@ function zoomAbout(x: number, y: number, f: number): void {
   const cx = x + (v.cx - x) * g2, cy = y + (v.cy - y) * g2;
   look = k <= 1.001 ? { k: 1, ox: 0, oy: 0 } : { k, ox: cx - b.cx, oy: cy - b.cy };
   lookBack = null;
-  if (closer() && !hintedCloser) { hintedCloser = true; say('Double-tap to zoom out.', 3); }
+  // (Said only the first few times ever: after that, it's known.)
+  if (closer() && !hintedCloser) {
+    hintedCloser = true;
+    let n = 0; try { n = Number(localStorage.getItem('annulus.hintedCloser') || 0); localStorage.setItem('annulus.hintedCloser', String(n + 1)); } catch { /* not kept */ }
+    if (n < 3) say('Double-tap to zoom out.', 3);
+  }
 }
 let hintedCloser = false;
 /** The ring closed: the slice laid out for the tree as it is now, eased to from where it was. */
@@ -1680,8 +1685,9 @@ function drawPrint(v: View): void {
   // The bark: a thick, rough band outside the wood, fissured, its inner edge (the living layer) a dark line
   // (in plates: fewer, shallower splits, flatter between; the redwood's thick and stringy; the olive's thin).
   // (The bristlecone's gone where it has died back.)
-  const bark = barkOf(n - 1), T = barkCss(v) * px, lumps = bk.lumps, live = (a: number) => (kind === 'bristlecone' ? 0.08 + 0.92 * smooth((alive(a) - 0.25) / 0.6) : 1);
-  const torn = (a: number) => { const u = (a / TAU) * lumps, i0 = Math.floor(u), f = u - i0, s2 = bk.plate ? (f < 0.85 ? 0 : (f - 0.85) / 0.15) : f * f * (3 - 2 * f); return ((1 - s2) * h1(i0 % lumps) + s2 * h1((i0 + 1) % lumps)) * live(a); };
+  // (A rough, broken band: thinner than the wood's own measure, its outer edge bitten in and out.)
+  const bark = barkOf(n - 1), T = barkCss(v) * px * 0.78, lumps = bk.lumps, live = (a: number) => (kind === 'bristlecone' ? 0.08 + 0.92 * smooth((alive(a) - 0.25) / 0.6) : 1);
+  const torn = (a: number) => { const u = (a / TAU) * lumps, i0 = Math.floor(u), f = u - i0, s2 = bk.plate ? (f < 0.85 ? 0 : (f - 0.85) / 0.15) : f * f * (3 - 2 * f); return Math.max(0, ((1 - s2) * h1(i0 % lumps) + s2 * h1((i0 + 1) % lumps)) * 1.25 - 0.25 + 0.35 * (noise(a * 23 + tree.seed * 0.01) - 0.5)) * live(a); };
   g.beginPath();
   for (let j = 0; j <= K * 3; j++) { const a = (j / (K * 3)) * TAU, [x, y] = pt(a, bark(a), T * (0.7 + 0.55 * torn(a)) * live(a)); if (j) g.lineTo(x, y); else g.moveTo(x, y); }
   for (let j = K * 3; j >= 0; j--) { const a = (j / (K * 3)) * TAU, [x, y] = pt(a, bark(a)); g.lineTo(x, y); }
@@ -1785,13 +1791,15 @@ function drawPrint(v: View): void {
   // Round the edge, a faint grey of ink caught from the block's rim and the bark's loose bits: a fine stipple
   // a few px out, thick in places and none in others.
   if (n) {
-    const bark = barkOf(n - 1), T = barkCss(v) * px, count = Math.round((TAU * scr(Rb) * SPARSE) / (2.2 * px * Z));
+    // (Fine and sparse, each fleck dragged outward as the brayer left it.)
+    const bark = barkOf(n - 1), T = barkCss(v) * px * 0.8, count = Math.round((TAU * scr(Rb) * SPARSE) / (4 * px * Z));
     g.fillStyle = ink(0.45); g.beginPath();
     for (let q = 0; q < count * 1.6; q++) {
       const a = h1(q * 0.917 + tree.seed * 0.01) * TAU;
       if (noise(tree.seed * 0.021 + (a / TAU) * 14) < 0.4) continue;
-      const out = T + (1 + 7 * h1(q * 2.31) ** 1.6) * px * Z, [x, y] = pt(a, bark(a), out), d = (0.35 + 0.5 * h1(q * 5.7)) * px * Z;
-      g.moveTo(x + d, y); g.ellipse(x, y, d, d * (0.45 + 0.5 * h1(q * 8.9)), h1(q * 3.3) * TAU, 0, TAU);
+      const out = T + (1 + 6 * h1(q * 2.31) ** 2) * px * Z, [x, y] = pt(a, bark(a), out), d = (0.18 + 0.3 * h1(q * 5.7) ** 2) * px * Z;
+      const rot = -(a + v.turn), long = d * (1.4 + 1.6 * h1(q * 8.9));
+      g.moveTo(x + Math.cos(rot) * long, y + Math.sin(rot) * long); g.ellipse(x, y, long, d, rot, 0, TAU);
     }
     g.fill();
   }
@@ -1816,7 +1824,7 @@ function drawPrint(v: View): void {
     for (let q = 0; q < 4; q++) {
       const a = h1(tree.seed * 1.7 + q * 4.1) * TAU, d = Rs * (0.15 + 0.6 * h1(q * 3.9 + tree.seed * 0.3)), rr = Rs * (0.18 + 0.22 * h1(q * 6.3 + tree.seed));
       const x = v.cx + d * Math.cos(a), y = v.cy - d * Math.sin(a), rad = g.createRadialGradient(x, y, 0, x, y, rr);
-      rad.addColorStop(0, `rgba(0,0,0,${(0.26 + 0.16 * h1(q * 2.2 + tree.seed)).toFixed(3)})`); rad.addColorStop(0.55, `rgba(0,0,0,${(0.12 + 0.08 * h1(q * 2.2 + tree.seed)).toFixed(3)})`); rad.addColorStop(1, 'rgba(0,0,0,0)');
+      rad.addColorStop(0, `rgba(0,0,0,${(0.08 + 0.06 * h1(q * 2.2 + tree.seed)).toFixed(3)})`); rad.addColorStop(0.55, `rgba(0,0,0,${(0.04 + 0.03 * h1(q * 2.2 + tree.seed)).toFixed(3)})`); rad.addColorStop(1, 'rgba(0,0,0,0)');
       g.fillStyle = rad; g.fillRect(x - rr, y - rr, 2 * rr, 2 * rr);
     }
     g.restore();
@@ -2001,31 +2009,32 @@ function printYears(v: View, oak: Years | null): void {
   // with its rays, pores and real fibre; all in the slice's own px (`U`), so looked into they're the same,
   // larger, never a fresh scatter.)
   const an = oak ? null : ANATOMY[kind] ?? ANATOMY.cherry!, fib = wood.fibre[kind], U = px * Z, conifer = fam() === 'conifer', RAY = RAYS[kind] ?? 0;
-  const drawnInk = (i: number, a: number, r: number, across: number, _heart: boolean, width: number, dx: number, dy: number): number => {
+  const drawnInk = (i: number, a: number, r: number, across: number, _heart: boolean, width: number, dx: number, dy: number, rmid: number): number => {
     const A = an!, rho = r / U;
     // The year: earlywood, a little deeper as it goes, then darkening into the latewood, ending sharp.
     // (As a relief print takes it: the latewood a bold band of ink, its inner edge never ruled but wandering
     // along the year, dry and ragged; the earlywood mostly the paper, the ink bleeding into it in blotches
     // beside the band; and the band itself starved here and there to flecks of paper. As gpu.ts presses it.)
-    const along = a * rho, wd = Math.max(1e-3, width);
-    const share = conifer ? Math.min(0.85, A.share * (0.6 + 0.8 * calmOf(i))) : A.share;
-    const rag = 0.5 * (vnoise(along * 0.07 + i * 7.1, i * 3.3) - 0.5) + 0.3 * (vnoise(along * 0.3 + i * 2.3, i * 1.7 + 5) - 0.5) + 0.2 * (vnoise(along * 1.1 + i * 0.7, rho * 0.4) - 0.5);
+    // (Laid round the ring at its own radius, never the point's, so nothing shears into slants; and closing on
+    // itself where the angle comes round.)
+    const rr = rmid, wd = Math.max(1e-3, width), wrap = smooth((a - (TAU - 0.4)) / 0.4);
+    const rn = (kx: number, ox: number, y: number) => { const n0 = vnoise(a * rr * kx + ox, y); return wrap > 0 ? n0 + (vnoise((a - TAU) * rr * kx + ox, y) - n0) * wrap : n0; };
+    // (Every year its own: some thin and pale, some broad and heavy.)
+    const yv = h1(i * 1.37 + 0.71), heavy = 0.82 + 0.3 * h1(i * 2.91 + 0.3);
+    const share = (conifer ? Math.min(0.85, A.share * (0.6 + 0.8 * calmOf(i))) : A.share) * (0.65 + 0.7 * yv);
+    const rag = 0.5 * (rn(0.07, i * 7.1, i * 3.3) - 0.5) + 0.3 * (rn(0.3, i * 2.3, i * 1.7 + 5) - 0.5) + 0.2 * (rn(1.1, i * 0.7, rho * 0.4) - 0.5);
     const start = 1 - share * (1 + 1.4 * rag), soft = Math.max(0.035, (0.7 * U) / wd);
-    // (Its edge frayed finely, as dry ink tears at the grain.)
-    const fray = vnoise(along * 0.9 + i * 3.1, rho * 0.8) - 0.5 + 0.6 * (vnoise(along * 2.6 + i, rho * 2.2 + 3) - 0.5);
+    // (Its edge torn in short, irregular bites.)
+    const fray = rn(0.7, i * 3.1, rho * 0.7) - 0.5 + 0.7 * (rn(1.9, i, rho * 1.9 + 3) - 0.5);
     const band = smooth((across - start) / soft + 0.5 + (((1.6 * U) / wd) * fray) / soft * 0.5);
-    let ink = A.early * 0.35 * (0.8 + 0.4 * across) + (A.late * 1.08 - A.early * 0.35) * band;
-    // (Bled into the earlywood beside the band: blotches, thicker nearer it.)
+    let ink = A.early * 0.3 * (0.8 + 0.4 * across) + (A.late * 1.08 * heavy - A.early * 0.3) * band;
+    // (Bled beside it in black specks and blots, never a grey; starved inside it to small specks of paper.)
     const near = smooth((across - (start - 0.45)) / 0.45) * (1 - band);
-    ink += 0.95 * near * smooth((vnoise(along * 0.18 + i * 4.3, rho * 0.45 + i) - 0.42) / 0.16) * (0.6 + 0.4 * vnoise(along * 1.4, rho * 1.4 + i));
-    // (Starved inside the band: flecks and short streaks of paper; and finely all through it, the pores.)
-    ink *= 1 - 0.8 * band * smooth((vnoise(along * 1.1 + i * 9.7, rho * 1.9) - 0.68) / 0.08);
-    ink *= 1 - 0.7 * band * smooth((vnoise(along * 2.4 + i * 5.9, rho * 2.6 + 11) - 0.74) / 0.07);
-    // The real fibre, streaking along the year.
-    if (fib && A.fibre) ink *= 1 + A.fibre * 0.45 * (tile(fib, a * rho * 0.5, rho * 0.5) - 0.5) * 2;
-    // (And the wood's own fine grain, finer than the scan holds: long thin streaks along the year, in the wood's
-    // place, too fine to see whole and showing as it's looked into, so looking closer finds more, never a blur.)
-    ink *= 1 + 0.2 * (vnoise(rho * 1.6 + i * 5.3, a * rho * 0.09) - 0.5) * 2 * (0.5 + 0.5 * vnoise(rho * 0.25, a * rho * 0.03 + 9.1));
+    ink += near * smooth((rn(0.5, i * 4.3, rho * 0.5 + i) - 0.74) / 0.04) * smooth((rn(1.6, 0, rho * 1.6 + i) - 0.35) / 0.05);
+    ink *= 1 - band * smooth((rn(1.4, i * 9.7, rho * 1.4) - 0.74) / 0.05);
+    ink *= 1 - 0.8 * band * smooth((rn(3.1, i * 5.9, rho * 3.1 + 11) - 0.8) / 0.05);
+    // (The pale wood between: the grain's fine lines faintly inked along the year, broken.)
+    ink = Math.max(ink, (1 - band) * 0.9 * smooth((rn(0.6, i * 2.7, rho * 1.8 + 7) - 0.9) / 0.03) * smooth((rn(0.25, 3, rho * 0.25) - 0.55) / 0.1));
     if (A.mottle) ink *= 1 + A.mottle * (vnoise(dx / (22 * U) + 3.1, dy / (22 * U) + 7.7) - 0.5) * 2;
     // Pores: open vessels, paper in the print, scattered (or gathered at the year's start), in the wood's place.
     if (A.pores) {
@@ -2093,7 +2102,7 @@ function printYears(v: View, oak: Years | null): void {
         // (Oak's and ash's springwood opened toward the paper, their latewood kept heavy: the year reads as a band,
         // never a field of charcoal. A conifer's scanned year is already pale in its earlywood.)
         ink = (fam() === 'ring' ? Math.pow(ink, 1 + 1.2 * (1 - smooth((across - 0.35) / 0.45))) : ink) * tone(i);
-      } else ink = drawnInk(i, a, r, across, heart, rout - rin, dx, dy) * tone(i);
+      } else ink = drawnInk(i, a, r, across, heart, rout - rin, dx, dy, (rin + rout) / 2 / U) * tone(i);
       if (!heart && thin[i] > 0) {
         // (As dark as the wide years: lines as wide as some three-fifths of the space they stand for.)
         ink *= 1 - 0.65 * thin[i];
@@ -2224,7 +2233,7 @@ function inkGrain(c: HTMLCanvasElement, v: View, band?: [number, number], soft =
       let took = val;
       if (sea && field) {
         const u = mx * perTex, w = my * perTex;
-        took = val * (0.62 + 0.48 * tile(sea, u + 17, w + 31) * (0.75 + 0.25 * tile(field, (u * fc - w * fs) * 0.8, (u * fs + w * fc) * 0.8)));
+        took = val * (0.84 + 0.2 * tile(sea, u + 17, w + 31) * (0.75 + 0.25 * tile(field, (u * fc - w * fs) * 0.8, (u * fs + w * fc) * 0.8)));
         // (Looked at closer than the print's own grain: finer grain, at the screen's scale, so it stays crisp.)
         if (close > 0) took *= 1 + close * 0.22 * (vnoise(mx * cg + 3.3, my * cg + 7.1) - 0.5);
       }

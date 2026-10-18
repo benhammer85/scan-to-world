@@ -42,6 +42,14 @@ uniform int uLvO[12], uLvW[12], uLvH[12], uLvRows[12];
 uniform float uX0, uY0, uH, uCx, uCy, uTurn, uRmax, uWA, uWL, uWL2, uU, uPx, uW0, uRay, uRun0, uRun1, uSparse, uInk;
 uniform float uEarly, uLate, uShare, uEdge, uPores, uPoreR, uPoreEarly, uFibre, uMottle, uSharp;
 uniform vec3 uInkRGB;
+// (Noise laid round the ring at its own radius rr (never the point's, which shears it into slants), kx to the
+// slice px along it, closing on itself: across the angle's wrap the
+// far side's run blended in, so there's never a seam where the angle comes round.)
+float ringN(float a, float rho, float kx, float ox, float y) {
+  float w = sm((a - (TAU - 0.4)) / 0.4);
+  float n0 = vnoise(a * rho * kx + ox, y);
+  return w > 0. ? mix(n0, vnoise((a - TAU) * rho * kx + ox, y), w) : n0;
+}
 float rad(int i, int b, float f) { int k = (i + 1) * (uB + 1) + b; float p = at(uRad, k); return p + (at(uRad, k + 1) - p) * f; }
 // (Each ring's facts: 0 reps, 1 off, 2 year, 3 level, 4 runR, 5 thin, 6 edge, 7 half, 8 edgeIn, 9 edgeOut, 10 tone, 11 calm.)
 float R(int i, int k) { return at(uRing, i * 12 + k); }
@@ -70,28 +78,29 @@ float rayAt(float a, float rho) {
   }
   return best;
 }
-float drawnInk(int i, float a, float r, float across, bool heart, float width, float dx, float dy) {
+float drawnInk(int i, float a, float r, float across, bool heart, float width, float dx, float dy, float rr) {
   float rho = r / uU, fi = float(i);
   // (As a relief print takes it: the latewood a bold band of ink, its inner edge never ruled but wandering
   // along the year, dry and ragged; the earlywood mostly the paper, the ink bleeding into it in blotches
   // beside the band; and the band itself starved here and there to flecks of paper.)
-  float along = a * rho, w = max(1e-3, width);
-  float share = uConifer == 1 ? min(0.85, uShare * (0.6 + 0.8 * R(i, 11))) : uShare;
-  float rag = 0.5 * (vnoise(along * 0.07 + fi * 7.1, fi * 3.3) - 0.5) + 0.3 * (vnoise(along * 0.3 + fi * 2.3, fi * 1.7 + 5.) - 0.5) + 0.2 * (vnoise(along * 1.1 + fi * 0.7, rho * 0.4) - 0.5);
+  float w = max(1e-3, width);
+  // (Every year its own: some thin and pale, some broad and heavy, as the day it was drawn.)
+  float yv = h1(fi * 1.37 + 0.71), share = (uConifer == 1 ? min(0.85, uShare * (0.6 + 0.8 * R(i, 11))) : uShare) * (0.65 + 0.7 * yv), heavy = 0.82 + 0.3 * h1(fi * 2.91 + 0.3);
+  float rag = 0.5 * (ringN(a, rr, 0.07, fi * 7.1, fi * 3.3) - 0.5) + 0.3 * (ringN(a, rr, 0.3, fi * 2.3, fi * 1.7 + 5.) - 0.5) + 0.2 * (ringN(a, rr, 1.1, fi * 0.7, rho * 0.4) - 0.5);
   float start = 1. - share * (1. + 1.4 * rag), soft = max(0.035, 0.7 * uU / w);
-  // (Its edge frayed finely, as dry ink tears at the grain: a pixel or two in and out, quickly along it.)
-  float fray = (vnoise(along * 0.9 + fi * 3.1, rho * 0.8) - 0.5) + 0.6 * (vnoise(along * 2.6 + fi, rho * 2.2 + 3.) - 0.5);
+  // (Its edge torn in short, irregular bites, as dry ink tears at the grain: never streaked along it.)
+  float fray = (ringN(a, rr, 0.7, fi * 3.1, rho * 0.7) - 0.5) + 0.7 * (ringN(a, rr, 1.9, fi, rho * 1.9 + 3.) - 0.5);
   float band = sm((across - start) / soft + 0.5 + 1.6 * uU / w * fray / soft * 0.5);
-  float ink = uEarly * 0.35 * (0.8 + 0.4 * across) + (uLate * 1.08 - uEarly * 0.35) * band;
+  float ink = uEarly * 0.3 * (0.8 + 0.4 * across) + (uLate * 1.08 * heavy - uEarly * 0.3) * band;
   // (Bled into the earlywood beside the band: blotches, thicker nearer it.)
   float near = sm((across - (start - 0.45)) / 0.45) * (1. - band);
-  ink += 0.95 * near * sm((vnoise(along * 0.18 + fi * 4.3, rho * 0.45 + fi) - 0.42) / 0.16) * (0.6 + 0.4 * vnoise(along * 1.4, rho * 1.4 + fi));
-  // (Starved inside the band: flecks and short streaks of paper along the grain.)
-  ink *= 1. - 0.8 * band * sm((vnoise(along * 1.1 + fi * 9.7, rho * 1.9) - 0.68) / 0.08);
-  // (And finely, all through it, the wood's own pores and grain as specks of paper.)
-  ink *= 1. - 0.7 * band * sm((vnoise(along * 2.4 + fi * 5.9, rho * 2.6 + 11.) - 0.74) / 0.07);
-  if (uHasFib == 1 && uFibre > 0.) ink *= 1. + uFibre * 0.45 * (tileL(uFib, uFibW, uFibH, a * rho * 0.5, rho * 0.5) - 0.5) * 2.;
-  ink *= 1. + 0.2 * (vnoise(rho * 1.6 + fi * 5.3, a * rho * 0.09) - 0.5) * 2. * (0.5 + 0.5 * vnoise(rho * 0.25, a * rho * 0.03 + 9.1));
+  // (Ink taken or not: the bleed is black specks and blots, never a grey.)
+  ink += near * sm((ringN(a, rr, 0.5, fi * 4.3, rho * 0.5 + fi) - 0.74) / 0.04) * sm((ringN(a, rr, 1.6, 0., rho * 1.6 + fi) - 0.35) / 0.05);
+  // (Starved inside the band: small specks of paper, as round as long, never streaks.)
+  ink *= 1. - band * sm((ringN(a, rr, 1.4, fi * 9.7, rho * 1.4) - 0.74) / 0.05);
+  ink *= 1. - 0.8 * band * sm((ringN(a, rr, 3.1, fi * 5.9, rho * 3.1 + 11.) - 0.8) / 0.05);
+  // (The pale wood between, never bare: the grain's fine lines faintly inked along the year, broken.)
+  ink = max(ink, (1. - band) * 0.9 * sm((ringN(a, rr, 0.6, fi * 2.7, rho * 1.8 + 7.) - 0.9) / 0.03) * sm((ringN(a, rr, 0.25, 3., rho * 0.25) - 0.55) / 0.1));
   if (uMottle > 0.) ink *= 1. + uMottle * (vnoise(dx / (22. * uU) + 3.1, dy / (22. * uU) + 7.7) - 0.5) * 2.;
   if (uPores > 0.) {
     float C = 3., ci = floor(rho / C), cj = floor(a * rho / C), hh = h1(ci * 7.31 + cj * 1.713 + fi * 0.37);
@@ -132,7 +141,7 @@ void main() {
     ink = sampleL(uLev, uLvO[li], uLvW[li], uLvH[li], ((a / TAU) * reps * uW0 + R(i, 1) + wob * reps * 0.15) * float(uLvW[li]) / uW0, float(year) * rows + across * rows, float(year) * rows, rows);
     if (uFamRing == 1) ink = pow(max(0., ink), 1. + 1.2 * (1. - sm((across - 0.35) / 0.45)));
     ink *= R(i, 10);
-  } else ink = drawnInk(i, a, r, across, heart, rout - rin, dx, dy) * R(i, 10);
+  } else ink = drawnInk(i, a, r, across, heart, rout - rin, dx, dy, (rin + rout) * 0.5 / uU) * R(i, 10);
   if (!heart && R(i, 5) > 0.) {
     ink *= 1. - 0.65 * R(i, 5);
     int jo = int(R(i, 9)), ji = int(R(i, 8));
@@ -184,7 +193,7 @@ void main() {
   float took = val;
   if (uHasSea == 1) {
     float u = mx * uPerTex, w = my * uPerTex;
-    took = val * (0.62 + 0.48 * tileL(uSea, uSeaW, uSeaH, u + 17., w + 31.) * (0.75 + 0.25 * tileL(uField, uFieldW, uFieldH, (u * uFc - w * uFs) * 0.8, (u * uFs + w * uFc) * 0.8)));
+    took = val * (0.84 + 0.2 * tileL(uSea, uSeaW, uSeaH, u + 17., w + 31.) * (0.75 + 0.25 * tileL(uField, uFieldW, uFieldH, (u * uFc - w * uFs) * 0.8, (u * uFs + w * uFc) * 0.8)));
     if (uClose > 0.) took *= 1. + uClose * 0.22 * (vnoise(mx * uCg + 3.3, my * uCg + 7.1) - 0.5);
   }
   float thr = 0.5 + (uHasSea == 1 ? 0.22 : 0.95) * (t1 - 0.5) + 0.2 * (vnoise(mx * uLow + 40., my * uLow + 11.) - 0.5) + saw;
