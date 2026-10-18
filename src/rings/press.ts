@@ -1957,6 +1957,8 @@ function printYears(v: View, oak: Years | null): void {
   // (`WOOD` to the mm), as real rays run on from year to year, more of them as the trunk widens; the finer grain
   // and pores at the slice's own scale to the nearest doubling (`SNAP`), so they keep still from day to day.)
   const WOOD = 1 / 2.7, SNAP = 2 ** Math.round(Math.log2(Math.max(1e-6, v.s / (px * Z))));
+  // (A ray's width though is the screen's: as fine as a print shows one, broadening a little only as it's looked into.)
+  const RAYK = (v.s / (px * Z)) / WOOD, RAYW = Math.pow(Z, -0.4);
   const an = oak ? null : ANATOMY[kind] ?? ANATOMY.cherry!, fib = wood.fibre[kind], U = px * Z, conifer = fam() === 'conifer', RAY = RAYS[kind] ?? 0;
   const drawnInk = (i: number, a: number, _r: number, across: number, _heart: boolean, width: number, dx: number, dy: number, rmid: number, rho: number): number => {
     const A = an!;
@@ -1980,8 +1982,8 @@ function printYears(v: View, oak: Years | null): void {
     // (Bled beside it in black specks and blots, never a grey; starved inside it to small specks of paper.)
     const near = smooth((across - (start - 0.45)) / 0.45) * (1 - band);
     ink += near * smooth((rn(0.5, i * 4.3, rho * 0.5 + i) - 0.74) / 0.04) * smooth((rn(1.6, 0, rho * 1.6 + i) - 0.35) / 0.05);
-    ink *= 1 - band * smooth((rn(1.4, i * 9.7, rho * 1.4) - 0.74) / 0.05);
-    ink *= 1 - 0.8 * band * smooth((rn(3.1, i * 5.9, rho * 3.1 + 11) - 0.8) / 0.05);
+    ink *= 1 - band * smooth((rn(0.9, i * 9.7, rho * 0.9) - 0.8) / 0.04);
+    ink *= 1 - 0.7 * band * smooth((rn(2.2, i * 5.9, rho * 2.2 + 11) - 0.9) / 0.04);
     // (The pale wood between: the grain's fine lines faintly inked along the year, broken.)
     ink = Math.max(ink, (1 - band) * 0.9 * smooth((rn(0.6, i * 2.7, rho * 1.8 + 7) - 0.9) / 0.03) * smooth((rn(0.25, 3, rho * 0.25) - 0.55) / 0.1));
     if (A.mottle) ink *= 1 + A.mottle * (vnoise(dx / (22 * U) + 3.1, dy / (22 * U) + 7.7) - 0.5) * 2;
@@ -2011,7 +2013,7 @@ function printYears(v: View, oak: Years | null): void {
     for (let k = 0, o = 0; k < LV; k++) { lvO[k] = o; lvW[k] = lv[k].w; lvH[k] = lv[k].h; lvRows[k] = lv[k].rows; o += lv[k].w * lv[k].h; }
     const pic = gpu.run('years', w, h,
       { uN: n, uB: B, uOak: oak ? 1 : 0, uFamRing: fam() === 'ring' ? 1 : 0, uConifer: conifer ? 1 : 0, uHasFib: fib ? 1 : 0, uFibW: fib?.w ?? 1, uFibH: fib?.h ?? 1, uOakN: oak?.n ?? 1, uLvN: Math.max(1, LV), uLvO: lvO, uLvW: lvW, uLvH: lvH, uLvRows: lvRows },
-      { uPithMM: meanR(-1), uSnap: SNAP, uWood: WOOD, uX0: x0, uY0: y0, uH: h, uCx: v.cx, uCy: v.cy, uTurn: v.turn, uRmax: rmax, uWA: wA, uWL: wL, uWL2: wL2, uU: U, uPx: px, uW0: W0, uRay: RAY, uRun0: run[0], uRun1: run[1], uSparse: SPARSE,
+      { uPithMM: meanR(-1), uSnap: SNAP, uWood: WOOD, uRayK: RAYK, uRayW: RAYW, uX0: x0, uY0: y0, uH: h, uCx: v.cx, uCy: v.cy, uTurn: v.turn, uRmax: rmax, uWA: wA, uWL: wL, uWL2: wL2, uU: U, uPx: px, uW0: W0, uRay: RAY, uRun0: run[0], uRun1: run[1], uSparse: SPARSE,
         uEarly: A.early, uLate: A.late, uShare: A.share, uEdge: A.edge, uPores: A.pores, uPoreR: A.poreR, uPoreEarly: A.poreEarly, uFibre: A.fibre, uMottle: A.mottle, uSharp: A.sharp ?? 1.4, uInkRGB: [INK[0] / 255, INK[1] / 255, INK[2] / 255] },
       { uNoise: { key: NOISE, data: () => NOISE }, uRad: { name: 'rad', data: rad }, uRing: { name: 'ring', data: ring },
         uLev: oak ? { key: oak, data: () => atlasOf(oak) } : { key: NONE, data: () => NONE }, uFib: fib ? { key: fib, data: () => fib.d } : { key: NONE, data: () => NONE } });
@@ -2055,11 +2057,17 @@ function printYears(v: View, oak: Years | null): void {
         const rn = (kx: number, ox: number, y: number) => { const n0 = vnoise(a * rr * kx + ox, y); return wrap > 0 ? n0 + (vnoise((a - TAU) * rr * kx + ox, y) - n0) * wrap : n0; };
         const fray = rn(0.7, i * 3.1, rr * 0.7) - 0.5 + 0.7 * (rn(1.9, i, rr * 1.9 + 3) - 0.5);
         const acr = heart ? across : Math.max(0, Math.min(1, Math.pow(Math.max(0, Math.min(1, across + ((1.4 * U) / wd) * fray)), 0.7 + 0.6 * yv)));
-        ink = sample(L, (((a / TAU) * reps[i] * W0 + off[i] + wob * reps[i] * 0.15) * L.w) / W0, year * rows + acr * rows, year * rows, rows);
+        // (Read a little either way along the year and averaged: never a comb of teeth or a row of white channels.)
+        const u0 = (((a / TAU) * reps[i] * W0 + off[i] + wob * reps[i] * 0.15) * L.w) / W0, sp = 0.012 * L.w, yy = year * rows + acr * rows, top = year * rows;
+        ink = 0;
+        for (let q = -2; q <= 2; q++) ink += sample(L, u0 + q * sp, yy, top, rows) * (q === 0 ? 0.28 : q * q === 1 ? 0.2 : 0.16);
         // (Oak's and ash's springwood opened toward the paper, their latewood kept heavy: the year reads as a band.)
         if (fam() === 'ring') ink = Math.pow(Math.max(0, ink), 1 + 1.2 * (1 - smooth((acr - 0.35) / 0.45)));
         // (Ink taken or not, never a grey wash; starved to small specks of paper.)
-        ink = smooth((ink * heavy - 0.32) / 0.4) * (1 - 0.9 * smooth((rn(1.4, i * 9.7, rr * 1.4) - 0.76) / 0.05)) * tone(i);
+        ink = smooth((ink * heavy - 0.32) / 0.4) * (1 - 0.95 * smooth((rn(0.9, i * 9.7, mm * SNAP * 0.9) - 0.76) / 0.04)) * (1 - 0.8 * smooth((rn(2.2, i * 5.9, mm * SNAP * 2.2 + 11) - 0.84) / 0.04));
+        // (The heart: a pale pith ringed by its first dark edge, never a stretched copy of the year.)
+        if (heart) ink = 0.92 * smooth((across - 0.62) / 0.22) * (1 - 0.8 * smooth((rn(1.2, 3, mm * SNAP * 1.2) - 0.78) / 0.05));
+        ink *= tone(i);
       } else ink = drawnInk(i, a, r, across, heart, rout - rin, dx, dy, rrM * SNAP, mm * SNAP) * tone(i);
       if (!heart && thin[i] > 0) {
         // (As dark as the wide years: lines as wide as some three-fifths of the space they stand for.)
@@ -2071,7 +2079,8 @@ function printYears(v: View, oak: Years | null): void {
       // The rays: the wood's fine radial lines, open to the paper, crossing every year, so the latewood prints
       // as a run of small bricks.
       // (The drawn woods' rays fine and sparing, as a print shows them: the years' bands run on through them.)
-      if (RAY && !heart) ink *= 1 - RAY * (oak ? 1 : 0.55) * rayAt(a, mm * WOOD, RAY_RUN[kind]);
+      // (The rays fine, as a print shows them, and ending short of the bark; the scanned woods' own rays already there.)
+      if (RAY && !heart) ink *= 1 - RAY * (oak ? 0.6 : 0.55) * rayAt(a, mm * WOOD, RAY_RUN[kind], RAYK, RAYW) * (i === n - 1 ? 1 - smooth((across - 0.55) / 0.4) : 1);
       const k = (y * w + x) * 4;
       d[k] = INK[0]; d[k + 1] = INK[1]; d[k + 2] = INK[2]; d[k + 3] = Math.round(255 * Math.min(1, ink));
     }

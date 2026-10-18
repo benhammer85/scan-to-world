@@ -57,7 +57,8 @@ export const RAY_RUN: Partial<Record<Kind, [number, number]>> = { fir: [7, 0.6],
  * them, each at its own radius; each wanders a little and breaks now and then. Laid out by levels, each twice
  * the last's, a ray begun at one level running on through all the rest, so none ever jumps.
  */
-export function rayAt(a: number, rho: number, run: [number, number] = [20, 0.3]): number {
+/** (`kp`: the slice's own px to a unit of the wood; `ws` how much finer a ray is drawn than a look in magnifies it.) */
+export function rayAt(a: number, rho: number, run: [number, number] = [20, 0.3], kp = 1, ws = 1): number {
   const R0 = 10, GAP = 3.6;
   if (rho < R0 * 0.6) return 0;
   const lv = Math.max(0, Math.floor(Math.log2(rho / R0))), N0 = Math.max(6, Math.round((TAU * R0) / GAP)), N = N0 * 2 ** lv;
@@ -70,19 +71,19 @@ export function rayAt(a: number, rho: number, run: [number, number] = [20, 0.3])
     const id = bk * 7.31 + bl * 31.7, nb = N0 * 2 ** bl, born = R0 * 2 ** bl * (bl ? 0.7 + 0.6 * h1(id * 1.9) : 0.6);
     if (rho < born) continue;
     // (Too far from where it could wander to, whatever its wandering: passed by without working it out.)
-    const half = 0.07 + 0.16 * h1(id * 3.7) ** 2, home = (bk + 0.5 + (h1(id) - 0.5) * 0.5) / nb * N;
+    const half = (0.07 + 0.16 * h1(id * 3.7) ** 2) * ws * (0.45 + 0.55 * Math.min(1, (rho - born) / 8)), home = (bk + 0.5 + (h1(id) - 0.5) * 0.5) / nb * N;
     let d0 = Math.abs(sAt - home); d0 = Math.min(d0, N - d0);
-    if (((d0 - 0.8) * TAU * rho) / N > half + 0.8) continue;
+    if (((d0 - 0.8) * TAU * rho * kp) / N > half + 0.8 + 0.35) continue;
     // (Where it lies: its birth place, a little off even, wandering slowly outward.)
     // (Never ruled: it bends a little as the years about it swell and pinch, slowly and in small jogs.)
     const wander = Math.sin(rho / (40 + 30 * h1(id * 2.3)) + id) * 0.45 + (vnoise(id * 0.71, rho / 9) - 0.5) * 0.7;
     const at = ((bk + 0.5 + (h1(id) - 0.5) * 0.5) / nb + wander / N) * N;
     let dd = Math.abs(sAt - at); dd = Math.min(dd, N - dd);
-    const dist = (dd * TAU * rho) / N + (vnoise(rho * 0.9 + id, id * 0.13) - 0.5) * 0.35;
-    if (dist > half + 0.6) continue;
+    const dist = (dd * TAU * rho * kp) / N + (vnoise(rho * 2.4 + id, id * 0.13) - 0.5) * 0.35 * ws;
+    if (dist > half + 0.6 * ws) continue;
     // (A run, then broken off: short flecks in most woods, long runs in oak's.)
     if (vnoise(id * 0.37, rho / run[0]) < run[1]) continue;
-    best = Math.max(best, Math.min(1, smooth(1 - (dist - half) / 0.6)) * Math.min(1, (rho - born) / 3));
+    best = Math.max(best, Math.min(1, smooth(1 - (dist - half) / (0.6 * ws))) * Math.min(1, (rho - born) / 3));
   }
   return best;
 }
