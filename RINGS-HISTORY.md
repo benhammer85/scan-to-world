@@ -258,3 +258,5 @@ At about 5× zoom, the time to press the whole screen fell to roughly a quarter 
 **October 18: no rim across a check.** The press mark, the paper's step down round the block, traced a disk the size of the wood. Where a check cut through the bark, that disk's rim showed inside it as a faint line across the wedge. The checks are now kept as they're cut and filled into the block's shape for the mark, within the bark, so a check opens cleanly as a notch in the edge.
 
 **October 18: the wet line breaks at a check.** The loop drying onto the slice is no longer laid over a check where one opens through the bark: the line breaks off at the check's mouth, as ink does over a split in the block.
+
+**October 18: words never over the print.** A line of words is now withheld while the slice lies under it, as when looking closer brings the slice up beneath "Double-tap to zoom out.", and it comes back once the slice is drawn back. Out in the grove, where the map runs to the sheet's edge, the words and *keep a copy* / *take one back* are written on a small clearing of paper of their own.

@@ -3210,6 +3210,12 @@ function drawCopyWords(al: number): void {
   const c = copyAt();
   g.save(); g.globalAlpha = al * 0.7; g.fillStyle = 'rgba(92,88,84,0.85)'; g.textAlign = 'center'; g.textBaseline = 'middle';
   g.font = `italic ${13 * px}px Newsreader, "Iowan Old Style", Georgia, serif`;
+  // (On a clearing of paper of their own: never written over the map.)
+  {
+    const cx = W / 2, cy = c.keep[1], rx = 150 * px, ry = 22 * px, gr = g.createRadialGradient(cx, cy, 0, cx, cy, rx);
+    gr.addColorStop(0, 'rgba(244,239,228,1)'); gr.addColorStop(0.7, 'rgba(244,239,228,0.92)'); gr.addColorStop(1, 'rgba(244,239,228,0)');
+    g.save(); g.globalAlpha = al; g.translate(cx, cy); g.scale(1, ry / rx); g.translate(-cx, -cy); g.fillStyle = gr; g.fillRect(cx - rx, cy - rx, 2 * rx, 2 * rx); g.restore();
+  }
   g.fillText('keep a copy', ...c.keep); g.fillText('take one back', ...c.back);
   g.restore();
 }
@@ -3592,7 +3598,24 @@ function frame(): void {
   if (far > 0) drawFar(v);
   else { placeBackInput(false); drawEdition(shownOf(v), t, dt); }
   drawIntro(t);
+  keepWordsOff(v);
   requestAnimationFrame(frame);
+}
+/**
+ * Words are never laid over the print: over the slice, they're withheld until it's drawn back from under them;
+ * over the grove (a map to the sheet's edge), they're written on a clearing of paper of their own.
+ */
+function keepWordsOff(v: View): void {
+  const shown = words.classList.contains('shown') && !!words.textContent;
+  let covered = false;
+  if (shown && far < 0.5 && tree.rings.length) {
+    const r = words.getBoundingClientRect(), x0 = r.left * px, y0 = r.top * px, x1 = r.right * px, y1 = r.bottom * px;
+    const R = v.s * warpR(v.warp, barkMax()) + (barkCss(v) * 1.6 + 16) * px;
+    const nx = Math.max(x0, Math.min(v.cx, x1)), ny = Math.max(y0, Math.min(v.cy, y1));
+    covered = Math.hypot(nx - v.cx, ny - v.cy) < R;
+  }
+  words.classList.toggle('covered', covered);
+  words.classList.toggle('onmap', far >= 0.5);
 }
 
 void (async () => {
