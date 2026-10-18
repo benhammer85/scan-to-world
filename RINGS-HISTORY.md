@@ -223,3 +223,11 @@ At about 5× zoom, the time to press the whole screen fell to roughly a quarter 
 **October 18: no growing out; knots pressed at once.**
 - The year no longer grows out from the old bark over seven seconds once a loop is closed. The new ring is simply there where it settled, the print as it was fading out over it.
 - The print's key now includes its knots and burls. One begun or grown is always pressed in straight away, never only once the slice is looked into.
+
+**October 18: the relief-print look.** The drawn woods' years were redrawn after the artist's own prints, side by side with the photographs.
+- Each latewood is a bold band of ink, its inner edge never ruled: it wanders along the year and frays finely at the grain.
+- Beside it the earlywood is mostly paper, with ink bled into it in blotches. Inside it the band is starved here and there to flecks and short streaks of paper, and finely all through it to the wood's pores.
+- The rays are fainter in the drawn woods, so the years' bands run on through them.
+- The latewood share is wider for cherry, maple, birch, olive, juniper and redwood.
+- Checks open in from the bark from about the twentieth ring, not the fortieth.
+- The CPU press matches the graphics chip's, and the choosing slices were pressed again in the new look.

@@ -1711,11 +1711,11 @@ function drawPrint(v: View): void {
   g.strokeStyle = ink(0.95); g.lineWidth = 1 * px * Z; ringPath(v, bark, 0, K * 2); g.stroke();
   }
   // The checks: as a cut slice dries it splits. From the bark in toward the heart, a few cracks opening and
-  // running deeper as the years go on (from about the fortieth); and, older, from the heart out, two to four
+  // running deeper as the years go on (from about the twentieth); and, older, from the heart out, two to four
   // splitting the slice into wedges (from about the ninetieth). Wood parts along its years as readily as across
   // them, so a crack now and then runs a little way along a ring before going on: a step. Widest where it began,
   // jagged at its edges. (The practice only: they belong to an old slice.)
-  if (GROWN && n >= 40) {
+  if (GROWN && n >= 20) {
     const bark = barkOf(n - 1), T = barkCss(v) * px;
     // (A crack's way, as (angle, mm), `fromHeart` outward or else inward from the bark, to `deep` of the radius;
     // `wide` px where it began, a hairline at its end. Stroked a short piece at a time, each as wide as the crack
@@ -1750,9 +1750,9 @@ function drawPrint(v: View): void {
       }
     };
     g.save(); g.globalCompositeOperation = 'destination-out'; g.strokeStyle = '#000'; g.lineCap = 'round'; g.lineJoin = 'round';
-    const count = Math.min(5, 1 + Math.floor((n - 40) / 70));
+    const count = Math.min(5, 1 + Math.floor((n - 20) / 70));
     for (let c = 0; c < count; c++) {
-      const q = tree.seed * 0.0031 + c * 7.71, age = n - 40 - c * 70;
+      const q = tree.seed * 0.0031 + c * 7.71, age = n - 20 - c * 70;
       const deep = Math.min(0.85, 0.2 + 0.0045 * age + 0.3 * h1(q + 1.3));
       const wide = Math.min(0.03 * scr(Rb), 9 * px * Z) * (0.5 + 0.7 * h1(q + 2.9)) * Math.min(1, 0.35 + age / 90);
       crack(q, h1(q) * TAU, deep, wide, false);
@@ -1874,21 +1874,21 @@ function vnoise(x: number, y: number): number {
 type Anatomy = { early: number; late: number; share: number; edge: number; rays: number; rayW: number; pores: number; poreR: number; poreEarly: number; fibre: number; mottle: number; sharp?: number };
 const ANATOMY: Partial<Record<Kind, Anatomy>> = {
   // Cherry: semi-diffuse, its pores a little crowded at each year's start, fine rays, a clear but soft edge.
-  cherry: { early: 0.47, late: 1.0, share: 0.3, edge: 1.05, rays: 0.9, rayW: 0.42, pores: 0.11, poreR: 0.5, poreEarly: 0.6, fibre: 0.5, mottle: 0 },
+  cherry: { early: 0.47, late: 1.0, share: 0.42, edge: 1.05, rays: 0.9, rayW: 0.42, pores: 0.11, poreR: 0.5, poreEarly: 0.6, fibre: 0.5, mottle: 0 },
   // Maple: even and close, light, each year closed by a thin dark line; fine rays.
-  maple: { early: 0.43, late: 0.92, share: 0.14, edge: 1.04, rays: 1.1, rayW: 0.36, pores: 0.07, poreR: 0.38, poreEarly: 0.1, fibre: 0.45, mottle: 0 },
+  maple: { early: 0.43, late: 0.92, share: 0.32, edge: 1.04, rays: 1.1, rayW: 0.36, pores: 0.07, poreR: 0.38, poreEarly: 0.1, fibre: 0.45, mottle: 0 },
   // Birch: pale and plain, a faint edge, very fine pores; its rays too fine to see.
-  birch: { early: 0.39, late: 0.8, share: 0.1, edge: 0.95, rays: 0, rayW: 0, pores: 0.09, poreR: 0.32, poreEarly: 0, fibre: 0.5, mottle: 0 },
+  birch: { early: 0.39, late: 0.8, share: 0.28, edge: 0.95, rays: 0, rayW: 0, pores: 0.09, poreR: 0.32, poreEarly: 0, fibre: 0.5, mottle: 0 },
   // The conifers: soft pale earlywood darkening steadily into a firm latewood, ending sharp; no pores.
   pine: { early: 0.29, late: 1.05, share: 0.34, edge: 1.08, rays: 0, rayW: 0, pores: 0, poreR: 0, poreEarly: 0, fibre: 0.45, mottle: 0 },
-  redwood: { early: 0.36, late: 1.0, share: 0.26, edge: 1.04, rays: 0, rayW: 0, pores: 0, poreR: 0, poreEarly: 0, fibre: 0.55, mottle: 0 },
+  redwood: { early: 0.36, late: 1.0, share: 0.38, edge: 1.04, rays: 0, rayW: 0, pores: 0, poreR: 0, poreEarly: 0, fibre: 0.55, mottle: 0 },
   bristlecone: { early: 0.32, late: 1.05, share: 0.42, edge: 1.08, rays: 0, rayW: 0, pores: 0, poreR: 0, poreEarly: 0, fibre: 0.45, mottle: 0 },
   // Olive: dense, close and irregular, its figure a dark mottle wandering through the years.
-  olive: { early: 0.6, late: 0.96, share: 0.22, edge: 1.0, rays: 0.6, rayW: 0.3, pores: 0.05, poreR: 0.3, poreEarly: 0, fibre: 0.35, mottle: 0.45 },
+  olive: { early: 0.6, late: 0.96, share: 0.36, edge: 1.0, rays: 0.6, rayW: 0.3, pores: 0.05, poreR: 0.3, poreEarly: 0, fibre: 0.35, mottle: 0.45 },
   // Douglas fir: a pale, soft earlywood, then all at once a dark latewood: the boldest year of them all.
   fir: { early: 0.24, late: 1.15, share: 0.5, edge: 1.12, rays: 0, rayW: 0, pores: 0, poreR: 0, poreEarly: 0, fibre: 0.3, mottle: 0, sharp: 1.8 },
   // Juniper: fine and close, its latewood thin and its years irregular, a soft figure through them.
-  juniper: { early: 0.3, late: 1.0, share: 0.26, edge: 1.04, rays: 0, rayW: 0, pores: 0, poreR: 0, poreEarly: 0, fibre: 0.45, mottle: 0.25 },
+  juniper: { early: 0.3, late: 1.0, share: 0.36, edge: 1.04, rays: 0, rayW: 0, pores: 0, poreR: 0, poreEarly: 0, fibre: 0.45, mottle: 0.25 },
 };
 /**
  * How strongly each wood's rays print: oak's many and plain, a conifer's barely there.
@@ -2004,16 +2004,26 @@ function printYears(v: View, oak: Years | null): void {
   // with its rays, pores and real fibre; all in the slice's own px (`U`), so looked into they're the same,
   // larger, never a fresh scatter.)
   const an = oak ? null : ANATOMY[kind] ?? ANATOMY.cherry!, fib = wood.fibre[kind], U = px * Z, conifer = fam() === 'conifer', RAY = RAYS[kind] ?? 0;
-  const drawnInk = (i: number, a: number, r: number, across: number, heart: boolean, width: number, dx: number, dy: number): number => {
+  const drawnInk = (i: number, a: number, r: number, across: number, _heart: boolean, width: number, dx: number, dy: number): number => {
     const A = an!, rho = r / U;
     // The year: earlywood, a little deeper as it goes, then darkening into the latewood, ending sharp.
+    // (As a relief print takes it: the latewood a bold band of ink, its inner edge never ruled but wandering
+    // along the year, dry and ragged; the earlywood mostly the paper, the ink bleeding into it in blotches
+    // beside the band; and the band itself starved here and there to flecks of paper. As gpu.ts presses it.)
+    const along = a * rho, wd = Math.max(1e-3, width);
     const share = conifer ? Math.min(0.85, A.share * (0.6 + 0.8 * calmOf(i))) : A.share;
-    const t = Math.max(0, Math.min(1, (across - (1 - share)) / share));
-    let ink = A.early * (0.85 + 0.3 * across) + (A.late - A.early) * Math.pow(t, A.sharp ?? 1.4);
-    // (Its edge: a line a pixel or so wide at the slice's own size, darker than the latewood.)
-    // (Never more than a quarter of a fine year: its line is in proportion to it.)
-    const eW = Math.min(1.3 * U, 0.25 * width);
-    if (!heart && width > 0) ink = Math.max(ink, A.edge * smooth((across - (1 - eW / width)) / Math.max(1e-3, Math.min(0.8 * U, 0.15 * width) / width)));
+    const rag = 0.5 * (vnoise(along * 0.07 + i * 7.1, i * 3.3) - 0.5) + 0.3 * (vnoise(along * 0.3 + i * 2.3, i * 1.7 + 5) - 0.5) + 0.2 * (vnoise(along * 1.1 + i * 0.7, rho * 0.4) - 0.5);
+    const start = 1 - share * (1 + 1.4 * rag), soft = Math.max(0.035, (0.7 * U) / wd);
+    // (Its edge frayed finely, as dry ink tears at the grain.)
+    const fray = vnoise(along * 0.9 + i * 3.1, rho * 0.8) - 0.5 + 0.6 * (vnoise(along * 2.6 + i, rho * 2.2 + 3) - 0.5);
+    const band = smooth((across - start) / soft + 0.5 + (((1.6 * U) / wd) * fray) / soft * 0.5);
+    let ink = A.early * 0.35 * (0.8 + 0.4 * across) + (A.late * 1.08 - A.early * 0.35) * band;
+    // (Bled into the earlywood beside the band: blotches, thicker nearer it.)
+    const near = smooth((across - (start - 0.45)) / 0.45) * (1 - band);
+    ink += 0.95 * near * smooth((vnoise(along * 0.18 + i * 4.3, rho * 0.45 + i) - 0.42) / 0.16) * (0.6 + 0.4 * vnoise(along * 1.4, rho * 1.4 + i));
+    // (Starved inside the band: flecks and short streaks of paper; and finely all through it, the pores.)
+    ink *= 1 - 0.8 * band * smooth((vnoise(along * 1.1 + i * 9.7, rho * 1.9) - 0.68) / 0.08);
+    ink *= 1 - 0.7 * band * smooth((vnoise(along * 2.4 + i * 5.9, rho * 2.6 + 11) - 0.74) / 0.07);
     // The real fibre, streaking along the year.
     if (fib && A.fibre) ink *= 1 + A.fibre * 0.45 * (tile(fib, a * rho * 0.5, rho * 0.5) - 0.5) * 2;
     // (And the wood's own fine grain, finer than the scan holds: long thin streaks along the year, in the wood's
@@ -2096,7 +2106,8 @@ function printYears(v: View, oak: Years | null): void {
       }
       // The rays: the wood's fine radial lines, open to the paper, crossing every year, so the latewood prints
       // as a run of small bricks.
-      if (RAY && !heart) ink *= 1 - RAY * rayAt(a, r / U, RAY_RUN[kind]);
+      // (The drawn woods' rays fine and sparing, as a print shows them: the years' bands run on through them.)
+      if (RAY && !heart) ink *= 1 - RAY * (oak ? 1 : 0.55) * rayAt(a, r / U, RAY_RUN[kind]);
       const k = (y * w + x) * 4;
       d[k] = INK[0]; d[k + 1] = INK[1]; d[k + 2] = INK[2]; d[k + 3] = Math.round(255 * Math.min(1, ink));
     }

@@ -72,11 +72,24 @@ float rayAt(float a, float rho) {
 }
 float drawnInk(int i, float a, float r, float across, bool heart, float width, float dx, float dy) {
   float rho = r / uU, fi = float(i);
+  // (As a relief print takes it: the latewood a bold band of ink, its inner edge never ruled but wandering
+  // along the year, dry and ragged; the earlywood mostly the paper, the ink bleeding into it in blotches
+  // beside the band; and the band itself starved here and there to flecks of paper.)
+  float along = a * rho, w = max(1e-3, width);
   float share = uConifer == 1 ? min(0.85, uShare * (0.6 + 0.8 * R(i, 11))) : uShare;
-  float t = clamp((across - (1. - share)) / share, 0., 1.);
-  float ink = uEarly * (0.85 + 0.3 * across) + (uLate - uEarly) * pow(t, uSharp);
-  float eW = min(1.3 * uU, 0.25 * width);
-  if (!heart && width > 0.) ink = max(ink, uEdge * sm((across - (1. - eW / width)) / max(1e-3, min(0.8 * uU, 0.15 * width) / width)));
+  float rag = 0.5 * (vnoise(along * 0.07 + fi * 7.1, fi * 3.3) - 0.5) + 0.3 * (vnoise(along * 0.3 + fi * 2.3, fi * 1.7 + 5.) - 0.5) + 0.2 * (vnoise(along * 1.1 + fi * 0.7, rho * 0.4) - 0.5);
+  float start = 1. - share * (1. + 1.4 * rag), soft = max(0.035, 0.7 * uU / w);
+  // (Its edge frayed finely, as dry ink tears at the grain: a pixel or two in and out, quickly along it.)
+  float fray = (vnoise(along * 0.9 + fi * 3.1, rho * 0.8) - 0.5) + 0.6 * (vnoise(along * 2.6 + fi, rho * 2.2 + 3.) - 0.5);
+  float band = sm((across - start) / soft + 0.5 + 1.6 * uU / w * fray / soft * 0.5);
+  float ink = uEarly * 0.35 * (0.8 + 0.4 * across) + (uLate * 1.08 - uEarly * 0.35) * band;
+  // (Bled into the earlywood beside the band: blotches, thicker nearer it.)
+  float near = sm((across - (start - 0.45)) / 0.45) * (1. - band);
+  ink += 0.95 * near * sm((vnoise(along * 0.18 + fi * 4.3, rho * 0.45 + fi) - 0.42) / 0.16) * (0.6 + 0.4 * vnoise(along * 1.4, rho * 1.4 + fi));
+  // (Starved inside the band: flecks and short streaks of paper along the grain.)
+  ink *= 1. - 0.8 * band * sm((vnoise(along * 1.1 + fi * 9.7, rho * 1.9) - 0.68) / 0.08);
+  // (And finely, all through it, the wood's own pores and grain as specks of paper.)
+  ink *= 1. - 0.7 * band * sm((vnoise(along * 2.4 + fi * 5.9, rho * 2.6 + 11.) - 0.74) / 0.07);
   if (uHasFib == 1 && uFibre > 0.) ink *= 1. + uFibre * 0.45 * (tileL(uFib, uFibW, uFibH, a * rho * 0.5, rho * 0.5) - 0.5) * 2.;
   ink *= 1. + 0.2 * (vnoise(rho * 1.6 + fi * 5.3, a * rho * 0.09) - 0.5) * 2. * (0.5 + 0.5 * vnoise(rho * 0.25, a * rho * 0.03 + 9.1));
   if (uMottle > 0.) ink *= 1. + uMottle * (vnoise(dx / (22. * uU) + 3.1, dy / (22. * uU) + 7.7) - 0.5) * 2.;
@@ -126,7 +139,8 @@ void main() {
     float cov = max(jo < 0 ? 0. : lineAt(jo, rad(jo, b, f) - r), ji < 0 ? 0. : lineAt(ji, r - rad(ji, b, f))) * (0.75 + 0.35 * vnoise(dx * 0.11 + float(i), dy * 0.11));
     if (cov > 0.) ink = max(ink, 0.95 * cov);
   }
-  if (uRay > 0. && !heart) ink *= 1. - uRay * rayAt(a, r / uU);
+  // (The drawn woods' rays fine and sparing, as a print shows them: the years' bands run on through them.)
+  if (uRay > 0. && !heart) ink *= 1. - uRay * (uOak == 1 ? 1. : 0.55) * rayAt(a, r / uU);
   float al = floor(255. * clamp(ink, 0., 1.) + 0.5) / 255.;
   o = vec4(uInkRGB * al, al);
 }
