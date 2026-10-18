@@ -696,6 +696,15 @@ function makeRoom(): void {
   // (Never much larger than it rests: a wide loop's year is shown a little large at first, never filling
   // the sheet.)
   ease = { from: Math.min(from, 1.3 * v.s), at: clock() };
+  // (Growing true to scale, a small step back is never moved through, a hair a frame (a sharp print redrawn at
+  // a scale changing by a hair a frame shimmers): the print as it was fades into the new one at its own size.)
+  const kept = printCaches.drawing;
+  if (GROWN && PRINT && kept && Math.abs(ease.from / v.s - 1) < 0.08) {
+    ease = null;
+    if (fading.drawing) spare.drawing = fading.drawing.c;
+    fading.drawing = { c: kept.c, v: { ...kept.v }, at: clock(), still: true };
+    delete printCaches.drawing;
+  }
 }
 /**
  * Looked into while the slice is still drawing back: the drawing back is finished at once, and the look
@@ -924,8 +933,19 @@ function breathe(t: number, dt: number): void {
   breathNow = c < IN ? smooth(c / IN) : 1 - smooth((c - IN) / OUT);
   // (It breathes without being told: the slice says it.)
 }
-/** How much larger the slice is drawn now, breathing (about one part in sixty at the full in-breath). */
-const breathGrow = () => 1 + 0.016 * breathShown * breathNow;
+// (The slice itself never swells: a sharp print redrawn a hair larger or smaller each frame shimmers. The breath
+// is a soft shade in the paper round its bark, widening and ebbing.)
+const breathGrow = () => 1;
+function drawBreath(v: View): void {
+  if (breathShown < 0.01 || !tree.rings.length) return;
+  const w = (3 + 9 * breathNow) * px;
+  g.save(); g.lineJoin = 'round';
+  for (const [k, al] of [[1, 0.035], [0.6, 0.04], [0.3, 0.045]]) {
+    g.strokeStyle = `rgba(46,33,24,${(al * breathShown).toFixed(3)})`; g.lineWidth = 2 * w * k;
+    ringPath(v, barkOf(tree.rings.length - 1), barkCss(v) * 1.2); g.stroke();
+  }
+  g.restore();
+}
 /**
  * The press's own mark: the paper pushed down under the block, a faint rim along the print's own edge, lit
  * from the upper left as the sheet is (see `markOf`). Always there once a year is in; away while one's being
@@ -2481,7 +2501,7 @@ function markOf(pc: { c: HTMLCanvasElement; v: View }): { c: HTMLCanvasElement; 
   return out;
 }
 /** A picture just replaced by a sharper one, fading out over it (a quarter second or so). */
-const fading: Record<string, { c: HTMLCanvasElement; v: View; at: number } | undefined> = {};
+const fading: Record<string, { c: HTMLCanvasElement; v: View; at: number; still?: boolean } | undefined> = {};
 const FADE = 0.6;
 function drawPrintCached(v: View, moving: boolean, slot = 'drawing', alpha = 1, drift = false, grow = 1): void {
   drawSharp(printFor(v, moving, slot, drift), v, slot, alpha, grow);
@@ -2491,7 +2511,8 @@ function drawSharp(pc: Kept, v: View, slot: string, alpha = 1, grow = 1): void {
   const f = fading[slot], k = f ? 1 - smooth((clock() - f.at) / FADE) : 0;
   if (f && k <= 0.01) { spare[slot] = f.c; fading[slot] = undefined; }
   if (!f || k <= 0.01) { drawKept(pc, v, alpha, grow); return; }
-  crossfade(() => drawKept(f, v, k, grow), () => drawKept(pc, v, 1 - k, grow), alpha);
+  // (`still`: the print as it was, where and as large as it was, never moved to the new view.)
+  crossfade(() => drawKept(f, f.still ? f.v : v, k, grow), () => drawKept(pc, v, 1 - k, grow), alpha);
 }
 /**
  * A true crossfade, one print turning into the other (`a` drawn at its share, `b` at the rest, each with its
@@ -2948,6 +2969,9 @@ function* groveSteps(c: CanvasRenderingContext2D, cam: Cam, sprites?: Sprite[]):
     yield;
     }
   }
+  // (The leaves down round the trees, beneath their crowns' edges.)
+  for (const t of shown) for (const l of litterOf(t, cam, season)) leafAt(c, l.x, l.y, l.len, l.rot, 1, l.col, u);
+  yield;
   // (The wood round it: ink and a faint wash only, quieter than the trees grown here.)
   for (const t of wildShown) {
     drawCrown(c, t.x, t.y, t.r, t.sp, t.k, u, 0.7, undefined, sun, 'crown');
@@ -3031,7 +3055,7 @@ function layGrove(cam: Cam, still: boolean): void {
   baseG = groveBase();
   const same = (a: Cam, b: Cam) => Math.abs(a.S - b.S) < 1e-3 * b.S && Math.abs(a.X0 - b.X0) < 0.5 && Math.abs(a.Y0 - b.Y0) < 0.5;
   // (Each crown stirred a little by the wind, its own way, the gusts coming and going.)
-  const t = clock(), wind = 0.55 + 0.45 * vnoise(t * 0.12, 3.7);
+  const t = clock();
   // (`over`: a view drawn for itself lies over this one there, so this is laid only round it, and none of
   // its crowns that view has too: never the ground washed twice, nor a crown doubled.)
   const lay = (from: { c: HTMLCanvasElement; cam: Cam; sprites: Sprite[] }, over?: { c: HTMLCanvasElement; cam: Cam; sprites: Sprite[] }) => {
@@ -3046,12 +3070,11 @@ function layGrove(cam: Cam, still: boolean): void {
     const doubled = new Set(over?.sprites.map((s) => s.k));
     for (const s of from.sprites) {
       if (doubled.has(s.k)) continue;
-      // (A slow sway, the same wind over all of them, reaching each a moment after the last as it crosses the
-      // grove; barely there, and no more when looked into: never trees staggering each their own way.)
-      const amp = Math.min(0.7 * px, s.r * 0.012) * wind * Math.pow(q, 0.25), ph = (s.x / W) * 2.2 + h1(s.k) * 0.4;
+      // (Still, as a map's trees are: they move only in a breeze drawn across them.)
+      const ph = (s.x / W) * 2.2 + h1(s.k) * 0.4;
       // (And leaning in a breeze drawn across it, tossing a little as it goes by.)
       const [bx, by] = gusts.length ? breezeAt((s.x - from.cam.X0) / from.cam.S, (s.y - from.cam.Y0) / from.cam.S, t) : [0, 0], lean = Math.min(5 * px, s.r * 0.09) * q * (1 + 0.25 * Math.sin(t * 6 + ph));
-      const dx = amp * (Math.sin(t * 0.55 - ph) + 0.25 * Math.sin(t * 1.3 - ph * 1.3)) + bx * lean, dy = amp * 0.4 * Math.sin(t * 0.55 - ph + 1.1) + by * lean;
+      const dx = bx * lean, dy = by * lean;
       g.drawImage(s.c, X(s.x) - s.m * q + dx, Y(s.y) - s.m * q + dy, 2 * s.m * q, 2 * s.m * q);
     }
   };
@@ -3087,6 +3110,53 @@ function layGrove(cam: Cam, still: boolean): void {
  * in spring, a cherry's petals; in winter, snow falling over all of it. And the light's own colour: warm as
  * the sun rises or sets, cool at night.
  */
+/**
+ * A leaf as an engraver draws one small: pointed at both ends, its midrib, a fine ink edge; `len` long, turned
+ * `rot`, `flip` its width as it tumbles (1 flat to the eye, 0 edge on).
+ */
+function leafAt(c: CanvasRenderingContext2D, x: number, y: number, len: number, rot: number, flip: number, col: number[], U: number, alpha = 1): void {
+  const w = len * 0.42 * Math.max(0.12, Math.abs(flip));
+  c.save(); c.globalAlpha *= alpha; c.translate(x, y); c.rotate(rot);
+  c.beginPath(); c.moveTo(-len / 2, 0); c.quadraticCurveTo(0, -w, len / 2, 0); c.quadraticCurveTo(0, w, -len / 2, 0);
+  c.fillStyle = `rgb(${col[0]},${col[1]},${col[2]})`; c.fill();
+  c.strokeStyle = ink(0.4); c.lineWidth = Math.min(0.5 * U, len * 0.06); c.stroke();
+  if (len > 5 * U) { c.beginPath(); c.moveTo(-len * 0.45, 0); c.lineTo(len * 0.4, 0); c.lineWidth = Math.min(0.4 * U, len * 0.04); c.strokeStyle = ink(0.3); c.stroke(); }
+  c.restore();
+}
+/** How far through the fall the season is (0 none down, 1 all down): by the date, or most of the way when asked for. */
+function fallen(season: Season): number {
+  if (season === 'spring') return 0.5;
+  if (season !== 'autumn') return 0;
+  if (params.get('season') === 'autumn') return 0.75;
+  const d = new Date(), m = d.getMonth() + d.getDate() / 31;
+  return Math.max(0.1, Math.min(1, (m - 8.3) / 2.5));
+}
+/** The broadleaves' own colours down, or the cherry's petals in spring; nothing from the evergreens. */
+function litterCol(sp: string, season: Season): number[] | null {
+  if (['pine', 'redwood', 'bristlecone', 'olive', 'fir', 'juniper'].includes(sp)) return null;
+  if (season === 'spring') return sp === 'cherry' ? [236, 196, 204] : null;
+  return season === 'autumn' ? pigment(sp, 'autumn') : null;
+}
+/**
+ * The leaves come down from a tree, lying round it (screen px, for camera `cam`): a ring of them at its drip
+ * line, thickest just outside its crown and on its downwind side, more as the season goes on. Each its own place,
+ * size, turn and shade, the same every time: those falling land on these.
+ */
+function litterOf(tr: { x: number; y: number; r: number; k: number; sp: string; n: number }, cam: Cam, season: Season): { x: number; y: number; len: number; rot: number; col: number[] }[] {
+  const col = litterCol(tr.sp, season);
+  if (!col || tr.n < 30) return [];
+  const N = Math.round(60 * fallen(season) * Math.min(1.4, tr.r / Math.max(1, cam.S * 0.5))), out = [];
+  const len = Math.max(3 * px, 0.075 * cam.S);
+  for (let j = 0; j < N; j++) {
+    const h = (q: number) => h1(tr.k * 1.7 + j * 7.13 + q);
+    // (Round the crown, more on the lee side, the wind's way.)
+    let a = h(1) * TAU; if (h(2) < 0.45) a = 0.6 + (h(3) - 0.5) * 2.2;
+    const d = tr.r * (0.82 + 0.6 * Math.pow(h(4), 1.8));
+    const shade = 0.95 + 0.25 * h(5);
+    out.push({ x: tr.x + Math.cos(a) * d, y: tr.y + Math.sin(a) * d * 0.9, len: len * (0.75 + 0.5 * h(6)), rot: h(7) * TAU, col: col.map((c) => Math.min(255, Math.round(c * shade))) });
+  }
+  return out;
+}
 function drawLife(cam: Cam): void {
   const t = clock(), season = seasonNow(), L = groveLayout(cam).trees, wind = 0.55 + 0.45 * vnoise(t * 0.12, 3.7), U = px * Math.sqrt(Math.max(1, cam.S / worldOf().whole.S));
   g.save();
@@ -3094,12 +3164,22 @@ function drawLife(cam: Cam): void {
     for (const tr of L) {
       const col = season === 'spring' ? (tr.sp === 'cherry' ? [236, 196, 204] : null) : pigment(tr.sp, 'autumn');
       if (!col || tr.n < 30 || ['pine', 'redwood', 'bristlecone', 'olive', 'fir', 'juniper'].includes(tr.sp)) continue;
-      for (let q = 0; q < 3; q++) {
-        const per = 6 + 3 * h1(tr.k + q), p = ((t / per + h1(tr.k * 1.3 + q * 0.7)) % 1), a0 = h1(tr.k + q * 2.9) * TAU, r0 = tr.r * 0.6 * Math.sqrt(h1(q + tr.k));
-        const x = tr.x + Math.cos(a0) * r0 + p * tr.r * 1.4 * wind + Math.sin(p * 9 + q) * 2 * U, y = tr.y + Math.sin(a0) * r0 + p * tr.r * 0.6;
-        g.globalAlpha = Math.sin(Math.PI * p) * 0.9;
-        g.save(); g.translate(x, y); g.rotate(p * 6 + q); g.beginPath(); g.ellipse(0, 0, 1.6 * U, 0.8 * U, 0, 0, TAU);
-        g.fillStyle = `rgb(${col[0]},${col[1]},${col[2]})`; g.fill(); g.strokeStyle = ink(0.5); g.lineWidth = 0.4 * U; g.stroke(); g.restore();
+      // (Now and then one comes down: out of the crown, swinging side to side and turning over as it falls, to
+      // land on the ground round the tree, among those already there, where it stays.)
+      const lit = litterOf(tr, cam, season);
+      if (!lit.length) continue;
+      for (let q = 0; q < 2; q++) {
+        const per = 7 + 4 * h1(tr.k + q), cyc = Math.floor(t / per + h1(tr.k * 1.3 + q * 0.7)), p = (t / per + h1(tr.k * 1.3 + q * 0.7)) % 1;
+        const fall = Math.min(1, p / 0.7), to = lit[Math.floor(h1(cyc * 3.1 + q + tr.k) * lit.length)];
+        const a0 = h1(cyc * 5.3 + tr.k + q) * TAU, r0 = tr.r * 0.45 * Math.sqrt(h1(cyc * 2.7 + q));
+        const x0 = tr.x + Math.cos(a0) * r0, y0 = tr.y + Math.sin(a0) * r0, e = fall * fall * (3 - 2 * fall);
+        // (Seen from above, a falling leaf swings and turns; as it nears the ground it's a little larger, then lies.)
+        const sw = Math.sin(fall * 9 + q * 2) * (1 - fall) * to.len * 1.6;
+        const x = x0 + (to.x - x0) * e + sw * Math.cos(to.rot + 1.2), y = y0 + (to.y - y0) * e + sw * Math.sin(to.rot + 1.2);
+        const air = 1 - fall, flip = fall < 1 ? Math.cos(fall * 14 + q) : 1, rot = to.rot + air * (3 + 2 * h1(cyc + q)) * Math.sin(fall * 4);
+        // (It comes out from among the leaves, and, once down, is one of the pile, gone into it.)
+        const al = Math.min(1, p / 0.08) * (p > 0.9 ? (1 - p) / 0.1 : 1);
+        leafAt(g, x, y, to.len * (1 + 0.25 * air), rot, flip, to.col, U, al);
       }
     }
   } else if (season === 'winter') {
@@ -3575,6 +3655,7 @@ function frame(): void {
       if (rk < 1) drawPrintCached(v, moving, 'drawing', 1 - rk, drift, breathGrow());
       if (rk > 0 && rest) drawSharp(rest, rv, 'rest', rk, breathGrow());
     }
+    drawBreath(shownOf(v));
   } else { paper.draw(g, v); drawLatewood(v); }
   const n = tree.rings.length;
   // A ring touched: lit softly along its edge for a moment, as its day is read.
