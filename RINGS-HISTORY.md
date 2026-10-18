@@ -279,3 +279,5 @@ At about 5× zoom, the time to press the whole screen fell to roughly a quarter 
 - Oak's and ash's scanned wood is now read a little either way along the year and averaged. Its own pores and rays, enlarged, no longer make a comb of teeth on each band's edge or a row of white channels. Their bands are starved here and there to flecks of paper, never a flat black block. Their heart is a pale pith ringed by its first dark edge, never a stretched, smeared copy of the year.
 - The drawn woods' bands (cherry's, maple's, the rest) were starved to a fine sand of paper. Their flecks are now fewer and larger, so the bands read solid, as the artist's prints do.
 - The choosing slices were pressed again.
+
+**October 18: no ghost when a ring is closed looked into.** Drawing while looked into, the print as it was faded out at its own place while the new one stood elsewhere, for a moment two slices, one over the other. The print as it was is now kept where it stood only when the slice hasn't moved; otherwise it fades over the new one where the new one is.

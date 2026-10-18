@@ -699,7 +699,10 @@ function makeRoom(): void {
   // (Growing true to scale, a small step back is never moved through, a hair a frame (a sharp print redrawn at
   // a scale changing by a hair a frame shimmers): the print as it was fades into the new one at its own size.)
   const kept = printCaches.drawing;
-  if (GROWN && PRINT && kept && Math.abs(ease.from / v.s - 1) < 0.08) {
+  // (Only where the slice stands still: looked into, or moved, the print as it was is faded over the new one where
+  // the new one is, never left standing apart from it.)
+  const now = viewNow();
+  if (GROWN && PRINT && kept && !closer() && Math.abs(ease.from / v.s - 1) < 0.08 && Math.hypot(kept.v.cx - now.cx, kept.v.cy - now.cy) < 2 * px && Math.abs(kept.v.s / now.s - 1) < 0.08) {
     ease = null;
     if (fading.drawing) spare.drawing = fading.drawing.c;
     fading.drawing = { c: kept.c, v: { ...kept.v }, at: clock(), still: true };
