@@ -359,11 +359,12 @@ void main() {
   float q0 = floor(t / sp);
   for (int k = -1; k <= 1; k++) {
     // (A little off true: each stroke's run wanders a fraction of the gap, never across its neighbours.)
-    float q = q0 + float(k), si = floor(y / seg), y0 = si * seg, f = (y - y0) / seg;
+    // (Each stroke broken at its own places, never all at the same height: no blank rows across the shadow.)
+    float q = q0 + float(k), yo = y + h1(q * 4.3) * seg, si = floor(yo / seg), y0 = si * seg, f = (yo - y0) / seg;
     float c = (q + 0.5 + (h1(q * 1.37) - 0.5) * 0.5 + (h1(q * 2.9 + si) - 0.5) * 0.3 * (f - 0.5)) * sp;
     float w = (0.28 + 0.22 * h1(q * 3.7)) * uU, d = abs(t - c) * 0.7071;
     if (h1(q * 7.1 + y0 * 0.013) < 0.12) continue;
-    if (y - y0 > seg * (0.7 + 0.3 * h1(q + y0 * 0.07))) continue;
+    if (yo - y0 > seg * (0.82 + 0.18 * h1(q + y0 * 0.07))) continue;
     cov = max(cov, clamp(w * 0.5 + 0.5 - d, 0., 1.));
   }
   float al = cov * m;

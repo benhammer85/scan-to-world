@@ -281,3 +281,5 @@ At about 5× zoom, the time to press the whole screen fell to roughly a quarter 
 - The choosing slices were pressed again.
 
 **October 18: no ghost when a ring is closed looked into.** Drawing while looked into, the print as it was faded out at its own place while the new one stood elsewhere, for a moment two slices, one over the other. The print as it was is now kept where it stood only when the slice hasn't moved; otherwise it fades over the new one where the new one is.
+
+**October 18: shadows unbroken, leaves dropping close.** The shadows' hatch strokes were all broken at the same heights, so their gaps lined up into blank rows across each shadow; each stroke now breaks at its own places. A falling leaf now drops from the crown's edge just above where it lands, swinging a little, never flying across the tree.

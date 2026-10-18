@@ -3215,12 +3215,13 @@ function drawLife(cam: Cam): void {
       for (let q = 0; q < 2; q++) {
         const per = 7 + 4 * h1(tr.k + q), cyc = Math.floor(t / per + h1(tr.k * 1.3 + q * 0.7)), p = (t / per + h1(tr.k * 1.3 + q * 0.7)) % 1;
         const fall = Math.min(1, p / 0.7), to = lit[Math.floor(h1(cyc * 3.1 + q + tr.k) * lit.length)];
-        const a0 = h1(cyc * 5.3 + tr.k + q) * TAU, r0 = tr.r * 0.45 * Math.sqrt(h1(cyc * 2.7 + q));
-        const x0 = tr.x + Math.cos(a0) * r0, y0 = tr.y + Math.sin(a0) * r0, e = fall * fall * (3 - 2 * fall);
-        // (Seen from above, a falling leaf swings and turns; as it nears the ground it's a little larger, then lies.)
-        const sw = Math.sin(fall * 9 + q * 2) * (1 - fall) * to.len * 1.6;
-        const x = x0 + (to.x - x0) * e + sw * Math.cos(to.rot + 1.2), y = y0 + (to.y - y0) * e + sw * Math.sin(to.rot + 1.2);
-        const air = 1 - fall, flip = fall < 1 ? Math.cos(fall * 14 + q) : 1, rot = to.rot + air * (3 + 2 * h1(cyc + q)) * Math.sin(fall * 4);
+        // (It drops from the crown's edge just above where it lands, never across the tree: a short way down,
+        // seen from above, swinging a little side to side and turning over, a little larger nearer the eye.)
+        const ta = Math.atan2(to.y - tr.y, to.x - tr.x), r0 = tr.r * 0.8;
+        const x0 = tr.x + Math.cos(ta) * r0, y0 = tr.y + Math.sin(ta) * r0, e = fall * (2 - fall);
+        const sw = Math.sin(fall * 7 + q * 2) * (1 - fall) * to.len * 0.6;
+        const x = x0 + (to.x - x0) * e + sw * Math.cos(ta + Math.PI / 2), y = y0 + (to.y - y0) * e + sw * Math.sin(ta + Math.PI / 2);
+        const air = 1 - fall, flip = fall < 1 ? Math.cos(fall * 14 + q) : 1, rot = to.rot + air * (1 + h1(cyc + q)) * Math.sin(fall * 4);
         // (It comes out from among the leaves, and, once down, is one of the pile, gone into it.)
         const al = Math.min(1, p / 0.08) * (p > 0.9 ? (1 - p) / 0.1 : 1);
         leafAt(g, x, y, to.len * (1 + 0.25 * air), rot, flip, to.col, U, al);
