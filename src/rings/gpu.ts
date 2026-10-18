@@ -135,12 +135,15 @@ void main() {
 const GRAIN = COMMON + `
 uniform sampler2D uSrc, uFib, uSea, uField;
 uniform int uHasFib, uFibW, uFibH, uHasSea, uSeaW, uSeaH, uFieldW, uFieldH;
+uniform int uSx0, uSy0;
 uniform float uX0, uY0, uH, uCx, uCy, uInside, uPerMm, uFine, uAlong, uSpeck, uStreak, uTooth, uLow, uPerTex, uClose, uCg, uFc, uFs, uSawK, uSx, uSy, uSaw, uSoft, uVs;
 float fibAt(float t, float r) { return sampleL(uFib, 0, uFibW, uFibH, t * r * uPerMm, r * uPerMm, 0., float(uFibH)); }
 float grainAt(float t, float r) { return 0.55 * vnoise(r * uFine, t * r * uAlong) + 0.45 * vnoise(r * uFine * 0.35 + 31.7, t * r * uAlong * 0.25 + 7.1); }
 void main() {
   int x = int(gl_FragCoord.x), y = int(uH) - 1 - int(gl_FragCoord.y);
-  vec4 s = texelFetch(uSrc, ivec2(x, y), 0);
+  // (Read from the canvas itself, as it holds it: premultiplied, so its colour taken back out.)
+  vec4 s = texelFetch(uSrc, ivec2(x + uSx0, y + uSy0), 0);
+  if (s.a > 0.) s.rgb /= s.a;
   float A = s.a * 255.;
   if (A < 8. || (s.r + s.g + s.b) * 255. > 380.) { o = vec4(s.rgb * s.a, s.a); return; }
   float dx = float(x) + uX0 - uCx, dy = float(y) + uY0 - uCy, r = sqrt(dx * dx + dy * dy), th = atan(dy, dx);
@@ -251,10 +254,10 @@ export type Uniforms = Record<string, number | number[] | Int32Array | Float32Ar
 
 /**
  * Run pass `which` over a w × h picture: `ints` and `floats` its uniforms, `tables` its float tables (by
- * sampler name), `src` the picture it works on (RGBA, unpremultiplied, rows from the top). The result is
+ * sampler name), `src` the canvas it works on (taken up whole; `uSx0`, `uSy0` where the picture's corner lies in it). The result is
  * left in the chip's own canvas, returned, to be drawn where it belongs (it's premultiplied, as any canvas).
  */
-export function run(which: 'years' | 'grain', w: number, h: number, ints: Uniforms, floats: Uniforms, tables: Record<string, Table>, src?: { data: Uint8ClampedArray; w: number; h: number }): HTMLCanvasElement | null {
+export function run(which: 'years' | 'grain', w: number, h: number, ints: Uniforms, floats: Uniforms, tables: Record<string, Table>, src?: HTMLCanvasElement): HTMLCanvasElement | null {
   const g = context();
   if (!g || !canvas) return null;
   const pr = progs[which];
@@ -275,8 +278,9 @@ export function run(which: 'years' | 'grain', w: number, h: number, ints: Unifor
     g.bindTexture(g.TEXTURE_2D, srcTex);
     g.texParameteri(g.TEXTURE_2D, g.TEXTURE_MIN_FILTER, g.NEAREST); g.texParameteri(g.TEXTURE_2D, g.TEXTURE_MAG_FILTER, g.NEAREST);
     g.texParameteri(g.TEXTURE_2D, g.TEXTURE_WRAP_S, g.CLAMP_TO_EDGE); g.texParameteri(g.TEXTURE_2D, g.TEXTURE_WRAP_T, g.CLAMP_TO_EDGE);
-    g.pixelStorei(g.UNPACK_ALIGNMENT, 1); g.pixelStorei(g.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
-    g.texImage2D(g.TEXTURE_2D, 0, g.RGBA8, src.w, src.h, 0, g.RGBA, g.UNSIGNED_BYTE, new Uint8Array(src.data.buffer, src.data.byteOffset, src.data.byteLength));
+    // (The canvas taken up as it is, on the chip, never read back: premultiplied, as the canvas keeps it.)
+    g.pixelStorei(g.UNPACK_ALIGNMENT, 4); g.pixelStorei(g.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true); g.pixelStorei(g.UNPACK_FLIP_Y_WEBGL, false);
+    g.texImage2D(g.TEXTURE_2D, 0, g.RGBA8, g.RGBA, g.UNSIGNED_BYTE, src);
     g.uniform1i(loc('uSrc'), unit); unit++;
   }
   for (const [n, v] of Object.entries(ints)) {

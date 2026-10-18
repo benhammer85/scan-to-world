@@ -2144,7 +2144,7 @@ function inkGrain(c: HTMLCanvasElement, v: View, band?: [number, number], soft =
   // (Only these rows, if asked: the press done a band at a time.)
   if (band) { const ya = Math.max(y0, Math.floor(band[0])), yb = Math.min(y0 + h, Math.ceil(band[1])); y0 = ya; h = yb - ya; }
   if (w <= 0 || h <= 0) return;
-  const ctx = c.getContext('2d')!, img = ctx.getImageData(x0, y0, w, h), d = img.data;
+  const ctx = c.getContext('2d')!;
   // (The grain and the starved streaks belong to the wood, set at the unzoomed print's scale: looked into,
   // they grow with it and stay where they were, never a fresh scatter.)
   const Z = Math.max(1, look.k), fine = 1 / (0.8 * px * Z), along = 1 / (12 * px * Z), speck = 1 / (0.8 * px * Z), streak = 1 / (5 * px * Z);
@@ -2166,12 +2166,13 @@ function inkGrain(c: HTMLCanvasElement, v: View, band?: [number, number], soft =
   // (On the graphics chip, where there is one: the same, every pixel at once.)
   if (gpu.ready()) {
     const pic = gpu.run('grain', w, h,
-      { uHasFib: fib ? 1 : 0, uFibW: fib?.w ?? 1, uFibH: fib?.h ?? 1, uHasSea: sea && field ? 1 : 0, uSeaW: sea?.w ?? 1, uSeaH: sea?.h ?? 1, uFieldW: field?.w ?? 1, uFieldH: field?.h ?? 1 },
+      { uSx0: x0, uSy0: y0, uHasFib: fib ? 1 : 0, uFibW: fib?.w ?? 1, uFibH: fib?.h ?? 1, uHasSea: sea && field ? 1 : 0, uSeaW: sea?.w ?? 1, uSeaH: sea?.h ?? 1, uFieldW: field?.w ?? 1, uFieldH: field?.h ?? 1 },
       { uX0: x0, uY0: y0, uH: h, uCx: v.cx, uCy: v.cy, uInside: Math.min(1e9, inside), uPerMm: perMm, uFine: fine, uAlong: along, uSpeck: speck, uStreak: streak, uTooth: tooth, uLow: low, uPerTex: perTex, uClose: close, uCg: cg, uFc: fc, uFs: fs, uSawK: sawK, uSx: sx, uSy: sy, uSaw: SAW, uSoft: soft, uVs: v.s },
       { uNoise: { key: NOISE, data: () => NOISE }, uFib: fib ? { key: fib, data: () => fib.d } : { key: NONE, data: () => NONE }, uSea: sea ? { key: sea, data: () => sea.d } : { key: NONE, data: () => NONE }, uField: field ? { key: field, data: () => field.d } : { key: NONE, data: () => NONE } },
-      { data: d, w, h });
+      c);
     if (pic) { ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; ctx.clearRect(x0, y0, w, h); ctx.drawImage(pic, x0, y0); ctx.restore(); return; }
   }
+  const img = ctx.getImageData(x0, y0, w, h), d = img.data;
   for (let y = 0; y < h; y++) {
     const dy = y + y0 - v.cy;
     for (let x = 0; x < w; x++) {
@@ -2286,10 +2287,16 @@ function printFor(v: View, moving: boolean, slot = 'drawing', drift = false, pat
     pressInto(c, v, 0, ch, 0, cw, Q);
     presses.push(Math.round(performance.now() - t0)); if (presses.length > 50) presses.shift();
     pc = printCaches[slot] = { c, key, v: { ...v }, at: clock() };
-  } else if (gpu.ready() && moving && off > 0.18 && clock() - pc.at > 0.15) {
-    // (On the graphics chip: pressed again as the fingers move, once it's been stretched a fifth or so, so the
-    // print under them never goes soft.)
-    pressSlowly(slot, v, key, true, Infinity);
+  } else if (gpu.ready() && !exact) {
+    // (On the graphics chip: pressed again for the view as it is, each frame as the fingers move, so the print
+    // under them is never a stretched picture; every other frame, or fewer, when a pressing takes longer than
+    // the frame has, so the pinch itself never stalls.)
+    const now = performance.now();
+    if (now - liveAt >= liveCost) {
+      pressSlowly(slot, v, key, true, Infinity, false);
+      liveCost = 0.6 * liveCost + 0.4 * (performance.now() - now); liveAt = now;
+      pc = printCaches[slot]!;
+    }
   } else if (((!moving && !drift && !exact) || far) && !fineHolds(slot, key, v)) {
     // (Only sharper wanted, for a view already shown: pressed a strip a frame, the picture there meanwhile
     // scaled to it, and put in its place once whole, so a pinch let go never stalls. Not when the fine print
@@ -2364,7 +2371,9 @@ function pulledRows(v: View, Q = QUALITY()): [number, number, number] | null {
   } finally { px = was; }
 }
 const spare: Record<string, HTMLCanvasElement> = {};
-function pressSlowly(slot: string, v: View, key: string, follow = true, budget = 8): void {
+/** When a view was last pressed live, and how long that takes (ms), as it went. */
+let liveAt = 0, liveCost = 0;
+function pressSlowly(slot: string, v: View, key: string, follow = true, budget = 8, fadeOld = true): void {
   const Q = QUALITY(), cw = Math.ceil(W * MARGIN * Q), ch = Math.ceil(H * MARGIN * Q);
   let job = pressing[slot];
   // (`follow`: begun again for the view as it is now; otherwise finished for the view it was begun for,
@@ -2420,9 +2429,12 @@ function pressSlowly(slot: string, v: View, key: string, follow = true, budget =
   if (job.hi >= job.end && job.lo <= job.top) {
     // (The picture it replaces fades out over the new one, so a view grown sharper never jumps; unless it was
     // seen sharpening already, a band at a time.)
+    // (`fadeOld` false: a view pressed live, the last only a frame behind it, kept to be drawn over next.)
     const old = printCaches[slot];
-    if (fading[slot]) spare[slot] = fading[slot]!.c;
-    fading[slot] = old && !job.shown ? { c: old.c, v: old.v, at: clock() } : undefined;
+    if (old && fadeOld && !job.shown) {
+      if (fading[slot]) spare[slot] = fading[slot]!.c;
+      fading[slot] = { c: old.c, v: old.v, at: clock() };
+    } else if (old) spare[slot] = old.c;
     printCaches[slot] = { c: job.c, key, v: job.v, at: clock() };
     presses.push(-Math.round(performance.now() - job.t0)); if (presses.length > 50) presses.shift();
     delete pressing[slot];

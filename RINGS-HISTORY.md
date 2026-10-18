@@ -209,3 +209,5 @@ At about 5× zoom, the time to press the whole screen fell to roughly a quarter 
 - A pinch is pressed again as it goes, so the print under the fingers never goes soft.
 - The workarounds (strips, lower density when zoomed, the fine copy pressed at rest) are kept only for phones without WebGL2, which press by hand as before; `?cpu` forces that, to compare.
 - The chip can't reproduce the CPU's sine-based hash, so a tree's pores and rays fall in slightly different places than they did by hand. Each wood's look is the same, checked side by side for all ten.
+
+**October 18: the print live under the fingers.** On the graphics chip, a view is now pressed again for exactly what's shown, each frame as the fingers move, so a pinch never shows a stretched picture. When a press takes longer than a frame has, it's pressed every other frame or less, so the pinch itself never stalls. The ink's grain now reads the canvas on the chip itself, never copying it back to the CPU. Only the outlines (bark, cracks, the stipple) are still drawn by the CPU, in a few milliseconds.
