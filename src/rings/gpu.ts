@@ -180,10 +180,124 @@ void main() {
 }
 `;
 
+/** The grove's own noise: value noise on a lattice, hashed by the chip (its look the CPU's, not its numbers). */
+const GROVE = COMMON + `
+float hI(int n) { uint u = uint(n) * 747796405u + 2891336453u; u = ((u >> ((u >> 28u) + 4u)) ^ u) * 277803737u; u = (u >> 22u) ^ u; return float(u >> 8) / 16777216.; }
+float vnG(float x, float y) {
+  float xi = floor(x), yi = floor(y), fx = x - xi, fy = y - yi, sx = fx * fx * (3. - 2. * fx), sy = fy * fy * (3. - 2. * fy);
+  int n = int(xi) * 57 + int(yi) * 131;
+  float a = hI(n), b = hI(n + 57), c = hI(n + 131), e = hI(n + 188);
+  return a + (b - a) * sx + (c - a) * sy + (a - b - c + e) * sx * sy;
+}
+const vec3 INK = vec3(36., 28., 23.) / 255.;
+vec4 over(vec4 s, vec4 d) { return s + d * (1. - s.a); }
+`;
+
+const GROUND = GROVE + `
+uniform int uHillN, uLvN, uSnow;
+uniform vec4 uHill[64];
+uniform vec2 uSpur[64];
+uniform float uLv[16], uLvMajor[16];
+uniform float uH, uU, uCamX0, uCamY0, uCamS, uRs, uRx0, uRy0, uOx, uOy, uSeedMod, uWholeS, uSeed37, uTufts, uKz;
+uniform vec3 uWashRGB;
+float heightW(vec2 w) {
+  float z = 0.;
+  for (int i = 0; i < 64; i++) {
+    if (i >= uHillN) break;
+    vec4 H = uHill[i];
+    float dx = (w.x - H.x) / H.z, dy = (w.y - H.y) / H.z;
+    vec2 s = uSpur[i];
+    z = max(z, exp(-(dx * dx * 1.1 + dy * dy * 1.4) * 1.7) + 0.35 * exp(-((dx - s.x) * (dx - s.x) * 4. + (dy - s.y) * (dy - s.y) * 4.)));
+  }
+  return z + 0.12 * (vnG(w.x / 5. + uOx, w.y / 5. + uOy) - 0.5) + 0.05 * (vnG(w.x / 1.6 + 9. + uOx, w.y / 1.6) - 0.5);
+}
+float heightC(vec2 p) { return heightW((p - vec2(uCamX0, uCamY0)) / uCamS); }
+float seg(vec2 p, vec2 a, vec2 b) { vec2 ab = b - a; float t = clamp(dot(p - a, ab) / max(1e-6, dot(ab, ab)), 0., 1.); return length(p - a - ab * t); }
+void main() {
+  vec2 p = vec2(gl_FragCoord.x - 0.5, uH - gl_FragCoord.y - 0.5), rf = p * uRs + vec2(uRx0, uRy0);
+  float z = heightC(p), st = 4. * uU, zx = heightC(p + vec2(st, 0.)) - z, zy = heightC(p + vec2(0., st)) - z;
+  vec4 col = vec4(0.);
+  // The wash: pale, pooling darker in the folds, thin on the tops, fading out at the hill's foot.
+  if (z >= 0.1) {
+    float slope = min(1., length(vec2(zx, zy)) / uRs * 9. * 58. / max(1., uWholeS));
+    float al = 0.2 * min(1., (z - 0.1) / 0.25) * (0.6 + 0.6 * slope) * (0.7 + 0.6 * vnG(rf.x / (60. * uU) + uSeedMod, rf.y / (60. * uU)));
+    al *= 0.93 + 0.14 * vnG(rf.x / (14. * uU), rf.y / (14. * uU));
+    al = floor(255. * al + 0.5) / 255.;
+    col = vec4(uWashRGB * al, al);
+  }
+  // Snow on the high ground, in winter.
+  if (uSnow == 1) {
+    float al = 0.75 * clamp((z - 0.35) / 0.4, 0., 1.) * (0.55 + 0.45 * vnG(rf.x / (12.5 * uU), rf.y / (12.5 * uU)));
+    col = over(vec4(vec3(253., 252., 250.) / 255. * al, al), col);
+  }
+  // The meadow: a speck in each cell of the ground, thicker low down; looked into, tufts of a few blades.
+  float G = 6. * uU, dots = 0., blades = 0.;
+  ivec2 cell = ivec2(floor(rf / G));
+  for (int dj = -1; dj <= 1; dj++) for (int di = -1; di <= 1; di++) {
+    int i = cell.x + di, j = cell.y + dj;
+    float hh = h1(float(i) * 127.1 + float(j) * 311.7 + uSeed37);
+    vec2 c = ((vec2(float(i) + h1(hh * 91.7), float(j) + h1(hh * 53.3))) * G - vec2(uRx0, uRy0)) / uRs;
+    if (length(p - c) > 6. * uU) continue;
+    float zc = heightC(c), dense = 0.05 + 0.2 * (1. - clamp((zc - 0.05) / 0.6, 0., 1.));
+    if (hh > dense) continue;
+    if (uTufts > 0. && h1(hh * 17.9) < 0.7) {
+      float L = uU * (0.9 + 0.9 * h1(hh * 7.7)) * min(uKz, 3.) * 0.7;
+      for (int q = -1; q <= 1; q++) {
+        float fq = float(q), a = -PI / 2. + fq * 0.45 + (h1(hh * 3. + fq) - 0.5) * 0.3;
+        vec2 s0 = c + vec2(fq * 0.4 * uU, 0.), s1 = s0 + vec2(cos(a), sin(a)) * L * (q != 0 ? 0.8 : 1.);
+        blades = max(blades, clamp(0.2 * uU + 0.5 - seg(p, s0, s1), 0., 1.));
+      }
+    } else {
+      float r = uU * (0.25 + 0.25 * h1(hh * 29.1));
+      dots = max(dots, clamp(r + 0.5 - length(p - c), 0., 1.));
+    }
+  }
+  col = over(vec4(INK, 1.) * 0.32 * dots, col);
+  col = over(vec4(INK, 1.) * 0.4 * uTufts * blades, col);
+  // The contours, by hand: fine and pale, every fourth firmer, broken now and then in long stretches.
+  float gz = max(1e-6, length(vec2(heightC(p + vec2(1., 0.)) - z, heightC(p + vec2(0., 1.)) - z)));
+  for (int li = 0; li < 16; li++) {
+    if (li >= uLvN) break;
+    float L = uLv[li], major = uLvMajor[li], d = abs(z - L) / gz;
+    float wd = uU * (major > 0. ? 0.7 : 0.45), cov = clamp(wd * 0.5 + 0.5 - d, 0., 1.);
+    if (cov <= 0.) continue;
+    if (vnG(rf.x / (110. * uU) + float(li) * 7., rf.y / (110. * uU)) < (major > 0. ? 0.1 : 0.16)) continue;
+    float al = (major > 0. ? 0.3 : 0.17) * (0.45 + 0.55 * min(1., (L - 0.1) / 0.35));
+    col = over(vec4(INK, 1.) * al * cov, col);
+  }
+  o = col;
+}
+`;
+
+/** A crown's watercolour, inside its edge (a table of its radius round it, 1 about its mean). */
+const WASH = GROVE + `
+uniform sampler2D uE;
+uniform int uN;
+uniform float uH, uR, uU, uK, uBase, uWet, uM, uReach;
+uniform vec3 uColRGB;
+void main() {
+  float px = gl_FragCoord.x - 0.5, py = uH - gl_FragCoord.y - 0.5, dx = px - uM, dy = py - uM, rho = length(vec2(dx, dy));
+  o = vec4(0.);
+  if (rho > uReach) return;
+  float a = mod(atan(dy, dx), TAU), j = a / TAU * float(uN), f = j - floor(j);
+  int j0 = int(floor(j));
+  float e = (at(uE, j0) * (1. - f) + at(uE, min(uN, j0 + 1)) * f) * uR * (0.93 + 0.04 * vnG(a * 4. + uK, 1.)) - 0.6 * uU;
+  if (rho > e) return;
+  float inEdge = e - rho;
+  // (Dried darker at its edge; granulating; thinner where the brush ran dry; a touch thinner toward the light.)
+  float al = uBase * (0.82 + 0.3 * vnG((px + uK) / (9. * uU), py / (9. * uU))) * (0.9 + 0.2 * vnG(px / (1.1 * uU) + uK, py / (1.1 * uU)));
+  al *= 1. + (uWet > 0. ? 0.9 : 0.55) * max(0., 1. - inEdge / (2.2 * uU));
+  al *= 0.82 + 0.3 * clamp(0.5 + 0.5 * ((dx / uR) * 0.6 + (dy / uR) * 0.8), 0., 1.);
+  al = floor(255. * min(0.85, al) + 0.5) / 255.;
+  o = vec4(uColRGB * al, al);
+}
+`;
+
 const VERT = `#version 300 es
 void main() { vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2)); gl_Position = vec4(p * 2. - 1., 0., 1.); }
 `;
 
+export type Pass = 'years' | 'grain' | 'ground' | 'wash';
 type Prog = { p: WebGLProgram; loc: Map<string, WebGLUniformLocation | null> };
 let canvas: HTMLCanvasElement | null = null, gl: WebGL2RenderingContext | null = null, failed = false;
 const progs: Record<string, Prog> = {};
@@ -205,7 +319,7 @@ function context(): WebGL2RenderingContext | null {
     for (const k in progs) delete progs[k];
     for (const k in fresh) delete fresh[k];
     srcTex = null;
-    progs.years = build(gl, YEARS); progs.grain = build(gl, GRAIN);
+    progs.years = build(gl, YEARS); progs.grain = build(gl, GRAIN); progs.ground = build(gl, GROUND); progs.wash = build(gl, WASH);
     return gl;
   } catch (e) {
     console.warn('press: no graphics chip, pressing by hand', e);
@@ -257,11 +371,17 @@ export type Uniforms = Record<string, number | number[] | Int32Array | Float32Ar
  * sampler name), `src` the canvas it works on (taken up whole; `uSx0`, `uSy0` where the picture's corner lies in it). The result is
  * left in the chip's own canvas, returned, to be drawn where it belongs (it's premultiplied, as any canvas).
  */
-export function run(which: 'years' | 'grain', w: number, h: number, ints: Uniforms, floats: Uniforms, tables: Record<string, Table>, src?: HTMLCanvasElement): HTMLCanvasElement | null {
+export type Pic = { c: HTMLCanvasElement; sx: number; sy: number; w: number; h: number };
+/** Draw a pass's picture into a 2D canvas at (x, y), at its size or `dw` × `dh`. */
+export function lay(g: CanvasRenderingContext2D, p: Pic, x: number, y: number, dw = p.w, dh = p.h): void {
+  g.drawImage(p.c, p.sx, p.sy, p.w, p.h, x, y, dw, dh);
+}
+export function run(which: Pass, w: number, h: number, ints: Uniforms, floats: Uniforms, tables: Record<string, Table>, src?: HTMLCanvasElement): Pic | null {
   const g = context();
   if (!g || !canvas) return null;
   const pr = progs[which];
-  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+  // (The chip's canvas only ever grows: the picture is drawn in its lower left corner, and taken from there.)
+  if (canvas.width < w || canvas.height < h) { canvas.width = Math.max(canvas.width, w); canvas.height = Math.max(canvas.height, h); }
   g.viewport(0, 0, w, h);
   g.useProgram(pr.p);
   const loc = (n: string) => { if (!pr.loc.has(n)) pr.loc.set(n, g.getUniformLocation(pr.p, n)); return pr.loc.get(n)!; };
@@ -287,13 +407,16 @@ export function run(which: 'years' | 'grain', w: number, h: number, ints: Unifor
     const l = loc(n);
     if (typeof v === 'number') g.uniform1i(l, v); else g.uniform1iv(l, v instanceof Int32Array ? v : new Int32Array(v));
   }
-  for (const [n, v] of Object.entries(floats)) {
-    const l = loc(n);
+  for (const [key, v] of Object.entries(floats)) {
+    // (`name#4`, `name#2`: an array of vec4s or vec2s.)
+    const [n, vec] = key.split('#'), l = loc(n);
+    if (vec === '4') { g.uniform4fv(l, v as Float32Array); continue; }
+    if (vec === '2') { g.uniform2fv(l, v as Float32Array); continue; }
     if (typeof v === 'number') g.uniform1f(l, v);
     else if (v.length === 3 && n.endsWith('RGB')) g.uniform3f(l, v[0], v[1], v[2]);
     else g.uniform1fv(l, v instanceof Float32Array ? v : new Float32Array(v));
   }
   g.disable(g.BLEND); g.clearColor(0, 0, 0, 0); g.clear(g.COLOR_BUFFER_BIT);
   g.drawArrays(g.TRIANGLES, 0, 3);
-  return canvas;
+  return { c: canvas, sx: 0, sy: canvas.height - h, w, h };
 }

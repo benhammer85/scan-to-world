@@ -27,7 +27,7 @@ import { at, paperTooth } from './draw';
 import { Paper } from './paint';
 import { dayDate, dayOf } from './days';
 import { climate, growth as growthOf, season } from './growing';
-import { crownSize, drawCrown, drawHill, drawMeadow, drawMoss, drawSeedling, drawStream, drawTrack, washFlat, shadeOf, heightAt, land, pigment, seasonOf, snowHill, washCrown, washHill, type CrownForm, type Hill, type Season, type Sun } from './grove';
+import { crownSize, groundGpu, drawCrown, drawHill, drawMeadow, drawMoss, drawSeedling, drawStream, drawTrack, washFlat, shadeOf, heightAt, land, pigment, seasonOf, snowHill, washCrown, washHill, type CrownForm, type Hill, type Season, type Sun } from './grove';
 import { holdStill, steadySize } from './steady';
 import { fromText, grove, keepInGrove, keepTree, recallTree, setGrove, snapshotTree, toText, treeFrom, type KeptTree, type WoodMark } from './save';
 
@@ -2046,7 +2046,7 @@ function printYears(v: View, oak: Years | null): void {
         uEarly: A.early, uLate: A.late, uShare: A.share, uEdge: A.edge, uPores: A.pores, uPoreR: A.poreR, uPoreEarly: A.poreEarly, uFibre: A.fibre, uMottle: A.mottle, uSharp: A.sharp ?? 1.4, uInkRGB: [INK[0] / 255, INK[1] / 255, INK[2] / 255] },
       { uNoise: { key: NOISE, data: () => NOISE }, uRad: { name: 'rad', data: rad }, uRing: { name: 'ring', data: ring },
         uLev: oak ? { key: oak, data: () => atlasOf(oak) } : { key: NONE, data: () => NONE }, uFib: fib ? { key: fib, data: () => fib.d } : { key: NONE, data: () => NONE } });
-    if (pic) { ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; ctx.drawImage(pic, x0, y0); ctx.restore(); return; }
+    if (pic) { ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; gpu.lay(ctx, pic, x0, y0); ctx.restore(); return; }
   }
   const img = ctx.getImageData(x0, y0, w, h), d = img.data;
   for (let y = 0; y < h; y++) {
@@ -2170,7 +2170,7 @@ function inkGrain(c: HTMLCanvasElement, v: View, band?: [number, number], soft =
       { uX0: x0, uY0: y0, uH: h, uCx: v.cx, uCy: v.cy, uInside: Math.min(1e9, inside), uPerMm: perMm, uFine: fine, uAlong: along, uSpeck: speck, uStreak: streak, uTooth: tooth, uLow: low, uPerTex: perTex, uClose: close, uCg: cg, uFc: fc, uFs: fs, uSawK: sawK, uSx: sx, uSy: sy, uSaw: SAW, uSoft: soft, uVs: v.s },
       { uNoise: { key: NOISE, data: () => NOISE }, uFib: fib ? { key: fib, data: () => fib.d } : { key: NONE, data: () => NONE }, uSea: sea ? { key: sea, data: () => sea.d } : { key: NONE, data: () => NONE }, uField: field ? { key: field, data: () => field.d } : { key: NONE, data: () => NONE } },
       c);
-    if (pic) { ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; ctx.clearRect(x0, y0, w, h); ctx.drawImage(pic, x0, y0); ctx.restore(); return; }
+    if (pic) { ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; ctx.clearRect(x0, y0, w, h); gpu.lay(ctx, pic, x0, y0); ctx.restore(); return; }
   }
   const img = ctx.getImageData(x0, y0, w, h), d = img.data;
   for (let y = 0; y < h; y++) {
@@ -2966,12 +2966,15 @@ function* groveSteps(c: CanvasRenderingContext2D, cam: Cam, sprites?: Sprite[]):
   const height = (x: number, y: number) => heightAt((x - cam.X0) / cam.S, (y - cam.Y0) / cam.S, w.hills, w.seed);
   // (The ground's own marks read where they lie on it, as in the grove seen whole: looked into, the same.)
   const ref = (x: number, y: number): [number, number] => [w.whole.X0 + ((x - cam.X0) / cam.S) * w.whole.S, w.whole.Y0 + ((y - cam.Y0) / cam.S) * w.whole.S];
-  washHill(c, W, H, px, height, w.seed, season, cam.S, ref);
-  if (season === 'winter') snowHill(c, W, H, px, height, ref);
-  yield;
-  drawMeadow(c, W, H, px, height, w.seed, ref);
-  yield;
-  drawHill(c, W, H, px, height, w.seed, ref);
+  // (On the graphics chip, the whole ground at once; by hand, a piece at a time.)
+  if (!groundGpu(c, W, H, px, cam, w.whole, w.hills, w.seed, season)) {
+    washHill(c, W, H, px, height, w.seed, season, cam.S, ref);
+    if (season === 'winter') snowHill(c, W, H, px, height, ref);
+    yield;
+    drawMeadow(c, W, H, px, height, w.seed, ref);
+    yield;
+    drawHill(c, W, H, px, height, w.seed, ref);
+  }
   yield;
   const u = px * Math.pow(Math.max(1, cam.S / w.whole.S), 0.8);
   const at = (wx: number, wy: number): [number, number] => [cam.X0 + wx * cam.S, cam.Y0 + wy * cam.S];

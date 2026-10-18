@@ -211,3 +211,9 @@ At about 5× zoom, the time to press the whole screen fell to roughly a quarter 
 - The chip can't reproduce the CPU's sine-based hash, so a tree's pores and rays fall in slightly different places than they did by hand. Each wood's look is the same, checked side by side for all ten.
 
 **October 18: the print live under the fingers.** On the graphics chip, a view is now pressed again for exactly what's shown, each frame as the fingers move, so a pinch never shows a stretched picture. When a press takes longer than a frame has, it's pressed every other frame or less, so the pinch itself never stalls. The ink's grain now reads the canvas on the chip itself, never copying it back to the CPU. Only the outlines (bark, cracks, the stipple) are still drawn by the CPU, in a few milliseconds.
+
+**October 18: the grove's ground and washes on the graphics chip.** The grove's per-pixel work moved to the chip too.
+- The ground is drawn in one pass: the hill's wash, its winter snow, the meadow's specks (and its grass tufts when looked into) and the hand-drawn contours, broken now and then as before.
+- Each crown's watercolour is painted on the chip, and larger than before (up to 360 px across its radius), so it holds up looked into.
+- The CPU now does only the ink: crowns, shadows, the stream, the paths.
+- The chip's noise is its own, so the hills' contours lie a little differently than they did. Where there's no WebGL2, or with `?cpu`, the grove is drawn by hand as before.

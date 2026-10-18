@@ -1,3 +1,4 @@
+import * as gpu from './gpu';
 /**
  * The grove from above, as an estate map draws a park: the hill in hand-inked contours, and each tree its
  * crown seen from above, its shadow hatched to the lower right (the light from the upper left, as on the
@@ -346,7 +347,8 @@ export function washCrown(g: CanvasRenderingContext2D, x: number, y: number, r: 
   // (Painted no larger than some 120 px across its radius, and laid larger: a close look magnifies the
   // wash, never paints millions of pixels afresh.)
   // (And painted at one of a few sizes, a step apart, so a look closer or further reuses one already painted.)
-  const CAP = 120, rq = Math.min(CAP, 2 ** (Math.round(Math.log2(Math.max(2, r)) * 2) / 2)), up = r / rq;
+  // (On the graphics chip, painted larger: it costs next to nothing there, and holds up looked into.)
+  const CAP = gpu.ready() ? 360 : 120, rq = Math.min(CAP, 2 ** (Math.round(Math.log2(Math.max(2, r)) * 2) / 2)), up = r / rq;
   const w = washOf(rq, sp, k, U / up, season, wet, form);
   if (!w) return;
   const sc = scale * up;
@@ -370,7 +372,10 @@ function washOf(r: number, sp: string, k: number, U: number, season: Season, wet
   // (Only within the edge's farthest reach: the square's corners left bare without asking.)
   let far = 0; for (const v of E) far = Math.max(far, v);
   const reach = far * r * 0.97, y0 = Math.max(0, Math.floor(m - reach)), y1 = Math.min(size, Math.ceil(m + reach) + 1);
-  for (let py = y0; py < y1; py++) {
+  // (On the graphics chip, where there is one: the same wash, every pixel at once.)
+  const pic = gpu.ready() ? gpu.run('wash', size, size, { uN: N }, { uH: size, uR: r, uU: U, uK: k, uBase: base, uWet: wet ? 1 : 0, uM: m, uReach: reach, uColRGB: [col[0] / 255, col[1] / 255, col[2] / 255] }, { uE: { name: 'E', data: E } }) : null;
+  if (pic) gpu.lay(cx, pic, 0, 0);
+  else for (let py = y0; py < y1; py++) {
     const half = Math.sqrt(Math.max(0, reach * reach - (py - m) ** 2)), x0 = Math.max(0, Math.floor(m - half)), x1 = Math.min(size, Math.ceil(m + half) + 1);
     for (let px = x0; px < x1; px++) {
     const dx = px - m, dy = py - m, rho = Math.hypot(dx, dy), a = ((Math.atan2(dy, dx) % TAU) + TAU) % TAU;
@@ -386,13 +391,35 @@ function washOf(r: number, sp: string, k: number, U: number, season: Season, wet
     d[o] = col[0]; d[o + 1] = col[1]; d[o + 2] = col[2]; d[o + 3] = Math.round(255 * Math.min(0.85, al));
   }
   }
-  cx.putImageData(img, 0, 0);
+  if (!pic) cx.putImageData(img, 0, 0);
   // (Still wet: a bloom, where the water crept back and pushed the pigment out.)
   if (wet) { cx.strokeStyle = `rgba(${col[0]},${col[1]},${col[2]},0.35)`; cx.lineWidth = 1.4 * U; path(cx, m, m, Math.min(r * 1.08, m - U), formed(edgeOf(sp, k + 29), form, k)); cx.stroke(); }
   const out = { c, m, ox, oy };
   washes.set(key, out);
   if (washes.size > 160) washes.delete(washes.keys().next().value!);
   return out;
+}
+/**
+ * The whole ground at once on the graphics chip, where there is one: the hill's wash, its snow, the meadow and
+ * the contours, as washHill, snowHill, drawMeadow and drawHill draw them (by `cam`, the world as drawn here,
+ * and `whole`, as seen whole). False where there's no chip, to be drawn by those instead.
+ */
+type Cam = { X0: number; Y0: number; S: number };
+export function groundGpu(g: CanvasRenderingContext2D, w: number, h: number, U: number, cam: Cam, whole: Cam, hills: Hill[], seed: number, season: Season): boolean {
+  if (!gpu.ready()) return false;
+  const rs = whole.S / cam.S, HL = Math.min(64, hills.length), hl = new Float32Array(64 * 4), sp = new Float32Array(64 * 2);
+  for (let i = 0; i < HL; i++) { const H = hills[i], sa = h1(i * 2.7 + seed) * TAU; hl.set([H.x, H.y, H.R, 0], i * 4); sp.set([Math.cos(sa) * 0.5, Math.sin(sa) * 0.5], i * 2); }
+  const lv = new Float32Array(16), major = new Float32Array(16);
+  let n = 0;
+  for (let L = 0.16, li = 0; L < 1.2 && n < 16; L += 0.13 + 0.06 * h1(li * 3.7 + seed), li++, n++) { lv[n] = L; major[n] = li % 4 === 3 ? 1 : 0; }
+  const col = season === 'winter' ? [176, 172, 150] : season === 'autumn' ? [184, 168, 112] : season === 'spring' ? [168, 182, 122] : [150, 166, 106];
+  const pic = gpu.run('ground', w, h, { uHillN: HL, uLvN: n, uSnow: season === 'winter' ? 1 : 0 },
+    { 'uHill#4': hl, 'uSpur#2': sp, uLv: lv, uLvMajor: major, uH: h, uU: U, uCamX0: cam.X0, uCamY0: cam.Y0, uCamS: cam.S, uRs: rs, uRx0: whole.X0 - cam.X0 * rs, uRy0: whole.Y0 - cam.Y0 * rs,
+      uOx: 30 * h1(seed * 0.013), uOy: 30 * h1(seed * 0.029), uSeedMod: seed % 50, uWholeS: whole.S, uSeed37: seed * 0.37, uTufts: Math.max(0, Math.min(1, (1 / rs - 1.5) / 1.5)), uKz: 1 / rs,
+      uWashRGB: [col[0] / 255, col[1] / 255, col[2] / 255] }, {});
+  if (!pic) return false;
+  g.save(); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; gpu.lay(g, pic, 0, 0); g.restore();
+  return true;
 }
 /** The hill's wash: pale, pooling darker in its folds, fading out into the paper at its foot. */
 export function washHill(g: CanvasRenderingContext2D, w: number, h: number, U: number, height: (x: number, y: number) => number, seed: number, season: Season, scale = 1, ref: Ref = SAME): void {
