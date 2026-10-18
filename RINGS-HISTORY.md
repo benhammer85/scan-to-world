@@ -237,3 +237,5 @@ At about 5× zoom, the time to press the whole screen fell to roughly a quarter 
 - The grove drawn ahead in the background, for pinching out to, is also drawn a piece a frame, never in one go.
 
 **October 18: the new year there at once.** Closing a loop showed the old slice inside the loop for a moment while the new year was pressed a strip at a time, then the year popped in. On the graphics chip the year just closed is now pressed at once, so the loop dries onto a print that already holds it. Other presses still come a strip a frame. A canvas still fading out, or shown by another slot, is never pressed into, and bands pressed for a view the slice has moved from are never laid over it.
+
+**October 18: no bar while it sharpens.** While a print was pressed again, its finished bands were laid over the softer picture from the middle out. On a phone, where that takes many frames, the edge between them showed as a horizontal bar twitching up and down. A sharper print is now pressed out of sight and fades in once it's whole. On the graphics chip, a re-press now covers the whole picture, never leaving a stretched copy's edge in the margin to drift into view.

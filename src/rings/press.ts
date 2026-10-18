@@ -2388,7 +2388,7 @@ function pulledReach(v: View): { x0: number; y0: number; x1: number; y1: number;
   return x1 < x0 ? null : { x0, y0, x1, y1, pad: Math.ceil(pad) + 4 };
 }
 /** Pictures being pressed a strip at a time, a slot each, and the one to be drawn over next. */
-const pressing: Record<string, { c: HTMLCanvasElement; v: View; key: string; lo: number; hi: number; top: number; t0: number; end: number; c0: number; c1: number; pulled: [number, number, number] | null; last?: number; shown?: boolean; q: number; rows: number }> = {};
+const pressing: Record<string, { c: HTMLCanvasElement; v: View; key: string; lo: number; hi: number; top: number; t0: number; end: number; c0: number; c1: number; pulled: [number, number, number] | null; last?: number; q: number; rows: number }> = {};
 /** Where the wood's pulled about, in a kept picture's own pixels for view `v`: its rows, and the margin it needs. */
 function pulledRows(v: View, Q = QUALITY()): [number, number, number] | null {
   const was = px;
@@ -2420,7 +2420,8 @@ function pressSlowly(slot: string, v: View, key: string, follow = true, budget =
     let top = Math.max(0, Math.floor(cy - R)), end = Math.min(ch, Math.ceil(cy + R)), c0 = Math.max(0, Math.floor(cx - R)), c1 = Math.min(cw, Math.ceil(cx + R));
     const cc = c.getContext('2d')!, old = printCaches[slot];
     cc.clearRect(0, 0, cw, ch);
-    if (follow && old && old.key === key) {
+    // (By hand only: on the graphics chip all of it is pressed, never a stretched copy's edge left to come into view.)
+    if (follow && old && old.key === key && !gpu.ready()) {
       // (Only sharper wanted: the sheet as seen pressed anew, a little round it; beyond, the picture as it was,
       // scaled, for a pinch back out.)
       const [ox, oy, ow, oh] = placeOf(old, v);
@@ -2462,7 +2463,7 @@ function pressSlowly(slot: string, v: View, key: string, follow = true, budget =
     // seen sharpening already, a band at a time.)
     // (`fadeOld` false: a view pressed live, the last only a frame behind it, kept to be drawn over next.)
     const old = printCaches[slot];
-    if (old && fadeOld && !job.shown) {
+    if (old && fadeOld) {
       if (fading[slot]) spare[slot] = fading[slot]!.c;
       fading[slot] = { c: old.c, v: old.v, at: clock() };
     } else if (old) spare[slot] = old.c;
@@ -2625,16 +2626,6 @@ function drawSharp(pc: Kept, v: View, slot: string, moving: boolean, alpha = 1, 
   drawKept(pc, v, alpha, grow, fp ?? undefined);
   if (fp) { g.save(); g.globalAlpha = alpha; g.drawImage(fine!.c, ...fp); g.restore(); }
   if (alpha > 0.99) growFine(slot, pc, v, moving);
-  // (Sharpening: the bands already pressed laid over it as they come, out from the middle.)
-  const job = pressing[slot];
-  // (Only for the view as it is: bands pressed for a view the slice has since moved from never laid over it.)
-  if (job && job.key === pc.key && job.hi > job.lo && Math.abs(job.v.s - v.s) < 1e-3 * v.s && Math.hypot(job.v.cx - v.cx, job.v.cy - v.cy) < 0.5) {
-    job.shown = true;
-    const [ox, oy, w, h] = placeOf(job, v, grow), ky = h / job.c.height, kx = w / job.c.width;
-    g.save(); g.globalAlpha = alpha;
-    g.drawImage(job.c, job.c0, job.lo, job.c1 - job.c0, job.hi - job.lo, ox + job.c0 * kx, oy + job.lo * ky, (job.c1 - job.c0) * kx, (job.hi - job.lo) * ky);
-    g.restore();
-  }
   const f = fading[slot];
   if (f) {
     const k = 1 - smooth((clock() - f.at) / FADE);
