@@ -39,6 +39,7 @@ const YEARS = COMMON + `
 uniform sampler2D uRad, uRing, uLev, uFib;
 uniform int uN, uB, uOak, uFamRing, uConifer, uHasFib, uFibW, uFibH, uOakN, uLvN;
 uniform int uLvO[12], uLvW[12], uLvH[12], uLvRows[12];
+uniform float uPithMM, uSnap, uWood;
 uniform float uX0, uY0, uH, uCx, uCy, uTurn, uRmax, uWA, uWL, uWL2, uU, uPx, uW0, uRay, uRun0, uRun1, uSparse, uInk;
 uniform float uEarly, uLate, uShare, uEdge, uPores, uPoreR, uPoreEarly, uFibre, uMottle, uSharp;
 uniform vec3 uInkRGB;
@@ -52,7 +53,7 @@ float ringN(float a, float rho, float kx, float ox, float y) {
 }
 float rad(int i, int b, float f) { int k = (i + 1) * (uB + 1) + b; float p = at(uRad, k); return p + (at(uRad, k + 1) - p) * f; }
 // (Each ring's facts: 0 reps, 1 off, 2 year, 3 level, 4 runR, 5 thin, 6 edge, 7 half, 8 edgeIn, 9 edgeOut, 10 tone, 11 calm.)
-float R(int i, int k) { return at(uRing, i * 12 + k); }
+float R(int i, int k) { return at(uRing, i * 14 + k); }
 float lineAt(int j, float dist) { return j < 0 || R(j, 6) == 0. ? 0. : clamp((R(j, 7) + 0.5 * uPx - dist) / uPx, 0., 1.) * R(j, 5); }
 float rayAt(float a, float rho) {
   const float R0 = 10., GAP = 3.6;
@@ -78,8 +79,8 @@ float rayAt(float a, float rho) {
   }
   return best;
 }
-float drawnInk(int i, float a, float r, float across, bool heart, float width, float dx, float dy, float rr) {
-  float rho = r / uU, fi = float(i);
+float drawnInk(int i, float a, float r, float across, bool heart, float width, float dx, float dy, float rr, float rho) {
+  float fi = float(i);
   // (As a relief print takes it: the latewood a bold band of ink, its inner edge never ruled but wandering
   // along the year, dry and ragged; the earlywood mostly the paper, the ink bleeding into it in blotches
   // beside the band; and the band itself starved here and there to flecks of paper.)
@@ -132,6 +133,9 @@ void main() {
   int i = heart ? 0 : lo;
   float rin = heart ? 0. : rad(i - 1, b, f), rout = heart ? rad(-1, b, f) : rad(i, b, f);
   float across = (r - rin) / max(1e-3, rout - rin), ink;
+  // (Where the point lies in the wood itself (mm): the wood's marks are its own, never moved by a year added.)
+  float rinM = heart ? 0. : (i == 0 ? uPithMM : R(i - 1, 12)), routM = heart ? uPithMM : R(i, 12);
+  float mm = rinM + across * (routM - rinM), rrM = (rinM + routM) * 0.5;
   if (uOak == 1) {
     int year = heart ? (int(R(0, 2)) + uOakN - 1) % uOakN : int(R(i, 2));
     float runR = R(i, 4), reps = R(i, 0), fi = float(i);
@@ -140,7 +144,7 @@ void main() {
     float rows = float(uLvRows[li]), wob = (0.09 * sin(2. * a + fi * 1.7) + 0.06 * sin(3. * a + fi * 2.9 + 1.) + 0.04 * sin(5. * a + fi * 0.6)) * uW0;
     // (As the drawn woods print: every year its own, its latewood broader or narrower and heavier or lighter;
     // its edge torn in short bites; and the scan's wood laid round the ring at the ring's own radius.)
-    float rr = (rin + rout) * 0.5 / uU, w = max(1e-3, rout - rin), yv = h1(fi * 1.37 + 0.71), heavy = 0.85 + 0.3 * h1(fi * 2.91 + 0.3);
+    float rr = rrM * uSnap, w = max(1e-3, rout - rin), yv = h1(fi * 1.37 + 0.71), heavy = 0.85 + 0.3 * h1(fi * 2.91 + 0.3);
     float fray = (ringN(a, rr, 0.7, fi * 3.1, rr * 0.7) - 0.5) + 0.7 * (ringN(a, rr, 1.9, fi, rr * 1.9 + 3.) - 0.5);
     float acr = heart ? across : clamp(pow(clamp(across + 1.4 * uU / w * fray, 0., 1.), 0.7 + 0.6 * yv), 0., 1.);
     ink = sampleL(uLev, uLvO[li], uLvW[li], uLvH[li], ((a / TAU) * reps * uW0 + R(i, 1) + wob * reps * 0.15) * float(uLvW[li]) / uW0, float(year) * rows + acr * rows, float(year) * rows, rows);
@@ -149,7 +153,7 @@ void main() {
     ink = sm((ink * heavy - 0.32) / 0.4);
     ink *= 1. - 0.9 * sm((ringN(a, rr, 1.4, fi * 9.7, rr * 1.4) - 0.76) / 0.05);
     ink *= R(i, 10);
-  } else ink = drawnInk(i, a, r, across, heart, rout - rin, dx, dy, (rin + rout) * 0.5 / uU) * R(i, 10);
+  } else ink = drawnInk(i, a, r, across, heart, rout - rin, dx, dy, rrM * uSnap, mm * uSnap) * R(i, 10);
   if (!heart && R(i, 5) > 0.) {
     ink *= 1. - 0.65 * R(i, 5);
     int jo = int(R(i, 9)), ji = int(R(i, 8));
@@ -157,7 +161,7 @@ void main() {
     if (cov > 0.) ink = max(ink, 0.95 * cov);
   }
   // (The drawn woods' rays fine and sparing, as a print shows them: the years' bands run on through them.)
-  if (uRay > 0. && !heart) ink *= 1. - uRay * (uOak == 1 ? 1. : 0.55) * rayAt(a, r / uU);
+  if (uRay > 0. && !heart) ink *= 1. - uRay * (uOak == 1 ? 1. : 0.55) * rayAt(a, mm * uWood);
   float al = floor(255. * clamp(ink, 0., 1.) + 0.5) / 255.;
   o = vec4(uInkRGB * al, al);
 }

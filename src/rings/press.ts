@@ -938,11 +938,12 @@ function breathe(t: number, dt: number): void {
 const breathGrow = () => 1;
 function drawBreath(v: View): void {
   if (breathShown < 0.01 || !tree.rings.length) return;
-  const w = (3 + 9 * breathNow) * px;
+  // (Barely there: a shade in the paper just outside the bark, a few px, widening a little with the in-breath.)
+  const w = (2 + 4 * breathNow) * px;
   g.save(); g.lineJoin = 'round';
-  for (const [k, al] of [[1, 0.035], [0.6, 0.04], [0.3, 0.045]]) {
+  for (const [k, al] of [[1, 0.008], [0.5, 0.01]]) {
     g.strokeStyle = `rgba(46,33,24,${(al * breathShown).toFixed(3)})`; g.lineWidth = 2 * w * k;
-    ringPath(v, barkOf(tree.rings.length - 1), barkCss(v) * 1.2); g.stroke();
+    ringPath(v, barkOf(tree.rings.length - 1), barkCss(v) * 1.6 + (w * k) / px); g.stroke();
   }
   g.restore();
 }
@@ -1949,9 +1950,13 @@ function printYears(v: View, oak: Years | null): void {
   // (The drawn woods: each year built as its kind's is, from the earlywood out to the latewood and its edge,
   // with its rays, pores and real fibre; all in the slice's own px (`U`), so looked into they're the same,
   // larger, never a fresh scatter.)
+  // (The wood's marks laid in the wood itself, never moved by a year added: the rays in its own millimetres
+  // (`WOOD` to the mm), as real rays run on from year to year, more of them as the trunk widens; the finer grain
+  // and pores at the slice's own scale to the nearest doubling (`SNAP`), so they keep still from day to day.)
+  const WOOD = 1 / 2.7, SNAP = 2 ** Math.round(Math.log2(Math.max(1e-6, v.s / (px * Z))));
   const an = oak ? null : ANATOMY[kind] ?? ANATOMY.cherry!, fib = wood.fibre[kind], U = px * Z, conifer = fam() === 'conifer', RAY = RAYS[kind] ?? 0;
-  const drawnInk = (i: number, a: number, r: number, across: number, _heart: boolean, width: number, dx: number, dy: number, rmid: number): number => {
-    const A = an!, rho = r / U;
+  const drawnInk = (i: number, a: number, _r: number, across: number, _heart: boolean, width: number, dx: number, dy: number, rmid: number, rho: number): number => {
+    const A = an!;
     // The year: earlywood, a little deeper as it goes, then darkening into the latewood, ending sharp.
     // (As a relief print takes it: the latewood a bold band of ink, its inner edge never ruled but wandering
     // along the year, dry and ragged; the earlywood mostly the paper, the ink bleeding into it in blotches
@@ -1996,14 +2001,14 @@ function printYears(v: View, oak: Years | null): void {
   const lineAt = (j: number, dist: number) => (j < 0 || !edge[j] ? 0 : Math.max(0, Math.min(1, (half[j] + 0.5 * px - dist) / px)) * thin[j]);
   // (On the graphics chip, where there is one: the same, every pixel at once.)
   if (gpu.ready()) {
-    const ring = new Float32Array(Math.max(1, n) * 12);
-    for (let i = 0; i < n; i++) ring.set([reps[i], off[i], yr[i], lvl[i], runR[i], thin[i], edge[i], half[i], edgeIn[i], edgeOut[i], tone(i), conifer ? calmOf(i) : 0.5], i * 12);
+    const ring = new Float32Array(Math.max(1, n) * 14);
+    for (let i = 0; i < n; i++) ring.set([reps[i], off[i], yr[i], lvl[i], runR[i], thin[i], edge[i], half[i], edgeIn[i], edgeOut[i], tone(i), conifer ? calmOf(i) : 0.5, meanR(i), 0], i * 14);
     const A = an ?? ANATOMY.cherry!, lv = oak ? oak.levels : [], LV = Math.min(12, lv.length), run = RAY_RUN[kind] ?? [20, 0.3];
     const lvO = new Int32Array(12), lvW = new Int32Array(12).fill(1), lvH = new Int32Array(12).fill(1), lvRows = new Int32Array(12).fill(1);
     for (let k = 0, o = 0; k < LV; k++) { lvO[k] = o; lvW[k] = lv[k].w; lvH[k] = lv[k].h; lvRows[k] = lv[k].rows; o += lv[k].w * lv[k].h; }
     const pic = gpu.run('years', w, h,
       { uN: n, uB: B, uOak: oak ? 1 : 0, uFamRing: fam() === 'ring' ? 1 : 0, uConifer: conifer ? 1 : 0, uHasFib: fib ? 1 : 0, uFibW: fib?.w ?? 1, uFibH: fib?.h ?? 1, uOakN: oak?.n ?? 1, uLvN: Math.max(1, LV), uLvO: lvO, uLvW: lvW, uLvH: lvH, uLvRows: lvRows },
-      { uX0: x0, uY0: y0, uH: h, uCx: v.cx, uCy: v.cy, uTurn: v.turn, uRmax: rmax, uWA: wA, uWL: wL, uWL2: wL2, uU: U, uPx: px, uW0: W0, uRay: RAY, uRun0: run[0], uRun1: run[1], uSparse: SPARSE,
+      { uPithMM: meanR(-1), uSnap: SNAP, uWood: WOOD, uX0: x0, uY0: y0, uH: h, uCx: v.cx, uCy: v.cy, uTurn: v.turn, uRmax: rmax, uWA: wA, uWL: wL, uWL2: wL2, uU: U, uPx: px, uW0: W0, uRay: RAY, uRun0: run[0], uRun1: run[1], uSparse: SPARSE,
         uEarly: A.early, uLate: A.late, uShare: A.share, uEdge: A.edge, uPores: A.pores, uPoreR: A.poreR, uPoreEarly: A.poreEarly, uFibre: A.fibre, uMottle: A.mottle, uSharp: A.sharp ?? 1.4, uInkRGB: [INK[0] / 255, INK[1] / 255, INK[2] / 255] },
       { uNoise: { key: NOISE, data: () => NOISE }, uRad: { name: 'rad', data: rad }, uRing: { name: 'ring', data: ring },
         uLev: oak ? { key: oak, data: () => atlasOf(oak) } : { key: NONE, data: () => NONE }, uFib: fib ? { key: fib, data: () => fib.d } : { key: NONE, data: () => NONE } });
@@ -2029,7 +2034,9 @@ function printYears(v: View, oak: Years | null): void {
       let lo = 0, hi = n - 1;
       while (lo < hi) { const m = (lo + hi) >> 1; if (at(m, b, f) > r) hi = m; else lo = m + 1; }
       const heart = r < at(-1, b, f), i = heart ? 0 : lo, rin = heart ? 0 : at(i - 1, b, f), rout = heart ? at(-1, b, f) : at(i, b, f);
-      const across = (r - rin) / Math.max(1e-3, rout - rin), year = !oak ? 0 : heart ? (yr[0] + oak.n - 1) % oak.n : yr[i];
+      // (Where the point lies in the wood itself (mm): its marks never moved by a year added.)
+      const rinM = heart ? 0 : i === 0 ? meanR(-1) : meanR(i - 1), routM = heart ? meanR(-1) : meanR(i);
+      const across = (r - rin) / Math.max(1e-3, rout - rin), mm = rinM + across * (routM - rinM), rrM = (rinM + routM) / 2, year = !oak ? 0 : heart ? (yr[0] + oak.n - 1) % oak.n : yr[i];
       // (Never evenly round: a gentle stretch and squeeze round each ring, its own, so the rays fall
       // unevenly and bend a little from year to year. The heart, soft: a blurred year, no rays meeting.)
       // (Toward the middle, a ring's wood is drawn in ever tighter round: there it takes a softer copy, so
@@ -2041,7 +2048,7 @@ function printYears(v: View, oak: Years | null): void {
         const wob = (0.09 * Math.sin(2 * a + i * 1.7) + 0.06 * Math.sin(3 * a + i * 2.9 + 1) + 0.04 * Math.sin(5 * a + i * 0.6)) * W0;
         // (As the drawn woods print: every year its own, its edge torn in short bites, the wood laid round the ring
         // at its own radius; as gpu.ts presses it.)
-        const rr = (rin + rout) / 2 / U, wd = Math.max(1e-3, rout - rin), yv = h1(i * 1.37 + 0.71), heavy = 0.85 + 0.3 * h1(i * 2.91 + 0.3), wrap = smooth((a - (TAU - 0.4)) / 0.4);
+        const rr = rrM * SNAP, wd = Math.max(1e-3, rout - rin), yv = h1(i * 1.37 + 0.71), heavy = 0.85 + 0.3 * h1(i * 2.91 + 0.3), wrap = smooth((a - (TAU - 0.4)) / 0.4);
         const rn = (kx: number, ox: number, y: number) => { const n0 = vnoise(a * rr * kx + ox, y); return wrap > 0 ? n0 + (vnoise((a - TAU) * rr * kx + ox, y) - n0) * wrap : n0; };
         const fray = rn(0.7, i * 3.1, rr * 0.7) - 0.5 + 0.7 * (rn(1.9, i, rr * 1.9 + 3) - 0.5);
         const acr = heart ? across : Math.max(0, Math.min(1, Math.pow(Math.max(0, Math.min(1, across + ((1.4 * U) / wd) * fray)), 0.7 + 0.6 * yv)));
@@ -2050,7 +2057,7 @@ function printYears(v: View, oak: Years | null): void {
         if (fam() === 'ring') ink = Math.pow(Math.max(0, ink), 1 + 1.2 * (1 - smooth((acr - 0.35) / 0.45)));
         // (Ink taken or not, never a grey wash; starved to small specks of paper.)
         ink = smooth((ink * heavy - 0.32) / 0.4) * (1 - 0.9 * smooth((rn(1.4, i * 9.7, rr * 1.4) - 0.76) / 0.05)) * tone(i);
-      } else ink = drawnInk(i, a, r, across, heart, rout - rin, dx, dy, (rin + rout) / 2 / U) * tone(i);
+      } else ink = drawnInk(i, a, r, across, heart, rout - rin, dx, dy, rrM * SNAP, mm * SNAP) * tone(i);
       if (!heart && thin[i] > 0) {
         // (As dark as the wide years: lines as wide as some three-fifths of the space they stand for.)
         ink *= 1 - 0.65 * thin[i];
@@ -2061,7 +2068,7 @@ function printYears(v: View, oak: Years | null): void {
       // The rays: the wood's fine radial lines, open to the paper, crossing every year, so the latewood prints
       // as a run of small bricks.
       // (The drawn woods' rays fine and sparing, as a print shows them: the years' bands run on through them.)
-      if (RAY && !heart) ink *= 1 - RAY * (oak ? 1 : 0.55) * rayAt(a, r / U, RAY_RUN[kind]);
+      if (RAY && !heart) ink *= 1 - RAY * (oak ? 1 : 0.55) * rayAt(a, mm * WOOD, RAY_RUN[kind]);
       const k = (y * w + x) * 4;
       d[k] = INK[0]; d[k + 1] = INK[1]; d[k + 2] = INK[2]; d[k + 3] = Math.round(255 * Math.min(1, ink));
     }
