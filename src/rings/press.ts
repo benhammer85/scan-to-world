@@ -241,32 +241,45 @@ function drawMarks(v: View, Z: number): void {
     const ox = (hs(6) - 0.5) * 0.5, oy = (hs(7) - 0.2) * 0.55, rough = 0.12 + 0.25 * hs(8);
     const P = (s: number, t: number, seed: number): [number, number] => {
       // (Each ring of it off centre toward the branch's under side, more so the further in.)
-      const rr = e * s * (1 + rough * (vnoise(Math.cos(t) * 1.6 + m.seed * 0.01 + seed, Math.sin(t) * 1.6 + seed) - 0.5));
+      // (Its edge torn finely too, as the ink took it: bites at every scale, so looked into it's never a clean line.)
+      const fine = s > 0.95 ? 0.16 * (vnoise(t * 9 + seed + m.seed * 0.003, 3.1) - 0.5) + 0.12 * (vnoise(t * 27 + seed, 7.7) - 0.5) + 0.09 * (vnoise(t * 70 + seed, 1.3) - 0.5) : 0;
+      const rr = e * s * (1 + rough * (vnoise(Math.cos(t) * 1.6 + m.seed * 0.01 + seed, Math.sin(t) * 1.6 + seed) - 0.5) + fine);
       const ex = rr * long * Math.cos(t) + e * ox * (1 - s), ey = rr * sq * Math.sin(t) + e * oy * (1 - s);
       return [k.x + ex * Math.cos(k.rot) - ey * Math.sin(k.rot), k.y + ex * Math.sin(k.rot) + ey * Math.cos(k.rot)];
     };
     const oval = (s: number, seed: number) => {
       g.beginPath();
-      for (let j = 0; j <= 32; j++) { const [xx, yy] = P(s, (j / 32) * TAU, seed); if (j) g.lineTo(xx, yy); else g.moveTo(xx, yy); }
+      for (let j = 0; j <= 180; j++) { const [xx, yy] = P(s, (j / 180) * TAU, seed); if (j) g.lineTo(xx, yy); else g.moveTo(xx, yy); }
       g.closePath();
     };
     // (As a knot prints: the branch's wood denser than the trunk's, so it takes the ink as a dark mass, its
     // edge uneven and soft, flecked through with paper; its own rings only a few fine pale traces in it, broken;
     // the trunk's rings swept round it (see warpMarks). Never an outline laid on the print.)
-    oval(1, 0); g.fillStyle = ink(dead ? 0.95 : 0.9); g.fill();
+    // (A little larger than its wood, so the trunk's swept rings never leave a pale seam along it.)
+    oval(1.06, 0); g.fillStyle = ink(dead ? 0.95 : 0.9); g.fill();
     g.save(); g.globalCompositeOperation = 'destination-out'; g.strokeStyle = '#000'; g.fillStyle = '#000'; g.lineCap = 'round';
-    // (Its own rings: fine pale traces, broken, off centre.)
-    const N = Math.max(1, Math.round(k.rings * 0.5 * (0.6 + 0.8 * hs(9)))), band = 1 / (N + 1);
+    // (Its own rings: many fine pale traces, close and off centre, each broken into a few runs, the way a
+    // knot's dense years print; and short pale flecks along them where the ink didn't take.)
+    const N = Math.max(3, Math.round(k.rings * (0.9 + 0.8 * hs(9)))), lw = Math.max(0.4 * px * Z, e * 0.016);
     for (let j = 0; j < N; j++) {
-      const s0 = 0.55 - j * band * 0.5, from = hs(10 + j) * TAU, span = TAU * (0.35 + 0.5 * hs(20 + j));
-      g.beginPath();
-      for (let q = 0; q <= 24; q++) { const [xx, yy] = P(s0, from + (q / 24) * span, j * 2.7 + 1); if (q) g.lineTo(xx, yy); else g.moveTo(xx, yy); }
-      g.lineWidth = Math.max(0.6 * px * Z, e * 0.05 * (0.6 + 0.8 * hs(30 + j))); g.stroke();
+      const s0 = 0.66 * (1 - (j + 0.5) / (N + 0.5)) ** 0.9;
+      g.lineWidth = lw * (0.6 + 0.8 * hs(30 + j));
+      let t = hs(10 + j) * TAU;
+      const end = t + TAU;
+      while (t < end) {
+        const run = Math.min(end - t, 0.6 + 2.2 * hs(t * 3.1 + j)), gap = 0.15 + 0.5 * hs(t * 5.7 + j);
+        if (hs(t * 1.9 + j * 4.1) > 0.25) {
+          g.beginPath();
+          for (let q = 0; q <= 16; q++) { const [xx, yy] = P(s0, t + (q / 16) * run, j * 2.7 + 1); if (q) g.lineTo(xx, yy); else g.moveTo(xx, yy); }
+          g.stroke();
+        }
+        t += run + gap;
+      }
     }
-    // (Flecks of paper through it, where the ink didn't take.)
-    for (let q = 0; q < 10; q++) {
-      const [xx, yy] = P(0.25 + 0.6 * hs(70 + q), hs(80 + q) * TAU, 0), r = Math.max(0.5 * px * Z, e * (0.03 + 0.05 * hs(90 + q)));
-      g.beginPath(); g.ellipse(xx, yy, r * 1.6, r, k.rot + hs(95 + q), 0, TAU); g.fill();
+    for (let q = 0; q < 26; q++) {
+      const sq0 = 0.15 + 0.75 * hs(70 + q), tq = hs(80 + q) * TAU, [xx, yy] = P(sq0, tq, 0), [x2, y2] = P(sq0, tq + 0.05, 0);
+      const r = Math.max(0.4 * px * Z, e * (0.012 + 0.022 * hs(90 + q))), ang = Math.atan2(y2 - yy, x2 - xx);
+      g.beginPath(); g.ellipse(xx, yy, r * (2 + 3 * hs(97 + q)), r, ang, 0, TAU); g.fill();
     }
     if (dead) {
       // (A dead one: shrunk from the wood along one side, and split across.)
