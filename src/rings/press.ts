@@ -20,13 +20,14 @@
 import '../volcano/fonts.css';
 import { wood, sample, tile, loadWood, type Years } from './wood';
 import * as gpu from './gpu';
+import { ANATOMY, NONE, NOISE, atlasOf, RAYS, RAY_RUN, h1, rayAt, smooth, vnoise, type Kind } from './anatomy';
 import { NATIVE, tap } from '../volcano/native';
 import { K, OAK, TreeSim, noise } from './tree';
 import { brushAt, radiusAt, scaleFor, unwarpR, warpFor, warpR, type View, type Warp } from './hand';
 import { at, paperTooth } from './draw';
 import { Paper } from './paint';
 import { dayDate, dayOf } from './days';
-import { climate, growth as growthOf, season } from './growing';
+import { climate, growth as growthOf } from './growing';
 import { crownSize, groundGpu, drawCrown, drawHill, drawMeadow, drawMoss, drawSeedling, drawStream, drawTrack, washFlat, shadeOf, heightAt, land, pigment, seasonOf, snowHill, washCrown, washHill, type CrownForm, type Hill, type Season, type Sun } from './grove';
 import { holdStill, steadySize } from './steady';
 import { fromText, grove, keepInGrove, keepTree, recallTree, setGrove, snapshotTree, toText, treeFrom, type KeptTree, type WoodMark } from './save';
@@ -60,7 +61,6 @@ canvas.after(tooth);
 holdStill(canvas);
 addEventListener('resize', fit);
 const clock = () => performance.now() / 1000;
-const smooth = (x: number) => { const t = Math.max(0, Math.min(1, x)); return t * t * (3 - 2 * t); };
 /**
  * The pace of everything that moves, three speeds and one curve (`smooth`), so it all feels one hand's:
  * quick (a response: back from looking closer, a page turned, words away), steady (a change of place: to
@@ -455,7 +455,6 @@ const DIARY = 'diary', params = new URLSearchParams(location.search);
  * And each its own bark, and its own way of growing: the olive gnarled and lopsided, the bristlecone's
  * years very fine and, once it's old, dying back to a strip of living bark; the redwood broad and even.
  */
-type Kind = 'oak' | 'ash' | 'cherry' | 'maple' | 'birch' | 'pine' | 'redwood' | 'bristlecone' | 'olive' | 'fir' | 'juniper';
 type Bark = { lumps: number; plate: boolean; mean: number; deep: [number, number, number]; wide: number } | 'papery';
 const FISSURED: Bark = { lumps: 140, plate: false, mean: 7, deep: [0.15, 0.8, 1.5], wide: 1 };
 const PLATES: Bark = { lumps: 70, plate: true, mean: 13, deep: [0.1, 0.25, 1], wide: 1.4 };
@@ -701,10 +700,9 @@ function makeRoom(): void {
 /**
  * Looked into while the slice is still drawing back: the drawing back is finished at once, and the look
  * made that much closer, so nothing moves under the fingers, nothing goes on moving after, and looking
- * out again (a double tap) finds the slice at its own size. And a year still growing is grown.
+ * out again (a double tap) finds the slice at its own size.
  */
 function holdForLook(): void {
-  growing = null;
   if (!ease) return;
   const cur = baseNow();
   ease = null; view = null;
@@ -722,13 +720,6 @@ function holdView(): void {
 let settle = { ring: -1, at: 0 }, settleTap = 0;
 /** When the loop drawn was closed (growing true to scale: it dries where it was drawn). */
 let inward: { ring: number; at: number } | null = null;
-/**
- * The year growing (growing true to scale): from the bark as it was, out to where it is now, over a season
- * of some seven seconds (quick in spring, slowing to nothing by late summer). Only the wood beyond the old
- * bark changes; the years before never move.
- */
-let growing: { ring: number; at: number; was: { c: HTMLCanvasElement; v: View } } | null = null;
-const SEASON = 7;
 /** The brush's track: where, when, how wide it laid (slow is wide), and how fast. */
 let trail: { a: number; r: number; t: number; w: number; fast: number }[] = [];
 let strokeView: View | null = null, painter: number | null = null;
@@ -924,7 +915,7 @@ let breathShown = 0, stillSince = 0, breathNow = 0;
 /** Where in the breath it is now, 0 (out) to 1 (in), and how present the breath is (0 to 1). */
 function breathe(t: number, dt: number): void {
   // (Never while looked into: so near, its swell would be a pumping of the lines.)
-  const still = BREATH && fingers.size === 0 && !tree.stroke && !growing && settle.ring < 0 && !lookBack && !closer() && tree.rings.length > 0;
+  const still = BREATH && fingers.size === 0 && !tree.stroke && settle.ring < 0 && !lookBack && !closer() && tree.rings.length > 0;
   // (Its own stillness: the slice slowly making room doesn't count; a finger, a ring growing, does.)
   if (!still) stillSince = t;
   breathShown = still && t - stillSince > 3 ? Math.min(1, breathShown + dt / 3) : Math.max(0, breathShown - dt / 0.25);
@@ -943,7 +934,7 @@ const breathGrow = () => 1 + 0.016 * breathShown * breathNow;
  */
 let pressShown = 0;
 function drawPressMark(_v: View, _t: number, dt: number): void {
-  const away = !tree.rings.length || !!tree.stroke || !!growing || settle.ring >= 0 || far > 0;
+  const away = !tree.rings.length || !!tree.stroke || settle.ring >= 0 || far > 0;
   pressShown = away ? Math.max(0, pressShown - dt / 0.25) : Math.min(1, pressShown + dt / 1.2);
 }
 
@@ -1225,7 +1216,7 @@ function hear(): void {
     if (GROWN) {
       inward = { ring: tree.rings.length - 1, at: clock() };
       // (The new year simply there, where it settled, never growing out.)
-      growing = null; yearClosed = true;
+      yearClosed = true;
     }
     makeRoom();
   }
@@ -1444,7 +1435,6 @@ function drawBrush(g: CanvasRenderingContext2D, v: View, t: number): void {
 const INK = [36, 28, 23];
 const ink = (a: number) => `rgba(${INK[0]},${INK[1]},${INK[2]},${a.toFixed(3)})`;
 /** A steady hash, 0 to 1. */
-const h1 = (x: number) => { const v = Math.sin(x * 127.1 + 311.7) * 43758.5453; return v - Math.floor(v); };
 /**
  * Oak's fine rays: each at its own angle, beginning at its own radius (mm) and running some way out.
  * (In the order they began, the oldest first: those in play are always the oldest, so a ray once shown
@@ -1852,15 +1842,6 @@ function drawBirchBark(v: View, pt: (a: number, r: number, dr?: number) => [numb
   g.stroke();
 }
 
-/** Value noise, 0 to 1, smooth, from a fixed 256-square of randoms. */
-const NOISE = (() => { const a = new Float32Array(65536); let r = 20251; for (let i = 0; i < a.length; i++) { r = (r * 16807) % 2147483647; a[i] = r / 2147483647; } return a; })();
-function vnoise(x: number, y: number): number {
-  const xi = Math.floor(x), yi = Math.floor(y), fx = x - xi, fy = y - yi, sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
-  const i0 = xi & 255, j0 = yi & 255, i1 = (i0 + 1) & 255, j1 = (j0 + 1) & 255;
-  const a = NOISE[j0 * 256 + i0], b = NOISE[j0 * 256 + i1], c = NOISE[j1 * 256 + i0], d = NOISE[j1 * 256 + i1];
-  return a + (b - a) * sx + (c - a) * sy + (a - b - c + d) * sx * sy;
-}
-
 /**
  * Oak's years from the real thing: each ring of the slice takes one year of a red oak's cross-section
  * (Hough's, 1888; see wood/CREDITS.md), straightened and turned to ink, stretched to fit the ring from
@@ -1869,86 +1850,6 @@ function vnoise(x: number, y: number): number {
  * rays run on from year to year, and where the slice has doubled in size, a new run begins (as new rays
  * do). Fine rings take a smaller copy of the year, so they never shimmer.
  */
-/**
- * How each of the drawn woods is built, year by year, for the press (`printYears` without a scan): how much
- * ink its earlywood takes (`early`, soft and open, printing light) and its latewood (`late`), the share of
- * the year that's latewood, the line at the year's edge, its rays (how many round, how wide, in the slice's
- * own px), its pores (how many, how large, whether gathered in the earlywood), how strongly its real fibre
- * shows, and a mottle (the olive's figure).
- */
-type Anatomy = { early: number; late: number; share: number; edge: number; rays: number; rayW: number; pores: number; poreR: number; poreEarly: number; fibre: number; mottle: number; sharp?: number };
-const ANATOMY: Partial<Record<Kind, Anatomy>> = {
-  // Cherry: semi-diffuse, its pores a little crowded at each year's start, fine rays, a clear but soft edge.
-  cherry: { early: 0.47, late: 1.0, share: 0.42, edge: 1.05, rays: 0.9, rayW: 0.42, pores: 0.11, poreR: 0.5, poreEarly: 0.6, fibre: 0.5, mottle: 0 },
-  // Maple: even and close, light, each year closed by a thin dark line; fine rays.
-  maple: { early: 0.43, late: 0.92, share: 0.32, edge: 1.04, rays: 1.1, rayW: 0.36, pores: 0.07, poreR: 0.38, poreEarly: 0.1, fibre: 0.45, mottle: 0 },
-  // Birch: pale and plain, a faint edge, very fine pores; its rays too fine to see.
-  birch: { early: 0.39, late: 0.8, share: 0.28, edge: 0.95, rays: 0, rayW: 0, pores: 0.09, poreR: 0.32, poreEarly: 0, fibre: 0.5, mottle: 0 },
-  // The conifers: soft pale earlywood darkening steadily into a firm latewood, ending sharp; no pores.
-  pine: { early: 0.29, late: 1.05, share: 0.34, edge: 1.08, rays: 0, rayW: 0, pores: 0, poreR: 0, poreEarly: 0, fibre: 0.45, mottle: 0 },
-  redwood: { early: 0.36, late: 1.0, share: 0.38, edge: 1.04, rays: 0, rayW: 0, pores: 0, poreR: 0, poreEarly: 0, fibre: 0.55, mottle: 0 },
-  bristlecone: { early: 0.32, late: 1.05, share: 0.42, edge: 1.08, rays: 0, rayW: 0, pores: 0, poreR: 0, poreEarly: 0, fibre: 0.45, mottle: 0 },
-  // Olive: dense, close and irregular, its figure a dark mottle wandering through the years.
-  olive: { early: 0.6, late: 0.96, share: 0.36, edge: 1.0, rays: 0.6, rayW: 0.3, pores: 0.05, poreR: 0.3, poreEarly: 0, fibre: 0.35, mottle: 0.45 },
-  // Douglas fir: a pale, soft earlywood, then all at once a dark latewood: the boldest year of them all.
-  fir: { early: 0.24, late: 1.15, share: 0.5, edge: 1.12, rays: 0, rayW: 0, pores: 0, poreR: 0, poreEarly: 0, fibre: 0.3, mottle: 0, sharp: 1.8 },
-  // Juniper: fine and close, its latewood thin and its years irregular, a soft figure through them.
-  juniper: { early: 0.3, late: 1.0, share: 0.36, edge: 1.04, rays: 0, rayW: 0, pores: 0, poreR: 0, poreEarly: 0, fibre: 0.45, mottle: 0.25 },
-};
-/**
- * How strongly each wood's rays print: oak's many and plain, a conifer's barely there.
- */
-const RAYS: Partial<Record<Kind, number>> = { fir: 0.3, juniper: 0.2, oak: 0.95, ash: 0.7, cherry: 0.75, maple: 0.8, birch: 0.45, olive: 0.55, pine: 0.3, redwood: 0.25, bristlecone: 0.25 };
-/**
- * How long a wood's rays run before breaking off (in the slice's own px): oak's broad rays long, the others'
- * short flecks a few years tall, staggered; and how much of each ray's way is broken.
- */
-const RAY_RUN: Partial<Record<Kind, [number, number]>> = { fir: [7, 0.6], juniper: [5, 0.65], oak: [26, 0.25], ash: [12, 0.4], cherry: [5, 0.55], maple: [5, 0.5], birch: [4, 0.6], olive: [5, 0.55], pine: [7, 0.6], redwood: [7, 0.6], bristlecone: [7, 0.6] };
-/**
- * The rays at a point (tree angle `a`, `rho` px out at the slice's own size), 0 to 1. Real rays keep about the
- * same distance apart all the way out: a few begin at the heart, and as the wood widens new ones begin between
- * them, each at its own radius; each wanders a little and breaks now and then. Laid out by levels, each twice
- * the last's, a ray begun at one level running on through all the rest, so none ever jumps.
- */
-function rayAt(a: number, rho: number, run: [number, number] = [20, 0.3]): number {
-  const R0 = 10, GAP = 3.6;
-  if (rho < R0 * 0.6) return 0;
-  const lv = Math.max(0, Math.floor(Math.log2(rho / R0))), N0 = Math.max(6, Math.round((TAU * R0) / GAP)), N = N0 * 2 ** lv;
-  const sAt = (((a / TAU) % 1) + 1) % 1 * N, k0 = Math.floor(sAt);
-  let best = 0;
-  for (let k = k0 - 1; k <= k0 + 1; k++) {
-    // (Which level it was born at: k's odd part.)
-    let bk = ((k % N) + N) % N, bl = lv;
-    while (bl > 0 && bk % 2 === 0) { bk /= 2; bl--; }
-    const id = bk * 7.31 + bl * 31.7, nb = N0 * 2 ** bl, born = R0 * 2 ** bl * (bl ? 0.7 + 0.6 * h1(id * 1.9) : 0.6);
-    if (rho < born) continue;
-    // (Too far from where it could wander to, whatever its wandering: passed by without working it out.)
-    const half = 0.07 + 0.16 * h1(id * 3.7) ** 2, home = (bk + 0.5 + (h1(id) - 0.5) * 0.5) / nb * N;
-    let d0 = Math.abs(sAt - home); d0 = Math.min(d0, N - d0);
-    if (((d0 - 0.8) * TAU * rho) / N > half + 0.8) continue;
-    // (Where it lies: its birth place, a little off even, wandering slowly outward.)
-    // (Never ruled: it bends a little as the years about it swell and pinch, slowly and in small jogs.)
-    const wander = Math.sin(rho / (40 + 30 * h1(id * 2.3)) + id) * 0.45 + (vnoise(id * 0.71, rho / 9) - 0.5) * 0.7;
-    const at = ((bk + 0.5 + (h1(id) - 0.5) * 0.5) / nb + wander / N) * N;
-    let dd = Math.abs(sAt - at); dd = Math.min(dd, N - dd);
-    const dist = (dd * TAU * rho) / N + (vnoise(rho * 0.9 + id, id * 0.13) - 0.5) * 0.35;
-    if (dist > half + 0.6) continue;
-    // (A run, then broken off: short flecks in most woods, long runs in oak's.)
-    if (vnoise(id * 0.37, rho / run[0]) < run[1]) continue;
-    best = Math.max(best, Math.min(1, smooth(1 - (dist - half) / 0.6)) * Math.min(1, (rho - born) / 3));
-  }
-  return best;
-}
-/** A wood's years, every copy of them one after another, as one table (for the graphics chip). */
-const NONE = new Float32Array(1);
-function atlasOf(y: Years): Float32Array {
-  let n = 0;
-  for (const l of y.levels.slice(0, 12)) n += l.w * l.h;
-  const d = new Float32Array(n);
-  let o = 0;
-  for (const l of y.levels.slice(0, 12)) { d.set(l.d.subarray(0, l.w * l.h), o); o += l.w * l.h; }
-  return d;
-}
 function printYears(v: View, oak: Years | null): void {
   const n = tree.rings.length, c = g.canvas as HTMLCanvasElement, B = 720, Z = Math.max(1, look.k);
   const scr = (r: number) => v.s * warpR(v.warp, r);
@@ -2334,10 +2235,9 @@ function printFor(v: View, moving: boolean, slot = 'drawing', drift = false, pat
       liveCost = 0.6 * liveCost + 0.4 * (performance.now() - now); liveAt = now;
       pc = printCaches[slot]!;
     }
-  } else if (((!moving && !drift && !exact) || far) && !fineHolds(slot, key, v)) {
+  } else if ((!moving && !drift && !exact) || far) {
     // (Only sharper wanted, for a view already shown: pressed a strip a frame, the picture there meanwhile
-    // scaled to it, and put in its place once whole, so a pinch let go never stalls. Not when the fine print
-    // already holds it.)
+    // scaled to it, and put in its place once whole, so a pinch let go never stalls.)
     pressSlowly(slot, v, key);
   }
   return pc;
@@ -2503,70 +2403,6 @@ function drawKept(pc: { c: HTMLCanvasElement; v: View }, v: View, alpha = 1, gro
   g.globalAlpha = 1;
 }
 /**
- * The print at rest, pressed again finer while nothing else is happening (some two and a half times, as a look
- * that close would press it, the slice only), so that looked into that far it's only magnified: never pressed
- * anew, never a change. Pressed a strip at a time from the heart out, in what's left of each frame.
- */
-type Fine = { c: HTMLCanvasElement; slot: string; key: string; v: View; F: number; x0: number; y0: number; lo: number; hi: number; rows: number; last: number };
-let fine: Fine | null = null, fineSkip = '';
-/** Its pixels at most (some 36 MB). */
-const FINE_PX = 9e6;
-const fineDone = (f: Fine) => f.lo <= 0 && f.hi >= f.c.height;
-const fineFits = (slot: string, key: string, v: View) => fine && fine.slot === slot && fine.key === key && fine.v.turn === v.turn ? fine : null;
-/**
- * Whether the fine print, whole, holds view `v` as it is: looked into, and no softer there than a print
- * pressed for the view would be (which, looked into, is pressed less finely: see QUALITY).
- */
-function fineHolds(slot: string, key: string, v: View): boolean {
-  const f = fineFits(slot, key, v), z = f ? v.s / f.v.s : 0;
-  return !!f && fineDone(f) && z > 1.02 && z / f.F <= 1.05 / QUALITY();
-}
-/** Where the fine print lies on the screen for view `v`, when it's whole and sharper there than the kept one. */
-function fineShown(slot: string, pc: Kept, v: View, grow: number): [number, number, number, number] | null {
-  const f = fineFits(slot, pc.key, v);
-  if (!f || !fineDone(f)) return null;
-  const z = (v.s / f.v.s) * grow;
-  // (Only looked into: at the slice's own size the kept print is the one; and only while the kept one,
-  // scaled, is the softer.)
-  if (z <= 1.02 || z / f.F >= ((v.s / pc.v.s) * grow) / QUALITY()) return null;
-  return [v.cx + (f.x0 - f.v.cx) * z, v.cy + (f.y0 - f.v.cy) * z, (f.c.width / f.F) * z, (f.c.height / f.F) * z];
-}
-/** The fine print for the slice shown at rest, begun or carried on a strip, when nothing else is wanted. */
-function growFine(slot: string, pc: Kept, v: View, moving: boolean): void {
-  // (Not wanted where the graphics chip presses any view at once.)
-  if (gpu.ready() || moving || fingers.size || look.k > 1.001 || lookBack || Object.keys(pressing).length || !tree.rings.length) return;
-  if (pc.v.s !== v.s || pc.v.cx !== v.cx || pc.v.cy !== v.cy) return;
-  let f = fineFits(slot, pc.key, v);
-  if (!f) {
-    const id = `${slot}|${pc.key}|${v.turn}`;
-    if (fineSkip === id) return;
-    let rmax = tree.k.pith;
-    for (let i = 0; i < K; i++) rmax = Math.max(rmax, tree.rings[tree.rings.length - 1][i]);
-    const R = v.s * warpR(v.warp, rmax) + (barkCss(v) * 1.6 + 14) * px, F = Math.min(2.5, Math.sqrt(FINE_PX / (4 * R * R)));
-    if (fine) { fine.c.width = 0; fine.c.height = 0; fine = null; }
-    if (F < 1.4) { fineSkip = id; return; }
-    const c = document.createElement('canvas'); c.width = c.height = Math.ceil(2 * R * F);
-    const mid = Math.floor(c.height / 2);
-    f = fine = { c, slot, key: pc.key, v: { ...v }, F, x0: v.cx - R, y0: v.cy - R, lo: mid, hi: mid, rows: 24, last: 0 };
-  }
-  if (fineDone(f)) return;
-  const t = performance.now(), left = Math.min(6, 11 - (t - frameStart));
-  if (left <= 0 && t - f.last < 0.4e3) return;
-  f.last = t;
-  // (Pressed as a look that close would be: the same marks, the same sizes, only finer.)
-  const was = look;
-  look = { ...look, k: f.F };
-  try {
-    while (!fineDone(f) && performance.now() - t < Math.max(left, 0.1)) {
-      const down = f.hi < f.c.height && (f.lo <= 0 || f.c.height - f.hi >= f.lo), rows = Math.round(Math.max(16, Math.min(96, f.rows)));
-      const r0 = down ? f.hi : Math.max(0, f.lo - rows), r1 = down ? Math.min(f.c.height, f.hi + rows) : f.lo, s0 = performance.now();
-      pressInto(f.c, { ...f.v, cx: f.v.cx * f.F, cy: f.v.cy * f.F, s: f.v.s * f.F }, r0, r1, 0, f.c.width, 1, -f.x0 * f.F, -f.y0 * f.F);
-      f.rows = 0.5 * f.rows + 0.5 * (r1 - r0) * Math.min(3, 8 / Math.max(1, performance.now() - s0));
-      if (down) f.hi = r1; else f.lo = r0;
-    }
-  } finally { look = was; }
-}
-/**
  * A kept print's press mark (made once, round the slice only): the paper's step down along the print's own
  * edge, so it follows every rough bit of the bark. A touch of shadow just outside the edge toward the light,
  * where the sheet steps down into the pressed part; a hairline of light on the far side, where it rises out.
@@ -2607,41 +2443,15 @@ function markOf(pc: { c: HTMLCanvasElement; v: View }): { c: HTMLCanvasElement; 
   marksMade.set(pc, out);
   return out;
 }
-/**
- * The year growing: the print as it was; and beyond the old bark, the print as it is now, drawn a little
- * smaller about the heart so its new bark starts where the old one was and moves out to its own place as
- * the season goes on, the new wood filling in behind it.
- */
-function drawGrowing(v: View, t: number, moving: boolean, drift: boolean): void {
-  const gr = growing!, n = tree.rings.length, now = printFor(v, moving, 'drawing', drift, true), old = barkOf(n - 2), neu = barkOf(n - 1);
-  // (The new year's print still being pressed: the old one as it was, the season not yet begun.)
-  if (!now || now.key !== printKey(v)) { drawKept(gr.was, v); gr.at = clock(); return; }
-  let k0 = 1;
-  for (let i = 0; i < 48; i++) { const a = (i / 48) * TAU; k0 = Math.min(k0, old(a) / Math.max(1e-6, neu(a))); }
-  const f = season((t - gr.at) / SEASON);
-  drawKept(gr.was, v);
-  g.save();
-  g.beginPath(); g.rect(0, 0, W, H);
-  for (let j = 0; j <= K; j++) { const a = (j / K) * TAU, [x, y] = at(v, a, old(a)); if (j) g.lineTo(x, y); else g.moveTo(x, y); }
-  g.closePath(); g.clip('evenodd');
-  // (Beyond the old wood, the old bark gives way to the new: the bare sheet there, then the print as it is
-  // now over it, its bark at first where the old one was.)
-  g.drawImage(groundOf(), 0, 0);
-  drawKept(now, v, 1, k0 + (1 - k0) * f);
-  g.restore();
-}
 /** A picture just replaced by a sharper one, fading out over it (a quarter second or so). */
 const fading: Record<string, { c: HTMLCanvasElement; v: View; at: number } | undefined> = {};
 const FADE = 0.6;
 function drawPrintCached(v: View, moving: boolean, slot = 'drawing', alpha = 1, drift = false, grow = 1): void {
-  drawSharp(printFor(v, moving, slot, drift), v, slot, moving, alpha, grow);
+  drawSharp(printFor(v, moving, slot, drift), v, slot, alpha, grow);
 }
-/** A slot's kept print as it's shown: over it, the fine print where that's sharper, the bands being pressed, the last fading. */
-function drawSharp(pc: Kept, v: View, slot: string, moving: boolean, alpha = 1, grow = 1): void {
-  const fp = fineShown(slot, pc, v, grow);
-  drawKept(pc, v, alpha, grow, fp ?? undefined);
-  if (fp) { g.save(); g.globalAlpha = alpha; g.drawImage(fine!.c, ...fp); g.restore(); }
-  if (alpha > 0.99) growFine(slot, pc, v, moving);
+/** A slot's kept print as it's shown, the last fading out over it. */
+function drawSharp(pc: Kept, v: View, slot: string, alpha = 1, grow = 1): void {
+  drawKept(pc, v, alpha, grow);
   const f = fading[slot];
   if (f) {
     const k = 1 - smooth((clock() - f.at) / FADE);
@@ -3428,7 +3238,7 @@ function unvisit(): void {
   lookAfresh();
 }
 function lookAfresh(): void {
-  warp = warpNow(); view = null; ease = null; lookBack = null; look = { k: 1, ox: 0, oy: 0 }; growing = null; trail = []; inward = null;
+  warp = warpNow(); view = null; ease = null; lookBack = null; look = { k: 1, ox: 0, oy: 0 }; trail = []; inward = null;
   for (const k in printCaches) delete printCaches[k];
 }
 /**
@@ -3635,7 +3445,7 @@ function frame(): void {
   const t = clock(), dt = lastFrame ? Math.min(0.1, Math.max(1 / 240, t - lastFrame)) : 1 / 60;
   // (Nothing being done and nothing quick moving: half the frames are enough, for the slow things (the
   // breath, the crowns stirring), and the phone kept cool.)
-  const calm = fingers.size === 0 && !tree.stroke && !ease && !lookBack && !farTo && !intro && settle.ring < 0 && !growing && !gusts.length && !lifted.length && !choiceTo && !ruffle.some((r) => r > 0.02);
+  const calm = fingers.size === 0 && !tree.stroke && !ease && !lookBack && !farTo && !intro && settle.ring < 0 && !gusts.length && !lifted.length && !choiceTo && !ruffle.some((r) => r > 0.02);
   void calm;
   lastFrame = t; frameStart = performance.now();
   // (The wood's own way with the hand's line.)
@@ -3677,20 +3487,18 @@ function frame(): void {
   const looking = fingers.size > 0 || closer() || !!lookBack;
   relax = drawingNow ? Math.max(0, relax - dt / 0.22) : restWanted && !looking ? Math.min(1, relax + dt / STEADY_T) : relax;
   const moving = (!!ease && !GROWN) || !!lookBack || fingers.size >= 2, drift = !!ease && GROWN;
-  if (PRINT && growing && (growing.ring !== tree.rings.length - 1 || t - growing.at > SEASON || closer())) growing = null;
   // (A finger the phone never said was lifted (a pinch's, now and then): let go after a still second and a half.)
   if (fingers.size && t - lastFingerAt > 1.5 && painter === null) { fingers.clear(); pinch = null; }
   breathe(t, dt);
   // (Out in the grove, the slice is gone from view: not printed under it.)
   if (far >= 0.6) { /* the grove covers the sheet */ }
-  else if (PRINT && growing) drawGrowing(v, t, moving, drift);
   else if (PRINT) {
     // (The print at rest pressed a strip at a time when it's new; the slice only settles into it once it's whole.)
     const rv = restOf(v), rest = relax > 0 ? printFor(rv, moving, 'rest', false, true) : undefined;
     if (relax > 0 && rest?.key !== printKey(rv)) relax = Math.min(relax, 0.01);
     const rk = smooth(relax);
     if (rk < 1) drawPrintCached(v, moving, 'drawing', 1 - rk, drift, breathGrow());
-    if (rk > 0 && rest) drawSharp(rest, rv, 'rest', moving, rk, breathGrow());
+    if (rk > 0 && rest) drawSharp(rest, rv, 'rest', rk, breathGrow());
   } else { paper.draw(g, v); drawLatewood(v); }
   const n = tree.rings.length;
   // A ring touched: lit softly along its edge for a moment, as its day is read.
@@ -3751,9 +3559,9 @@ void (async () => {
   else if (GROWN && !tree.rings.length) say(seedAt ? 'Draw a loop around the seed.' : 'Swipe through the woods. Touch one to plant it.', 1e5);
   // (Words only where they're needed: before the first ring. After that, the tree says it.)
   else if (!tree.rings.length) say('Draw a circle around this one.', 8);
-  Object.assign(window, { press: { get tree() { return tree; }, get phase() { return settle.ring >= 0 ? 'settling' : 'trace'; }, get easing() { return !!ease; }, get view() { return viewNow(); }, get days() { return days; }, get kind() { return kind; }, get choice() { return SEEDS[choice]; }, get far() { return far; }, get visiting() { return visit?.i ?? null; }, get parting() { return !!parting; }, groveNext: () => { const c = camNow(), w = worldOf(); return { x: (c.X0 + w.next.wx * c.S) / px, y: (c.Y0 + w.next.wy * c.S) / px }; }, grove: () => groveLayout().trees.map((t) => ({ sp: t.sp, n: t.n, i: t.i, x: t.x / px, y: t.y / px, r: t.r / px })), get editionY() { return editionY; }, get stampAt() { return stampAt; }, print: async () => (await yearPrint()).toDataURL('image/png'), get presses() { return presses.splice(0); }, get fine() { return fine && { F: fine.F, done: fineDone(fine), at: (fine.hi - fine.lo) / fine.c.height, size: fine.c.width }; }, get breeze() { const st = worldOf().stream; return { gusts: gusts.length, lifted: lifted.length, stream: st.length, max: Math.max(0, ...st.map(([x, y]) => Math.hypot(...breezeAt(x, y)))) }; }, get marks() { return marks.map((m) => `${m.kind}@${m.a.toFixed(2)} ${m.from}-${m.last} x${m.size.toFixed(1)}`); } } });
+  Object.assign(window, { press: { get tree() { return tree; }, get phase() { return settle.ring >= 0 ? 'settling' : 'trace'; }, get easing() { return !!ease; }, get view() { return viewNow(); }, get days() { return days; }, get kind() { return kind; }, get choice() { return SEEDS[choice]; }, get far() { return far; }, get visiting() { return visit?.i ?? null; }, get parting() { return !!parting; }, groveNext: () => { const c = camNow(), w = worldOf(); return { x: (c.X0 + w.next.wx * c.S) / px, y: (c.Y0 + w.next.wy * c.S) / px }; }, grove: () => groveLayout().trees.map((t) => ({ sp: t.sp, n: t.n, i: t.i, x: t.x / px, y: t.y / px, r: t.r / px })), get editionY() { return editionY; }, get stampAt() { return stampAt; }, print: async () => (await yearPrint()).toDataURL('image/png'), get presses() { return presses.splice(0); }, get breeze() { const st = worldOf().stream; return { gusts: gusts.length, lifted: lifted.length, stream: st.length, max: Math.max(0, ...st.map(([x, y]) => Math.hypot(...breezeAt(x, y)))) }; }, get marks() { return marks.map((m) => `${m.kind}@${m.a.toFixed(2)} ${m.from}-${m.last} x${m.size.toFixed(1)}`); } } });
   // (The real wood: once it's come, the print is pressed again with it.)
-  if (PRINT) loadWood(() => { for (const k in printCaches) delete printCaches[k]; for (const k in pressing) delete pressing[k]; if (fine) { fine.c.width = 0; fine = null; } fineSkip = ''; });
+  if (PRINT) loadWood(() => { for (const k in printCaches) delete printCaches[k]; for (const k in pressing) delete pressing[k]; });
   startIntro();
   requestAnimationFrame(frame);
 })();
