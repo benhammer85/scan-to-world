@@ -1683,7 +1683,7 @@ let seaNow = SEA_START;
 let warnedAt = -100;
 /** The red giant: the mountain's height (km), as last reckoned. */
 let peakNow = 0;
-let seasSaid = 0, aimDone = 0, aimOf = WORLD.goal === 'nests' ? NESTS : WORLD.goal === 'white' ? 100 : WORLD.goal === 'waves' ? RINGS : WORLD.goal === 'glow' ? 100 : WORLD.goal === 'antipode' ? FAR_KM : WORLD.goal === 'gather' ? GATHER : WORLD.goal === 'water' ? WATER : WORLD.goal === 'atolls' ? ATOLLS_N : WORLD.goal === 'chaos' || WORLD.goal === 'streaks' ? FIELDS : WORLD.goal === 'domes' ? DOMES : MARBLE ? 100 : WORLD.goal === 'oxygen' || WORLD.goal === 'thaw' || WORLD.goal === 'outbuild' || WORLD.goal === 'snow' ? 100 : WORLD.goal === 'ring' ? CHAIN.stretches : WORLD.goal === 'height' ? HEIGHT.target : WORLD.goal === 'cover' ? COVER : WORLD.goal === 'round' ? ROUND : WORLD.goal === 'ridge' ? Planet.RIDGE_STRETCHES : WORLD.goal === 'lamp' || WORLD.goal === 'bank' ? 100 : WORLD.goal === 'calm' ? CALM : WORLD.goal === 'plumes' ? PLUMES : WORLD.goal === 'orbit' || WORLD.goal === 'feed' ? 100 : planet.basins.length, lastAim = -10;
+let aimDone = 0, aimOf = WORLD.goal === 'nests' ? NESTS : WORLD.goal === 'white' ? 100 : WORLD.goal === 'waves' ? RINGS : WORLD.goal === 'glow' ? 100 : WORLD.goal === 'antipode' ? FAR_KM : WORLD.goal === 'gather' ? GATHER : WORLD.goal === 'water' ? WATER : WORLD.goal === 'atolls' ? ATOLLS_N : WORLD.goal === 'chaos' || WORLD.goal === 'streaks' ? FIELDS : WORLD.goal === 'domes' ? DOMES : MARBLE ? 100 : WORLD.goal === 'oxygen' || WORLD.goal === 'thaw' || WORLD.goal === 'outbuild' || WORLD.goal === 'snow' ? 100 : WORLD.goal === 'ring' ? CHAIN.stretches : WORLD.goal === 'height' ? HEIGHT.target : WORLD.goal === 'cover' ? COVER : WORLD.goal === 'round' ? ROUND : WORLD.goal === 'ridge' ? Planet.RIDGE_STRETCHES : WORLD.goal === 'lamp' || WORLD.goal === 'bank' ? 100 : WORLD.goal === 'calm' ? CALM : WORLD.goal === 'plumes' ? PLUMES : WORLD.goal === 'orbit' || WORLD.goal === 'feed' ? 100 : planet.basins.length, lastAim = -10;
 /** Lengai: whether its peak has reached its height (kept, once it has). */
 let peakReached = false;
 /** How much of the aim is done now, reckoned afresh. */
@@ -1751,12 +1751,6 @@ function reckonAim(): void {
   else if (MARBLE) { if (planet.seconds - marbledAt >= 0.5) { marbledAt = planet.seconds; aimDone = Math.round(100 * planet.marbled); } aimOf = 100; }
   else {
     aimDone = planet.basins.filter((b) => planet.flooded(b) >= FLOODED_ENOUGH).length; aimOf = planet.basins.length;
-    // (The first world played: each sea filled says what the next one asks, one thing at a time.)
-    if (WORLD.startAt && WORLD.goal === 'basins' && aimDone > seasSaid && aimDone < aimOf) {
-      seasSaid = aimDone;
-      announce(aimDone === 1 ? 'One filled. Turn the planet so the next crater is just below the volcano'
-        : 'Two filled. Pour from just above the last one: lava on the striped ground is wasted');
-    }
   }
 }
 let calmHeld = 0, calmAt = 0, litFor = 0, litAt = 0, clearOfSea = false, foundSeen = 0;
@@ -2034,7 +2028,7 @@ const ventTrail = new Stipple(P.landInk, 'dot', 1.9 * AIM_BIG);
 ventTrail.byDirection = true; ventTrail.linger = 0.35; (ventTrail.object.material as THREE.Material).depthTest = false;
 (ventTrail.object.material as THREE.ShaderMaterial).uniforms.uAppear.value = 0.3; // (redrawn often: its dots in at once, as the tumbling moon's are, or each redraw began their fading in again)
 group.add(ventTrail.object);
-let trailAt = -1, DRIFT_TOLD = remembered('volcano.learned.drift') === '1';
+let trailAt = -1;
 function drawTrail(): void {
   if (seconds - trailAt < 0.25) return;
   trailAt = seconds;
@@ -2046,7 +2040,6 @@ function drawTrail(): void {
   const n = Math.max(2, Math.round(Math.min(far, 0.5) / 0.035)), reach = Math.min(far, 0.5);
   for (let i = 1; i <= n; i++) { const p = a.clone().lerp(b, (reach / far) * (i / n)).normalize(); pts.push({ x: p.x, y: p.y, z: p.z }); }
   const into: number[] = []; onGround(pts, into); ventTrail.set(into);
-  if (!DRIFT_TOLD && far > 0.15) { DRIFT_TOLD = true; remember('volcano.learned.drift', '1'); announce('Turning the planet moves the volcano: the dotted trail shows where it is heading'); }
 }
 function drawAim(now: number): void {
   if (now - lastAim < (WORLD.goal === 'calm' ? 0.5 : 2)) return;
@@ -2389,7 +2382,7 @@ stage.addEventListener('pointerdown', (e) => {
     if (at && planet.marbleMap(at)) { marbleFinger = { id: e.pointerId, x: e.clientX, y: e.clientY, at, last: at, swirling: false }; return; }
   }
   gestures.down(e.pointerId, e.clientX, e.clientY, e.timeStamp);
-  cueFrom.x = e.clientX; cueFrom.y = e.clientY;
+  cueFrom.x = e.clientX; cueFrom.y = e.clientY; lastTouchAt = seconds;
   if (HAND && begun && !lapsing() && !ending && !planet.over && !LAMP && !MARBLE && onWorld(e.clientX, e.clientY)) touchCue('pending');
 });
 stage.addEventListener('pointermove', (e) => {
@@ -2443,6 +2436,8 @@ function marbleSpot(f: number): { x: number; y: number; z: number } | null {
  * what to do about it.
  */
 let spillSaid = -100;
+/** The first world: how many times poured lava has run off outside the craters (shown, if it keeps happening, not said). */
+let spills = 0;
 function spillCheck(): void {
   if (seconds - spillSaid < 30 || ending) return;
   let inside = 0, outside = 0;
@@ -2451,7 +2446,7 @@ function spillCheck(): void {
     if (planet.age[v] > 2.5 || planet.lava[v] < planet.k.thin) continue; // (laid just now)
     if (open.some((b) => Math.hypot(base[v * 3] - b.x, base[v * 3 + 1] - b.y, base[v * 3 + 2] - b.z) < b.r * 0.8)) inside++; else outside++;
   }
-  if (outside > 40 && outside > inside * 2) { spillSaid = seconds; announce('That lava ran outside the craters: turn a dotted crater to just below the volcano'); }
+  if (outside > 40 && outside > inside * 2) { spillSaid = seconds; if (WORLD.startAt) spills++; else announce('That lava ran outside the craters: turn a dotted crater to just below the volcano'); }
 }
 /** Where the coming stone will land (null when none is coming). */
 function stoneSpot(): { x: number; y: number; z: number } | null {
@@ -2459,7 +2454,9 @@ function stoneSpot(): { x: number; y: number; z: number } | null {
   return v === undefined ? null : { x: base[v * 3], y: base[v * 3 + 1], z: base[v * 3 + 2] };
 }
 /** A first line: when it's ready, what it says, and when it's done; and, for a touch, the ghost finger showing it (where, if not the volcano). */
-type Cue = { ready: () => boolean; say?: string; begin?: () => void; done: (since: number) => boolean; hand?: 'hold' | 'drag' | 'tap'; at?: () => { x: number; y: number; z: number } | null };
+type Cue = { ready: () => boolean; say?: string; begin?: () => void; done: (since: number) => boolean; hand?: 'hold' | 'drag' | 'tap'; at?: () => { x: number; y: number; z: number } | null;
+  /** Shown only to a player who waits: the ghost finger after 3 s with no touch, the words only after 15 s still not done. (A player who finds it alone sees neither.) */
+  quiet?: boolean };
 /** The controls, as they're first met: each said once, as it's what matters next (one set of hands; Io's Two Lavas has its own). */
 const TAP = COMPUTER ? 'Click' : 'Tap';
 const HAND_CUES: Cue[] = LAMP ? [
@@ -2469,22 +2466,22 @@ const HAND_CUES: Cue[] = LAMP ? [
   { ready: () => true, hand: 'hold', at: () => marbleSpot(0.4), say: `${COMPUTER ? 'Hold the mouse' : 'Hold a finger'} in the circle to pour lava`, done: () => planet.tally.flows > 0 },
   { ready: () => true, hand: 'drag', at: () => planet.marbleAt, say: 'Drag through the circle to swirl the colours', done: (s) => s > 12 },
 ] : [
-  ...(LEARNED.hold ? [] : [{ ready: () => true, hand: 'hold' as const, say: `${HOLD} to pour lava`, done: () => planet.tally.flows > 0 }]),
-  ...(LEARNED.drag ? [] : [{ ready: () => !planet.pouring, hand: 'drag' as const, at: () => null, say: 'Drag to turn the planet: lava flows down the screen', done: (s: number) => (turnedAt > lessonSince && s > 3) || s > 14 }]),
+  ...(LEARNED.hold ? [] : [{ ready: () => true, quiet: true, hand: 'hold' as const, say: `${HOLD} to pour lava`, done: () => planet.tally.flows > 0 }]),
+  ...(LEARNED.drag ? [] : [{ ready: () => !planet.pouring, quiet: true, hand: 'drag' as const, at: () => null, say: 'Drag to turn the planet', done: (s: number) => (turnedAt > lessonSince && s > 3) || s > 14 }]),
 ]; // (each taught until it's been done once, on whatever world that was; not again on every world after)
 /** Then what's this world's own, each when it matters. */
 const CUES: Cue[] = [
   ...HAND_CUES,
   // (What to do on this world, said once the hands are known: it was on the card, and the card is only the aim now.)
   ...(FREE ? [] : [{ ready: () => true, get say() { return words$((OWN_TIP[WORLD.id] ?? TIP[WORLD.goal] ?? '').trim()); }, done: (s: number) => s > 16 }]), // (said when it's reached, by then every word table is made)
-  ...(WORLD.rules.rises ? [{ ready: () => true, say: 'The volcano drifts slowly towards the middle of your view: turn the planet to move it', done: (s: number) => s > 20 }] : []),
+  // (The volcano's drift is shown, not said: the dotted trail from it to where it's heading.)
   // (Mars: a storm wears old rock but not fresh lava, so the first one coming is the moment to say so.)
   ...(planet.k.stormFresh > 0 ? [{ ready: () => planet.stormComing !== null, hand: 'hold' as const, say: planet.k.stormSide > 0 ? 'A dust storm is coming. It will wear down the side the wind blows onto: pour fresh lava there. Fresh lava doesn\'t wear away' : 'A dust storm is coming: pour now. Fresh lava doesn\'t wear away', done: (s: number) => s > 12 }] : []),
   ...(WORLD.goal === 'ridge' ? [{ ready: () => planet.tally.flows + planet.tally.bursts > 0, say: 'The spin carries the lava to the dotted line', done: (s: number) => s > 25 }] : []),
   // (Only where a burst is the way: on the worlds that want pouring, or a release short of a burst, or none
   // at all, it pointed the wrong way, and on the hollow world it emptied the ground.)
   // (When the circle says so: on Io only at high tide, on Europa before it empties again.)
-  { hand: 'tap', ready: () => { const r = readyShare(); return (LAMP || BURST_WORLDS.has(WORLD.goal)) && r !== null && r >= 1 && r < 2 && !planet.pouring; }, say: LAMP ? `The circle around the volcano is full: ${TAP.toLowerCase()} the world to let the blob go, before it empties` : WORLD.goal === 'feed' ? `The circle around the volcano is full: turn the volcano towards the big planet, and ${TAP.toLowerCase()} the world` : WORLD.goal === 'chaos' ? `The circle around the volcano is full: ${TAP.toLowerCase()} the world now, before it empties` : `The circle around the volcano is full: ${TAP.toLowerCase()} the planet to erupt`, done: (s) => planet.tally.bursts > 0 || (LAMP && planet.tally.flows > 0) || s > 40 },
+  { hand: 'tap', quiet: true, ready: () => { const r = readyShare(); return (LAMP || BURST_WORLDS.has(WORLD.goal)) && r !== null && r >= 1 && r < 2 && !planet.pouring; }, say: LAMP ? `The circle around the volcano is full: ${TAP.toLowerCase()} the world to let the blob go, before it empties` : WORLD.goal === 'feed' ? `The circle around the volcano is full: turn the volcano towards the big planet, and ${TAP.toLowerCase()} the world` : WORLD.goal === 'chaos' ? `The circle around the volcano is full: ${TAP.toLowerCase()} the world now, before it empties` : `The circle around the volcano is full: ${TAP.toLowerCase()} the planet to erupt`, done: (s) => planet.tally.bursts > 0 || (LAMP && planet.tally.flows > 0) || s > 40 },
     ...(WORLD.goal === 'orbit' ? [
     { ready: () => planet.tally.bursts > 0, say: 'The taller the volcano, the more rock an eruption throws up', done: (s: number) => s > 25 },
   ] : []),
@@ -2516,22 +2513,38 @@ if (WORLD.goal === 'gather') CUES.splice(0, CUES.length,
   { ready: () => planet.tally.stones > 0, say: 'The volcano and its gold ring move to whichever part of the planet is at the top', done: (s: number) => s > 12 },
   ...(ACCRETE ? [{ ready: () => !!planet.impact?.size && planet.tooBig(planet.impact.size) && !planet.impact.theia, hand: 'drag' as const, at: stoneSpot, say: 'A stone circled in dark red is too big: keep it outside the gold ring', done: (s: number) => s > 12 }] : [{ ready: () => planet.drained > 20, say: 'The more lava you pour, the wider the gold ring gets', done: (s: number) => s > 12 }]),
 );
+// (The first world played teaches its three things as they come, shown rather than said: hold, on the first sea; drag, once
+// it's filled, towards the next; and where to pour, only if lava keeps running off the last one's high ground.)
+else if (WORLD.startAt && WORLD.goal === 'basins') {
+  const open = () => planet.basins.find((b) => planet.flooded(b) < FLOODED_ENOUGH) ?? null;
+  CUES.splice(0, CUES.length,
+    { ready: () => true, quiet: true, hand: 'hold' as const, say: `${HOLD} to pour lava`, done: () => planet.tally.flows > 0 },
+    { ready: () => aimDone >= 1, quiet: true, hand: 'drag' as const, at: open, say: 'Drag to turn the planet', done: (s: number) => (turnedAt > lessonSince && s > 1) || aimDone >= 2 },
+    { ready: () => aimDone >= 2 && spills >= 2, quiet: true, hand: 'hold' as const, at: open, say: 'Pour just above the crater', done: () => aimDone >= 3 },
+  );
+}
 else if (!NEWCOMER) CUES.splice(0, HAND_CUES.length, { ready: () => true, done: (s: number) => {
   const tried = planet.tally.flows + planet.tally.bursts > 0;
   if (!tried && !stuckSaid && s > 20) { stuckSaid = true; announce(HANDS.join('   '), true); }
   return tried || (stuckSaid && s > 34);
 } });
-let lesson = 0, lessonSince = 0, lessonShown = false, embersSaid = false;
+let lesson = 0, lessonSince = 0, lessonShown = false, lessonSaid = false, embersSaid = false, lastTouchAt = -10;
 function lessons(): void {
   if (ending) return;
   if (lesson < CUES.length) {
     const L = CUES[lesson];
     if (!lessonShown) {
       if (!L.ready()) return;
-      lessonShown = true; lessonSince = seconds;
+      lessonShown = true; lessonSince = seconds; lessonSaid = false;
       L.begin?.();
-      if (L.say) announce(L.say, true);
-      showGhost(L.hand ?? null, L.at);
+      if (!L.quiet) { if (L.say) announce(L.say, true); showGhost(L.hand ?? null, L.at); }
+      return;
+    }
+    // (A quiet one: done before it was needed, it goes unseen; else the finger, once they've waited; the words, last.)
+    if (L.quiet) {
+      if (L.done(seconds - lessonSince)) { if ((L.hand === 'hold' && planet.tally.flows > 0) || (L.hand === 'drag' && turnedAt > lessonSince)) remember(`volcano.learned.${L.hand}`, '1'); lesson++; lessonShown = false; showGhost(null); return; }
+      if (!ghostKind && L.hand && seconds - lessonSince > 3 && seconds - lastTouchAt > 3) showGhost(L.hand, L.at);
+      if (!lessonSaid && L.say && seconds - lessonSince > 15) { lessonSaid = true; announce(L.say, true); }
       return;
     }
     if (L.done(seconds - lessonSince) && seconds - lessonSince > 6) { if ((L.hand === 'hold' && planet.tally.flows > 0) || (L.hand === 'drag' && turnedAt > lessonSince)) remember(`volcano.learned.${L.hand}`, '1'); lesson++; lessonShown = false; $('legend').classList.remove('new'); showGhost(null); }
@@ -2574,6 +2587,13 @@ function placeGhost(): void {
   } else GHOST_P.set(0, 0, 0).applyMatrix4(group.matrixWorld).project(camera);
   const x = rect.left + ((GHOST_P.x + 1) / 2) * rect.width, y = rect.top + ((1 - GHOST_P.y) / 2) * rect.height;
   ghost.style.transform = `translate(${(x - 30).toFixed(1)}px, ${(y - 6).toFixed(1)}px)`; // (its fingertip on the place)
+  // (A drag from a place: from it towards the volcano, as dragging the ground there brings it to the volcano.)
+  if (ghostKind === 'drag' && p) {
+    const q = planet.plume, V = GHOST_N.set(q.x, q.y, q.z).normalize().multiplyScalar(1.03).applyMatrix4(group.matrixWorld).project(camera);
+    const vx = rect.left + ((V.x + 1) / 2) * rect.width - x, vy = rect.top + ((1 - V.y) / 2) * rect.height - y, l = Math.hypot(vx, vy) || 1, k = Math.min(l, 140) / l;
+    ghost.style.setProperty('--gx0', '0px'); ghost.style.setProperty('--gy0', '0px');
+    ghost.style.setProperty('--gx1', `${(vx * k).toFixed(0)}px`); ghost.style.setProperty('--gy1', `${(vy * k).toFixed(0)}px`);
+  } else for (const v of ['--gx0', '--gy0', '--gx1', '--gy1']) ghost.style.removeProperty(v);
   ghost.style.visibility = seen ? '' : 'hidden';
 }
 // (A real finger down: the ghost steps aside.)
@@ -2625,7 +2645,7 @@ const ACTION_WORDS = /^(The volcano is near the end|The volcano has passed|A sto
  * above were said, and nearly every world's own word on what had just happened, a crack too late, a comet frozen, a
  * burst not at high tide, the far side rising, was kept quiet.)
  */
-const EXPLAIN = /^(Too narrow|Turning the planet moves|One filled|Two filled|Goal: |Every (crack|plume) so far|The comet melted|The comet froze|It's tumbling again|You poured too fast|No wave|Not high tide|That stone was too big|Too tall|Theia|The shock|Too late|Too early|Too small|Too near|A big eruption|A giant wave|The island is blown|The far side|A dark streak|A streak, but|The ice cracks|A mound|A lava dome|A dome, but|The mound slumps|The dome slumps|A blob reaches|Ice reaches the ring|An icy comet|Ice melted|The ice froze|Stone caught|Caught in the glow|The eruption's gas|The ground gives way|The last of the sea|The sea is nearly gone|The day has melted|The volcano is in daylight|That lava|A seabird|A nest|Found:|The island stands|Too tall for its width|A dust storm is coming|Theia|Too big to hold|The big stone|A stone too big|The burst missed|In the dark|Chilled)/;
+const EXPLAIN = /^(Too narrow|Goal: |Every (crack|plume) so far|The comet melted|The comet froze|It's tumbling again|You poured too fast|No wave|Not high tide|That stone was too big|Too tall|Theia|The shock|Too late|Too early|Too small|Too near|A big eruption|A giant wave|The island is blown|The far side|A dark streak|A streak, but|The ice cracks|A mound|A lava dome|A dome, but|The mound slumps|The dome slumps|A blob reaches|Ice reaches the ring|An icy comet|Ice melted|The ice froze|Stone caught|Caught in the glow|The eruption's gas|The ground gives way|The last of the sea|The sea is nearly gone|The day has melted|The volcano is in daylight|That lava|A seabird|A nest|Found:|The island stands|Too tall for its width|A dust storm is coming|Theia|Too big to hold|The big stone|A stone too big|The burst missed|In the dark|Chilled)/;
 function announce(text: string, lesson = false): void {
   text = words$(text);
   if (BARE && !ending) return;

@@ -964,3 +964,12 @@ Bots: played carefully, won every seed (158 to 193 s); random play won 2 of 3; h
 ### Words, cut down
 
 Every world's tip is now at most two short sentences, keeping only the one choice that decides it (the full rules are learned by playing, and by the short lines said when something happens). The openings' lines are the goal and one short rule. The first world's prompts and the drift line are shorter too: "One filled. Turn the planet so the next crater is just below the volcano"; "Two filled. Pour from just above the last one: lava on the striped ground is wasted"; "Turning the planet moves the volcano: the dotted trail shows where it is heading".
+
+### Shown, not told
+
+The controls are taught as successful games teach them: by showing, and only to a player who needs it.
+
+- **Quiet lessons.** The lessons for the touches (hold to pour, drag to turn, tap when the circle is full) now wait: the ghost finger shows the touch only after 3 s with no touch on the world, and the words come only after 15 s still not done. A player who finds it alone sees neither. (Lessons that are news, a stone coming, stay as they were.)
+- **The first world** teaches its three things as they come: hold, on the first crater; drag, only once it's filled, the ghost finger dragging the next crater towards the volcano (the drag now goes the way it's wanted, not always left to right); and where to pour, only if lava runs off the last crater's high ground twice. Its sentences ("One filled…", "Two filled…", "That lava ran outside…") and the general tip are gone; the crater rings, inking in as each fills, and the bold rim on the next carry it.
+- **The drift** is shown by its dotted trail alone; the sentence about it is gone.
+- **The ghost finger** is now dark ink with a pale halo: in white it vanished on the Moon's pale ground.
