@@ -1219,10 +1219,8 @@ function hear(): void {
     settleTap = clock() + BLOOM;
     if (GROWN) {
       inward = { ring: tree.rings.length - 1, at: clock() };
-      // (The new year simply there, where it settled: the print as it was fading out over it, never growing out.)
-      const was = printCaches.drawing;
-      delete printCaches.drawing;
-      if (was) { if (fading.drawing) spare.drawing = fading.drawing.c; fading.drawing = { c: was.c, v: was.v, at: clock() }; }
+      // (The new year simply there, where it settled: the print as it was kept while the new one is pressed,
+      // then fading out over it, never growing out.)
       growing = null;
     }
     makeRoom();
@@ -2289,7 +2287,9 @@ function printFor(v: View, moving: boolean, slot = 'drawing', drift = false, pat
   const still = fingers.size === 0 && !lookBack;
   const quick = same && clock() - pc.at > 0.03 && !covers(pc, v);
   const far = same && ((still && !exact && off > 0.002) || (drift && !moving && off > 0.004 && clock() - pc.at > 0.8));
-  if (!same && patient) { pressSlowly(slot, v, key, false); return printCaches[slot]; }
+  // (A new year, a knot begun, the magnifier moved: pressed a strip at a time while the last print is shown,
+  // never all at once in one frame.)
+  if (!same && (patient || pc)) { pressSlowly(slot, v, key, false); return printCaches[slot]; }
   if (!same || quick) {
     // (Wanted now: a new year, or nothing to show there. Pressed at once; or, if it's already being
     // pressed for these years, the rest of it at once.)
@@ -2304,7 +2304,8 @@ function printFor(v: View, moving: boolean, slot = 'drawing', drift = false, pat
     pressInto(c, v, 0, ch, 0, cw, Q);
     presses.push(Math.round(performance.now() - t0)); if (presses.length > 50) presses.shift();
     pc = printCaches[slot] = { c, key, v: { ...v }, at: clock() };
-  } else if (gpu.ready() && !exact) {
+  } else if (gpu.ready() && !exact && pinch && fingers.size >= 2) {
+    // (Only under a pinch: the slice easing back as a ring settles is the picture moved and scaled, smooth.)
     // (On the graphics chip: pressed again for the view as it is, each frame as the fingers move, so the print
     // under them is never a stretched picture; every other frame, or fewer, when a pressing takes longer than
     // the frame has, so the pinch itself never stalls.)
@@ -2427,9 +2428,10 @@ function pressSlowly(slot: string, v: View, key: string, follow = true, budget =
   // left room, a strip at least now and then so it always arrives.)
   // (As deep as about fifteen milliseconds' pressing on this phone, as the last strip went: never so thin that
   // each strip's own setting up is much of it.)
-  // (On the graphics chip: all of it at once.)
-  const t = performance.now(), rows = gpu.ready() ? job.end - job.top : Math.round(Math.max(20, Math.min(96, job.rows)));
-  const left = budget === Infinity || gpu.ready() ? Infinity : Math.min(budget, 11 - (t - frameStart));
+  // (All of it at once only when it's wanted now; otherwise a strip at a time in what's left of each frame, the
+  // last print shown meanwhile, so a ring settling or the slice easing back never stalls a frame.)
+  const t = performance.now(), rows = budget === Infinity && gpu.ready() ? job.end - job.top : Math.round(Math.max(20, Math.min(gpu.ready() ? 400 : 96, job.rows)));
+  const left = budget === Infinity ? Infinity : Math.min(budget, 11 - (t - frameStart));
   if (left <= 0 && t - (job.last ?? 0) < 0.25e3) return;
   job.last = t;
   while ((job.hi < job.end || job.lo > job.top) && performance.now() - t < Math.max(left, 0.1)) {
@@ -2973,9 +2975,6 @@ function meets(pts: [number, number][], all: [number, number][][], self: number)
     return 1 + 0.5 * near;
   });
 }
-function renderGrove(c: CanvasRenderingContext2D, cam: Cam, sprites?: Sprite[]): void {
-  for (const _ of groveSteps(c, cam, sprites)) { /* all at once */ }
-}
 /** The grove drawn a piece at a time (the ground, the water, the shadows, each crown), to be spread over frames. */
 function* groveSteps(c: CanvasRenderingContext2D, cam: Cam, sprites?: Sprite[]): Generator<void> {
   const w = worldOf(), season = seasonNow(), { sun } = sunNow();
@@ -3087,13 +3086,40 @@ let baseG: GroveSheet | null = null, sharpG: GroveSheet | null = null;
 /** The view being drawn for itself, a piece a frame; the one it replaces, fading out; a canvas to reuse. */
 let groveJob: (GroveSheet & { steps: Generator<void> }) | null = null, groveFade: { from: GroveSheet; at: number } | null = null, groveSpare: HTMLCanvasElement | null = null;
 /** The whole grove drawn, if it isn't already (as it is: its trees, its season, the sheet's size). */
+/** The whole grove being drawn ahead, a piece a frame, while the slice is looked at (see `warmGrove`). */
+let baseJob: (GroveSheet & { steps: Generator<void> }) | null = null;
 function groveBase(): NonNullable<typeof baseG> {
-  const w = worldOf(), key = seasonKey();
+  const key = seasonKey();
   if (!baseG || baseG.key !== key || baseG.c.width !== W || baseG.c.height !== H) {
-    baseG ??= { c: document.createElement('canvas'), cam: w.whole, key, sprites: [] };
-    baseG.c.width = W; baseG.c.height = H; baseG.cam = w.whole; baseG.key = key; baseG.sprites = [];
-    const bc = baseG.c.getContext('2d')!;
-    renderGrove(bc, w.whole, baseG.sprites);
+    // (Wanted now: what's left of one being drawn ahead, finished at once; or drawn afresh.)
+    if (!baseJob || baseJob.key !== key || baseJob.c.width !== W || baseJob.c.height !== H) startBase();
+    while (!baseJob!.steps.next().done) { /* the rest */ }
+    finishBase();
+  }
+  return baseG!;
+}
+function startBase(): void {
+  const w = worldOf(), c = document.createElement('canvas'), sprites: Sprite[] = [];
+  c.width = W; c.height = H;
+  baseJob = { c, cam: w.whole, key: seasonKey(), sprites, steps: groveSteps(c.getContext('2d')!, w.whole, sprites) };
+}
+/**
+ * The whole grove drawn ahead, while the slice rests, a piece in what's left of each frame, so pinching out to
+ * it finds it there: never all at once in one frame, which a ring settling would show as a stutter.
+ */
+function warmGrove(): void {
+  const key = seasonKey();
+  if (baseG && baseG.key === key && baseG.c.width === W && baseG.c.height === H) return;
+  if (!baseJob || baseJob.key !== key || baseJob.c.width !== W || baseJob.c.height !== H) startBase();
+  const t0 = performance.now(), left = Math.min(6, 11 - (t0 - frameStart));
+  do { if (baseJob!.steps.next().done) { finishBase(); return; } } while (performance.now() - t0 < left);
+}
+function finishBase(): void {
+  const job = baseJob!;
+  baseJob = null;
+  baseG = { c: job.c, cam: job.cam, key: job.key, sprites: job.sprites };
+  {
+    const bc = job.c.getContext('2d')!;
     // (Its ground thinning out at the sheet's edges, so a view moved past them fades to the paper, never a cut.)
     const e = Math.round(0.07 * Math.min(W, H));
     bc.save(); bc.globalCompositeOperation = 'destination-in';
@@ -3105,7 +3131,6 @@ function groveBase(): NonNullable<typeof baseG> {
     }
     bc.restore();
   }
-  return baseG;
 }
 function layGrove(cam: Cam, still: boolean): void {
   const w = worldOf(), key = seasonKey();
@@ -3624,7 +3649,8 @@ function frame(): void {
   if (busy) idleSince = t;
   const restWanted = PRINT && !busy && t - idleSince > 1.4 && !!v.warp && v.warp.beta > 0;
   // (Left a while on the slice, the grove is drawn ready, out of sight, so drawing back to it never stalls.)
-  if (GROWN && far === 0 && !intro && !busy && t - idleSince > 2.5 && t - groveWarmAt > 5 && canPull()) { groveWarmAt = t; groveBase(); }
+  if (GROWN && far === 0 && !intro && !busy && t - idleSince > 2.5 && t - groveWarmAt > 5 && canPull()) { groveWarmAt = t; warmGrove(); }
+  else if (baseJob && far === 0 && !busy) warmGrove();
   // (Only drawing brings the magnifier back: a pinch, or looking closer, leaves the slice as it is, never
   // changing under the fingers or a moment after they lift.)
   const drawingNow = !!tree.stroke || painter !== null || settle.ring >= 0 || !!ease;

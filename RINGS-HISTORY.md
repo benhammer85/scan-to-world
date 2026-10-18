@@ -231,3 +231,7 @@ At about 5× zoom, the time to press the whole screen fell to roughly a quarter 
 - The latewood share is wider for cherry, maple, birch, olive, juniper and redwood.
 - Checks open in from the bark from about the twentieth ring, not the fortieth.
 - The CPU press matches the graphics chip's, and the choosing slices were pressed again in the new look.
+
+**October 18: a seamless draw again.** Closing a loop had begun to stutter: since the press moved to the graphics chip, every re-press (the new year, the magnifier easing off, the slice settling) was done whole in one frame. On a phone each was a visible hitch.
+- Now only a live pinch presses whole. Otherwise the print is pressed a strip at a time in each frame's spare time, the last print shown meanwhile and then fading out over the new one.
+- The grove drawn ahead in the background, for pinching out to, is also drawn a piece a frame, never in one go.
