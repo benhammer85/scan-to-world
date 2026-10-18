@@ -203,3 +203,9 @@ At about 5× zoom, the time to press the whole screen fell to roughly a quarter 
 **October 18: zooming without a swap.** Looking closer used to stretch the print and then swap in a re-pressed one, and the two didn't quite match.
 - The few marks still sized by the screen are now sized by the wood: the stipple round the bark, the birch's bark lines and lenticels, the close-up grain, and the saw marks. A view pressed closer is the same picture, only finer.
 - Once the slice has rested a moment, the print is pressed again quietly in spare frame time. This fine copy is about 2.5× finer and covers the slice only, pressed exactly as a look that close would be. Pinching in then only magnifies it: nothing is re-pressed and nothing changes, up to where a fresh press would be no sharper. It's dropped whenever the years, the wood's scans, or the sheet change.
+
+**October 18: the press on the graphics chip.** The print's per-pixel work moved to the phone's graphics chip (WebGL2, src/rings/gpu.ts): the years (each wood's anatomy, its scans, the rays, pores and fine lines) and the ink's grain (the speckle, the paper's tooth, the saw). A whole screen is pressed at once, in milliseconds rather than seconds.
+- Every view is pressed at the screen's own resolution.
+- A pinch is pressed again as it goes, so the print under the fingers never goes soft.
+- The workarounds (strips, lower density when zoomed, the fine copy pressed at rest) are kept only for phones without WebGL2, which press by hand as before; `?cpu` forces that, to compare.
+- The chip can't reproduce the CPU's sine-based hash, so a tree's pores and rays fall in slightly different places than they did by hand. Each wood's look is the same, checked side by side for all ten.

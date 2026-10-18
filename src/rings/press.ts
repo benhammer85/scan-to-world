@@ -19,6 +19,7 @@
  */
 import '../volcano/fonts.css';
 import { wood, sample, tile, loadWood, type Years } from './wood';
+import * as gpu from './gpu';
 import { NATIVE, tap } from '../volcano/native';
 import { K, OAK, TreeSim, noise } from './tree';
 import { brushAt, radiusAt, scaleFor, unwarpR, warpFor, warpR, type View, type Warp } from './hand';
@@ -1929,6 +1930,16 @@ function rayAt(a: number, rho: number, run: [number, number] = [20, 0.3]): numbe
   }
   return best;
 }
+/** A wood's years, every copy of them one after another, as one table (for the graphics chip). */
+const NONE = new Float32Array(1);
+function atlasOf(y: Years): Float32Array {
+  let n = 0;
+  for (const l of y.levels.slice(0, 12)) n += l.w * l.h;
+  const d = new Float32Array(n);
+  let o = 0;
+  for (const l of y.levels.slice(0, 12)) { d.set(l.d.subarray(0, l.w * l.h), o); o += l.w * l.h; }
+  return d;
+}
 function printYears(v: View, oak: Years | null): void {
   const n = tree.rings.length, c = g.canvas as HTMLCanvasElement, B = 720, Z = Math.max(1, look.k);
   const scr = (r: number) => v.s * warpR(v.warp, r);
@@ -1980,7 +1991,7 @@ function printYears(v: View, oak: Years | null): void {
   const x0 = Math.max(0, Math.floor(v.cx - rmax - 1)), y0 = Math.max(0, Math.floor(v.cy - rmax - 1));
   const w = Math.min(c.width, Math.ceil(v.cx + rmax + 1)) - x0, h = Math.min(c.height, Math.ceil(v.cy + rmax + 1)) - y0;
   if (w <= 0 || h <= 0) return;
-  const ctx = c.getContext('2d')!, img = ctx.getImageData(x0, y0, w, h), d = img.data;
+  const ctx = c.getContext('2d')!;
   const at = (i: number, b: number, f: number) => { const k = (i + 1) * (B + 1) + b; return rad[k] + (rad[k + 1] - rad[k]) * f; };
   // (Never ruled: the wood wanders a little, here and there, every ring with its neighbours, as grain
   // swells round a knot or a bit of reaction wood: a shift of the rings, a fifth of a year or so, over a
@@ -2022,6 +2033,22 @@ function printYears(v: View, oak: Years | null): void {
   const half = new Float32Array(n);
   for (let j = 0; j < n; j++) half[j] = 0.19 * gapOf[j] * (0.85 + 0.3 * h1(j * 3.7 + 1.1));
   const lineAt = (j: number, dist: number) => (j < 0 || !edge[j] ? 0 : Math.max(0, Math.min(1, (half[j] + 0.5 * px - dist) / px)) * thin[j]);
+  // (On the graphics chip, where there is one: the same, every pixel at once.)
+  if (gpu.ready()) {
+    const ring = new Float32Array(Math.max(1, n) * 12);
+    for (let i = 0; i < n; i++) ring.set([reps[i], off[i], yr[i], lvl[i], runR[i], thin[i], edge[i], half[i], edgeIn[i], edgeOut[i], tone(i), conifer ? calmOf(i) : 0.5], i * 12);
+    const A = an ?? ANATOMY.cherry!, lv = oak ? oak.levels : [], LV = Math.min(12, lv.length), run = RAY_RUN[kind] ?? [20, 0.3];
+    const lvO = new Int32Array(12), lvW = new Int32Array(12).fill(1), lvH = new Int32Array(12).fill(1), lvRows = new Int32Array(12).fill(1);
+    for (let k = 0, o = 0; k < LV; k++) { lvO[k] = o; lvW[k] = lv[k].w; lvH[k] = lv[k].h; lvRows[k] = lv[k].rows; o += lv[k].w * lv[k].h; }
+    const pic = gpu.run('years', w, h,
+      { uN: n, uB: B, uOak: oak ? 1 : 0, uFamRing: fam() === 'ring' ? 1 : 0, uConifer: conifer ? 1 : 0, uHasFib: fib ? 1 : 0, uFibW: fib?.w ?? 1, uFibH: fib?.h ?? 1, uOakN: oak?.n ?? 1, uLvN: Math.max(1, LV), uLvO: lvO, uLvW: lvW, uLvH: lvH, uLvRows: lvRows },
+      { uX0: x0, uY0: y0, uH: h, uCx: v.cx, uCy: v.cy, uTurn: v.turn, uRmax: rmax, uWA: wA, uWL: wL, uWL2: wL2, uU: U, uPx: px, uW0: W0, uRay: RAY, uRun0: run[0], uRun1: run[1], uSparse: SPARSE,
+        uEarly: A.early, uLate: A.late, uShare: A.share, uEdge: A.edge, uPores: A.pores, uPoreR: A.poreR, uPoreEarly: A.poreEarly, uFibre: A.fibre, uMottle: A.mottle, uSharp: A.sharp ?? 1.4, uInkRGB: [INK[0] / 255, INK[1] / 255, INK[2] / 255] },
+      { uNoise: { key: NOISE, data: () => NOISE }, uRad: { name: 'rad', data: rad }, uRing: { name: 'ring', data: ring },
+        uLev: oak ? { key: oak, data: () => atlasOf(oak) } : { key: NONE, data: () => NONE }, uFib: fib ? { key: fib, data: () => fib.d } : { key: NONE, data: () => NONE } });
+    if (pic) { ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; ctx.drawImage(pic, x0, y0); ctx.restore(); return; }
+  }
+  const img = ctx.getImageData(x0, y0, w, h), d = img.data;
   for (let y = 0; y < h; y++) {
     const dy = v.cy - (y + y0);
     for (let x = 0; x < w; x++) {
@@ -2136,6 +2163,15 @@ function inkGrain(c: HTMLCanvasElement, v: View, band?: [number, number], soft =
   const fc = Math.cos(0.5 + h1(tree.seed * 0.29)), fs = Math.sin(0.5 + h1(tree.seed * 0.29));
   const cg = (2.7 * v.s) / (Z * px), sawK = 0.07 * Math.max(0, Math.min(1, ((SAW * v.s) / Z - 3 * px) / (4 * px))), sa = h1(tree.seed * 0.61) * TAU;
   const sx = 900 * Math.cos(sa), sy = 900 * Math.sin(sa);
+  // (On the graphics chip, where there is one: the same, every pixel at once.)
+  if (gpu.ready()) {
+    const pic = gpu.run('grain', w, h,
+      { uHasFib: fib ? 1 : 0, uFibW: fib?.w ?? 1, uFibH: fib?.h ?? 1, uHasSea: sea && field ? 1 : 0, uSeaW: sea?.w ?? 1, uSeaH: sea?.h ?? 1, uFieldW: field?.w ?? 1, uFieldH: field?.h ?? 1 },
+      { uX0: x0, uY0: y0, uH: h, uCx: v.cx, uCy: v.cy, uInside: Math.min(1e9, inside), uPerMm: perMm, uFine: fine, uAlong: along, uSpeck: speck, uStreak: streak, uTooth: tooth, uLow: low, uPerTex: perTex, uClose: close, uCg: cg, uFc: fc, uFs: fs, uSawK: sawK, uSx: sx, uSy: sy, uSaw: SAW, uSoft: soft, uVs: v.s },
+      { uNoise: { key: NOISE, data: () => NOISE }, uFib: fib ? { key: fib, data: () => fib.d } : { key: NONE, data: () => NONE }, uSea: sea ? { key: sea, data: () => sea.d } : { key: NONE, data: () => NONE }, uField: field ? { key: field, data: () => field.d } : { key: NONE, data: () => NONE } },
+      { data: d, w, h });
+    if (pic) { ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; ctx.clearRect(x0, y0, w, h); ctx.drawImage(pic, x0, y0); ctx.restore(); return; }
+  }
   for (let y = 0; y < h; y++) {
     const dy = y + y0 - v.cy;
     for (let x = 0; x < w; x++) {
@@ -2204,7 +2240,8 @@ const presses: number[] = [];
 // finer press only costs more, a pinch's sharpening taking many seconds on a phone.)
 // (Looked into, pressed less finely, down to a pixel and a half a CSS px: the wood's own scan is coarser than the
 // screen there, and a press at every pixel takes many seconds on a phone.)
-const QUALITY = () => Math.min(1, 3 / Math.max(1, px)) * Math.max(0.5, 1 / Math.sqrt(Math.max(1, look.k)));
+// (On the graphics chip, where there is one, the press is quick: always at the screen's own.)
+const QUALITY = () => Math.min(1, 3 / Math.max(1, px)) * (gpu.ready() ? 1 : Math.max(0.5, 1 / Math.sqrt(Math.max(1, look.k))));
 type Kept = { c: HTMLCanvasElement; key: string; v: View; at: number };
 function placeOf(pc: { v: View }, v: View, grow = 1): [number, number, number, number] {
   const k = (v.s / pc.v.s) * grow, x0 = (-W * (MARGIN - 1)) / 2, y0 = (-H * (MARGIN - 1)) / 2;
@@ -2249,6 +2286,10 @@ function printFor(v: View, moving: boolean, slot = 'drawing', drift = false, pat
     pressInto(c, v, 0, ch, 0, cw, Q);
     presses.push(Math.round(performance.now() - t0)); if (presses.length > 50) presses.shift();
     pc = printCaches[slot] = { c, key, v: { ...v }, at: clock() };
+  } else if (gpu.ready() && moving && off > 0.18 && clock() - pc.at > 0.15) {
+    // (On the graphics chip: pressed again as the fingers move, once it's been stretched a fifth or so, so the
+    // print under them never goes soft.)
+    pressSlowly(slot, v, key, true, Infinity);
   } else if (((!moving && !drift && !exact) || far) && !fineHolds(slot, key, v)) {
     // (Only sharper wanted, for a view already shown: pressed a strip a frame, the picture there meanwhile
     // scaled to it, and put in its place once whole, so a pinch let go never stalls. Not when the fine print
@@ -2360,8 +2401,9 @@ function pressSlowly(slot: string, v: View, key: string, follow = true, budget =
   // left room, a strip at least now and then so it always arrives.)
   // (As deep as about fifteen milliseconds' pressing on this phone, as the last strip went: never so thin that
   // each strip's own setting up is much of it.)
-  const t = performance.now(), rows = Math.round(Math.max(20, Math.min(96, job.rows)));
-  const left = budget === Infinity ? Infinity : Math.min(budget, 11 - (t - frameStart));
+  // (On the graphics chip: all of it at once.)
+  const t = performance.now(), rows = gpu.ready() ? job.end - job.top : Math.round(Math.max(20, Math.min(96, job.rows)));
+  const left = budget === Infinity || gpu.ready() ? Infinity : Math.min(budget, 11 - (t - frameStart));
   if (left <= 0 && t - (job.last ?? 0) < 0.25e3) return;
   job.last = t;
   while ((job.hi < job.end || job.lo > job.top) && performance.now() - t < Math.max(left, 0.1)) {
@@ -2431,7 +2473,8 @@ function fineShown(slot: string, pc: Kept, v: View, grow: number): [number, numb
 }
 /** The fine print for the slice shown at rest, begun or carried on a strip, when nothing else is wanted. */
 function growFine(slot: string, pc: Kept, v: View, moving: boolean): void {
-  if (moving || fingers.size || look.k > 1.001 || lookBack || Object.keys(pressing).length || !tree.rings.length) return;
+  // (Not wanted where the graphics chip presses any view at once.)
+  if (gpu.ready() || moving || fingers.size || look.k > 1.001 || lookBack || Object.keys(pressing).length || !tree.rings.length) return;
   if (pc.v.s !== v.s || pc.v.cx !== v.cx || pc.v.cy !== v.cy) return;
   let f = fineFits(slot, pc.key, v);
   if (!f) {
