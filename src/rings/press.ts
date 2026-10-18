@@ -296,11 +296,16 @@ function knotSpot(m: WoodMark, v: View, Z: number): { x: number; y: number; e: n
   // (Where the branch, rising, crosses the cut: partway along its years, never at the bark.)
   const n = tree.rings.length, i = Math.max(0, Math.min(n - 3, Math.round((m.from + Math.min(n - 1, m.last)) / 2)));
   const rin = i <= 0 ? tree.k.pith : radiusAt(tree.rings[i - 1], m.a), rout = radiusAt(tree.rings[i], m.a);
-  const R = v.s * warpR(v.warp, (rin + rout) / 2), t = m.a + v.turn, sz = Math.min(12, m.size);
-  // (As large as it grew, but never more than a fifth of the slice across.)
-  const e = Math.min(0.2 * v.s * warpR(v.warp, radiusAt(tree.rings[n - 1], m.a)), (4 + 2.6 * Math.sqrt(sz)) * px * Z * TAKES[kind].knot);
-  // (Always within the wood: never across the bark, however long it is.)
-  const Rb = v.s * warpR(v.warp, radiusAt(tree.rings[n - 1], m.a)), Rk = Math.min(R, Rb - e * 2.8 - barkCss(v) * px);
+  const t = m.a + v.turn, sz = Math.min(12, m.size), rb = radiusAt(tree.rings[n - 1], m.a);
+  // (Laid in the wood, not on the screen: sized and kept off the bark at true scale, then carried wherever
+  // the magnifier carries its own ring, so the rings never slide past it as the slice eases in and out.)
+  const s0 = restOf(v).s;
+  const e0 = Math.min(0.2 * s0 * rb, (4 + 2.6 * Math.sqrt(sz)) * px * Z * TAKES[kind].knot);
+  const rk = Math.max(0, Math.min((rin + rout) / 2, rb - (e0 * 2.8 + barkCss(v) * px) / s0));
+  // (Swollen or squeezed as the wood round it is.)
+  const W = (r: number) => v.s * warpR(v.warp, r), Rk = W(rk), d = Math.max(1e-4, rb * 0.01);
+  const grow = Math.sqrt(Math.max(0.05, (W(rk + d) - W(Math.max(0, rk - d))) / (rk + d - Math.max(0, rk - d)) / s0) * (rk > 1e-6 ? Rk / rk / s0 : 1));
+  const e = e0 * Math.max(0.5, Math.min(2, grow));
   return { x: v.cx + Rk * Math.cos(t), y: v.cy - Rk * Math.sin(t), e, rot: -t + h1(m.seed) * 0.6, rings: Math.max(2, Math.min(7, Math.round(1.5 + sz / 2.5))) };
 }
 /** A burl's bud specks on the sheet (device px): where, how large, turned how. Steady for the tree. */
