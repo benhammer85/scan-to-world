@@ -1314,6 +1314,23 @@ function drawBark(v: View): void {
  * it dries it pales and thins, sinking into the paper (where the ring's own edge is painted once it
  * closes). Each piece is drawn edge to edge with the next, so the translucent paint never doubles.
  */
+/**
+ * The loop drying onto the slice never laid over a check: where one opens through the bark, the wet line
+ * breaks off there, as ink does over a split in the block.
+ */
+function overChecks(v: View, draw: () => void): void {
+  const cuts = inward && inward.ring < tree.rings.length ? cracksCut.filter((c) => c[5] > 0) : [];
+  if (!cuts.length) { draw(); return; }
+  g.save(); g.beginPath(); g.rect(0, 0, W, H);
+  for (const [a0, r0, a1, r1, hw, out] of cuts) {
+    // (The check's mouth, a little wider than it is, from past the bark in to where the line could reach.)
+    const [x0, y0] = at(v, a0, r0 + out * 1.5), [x1, y1] = at(v, a1, r1 - (r0 - r1) * 2);
+    const dx = x1 - x0, dy = y1 - y0, l = Math.hypot(dx, dy) || 1, h = Math.max(1.5 * px, hw * v.s * 1.4), nx = (-dy / l) * h, ny = (dx / l) * h;
+    g.moveTo(x0 + nx, y0 + ny); g.lineTo(x1 + nx, y1 + ny); g.lineTo(x1 - nx, y1 - ny); g.lineTo(x0 - nx, y0 - ny); g.closePath();
+  }
+  g.clip('evenodd');
+  try { draw(); } finally { g.restore(); }
+}
 function drawBrush(g: CanvasRenderingContext2D, v: View, t: number): void {
   const n = trail.length;
   if (n < 2) return;
@@ -1708,6 +1725,7 @@ function drawPrint(v: View): void {
   // splitting the slice into wedges (from about the ninetieth). Wood parts along its years as readily as across
   // them, so a crack now and then runs a little way along a ring before going on: a step. Widest where it began,
   // jagged at its edges. (The practice only: they belong to an old slice.)
+  cracksCut = [];
   if (GROWN && n >= 20) {
     const bark = barkOf(n - 1), T = barkCss(v) * px;
     // (A crack's way, as (angle, mm), `fromHeart` outward or else inward from the bark, to `deep` of the radius;
@@ -1744,7 +1762,6 @@ function drawPrint(v: View): void {
         cracksCut.push([pts[j - 1][0], pts[j - 1][1], pts[j][0], pts[j][1], hw / v.s, atBark ? (T + 2 * px * Z) / v.s : 0]);
       }
     };
-    cracksCut = [];
     g.save(); g.globalCompositeOperation = 'destination-out'; g.strokeStyle = '#000'; g.lineCap = 'round'; g.lineJoin = 'round';
     const count = Math.min(5, 1 + Math.floor((n - 20) / 70));
     for (let c = 0; c < count; c++) {
@@ -3570,7 +3587,7 @@ function frame(): void {
   if (GROWN && !n && seedAt) drawSeed(v, t);
   if (GROWN && !n && !seedAt) drawSeedChoice(v, t);
   drawPressMark(shownOf(v), t, dt);
-  drawBrush(g, v, t);
+  overChecks(v, () => drawBrush(g, v, t));
   if (GROWN && painter !== null && tree.stroke) drawPendingMarks(v, t);
   if (far > 0) drawFar(v);
   else { placeBackInput(false); drawEdition(shownOf(v), t, dt); }
