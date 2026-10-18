@@ -138,8 +138,16 @@ void main() {
     int tight = r < runR ? int(ceil(log2(runR / max(1., r)))) : 0;
     int li = min(uLvN - 1, int(R(i, 3)) + tight + (heart ? 3 : 0));
     float rows = float(uLvRows[li]), wob = (0.09 * sin(2. * a + fi * 1.7) + 0.06 * sin(3. * a + fi * 2.9 + 1.) + 0.04 * sin(5. * a + fi * 0.6)) * uW0;
-    ink = sampleL(uLev, uLvO[li], uLvW[li], uLvH[li], ((a / TAU) * reps * uW0 + R(i, 1) + wob * reps * 0.15) * float(uLvW[li]) / uW0, float(year) * rows + across * rows, float(year) * rows, rows);
-    if (uFamRing == 1) ink = pow(max(0., ink), 1. + 1.2 * (1. - sm((across - 0.35) / 0.45)));
+    // (As the drawn woods print: every year its own, its latewood broader or narrower and heavier or lighter;
+    // its edge torn in short bites; and the scan's wood laid round the ring at the ring's own radius.)
+    float rr = (rin + rout) * 0.5 / uU, w = max(1e-3, rout - rin), yv = h1(fi * 1.37 + 0.71), heavy = 0.85 + 0.3 * h1(fi * 2.91 + 0.3);
+    float fray = (ringN(a, rr, 0.7, fi * 3.1, rr * 0.7) - 0.5) + 0.7 * (ringN(a, rr, 1.9, fi, rr * 1.9 + 3.) - 0.5);
+    float acr = heart ? across : clamp(pow(clamp(across + 1.4 * uU / w * fray, 0., 1.), 0.7 + 0.6 * yv), 0., 1.);
+    ink = sampleL(uLev, uLvO[li], uLvW[li], uLvH[li], ((a / TAU) * reps * uW0 + R(i, 1) + wob * reps * 0.15) * float(uLvW[li]) / uW0, float(year) * rows + acr * rows, float(year) * rows, rows);
+    if (uFamRing == 1) ink = pow(max(0., ink), 1. + 1.2 * (1. - sm((acr - 0.35) / 0.45)));
+    // (Ink taken or not, as a print takes it: firmer, never a grey wash; starved to small specks of paper.)
+    ink = sm((ink * heavy - 0.32) / 0.4);
+    ink *= 1. - 0.9 * sm((ringN(a, rr, 1.4, fi * 9.7, rr * 1.4) - 0.76) / 0.05);
     ink *= R(i, 10);
   } else ink = drawnInk(i, a, r, across, heart, rout - rin, dx, dy, (rin + rout) * 0.5 / uU) * R(i, 10);
   if (!heart && R(i, 5) > 0.) {

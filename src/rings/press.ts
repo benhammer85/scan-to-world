@@ -2098,10 +2098,17 @@ function printYears(v: View, oak: Years | null): void {
         const tight = r < runR[i] ? Math.ceil(Math.log2(runR[i] / Math.max(1, r))) : 0;
         const L = oak.levels[Math.min(oak.levels.length - 1, lvl[i] + tight + (heart ? 3 : 0))], rows = L.rows;
         const wob = (0.09 * Math.sin(2 * a + i * 1.7) + 0.06 * Math.sin(3 * a + i * 2.9 + 1) + 0.04 * Math.sin(5 * a + i * 0.6)) * W0;
-        ink = sample(L, (((a / TAU) * reps[i] * W0 + off[i] + wob * reps[i] * 0.15) * L.w) / W0, year * rows + across * rows, year * rows, rows);
-        // (Oak's and ash's springwood opened toward the paper, their latewood kept heavy: the year reads as a band,
-        // never a field of charcoal. A conifer's scanned year is already pale in its earlywood.)
-        ink = (fam() === 'ring' ? Math.pow(ink, 1 + 1.2 * (1 - smooth((across - 0.35) / 0.45))) : ink) * tone(i);
+        // (As the drawn woods print: every year its own, its edge torn in short bites, the wood laid round the ring
+        // at its own radius; as gpu.ts presses it.)
+        const rr = (rin + rout) / 2 / U, wd = Math.max(1e-3, rout - rin), yv = h1(i * 1.37 + 0.71), heavy = 0.85 + 0.3 * h1(i * 2.91 + 0.3), wrap = smooth((a - (TAU - 0.4)) / 0.4);
+        const rn = (kx: number, ox: number, y: number) => { const n0 = vnoise(a * rr * kx + ox, y); return wrap > 0 ? n0 + (vnoise((a - TAU) * rr * kx + ox, y) - n0) * wrap : n0; };
+        const fray = rn(0.7, i * 3.1, rr * 0.7) - 0.5 + 0.7 * (rn(1.9, i, rr * 1.9 + 3) - 0.5);
+        const acr = heart ? across : Math.max(0, Math.min(1, Math.pow(Math.max(0, Math.min(1, across + ((1.4 * U) / wd) * fray)), 0.7 + 0.6 * yv)));
+        ink = sample(L, (((a / TAU) * reps[i] * W0 + off[i] + wob * reps[i] * 0.15) * L.w) / W0, year * rows + acr * rows, year * rows, rows);
+        // (Oak's and ash's springwood opened toward the paper, their latewood kept heavy: the year reads as a band.)
+        if (fam() === 'ring') ink = Math.pow(Math.max(0, ink), 1 + 1.2 * (1 - smooth((acr - 0.35) / 0.45)));
+        // (Ink taken or not, never a grey wash; starved to small specks of paper.)
+        ink = smooth((ink * heavy - 0.32) / 0.4) * (1 - 0.9 * smooth((rn(1.4, i * 9.7, rr * 1.4) - 0.76) / 0.05)) * tone(i);
       } else ink = drawnInk(i, a, r, across, heart, rout - rin, dx, dy, (rin + rout) / 2 / U) * tone(i);
       if (!heart && thin[i] > 0) {
         // (As dark as the wide years: lines as wide as some three-fifths of the space they stand for.)

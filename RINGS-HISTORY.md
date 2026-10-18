@@ -248,3 +248,5 @@ At about 5× zoom, the time to press the whole screen fell to roughly a quarter 
 - The bark is a thinner, more broken band, and the stray ink round it is finer, sparser and dragged outward.
 - "Double-tap to zoom out" is said only the first three times ever.
 - The CPU press matches, and the choosing slices were pressed again.
+
+**October 18: oak, ash and pine as prints too.** The scanned woods now print as the drawn ones do. Each year is its own, its latewood broader or narrower and heavier or lighter, its edge torn in short bites. The ink is taken or not, never a grey wash, starved here and there to small specks of paper. The scan's own grain, pores and rays are kept inside the bands.
