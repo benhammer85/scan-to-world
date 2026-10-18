@@ -1219,9 +1219,8 @@ function hear(): void {
     settleTap = clock() + BLOOM;
     if (GROWN) {
       inward = { ring: tree.rings.length - 1, at: clock() };
-      // (The new year simply there, where it settled: the print as it was kept while the new one is pressed,
-      // then fading out over it, never growing out.)
-      growing = null;
+      // (The new year simply there, where it settled, never growing out.)
+      growing = null; yearClosed = true;
     }
     makeRoom();
   }
@@ -2289,7 +2288,11 @@ function printFor(v: View, moving: boolean, slot = 'drawing', drift = false, pat
   const far = same && ((still && !exact && off > 0.002) || (drift && !moving && off > 0.004 && clock() - pc.at > 0.8));
   // (A new year, a knot begun, the magnifier moved: pressed a strip at a time while the last print is shown,
   // never all at once in one frame.)
-  if (!same && (patient || pc)) { pressSlowly(slot, v, key, false); return printCaches[slot]; }
+  // (But the year just closed, on the graphics chip, pressed at once: never the old slice shown inside the new
+  // loop while it's pressed.)
+  const now = slot === 'drawing' && yearClosed && gpu.ready();
+  if (now) yearClosed = false;
+  if (!same && !now && (patient || pc)) { pressSlowly(slot, v, key, false); return printCaches[slot]; }
   if (!same || quick) {
     // (Wanted now: a new year, or nothing to show there. Pressed at once; or, if it's already being
     // pressed for these years, the rest of it at once.)
@@ -2299,7 +2302,7 @@ function printFor(v: View, moving: boolean, slot = 'drawing', drift = false, pat
     const Q = QUALITY(), cw = Math.ceil(W * MARGIN * Q), ch = Math.ceil(H * MARGIN * Q);
     // (One picture a slot, its memory kept and drawn over: the phone's browser allows only so much, and a
     // picture made anew each time soon runs past it, after which nothing more is drawn.)
-    const c = sized(pc?.c, cw, ch);
+    const c = sized(free(slot, pc?.c), cw, ch);
     const t0 = performance.now();
     pressInto(c, v, 0, ch, 0, cw, Q);
     presses.push(Math.round(performance.now() - t0)); if (presses.length > 50) presses.shift();
@@ -2322,6 +2325,13 @@ function printFor(v: View, moving: boolean, slot = 'drawing', drift = false, pat
     pressSlowly(slot, v, key);
   }
   return pc;
+}
+/** A canvas to press into, only if nothing still shows it: never one fading out, nor the one on screen. */
+function free(slot: string, c: HTMLCanvasElement | undefined): HTMLCanvasElement | undefined {
+  if (!c) return undefined;
+  for (const f of Object.values(fading)) if (f && f.c === c) return undefined;
+  for (const [k, p] of Object.entries(printCaches)) if (p && p.c === c && k !== slot) return undefined;
+  return c;
 }
 /** Kept, or made anew at this size. */
 function sized(c: HTMLCanvasElement | undefined, w: number, h: number): HTMLCanvasElement {
@@ -2389,6 +2399,8 @@ function pulledRows(v: View, Q = QUALITY()): [number, number, number] | null {
   } finally { px = was; }
 }
 const spare: Record<string, HTMLCanvasElement> = {};
+/** A year just closed, to be pressed at once (see printFor). */
+let yearClosed = false;
 /** When a view was last pressed live, and how long that takes (ms), as it went. */
 let liveAt = 0, liveCost = 0;
 function pressSlowly(slot: string, v: View, key: string, follow = true, budget = 8, fadeOld = true): void {
@@ -2397,7 +2409,7 @@ function pressSlowly(slot: string, v: View, key: string, follow = true, budget =
   // (`follow`: begun again for the view as it is now; otherwise finished for the view it was begun for,
   // to be scaled to the view as it moves, as a slice eases into its new room.)
   if (!job || job.key !== key || (follow && (job.v.s !== v.s || job.v.cx !== v.cx || job.v.cy !== v.cy)) || job.c.width !== cw || job.c.height !== ch) {
-    const c = sized(spare[slot], cw, ch);
+    const c = sized(free(slot, spare[slot]), cw, ch);
     delete spare[slot];
     // (Only the rows the slice lies across: above and below it, the bare sheet.)
     const Q2 = Q, my = (H * (MARGIN - 1)) / 2, n = tree.rings.length;
@@ -2615,7 +2627,8 @@ function drawSharp(pc: Kept, v: View, slot: string, moving: boolean, alpha = 1, 
   if (alpha > 0.99) growFine(slot, pc, v, moving);
   // (Sharpening: the bands already pressed laid over it as they come, out from the middle.)
   const job = pressing[slot];
-  if (job && job.key === pc.key && job.hi > job.lo) {
+  // (Only for the view as it is: bands pressed for a view the slice has since moved from never laid over it.)
+  if (job && job.key === pc.key && job.hi > job.lo && Math.abs(job.v.s - v.s) < 1e-3 * v.s && Math.hypot(job.v.cx - v.cx, job.v.cy - v.cy) < 0.5) {
     job.shown = true;
     const [ox, oy, w, h] = placeOf(job, v, grow), ky = h / job.c.height, kx = w / job.c.width;
     g.save(); g.globalAlpha = alpha;

@@ -235,3 +235,5 @@ At about 5× zoom, the time to press the whole screen fell to roughly a quarter 
 **October 18: a seamless draw again.** Closing a loop had begun to stutter: since the press moved to the graphics chip, every re-press (the new year, the magnifier easing off, the slice settling) was done whole in one frame. On a phone each was a visible hitch.
 - Now only a live pinch presses whole. Otherwise the print is pressed a strip at a time in each frame's spare time, the last print shown meanwhile and then fading out over the new one.
 - The grove drawn ahead in the background, for pinching out to, is also drawn a piece a frame, never in one go.
+
+**October 18: the new year there at once.** Closing a loop showed the old slice inside the loop for a moment while the new year was pressed a strip at a time, then the year popped in. On the graphics chip the year just closed is now pressed at once, so the loop dries onto a print that already holds it. Other presses still come a strip a frame. A canvas still fading out, or shown by another slot, is never pressed into, and bands pressed for a view the slice has moved from are never laid over it.
