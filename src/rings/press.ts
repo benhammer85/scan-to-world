@@ -232,10 +232,11 @@ function drawMarks(v: View, Z: number): void {
     // a fine dark ring of the bark caught round it.)
     // (Every knot its own: as long as the branch met the cut at a slant (round where it met it square), as large
     // as it grew, its own rings off centre (a branch grows more on its upper side), its pith small. A live knot's
-    // rings run on into the trunk's; a dead one (a branch long gone, or one in three of the old) sits in a dark
+    // rings run on into the trunk's; a dead one (most of those no longer grown) sits in a dark
     // ring of the bark it was buried in, shrunk from the wood at one side and split across.)
     const k = knotSpot(m, v, Z), hs = (q: number) => h1(m.seed * 0.0137 + q);
-    const dead = n - 1 - m.last > 2 && hs(1) < 0.6 || hs(2) < 0.3;
+    // (Only a branch no longer grown can have died: most of those left, never one still being added to.)
+    const dead = n - 1 - m.last > 2 && hs(1) < 0.7;
     const e = k.e * (0.55 + 0.6 * hs(3)), long = 1 + 1.6 * hs(4) ** 1.5, sq = 0.62 + 0.3 * hs(5);
     const ox = (hs(6) - 0.5) * 0.5, oy = (hs(7) - 0.2) * 0.55, rough = 0.12 + 0.25 * hs(8);
     const P = (s: number, t: number, seed: number): [number, number] => {
