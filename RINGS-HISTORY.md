@@ -199,3 +199,7 @@ Still to come (`trees.ts`): a redwood with fires, a bristlecone with drought, a 
 - Each strip is as deep as about fifteen milliseconds of pressing allows.
 - The wood's rays skip the noise work wherever no ray can reach.
 At about 5× zoom, the time to press the whole screen fell to roughly a quarter of what it was.
+
+**October 18: zooming without a swap.** Looking closer used to stretch the print and then swap in a re-pressed one, and the two didn't quite match.
+- The few marks still sized by the screen are now sized by the wood: the stipple round the bark, the birch's bark lines and lenticels, the close-up grain, and the saw marks. A view pressed closer is the same picture, only finer.
+- Once the slice has rested a moment, the print is pressed again quietly in spare frame time. This fine copy is about 2.5× finer and covers the slice only, pressed exactly as a look that close would be. Pinching in then only magnifies it: nothing is re-pressed and nothing changes, up to where a fresh press would be no sharper. It's dropped whenever the years, the wood's scans, or the sheet change.

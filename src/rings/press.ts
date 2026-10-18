@@ -1788,7 +1788,7 @@ function drawPrint(v: View): void {
     for (let q = 0; q < count * 1.6; q++) {
       const a = h1(q * 0.917 + tree.seed * 0.01) * TAU;
       if (noise(tree.seed * 0.021 + (a / TAU) * 14) < 0.4) continue;
-      const out = T + (1 + 7 * h1(q * 2.31) ** 1.6) * px * Z, [x, y] = pt(a, bark(a), out), d = (0.35 + 0.5 * h1(q * 5.7)) * px * Math.sqrt(Z);
+      const out = T + (1 + 7 * h1(q * 2.31) ** 1.6) * px * Z, [x, y] = pt(a, bark(a), out), d = (0.35 + 0.5 * h1(q * 5.7)) * px * Z;
       g.moveTo(x + d, y); g.ellipse(x, y, d, d * (0.45 + 0.5 * h1(q * 8.9)), h1(q * 3.3) * TAU, 0, TAU);
     }
     g.fill();
@@ -1823,18 +1823,19 @@ function drawPrint(v: View): void {
 
 /** Birch's bark: thin, pale and papery, a fine dark line within it, flecked with short dark lenticels. */
 function drawBirchBark(v: View, pt: (a: number, r: number, dr?: number) => [number, number], Rpx: number): void {
-  const bark = barkOf(tree.rings.length - 1), T = barkCss(v) * px;
+  // (Looked into, the same bark magnified: its lines and lenticels sized at the slice's own scale.)
+  const bark = barkOf(tree.rings.length - 1), T = barkCss(v) * px, Z = Math.max(1, look.k);
   g.beginPath();
   for (let j = 0; j <= K * 2; j++) { const a = (j / (K * 2)) * TAU, [x, y] = pt(a, bark(a), T * (0.9 + 0.15 * Math.sin(31 * a))); if (j) g.lineTo(x, y); else g.moveTo(x, y); }
   for (let j = K * 2; j >= 0; j--) { const a = (j / (K * 2)) * TAU, [x, y] = pt(a, bark(a)); g.lineTo(x, y); }
   g.closePath(); g.fillStyle = ink(0.28); g.fill();
-  g.strokeStyle = ink(0.85); g.lineWidth = 0.9 * px; ringPath(v, bark, 0, K * 2); g.stroke();
-  g.strokeStyle = ink(0.6); g.lineWidth = 0.7 * px; ringPath(v, bark, T / px, K * 2); g.stroke();
+  g.strokeStyle = ink(0.85); g.lineWidth = 0.9 * px * Z; ringPath(v, bark, 0, K * 2); g.stroke();
+  g.strokeStyle = ink(0.6); g.lineWidth = 0.7 * px * Z; ringPath(v, bark, T / px, K * 2); g.stroke();
   // (The lenticels: short dark dashes along it.)
-  const count = Math.round((TAU * Rpx) / (9 * px));
-  g.strokeStyle = ink(0.8); g.lineWidth = Math.max(0.7 * px, T * 0.35); g.lineCap = 'butt'; g.beginPath();
+  const count = Math.round((TAU * Rpx) / (9 * px * Z));
+  g.strokeStyle = ink(0.8); g.lineWidth = Math.max(0.7 * px * Z, T * 0.35); g.lineCap = 'butt'; g.beginPath();
   for (let q = 0; q < count; q++) {
-    const a = ((q + h1(q * 3.9)) / count) * TAU, len = (2 + 3 * h1(q * 1.7)) * px / Math.max(1, Rpx);
+    const a = ((q + h1(q * 3.9)) / count) * TAU, len = (2 + 3 * h1(q * 1.7)) * px * Z / Math.max(1, Rpx);
     const [x0, y0] = pt(a, bark(a), T * 0.5), [x1, y1] = pt(a + len, bark(a + len), T * 0.5);
     g.moveTo(x0, y0); g.lineTo(x1, y1);
   }
@@ -2133,7 +2134,7 @@ function inkGrain(c: HTMLCanvasElement, v: View, band?: [number, number], soft =
   // scales and turned to each other, so neither repeats in step.)
   const sea = wood.sea, field = wood.field, perTex = 1 / Math.max((px * Z) / v.s, 0.24), close = Math.max(0, Math.min(1, (0.24 / ((px * Z) / v.s) - 1) / 2));
   const fc = Math.cos(0.5 + h1(tree.seed * 0.29)), fs = Math.sin(0.5 + h1(tree.seed * 0.29));
-  const sawK = 0.07 * Math.max(0, Math.min(1, (SAW * v.s - 3 * px) / (4 * px))), sa = h1(tree.seed * 0.61) * TAU;
+  const cg = (2.7 * v.s) / (Z * px), sawK = 0.07 * Math.max(0, Math.min(1, ((SAW * v.s) / Z - 3 * px) / (4 * px))), sa = h1(tree.seed * 0.61) * TAU;
   const sx = 900 * Math.cos(sa), sy = 900 * Math.sin(sa);
   for (let y = 0; y < h; y++) {
     const dy = y + y0 - v.cy;
@@ -2176,7 +2177,7 @@ function inkGrain(c: HTMLCanvasElement, v: View, band?: [number, number], soft =
         const u = mx * perTex, w = my * perTex;
         took = val * (0.62 + 0.48 * tile(sea, u + 17, w + 31) * (0.75 + 0.25 * tile(field, (u * fc - w * fs) * 0.8, (u * fs + w * fc) * 0.8)));
         // (Looked at closer than the print's own grain: finer grain, at the screen's scale, so it stays crisp.)
-        if (close > 0) took *= 1 + close * 0.22 * (vnoise((dx / Z) * 0.9 + 3.3, (dy / Z) * 0.9 + 7.1) - 0.5);
+        if (close > 0) took *= 1 + close * 0.22 * (vnoise(mx * cg + 3.3, my * cg + 7.1) - 0.5);
       }
       const thr = 0.5 + (sea ? 0.22 : 0.95) * (t1 - 0.5) + 0.2 * (vnoise(mx * low + 40, my * low + 11) - 0.5) + saw;
       // (Took or not, sharply; `soft` keeps a pixel or so of the edge's own shading, for a print that's
@@ -2248,9 +2249,10 @@ function printFor(v: View, moving: boolean, slot = 'drawing', drift = false, pat
     pressInto(c, v, 0, ch, 0, cw, Q);
     presses.push(Math.round(performance.now() - t0)); if (presses.length > 50) presses.shift();
     pc = printCaches[slot] = { c, key, v: { ...v }, at: clock() };
-  } else if ((!moving && !drift && !exact) || far) {
+  } else if (((!moving && !drift && !exact) || far) && !fineHolds(slot, key, v)) {
     // (Only sharper wanted, for a view already shown: pressed a strip a frame, the picture there meanwhile
-    // scaled to it, and put in its place once whole, so a pinch let go never stalls.)
+    // scaled to it, and put in its place once whole, so a pinch let go never stalls. Not when the fine print
+    // already holds it.)
     pressSlowly(slot, v, key);
   }
   return pc;
@@ -2268,8 +2270,7 @@ function sized(c: HTMLCanvasElement | undefined, w: number, h: number): HTMLCanv
  * knot or burl reads from a little way off.
  */
 let strip: HTMLCanvasElement | null = null;
-function pressInto(c: HTMLCanvasElement, v: View, r0: number, r1: number, c0 = 0, c1 = c.width, Q = QUALITY()): void {
-  const mx = (W * (MARGIN - 1)) / 2, my = (H * (MARGIN - 1)) / 2;
+function pressInto(c: HTMLCanvasElement, v: View, r0: number, r1: number, c0 = 0, c1 = c.width, Q = QUALITY(), mx = (W * (MARGIN - 1)) / 2, my = (H * (MARGIN - 1)) / 2): void {
   const whole = r0 === 0 && r1 === c.height && c0 === 0 && c1 === c.width;
   const was = { g, px, W, H };
   const at: View = { ...v, cx: (v.cx + mx) * Q, cy: (v.cy + my) * Q, s: v.s * Q, px: v.px * Q };
@@ -2379,22 +2380,88 @@ function pressSlowly(slot: string, v: View, key: string, follow = true, budget =
     // seen sharpening already, a band at a time.)
     const old = printCaches[slot];
     if (fading[slot]) spare[slot] = fading[slot]!.c;
-    if (old && !job.shown) fading[slot] = { c: old.c, v: old.v, at: clock() };
+    fading[slot] = old && !job.shown ? { c: old.c, v: old.v, at: clock() } : undefined;
     printCaches[slot] = { c: job.c, key, v: job.v, at: clock() };
     presses.push(-Math.round(performance.now() - job.t0)); if (presses.length > 50) presses.shift();
     delete pressing[slot];
   }
 }
 /** A kept print drawn for view `v` (moved and scaled to it), `grow` times larger about the slice's heart. */
-function drawKept(pc: { c: HTMLCanvasElement; v: View }, v: View, alpha = 1, grow = 1): void {
+function drawKept(pc: { c: HTMLCanvasElement; v: View }, v: View, alpha = 1, grow = 1, hole?: [number, number, number, number]): void {
   const [ox, oy, w, h] = placeOf(pc, v, grow);
+  // (`hole`: where a sharper picture lies over it, left out, so its softer ink never shows round the sharp.)
+  if (hole) { g.save(); g.beginPath(); g.rect(0, 0, W, H); g.rect(...hole); g.clip('evenodd'); }
   g.globalAlpha = alpha;
   g.drawImage(pc.c, ox, oy, w, h);
+  if (hole) { g.restore(); g.globalAlpha = alpha; }
   if (pressShown > 0.01) {
     const m = markOf(pc), k = w / pc.c.width;
     if (m) { g.globalAlpha = alpha * pressShown; g.drawImage(m.c, ox + m.x * k, oy + m.y * k, m.c.width * k, m.c.height * k); }
   }
   g.globalAlpha = 1;
+}
+/**
+ * The print at rest, pressed again finer while nothing else is happening (some two and a half times, as a look
+ * that close would press it, the slice only), so that looked into that far it's only magnified: never pressed
+ * anew, never a change. Pressed a strip at a time from the heart out, in what's left of each frame.
+ */
+type Fine = { c: HTMLCanvasElement; slot: string; key: string; v: View; F: number; x0: number; y0: number; lo: number; hi: number; rows: number; last: number };
+let fine: Fine | null = null, fineSkip = '';
+/** Its pixels at most (some 36 MB). */
+const FINE_PX = 9e6;
+const fineDone = (f: Fine) => f.lo <= 0 && f.hi >= f.c.height;
+const fineFits = (slot: string, key: string, v: View) => fine && fine.slot === slot && fine.key === key && fine.v.turn === v.turn ? fine : null;
+/**
+ * Whether the fine print, whole, holds view `v` as it is: looked into, and no softer there than a print
+ * pressed for the view would be (which, looked into, is pressed less finely: see QUALITY).
+ */
+function fineHolds(slot: string, key: string, v: View): boolean {
+  const f = fineFits(slot, key, v), z = f ? v.s / f.v.s : 0;
+  return !!f && fineDone(f) && z > 1.02 && z / f.F <= 1.05 / QUALITY();
+}
+/** Where the fine print lies on the screen for view `v`, when it's whole and sharper there than the kept one. */
+function fineShown(slot: string, pc: Kept, v: View, grow: number): [number, number, number, number] | null {
+  const f = fineFits(slot, pc.key, v);
+  if (!f || !fineDone(f)) return null;
+  const z = (v.s / f.v.s) * grow;
+  // (Only looked into: at the slice's own size the kept print is the one; and only while the kept one,
+  // scaled, is the softer.)
+  if (z <= 1.02 || z / f.F >= ((v.s / pc.v.s) * grow) / QUALITY()) return null;
+  return [v.cx + (f.x0 - f.v.cx) * z, v.cy + (f.y0 - f.v.cy) * z, (f.c.width / f.F) * z, (f.c.height / f.F) * z];
+}
+/** The fine print for the slice shown at rest, begun or carried on a strip, when nothing else is wanted. */
+function growFine(slot: string, pc: Kept, v: View, moving: boolean): void {
+  if (moving || fingers.size || look.k > 1.001 || lookBack || Object.keys(pressing).length || !tree.rings.length) return;
+  if (pc.v.s !== v.s || pc.v.cx !== v.cx || pc.v.cy !== v.cy) return;
+  let f = fineFits(slot, pc.key, v);
+  if (!f) {
+    const id = `${slot}|${pc.key}|${v.turn}`;
+    if (fineSkip === id) return;
+    let rmax = tree.k.pith;
+    for (let i = 0; i < K; i++) rmax = Math.max(rmax, tree.rings[tree.rings.length - 1][i]);
+    const R = v.s * warpR(v.warp, rmax) + (barkCss(v) * 1.6 + 14) * px, F = Math.min(2.5, Math.sqrt(FINE_PX / (4 * R * R)));
+    if (fine) { fine.c.width = 0; fine.c.height = 0; fine = null; }
+    if (F < 1.4) { fineSkip = id; return; }
+    const c = document.createElement('canvas'); c.width = c.height = Math.ceil(2 * R * F);
+    const mid = Math.floor(c.height / 2);
+    f = fine = { c, slot, key: pc.key, v: { ...v }, F, x0: v.cx - R, y0: v.cy - R, lo: mid, hi: mid, rows: 24, last: 0 };
+  }
+  if (fineDone(f)) return;
+  const t = performance.now(), left = Math.min(6, 11 - (t - frameStart));
+  if (left <= 0 && t - f.last < 0.4e3) return;
+  f.last = t;
+  // (Pressed as a look that close would be: the same marks, the same sizes, only finer.)
+  const was = look;
+  look = { ...look, k: f.F };
+  try {
+    while (!fineDone(f) && performance.now() - t < Math.max(left, 0.1)) {
+      const down = f.hi < f.c.height && (f.lo <= 0 || f.c.height - f.hi >= f.lo), rows = Math.round(Math.max(16, Math.min(96, f.rows)));
+      const r0 = down ? f.hi : Math.max(0, f.lo - rows), r1 = down ? Math.min(f.c.height, f.hi + rows) : f.lo, s0 = performance.now();
+      pressInto(f.c, { ...f.v, cx: f.v.cx * f.F, cy: f.v.cy * f.F, s: f.v.s * f.F }, r0, r1, 0, f.c.width, 1, -f.x0 * f.F, -f.y0 * f.F);
+      f.rows = 0.5 * f.rows + 0.5 * (r1 - r0) * Math.min(3, 8 / Math.max(1, performance.now() - s0));
+      if (down) f.hi = r1; else f.lo = r0;
+    }
+  } finally { look = was; }
 }
 /**
  * A kept print's press mark (made once, round the slice only): the paper's step down along the print's own
@@ -2464,8 +2531,14 @@ function drawGrowing(v: View, t: number, moving: boolean, drift: boolean): void 
 const fading: Record<string, { c: HTMLCanvasElement; v: View; at: number } | undefined> = {};
 const FADE = 0.6;
 function drawPrintCached(v: View, moving: boolean, slot = 'drawing', alpha = 1, drift = false, grow = 1): void {
-  const pc = printFor(v, moving, slot, drift);
-  drawKept(pc, v, alpha, grow);
+  drawSharp(printFor(v, moving, slot, drift), v, slot, moving, alpha, grow);
+}
+/** A slot's kept print as it's shown: over it, the fine print where that's sharper, the bands being pressed, the last fading. */
+function drawSharp(pc: Kept, v: View, slot: string, moving: boolean, alpha = 1, grow = 1): void {
+  const fp = fineShown(slot, pc, v, grow);
+  drawKept(pc, v, alpha, grow, fp ?? undefined);
+  if (fp) { g.save(); g.globalAlpha = alpha; g.drawImage(fine!.c, ...fp); g.restore(); }
+  if (alpha > 0.99) growFine(slot, pc, v, moving);
   // (Sharpening: the bands already pressed laid over it as they come, out from the middle.)
   const job = pressing[slot];
   if (job && job.key === pc.key && job.hi > job.lo) {
@@ -3496,7 +3569,7 @@ function frame(): void {
     if (relax > 0 && rest?.key !== printKey(rv)) relax = Math.min(relax, 0.01);
     const rk = smooth(relax);
     if (rk < 1) drawPrintCached(v, moving, 'drawing', 1 - rk, drift, breathGrow());
-    if (rk > 0 && rest) drawKept(rest, rv, rk, breathGrow());
+    if (rk > 0 && rest) drawSharp(rest, rv, 'rest', moving, rk, breathGrow());
   } else { paper.draw(g, v); drawLatewood(v); }
   const n = tree.rings.length;
   // A ring touched: lit softly along its edge for a moment, as its day is read.
@@ -3557,9 +3630,9 @@ void (async () => {
   else if (GROWN && !tree.rings.length) say(seedAt ? 'Draw a loop around the seed.' : 'Swipe through the woods. Touch one to plant it.', 1e5);
   // (Words only where they're needed: before the first ring. After that, the tree says it.)
   else if (!tree.rings.length) say('Draw a circle around this one.', 8);
-  Object.assign(window, { press: { get tree() { return tree; }, get phase() { return settle.ring >= 0 ? 'settling' : 'trace'; }, get easing() { return !!ease; }, get view() { return viewNow(); }, get days() { return days; }, get kind() { return kind; }, get choice() { return SEEDS[choice]; }, get far() { return far; }, get visiting() { return visit?.i ?? null; }, get parting() { return !!parting; }, groveNext: () => { const c = camNow(), w = worldOf(); return { x: (c.X0 + w.next.wx * c.S) / px, y: (c.Y0 + w.next.wy * c.S) / px }; }, grove: () => groveLayout().trees.map((t) => ({ sp: t.sp, n: t.n, i: t.i, x: t.x / px, y: t.y / px, r: t.r / px })), get editionY() { return editionY; }, get stampAt() { return stampAt; }, print: async () => (await yearPrint()).toDataURL('image/png'), get presses() { return presses.splice(0); }, get breeze() { const st = worldOf().stream; return { gusts: gusts.length, lifted: lifted.length, stream: st.length, max: Math.max(0, ...st.map(([x, y]) => Math.hypot(...breezeAt(x, y)))) }; }, get marks() { return marks.map((m) => `${m.kind}@${m.a.toFixed(2)} ${m.from}-${m.last} x${m.size.toFixed(1)}`); } } });
+  Object.assign(window, { press: { get tree() { return tree; }, get phase() { return settle.ring >= 0 ? 'settling' : 'trace'; }, get easing() { return !!ease; }, get view() { return viewNow(); }, get days() { return days; }, get kind() { return kind; }, get choice() { return SEEDS[choice]; }, get far() { return far; }, get visiting() { return visit?.i ?? null; }, get parting() { return !!parting; }, groveNext: () => { const c = camNow(), w = worldOf(); return { x: (c.X0 + w.next.wx * c.S) / px, y: (c.Y0 + w.next.wy * c.S) / px }; }, grove: () => groveLayout().trees.map((t) => ({ sp: t.sp, n: t.n, i: t.i, x: t.x / px, y: t.y / px, r: t.r / px })), get editionY() { return editionY; }, get stampAt() { return stampAt; }, print: async () => (await yearPrint()).toDataURL('image/png'), get presses() { return presses.splice(0); }, get fine() { return fine && { F: fine.F, done: fineDone(fine), at: (fine.hi - fine.lo) / fine.c.height, size: fine.c.width }; }, get breeze() { const st = worldOf().stream; return { gusts: gusts.length, lifted: lifted.length, stream: st.length, max: Math.max(0, ...st.map(([x, y]) => Math.hypot(...breezeAt(x, y)))) }; }, get marks() { return marks.map((m) => `${m.kind}@${m.a.toFixed(2)} ${m.from}-${m.last} x${m.size.toFixed(1)}`); } } });
   // (The real wood: once it's come, the print is pressed again with it.)
-  if (PRINT) loadWood(() => { for (const k in printCaches) delete printCaches[k]; });
+  if (PRINT) loadWood(() => { for (const k in printCaches) delete printCaches[k]; for (const k in pressing) delete pressing[k]; if (fine) { fine.c.width = 0; fine = null; } fineSkip = ''; });
   startIntro();
   requestAnimationFrame(frame);
 })();
