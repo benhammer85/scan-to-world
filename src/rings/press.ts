@@ -1210,19 +1210,20 @@ function hear(): void {
     days.push(today);
     keepMarks();
     keep();
-    if (first) editionAt = clock() + (GROWN ? SEASON : 1.6);
+    if (first) editionAt = clock() + 1.6;
     // (The ring is done: it settles into the paper and the slice draws back to make room, while the
     // next can be begun as soon as the finger comes down again.)
     painter = null;
     settle = { ring: tree.rings.length - 1, at: clock() };
     closeTrail();
-    settleTap = clock() + (GROWN && !closer() ? 0.8 * SEASON : BLOOM);
+    settleTap = clock() + BLOOM;
     if (GROWN) {
       inward = { ring: tree.rings.length - 1, at: clock() };
-      // (The print as it was, kept, for the year to grow out from.)
+      // (The new year simply there, where it settled: the print as it was fading out over it, never growing out.)
       const was = printCaches.drawing;
       delete printCaches.drawing;
-      growing = was && !closer() && was.key.startsWith(`${tree.rings.length - 1}|`) ? { ring: tree.rings.length - 1, at: clock(), was } : null;
+      if (was) { if (fading.drawing) spare.drawing = fading.drawing.c; fading.drawing = { c: was.c, v: was.v, at: clock() }; }
+      growing = null;
     }
     makeRoom();
   }
@@ -2257,7 +2258,9 @@ function covers(pc: { v: View }, v: View): boolean {
 }
 /** The print for view `v`, kept in `slot`: pressed again only when it must be. */
 /** What a kept print was pressed for: the years in it, the slice's magnifier, the sheet. */
-const printKey = (v: View) => `${tree.rings.length}|${v.warp?.R ?? 0}|${v.warp?.beta ?? 0}|${W}x${H}`;
+// (And its knots and burls as they are: one grown, or begun, is pressed in at once, never only when looked into.)
+const marksKey = () => marks.map((m) => `${m.kind[0]}${m.from}-${m.last}x${m.size.toFixed(2)}`).join(',');
+const printKey = (v: View) => `${tree.rings.length}|${v.warp?.R ?? 0}|${v.warp?.beta ?? 0}|${W}x${H}|${marksKey()}`;
 /**
  * The kept print for a slot, pressed again as it must be. `patient`: a new one, when the years have
  * changed, may come a strip at a time too, the old one given meanwhile (the caller tells them apart by key).

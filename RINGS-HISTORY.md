@@ -219,3 +219,7 @@ At about 5× zoom, the time to press the whole screen fell to roughly a quarter 
 - The chip's noise is its own, so the hills' contours lie a little differently than they did. Where there's no WebGL2, or with `?cpu`, the grove is drawn by hand as before.
 
 **October 18: the breeze, looked into.** Zoomed into the grove, one finger used to move the view about, and a breeze needed a moment's hold first. Now one finger is always the breeze, looked into or not: the crowns lean, leaves lift, the water ruffles. Two fingers move the grove about, pinching or not.
+
+**October 18: no growing out; knots pressed at once.**
+- The year no longer grows out from the old bark over seven seconds once a loop is closed. The new ring is simply there where it settled, the print as it was fading out over it.
+- The print's key now includes its knots and burls. One begun or grown is always pressed in straight away, never only once the slice is looked into.
