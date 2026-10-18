@@ -1911,12 +1911,16 @@ function rayAt(a: number, rho: number, run: [number, number] = [20, 0.3]): numbe
     while (bl > 0 && bk % 2 === 0) { bk /= 2; bl--; }
     const id = bk * 7.31 + bl * 31.7, nb = N0 * 2 ** bl, born = R0 * 2 ** bl * (bl ? 0.7 + 0.6 * h1(id * 1.9) : 0.6);
     if (rho < born) continue;
+    // (Too far from where it could wander to, whatever its wandering: passed by without working it out.)
+    const half = 0.07 + 0.16 * h1(id * 3.7) ** 2, home = (bk + 0.5 + (h1(id) - 0.5) * 0.5) / nb * N;
+    let d0 = Math.abs(sAt - home); d0 = Math.min(d0, N - d0);
+    if (((d0 - 0.8) * TAU * rho) / N > half + 0.8) continue;
     // (Where it lies: its birth place, a little off even, wandering slowly outward.)
     // (Never ruled: it bends a little as the years about it swell and pinch, slowly and in small jogs.)
     const wander = Math.sin(rho / (40 + 30 * h1(id * 2.3)) + id) * 0.45 + (vnoise(id * 0.71, rho / 9) - 0.5) * 0.7;
     const at = ((bk + 0.5 + (h1(id) - 0.5) * 0.5) / nb + wander / N) * N;
     let dd = Math.abs(sAt - at); dd = Math.min(dd, N - dd);
-    const dist = (dd * TAU * rho) / N + (vnoise(rho * 0.9 + id, id * 0.13) - 0.5) * 0.35, half = 0.07 + 0.16 * h1(id * 3.7) ** 2;
+    const dist = (dd * TAU * rho) / N + (vnoise(rho * 0.9 + id, id * 0.13) - 0.5) * 0.35;
     if (dist > half + 0.6) continue;
     // (A run, then broken off: short flecks in most woods, long runs in oak's.)
     if (vnoise(id * 0.37, rho / run[0]) < run[1]) continue;
@@ -2185,7 +2189,7 @@ function inkGrain(c: HTMLCanvasElement, v: View, band?: [number, number], soft =
 }
 
 /** The print, kept as a picture between changes; while the slice moves, the picture moves with it. */
-const printCaches: Record<string, { c: HTMLCanvasElement; key: string; v: View; at: number }> = {};
+const printCaches: Record<string, Kept> = {};
 /** Whether a kept picture, drawn for view `v`, still covers the whole screen. */
 /**
  * A kept print's picture covers more than the sheet (`MARGIN` of it each way, so a pinch back out needs no
@@ -2195,7 +2199,11 @@ const printCaches: Record<string, { c: HTMLCanvasElement; key: string; v: View; 
 const MARGIN = 1.5;
 /** How long each pressing took (ms), for looking into the app's pace. */
 const presses: number[] = [];
-const QUALITY = () => Math.min(1, 3 / Math.max(1, px));
+// (Looked into, the print is pressed less finely: there the wood's own scan is coarser than the screen, so a
+// finer press only costs more, a pinch's sharpening taking many seconds on a phone.)
+// (Looked into, pressed less finely, down to a pixel and a half a CSS px: the wood's own scan is coarser than the
+// screen there, and a press at every pixel takes many seconds on a phone.)
+const QUALITY = () => Math.min(1, 3 / Math.max(1, px)) * Math.max(0.5, 1 / Math.sqrt(Math.max(1, look.k)));
 type Kept = { c: HTMLCanvasElement; key: string; v: View; at: number };
 function placeOf(pc: { v: View }, v: View, grow = 1): [number, number, number, number] {
   const k = (v.s / pc.v.s) * grow, x0 = (-W * (MARGIN - 1)) / 2, y0 = (-H * (MARGIN - 1)) / 2;
@@ -2237,7 +2245,7 @@ function printFor(v: View, moving: boolean, slot = 'drawing', drift = false, pat
     // picture made anew each time soon runs past it, after which nothing more is drawn.)
     const c = sized(pc?.c, cw, ch);
     const t0 = performance.now();
-    pressInto(c, v, 0, ch);
+    pressInto(c, v, 0, ch, 0, cw, Q);
     presses.push(Math.round(performance.now() - t0)); if (presses.length > 50) presses.shift();
     pc = printCaches[slot] = { c, key, v: { ...v }, at: clock() };
   } else if ((!moving && !drift && !exact) || far) {
@@ -2260,8 +2268,8 @@ function sized(c: HTMLCanvasElement | undefined, w: number, h: number): HTMLCanv
  * knot or burl reads from a little way off.
  */
 let strip: HTMLCanvasElement | null = null;
-function pressInto(c: HTMLCanvasElement, v: View, r0: number, r1: number, c0 = 0, c1 = c.width): void {
-  const Q = QUALITY(), mx = (W * (MARGIN - 1)) / 2, my = (H * (MARGIN - 1)) / 2;
+function pressInto(c: HTMLCanvasElement, v: View, r0: number, r1: number, c0 = 0, c1 = c.width, Q = QUALITY()): void {
+  const mx = (W * (MARGIN - 1)) / 2, my = (H * (MARGIN - 1)) / 2;
   const whole = r0 === 0 && r1 === c.height && c0 === 0 && c1 === c.width;
   const was = { g, px, W, H };
   const at: View = { ...v, cx: (v.cx + mx) * Q, cy: (v.cy + my) * Q, s: v.s * Q, px: v.px * Q };
@@ -2303,10 +2311,10 @@ function pulledReach(v: View): { x0: number; y0: number; x1: number; y1: number;
   return x1 < x0 ? null : { x0, y0, x1, y1, pad: Math.ceil(pad) + 4 };
 }
 /** Pictures being pressed a strip at a time, a slot each, and the one to be drawn over next. */
-const pressing: Record<string, { c: HTMLCanvasElement; v: View; key: string; row: number; t0: number; end: number; c0: number; c1: number; pulled: [number, number, number] | null; last?: number }> = {};
+const pressing: Record<string, { c: HTMLCanvasElement; v: View; key: string; lo: number; hi: number; top: number; t0: number; end: number; c0: number; c1: number; pulled: [number, number, number] | null; last?: number; shown?: boolean; q: number; rows: number }> = {};
 /** Where the wood's pulled about, in a kept picture's own pixels for view `v`: its rows, and the margin it needs. */
-function pulledRows(v: View): [number, number, number] | null {
-  const Q = QUALITY(), was = px;
+function pulledRows(v: View, Q = QUALITY()): [number, number, number] | null {
+  const was = px;
   px *= Q;
   try {
     const r = pulledReach({ ...v, cx: (v.cx + (W * (MARGIN - 1)) / 2) * Q, cy: (v.cy + (H * (MARGIN - 1)) / 2) * Q, s: v.s * Q, px: v.px * Q });
@@ -2323,7 +2331,7 @@ function pressSlowly(slot: string, v: View, key: string, follow = true, budget =
     const c = sized(spare[slot], cw, ch);
     delete spare[slot];
     // (Only the rows the slice lies across: above and below it, the bare sheet.)
-    const Q2 = QUALITY(), my = (H * (MARGIN - 1)) / 2, n = tree.rings.length;
+    const Q2 = Q, my = (H * (MARGIN - 1)) / 2, n = tree.rings.length;
     let rmax = tree.k.pith;
     if (n) for (let i = 0; i < K; i++) rmax = Math.max(rmax, tree.rings[n - 1][i]);
     const R = (v.s * warpR(v.warp, rmax) + (barkCss(v) * 1.6 + 40) * px) * Q2, cy = (v.cy + my) * Q2;
@@ -2340,28 +2348,38 @@ function pressSlowly(slot: string, v: View, key: string, follow = true, budget =
       top = Math.max(top, Math.floor(my * Q2 - ey)); end = Math.min(end, Math.ceil((my + H) * Q2 + ey));
       c0 = Math.max(c0, Math.floor(mx * Q2 - ex)); c1 = Math.min(c1, Math.ceil((mx + W) * Q2 + ex));
     }
-    job = pressing[slot] = { c, v: { ...v }, key, row: top, t0: performance.now(), end: Math.max(top, end), c0, c1: Math.max(c0, c1), pulled: pulledRows(v) };
+    // (From the middle of the sheet as seen, out both ways: what's looked at sharpens first.)
+    end = Math.max(top, end);
+    const mid = Math.max(top, Math.min(end, Math.round((my + H / 2) * Q2)));
+    job = pressing[slot] = { c, v: { ...v }, key, lo: mid, hi: mid, top, t0: performance.now(), end, c0, c1: Math.max(c0, c1), pulled: pulledRows(v, Q), q: Q, rows: 24 };
   }
   // (Strips of the one height, as many a frame as fit in some eight milliseconds, one at least: on an older
   // phone a frame a little slow while it's pressed, never a stall.)
   // (Only in what's left of the frame, so the frame is never late: pressed when the frame's own drawing has
   // left room, a strip at least now and then so it always arrives.)
-  const t = performance.now(), rows = Math.max(12, Math.ceil(16 * QUALITY() * px / 2));
+  // (As deep as about fifteen milliseconds' pressing on this phone, as the last strip went: never so thin that
+  // each strip's own setting up is much of it.)
+  const t = performance.now(), rows = Math.round(Math.max(20, Math.min(96, job.rows)));
   const left = budget === Infinity ? Infinity : Math.min(budget, 11 - (t - frameStart));
   if (left <= 0 && t - (job.last ?? 0) < 0.25e3) return;
   job.last = t;
-  while (job.row < job.end && performance.now() - t < Math.max(left, 0.1)) {
+  while ((job.hi < job.end || job.lo > job.top) && performance.now() - t < Math.max(left, 0.1)) {
+    // (Down and up by turns, whichever has further to go.)
+    const down = job.hi < job.end && (job.lo <= job.top || job.end - job.hi >= job.lo - job.top);
     // (Across a knot or burl, a deeper strip, so its margin is pressed fewer times over.)
-    const pl = job.pulled, deep = pl && job.row + rows > pl[0] && job.row < pl[1] ? Math.max(rows, 3 * pl[2]) : rows;
-    const r1 = Math.min(job.end, job.row + deep);
-    if (job.c1 > job.c0) pressInto(job.c, job.v, job.row, r1, job.c0, job.c1);
-    job.row = r1;
+    const pl = job.pulled, near = (a: number) => pl && a + rows > pl[0] && a < pl[1], deep = (down ? near(job.hi) : near(job.lo - rows)) ? Math.max(rows, 3 * pl![2]) : rows;
+    const r0 = down ? job.hi : Math.max(job.top, job.lo - deep), r1 = down ? Math.min(job.end, job.hi + deep) : job.lo;
+    const s0 = performance.now();
+    if (job.c1 > job.c0) pressInto(job.c, job.v, r0, r1, job.c0, job.c1, job.q);
+    job.rows = 0.5 * job.rows + 0.5 * (r1 - r0) * Math.min(3, 15 / Math.max(1, performance.now() - s0));
+    if (down) job.hi = r1; else job.lo = r0;
   }
-  if (job.row >= job.end) {
-    // (The picture it replaces fades out over the new one, so a view grown sharper never jumps.)
+  if (job.hi >= job.end && job.lo <= job.top) {
+    // (The picture it replaces fades out over the new one, so a view grown sharper never jumps; unless it was
+    // seen sharpening already, a band at a time.)
     const old = printCaches[slot];
     if (fading[slot]) spare[slot] = fading[slot]!.c;
-    if (old) fading[slot] = { c: old.c, v: old.v, at: clock() };
+    if (old && !job.shown) fading[slot] = { c: old.c, v: old.v, at: clock() };
     printCaches[slot] = { c: job.c, key, v: job.v, at: clock() };
     presses.push(-Math.round(performance.now() - job.t0)); if (presses.length > 50) presses.shift();
     delete pressing[slot];
@@ -2448,6 +2466,15 @@ const FADE = 0.6;
 function drawPrintCached(v: View, moving: boolean, slot = 'drawing', alpha = 1, drift = false, grow = 1): void {
   const pc = printFor(v, moving, slot, drift);
   drawKept(pc, v, alpha, grow);
+  // (Sharpening: the bands already pressed laid over it as they come, out from the middle.)
+  const job = pressing[slot];
+  if (job && job.key === pc.key && job.hi > job.lo) {
+    job.shown = true;
+    const [ox, oy, w, h] = placeOf(job, v, grow), ky = h / job.c.height, kx = w / job.c.width;
+    g.save(); g.globalAlpha = alpha;
+    g.drawImage(job.c, job.c0, job.lo, job.c1 - job.c0, job.hi - job.lo, ox + job.c0 * kx, oy + job.lo * ky, (job.c1 - job.c0) * kx, (job.hi - job.lo) * ky);
+    g.restore();
+  }
   const f = fading[slot];
   if (f) {
     const k = 1 - smooth((clock() - f.at) / FADE);

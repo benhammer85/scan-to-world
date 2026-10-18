@@ -192,3 +192,10 @@ Still to come (`trees.ts`): a redwood with fires, a bristlecone with drought, a 
 **October 17: a calmer grove.** The crowns stopped staggering. Each tree had its own phase, and the sway grew with zoom. Now one slow wave of wind moves across the grove, at most a fraction of a pixel. Shadows are swept from the trunk along the sun, so they never come loose from the tree in the evening, and they're hatched by hand as one layer instead of one per tree. Zooming in costs about half as much: crown washes are painted at a few fixed sizes and reused, the marks per crown are capped, and the wild trees take a flat wash.
 
 **October 17: zooming without a freeze.** A view zoomed into is no longer drawn all at once. Its pieces (the ground, the water, the shadows, then each crown) are drawn in whatever time each frame has left. Until it's finished, the last view is shown scaled, and then the new one fades in over it. Crown washes no longer paint the empty corners round each crown. At 4× slowdown, the longest frame while zooming went from about 2.5 s to 0.4 s.
+
+**October 18: sharp sooner when looked into.** After a pinch in, the print stayed a stretched, stair-stepped copy of the unzoomed one for many seconds. Re-pressing every device pixel of a zoomed screen took around 10 seconds on a phone. Now:
+- A zoomed print is pressed less finely, down to a pixel and a half per CSS pixel at deep zoom, because there the wood's own scan is coarser than the screen.
+- It's pressed from the middle of the screen outward, and each finished band is shown as soon as it's done.
+- Each strip is as deep as about fifteen milliseconds of pressing allows.
+- The wood's rays skip the noise work wherever no ray can reach.
+At about 5× zoom, the time to press the whole screen fell to roughly a quarter of what it was.
