@@ -230,25 +230,50 @@ function drawMarks(v: View, Z: number): void {
     // (The branch cut across, as a knot shows in sawn wood: its own few rings, darker and a little off
     // round, round its pith; the trunk's rings swirled round it (see `warpMarks`). Grown over once left:
     // a fine dark ring of the bark caught round it.)
-    const k = knotSpot(m, v, Z), alive = n - 1 - m.last <= 2;
+    // (Every knot its own: as long as the branch met the cut at a slant (round where it met it square), as large
+    // as it grew, its own rings off centre (a branch grows more on its upper side), its pith small. A live knot's
+    // rings run on into the trunk's; a dead one (a branch long gone, or one in three of the old) sits in a dark
+    // ring of the bark it was buried in, shrunk from the wood at one side and split across.)
+    const k = knotSpot(m, v, Z), hs = (q: number) => h1(m.seed * 0.0137 + q);
+    const dead = n - 1 - m.last > 2 && hs(1) < 0.6 || hs(2) < 0.3;
+    const e = k.e * (0.55 + 0.6 * hs(3)), long = 1 + 1.6 * hs(4) ** 1.5, sq = 0.62 + 0.3 * hs(5);
+    const ox = (hs(6) - 0.5) * 0.5, oy = (hs(7) - 0.2) * 0.55, rough = 0.12 + 0.25 * hs(8);
+    const P = (s: number, t: number, seed: number): [number, number] => {
+      // (Each ring of it off centre toward the branch's under side, more so the further in.)
+      const rr = e * s * (1 + rough * (vnoise(Math.cos(t) * 1.6 + m.seed * 0.01 + seed, Math.sin(t) * 1.6 + seed) - 0.5));
+      const ex = rr * long * Math.cos(t) + e * ox * (1 - s), ey = rr * sq * Math.sin(t) + e * oy * (1 - s);
+      return [k.x + ex * Math.cos(k.rot) - ey * Math.sin(k.rot), k.y + ex * Math.sin(k.rot) + ey * Math.cos(k.rot)];
+    };
     const oval = (s: number, seed: number) => {
       g.beginPath();
-      for (let j = 0; j <= 24; j++) {
-        const t = (j / 24) * TAU, rr = k.e * s * (1 + 0.22 * (vnoise(Math.cos(t) * 1.6 + m.seed * 0.01, Math.sin(t) * 1.6 + seed) - 0.5));
-        const ex = rr * Math.cos(t), ey = rr * 0.82 * Math.sin(t);
-        const xx = k.x + ex * Math.cos(k.rot) - ey * Math.sin(k.rot), yy = k.y + ex * Math.sin(k.rot) + ey * Math.cos(k.rot);
-        if (j) g.lineTo(xx, yy); else g.moveTo(xx, yy);
-      }
+      for (let j = 0; j <= 32; j++) { const [xx, yy] = P(s, (j / 32) * TAU, seed); if (j) g.lineTo(xx, yy); else g.moveTo(xx, yy); }
       g.closePath();
     };
-    g.save(); g.globalCompositeOperation = 'destination-out'; oval(1.05, 0); g.fillStyle = '#000'; g.fill(); g.restore();
-    const N = k.rings, band = 1 / (N + 0.6);
+    g.save(); g.globalCompositeOperation = 'destination-out'; oval(dead ? 1.02 : 0.72, 0); g.fillStyle = '#000'; g.fill(); g.restore();
+    // (Its own rings, fine and uneven, some broken off a while: never a target.)
+    const N = Math.max(2, Math.round(k.rings * (0.6 + 0.8 * hs(9)))), band = 1 / (N + 0.8);
+    g.lineCap = 'round';
     for (let j = 0; j < N; j++) {
-      oval(1 - j * band - band * 0.3, j * 2.7 + 1);
-      g.strokeStyle = ink(0.92); g.lineWidth = Math.max(0.9 * px * Z, k.e * band * (0.62 + 0.3 * h1(m.seed + j))); g.stroke();
+      const s0 = 1 - j * band - band * 0.4, gap = hs(10 + j) < 0.35 ? hs(20 + j) * TAU : -1;
+      g.beginPath();
+      for (let q = 0; q <= 32; q++) {
+        const t = (q / 32) * TAU;
+        if (gap >= 0 && Math.abs(((t - gap + Math.PI) % TAU + TAU) % TAU - Math.PI) < 0.5) { g.moveTo(...P(s0, t, j * 2.7 + 1)); continue; }
+        const [xx, yy] = P(s0, t, j * 2.7 + 1); if (q) g.lineTo(xx, yy); else g.moveTo(xx, yy);
+      }
+      g.strokeStyle = ink(dead || j > 0 ? 0.92 : 0.6); g.lineWidth = Math.max(0.8 * px * Z, e * band * (0.3 + 0.4 * hs(30 + j))); g.stroke();
     }
-    oval(band * 0.55, 9.1); g.fillStyle = ink(0.95); g.fill();
-    if (!alive) { oval(1.08, 4.4); g.strokeStyle = ink(0.95); g.lineWidth = 0.9 * px * Z; g.stroke(); }
+    // (The pith: small, dark, a little off.)
+    { const [px0, py0] = P(0, 0, 0), pr = Math.max(1.2 * px * Z, e * (0.08 + 0.08 * hs(40))); g.beginPath(); g.ellipse(px0, py0, pr * long, pr * sq, k.rot, 0, TAU); g.fillStyle = ink(0.95); g.fill(); }
+    if (dead) {
+      // (The bark it was buried in, dark and uneven; shrunk from the wood along one side; and split across.)
+      oval(1.02, 4.4); g.strokeStyle = ink(0.95); g.lineWidth = Math.max(1.2 * px * Z, e * (0.1 + 0.1 * hs(41))); g.stroke();
+      const t0 = hs(42) * TAU;
+      g.save(); g.globalCompositeOperation = 'destination-out'; g.strokeStyle = '#000'; g.lineWidth = Math.max(0.8 * px * Z, e * 0.06);
+      g.beginPath(); for (let q = 0; q <= 10; q++) { const [xx, yy] = P(1.13, t0 + (q / 10) * 1.6, 4.4); if (q) g.lineTo(xx, yy); else g.moveTo(xx, yy); } g.stroke();
+      const tc = hs(43) * TAU; g.beginPath(); g.moveTo(...P(0.08, tc, 0)); g.lineTo(...P(0.95, tc + 0.15, 0)); g.lineWidth = Math.max(0.7 * px * Z, e * 0.05); g.stroke();
+      g.restore();
+    }
   }
 }
 /** A knot on the sheet: where (device px), how large, turned how, and how many of its own rings. */
@@ -538,6 +563,11 @@ function demoYear(count = 365, start = (() => { const d = new Date(); d.setDate(
 
 /** The kept tree, if there is one (`?fresh` begins another). */
 async function recall(): Promise<void> {
+  // (`?knots=6`: so many knots grown into the demo's years, to look at.)
+  if (params.has('demo') && params.has('knots')) {
+    const n = Math.max(1, Number(params.get('demo')) || 365), q = Number(params.get('knots')) || 5;
+    for (let j = 0; j < q; j++) { const from = Math.floor(n * (0.15 + 0.6 * h1(j * 3.1))); marks.push({ kind: 'knot', a: h1(j * 7.7) * TAU, from, last: from + 1 + Math.floor(5 * h1(j * 1.3)), size: 1 + 6 * h1(j * 5.9), seed: 1000 + j * 7919 }); }
+  }
   if (params.has('demo')) { demoYear(Math.max(1, Number(params.get('demo')) || 365)); seedAt = tree.rings.length ? [0.5, 0.47] : null; return; }
   if (params.has('fresh')) return;
   const k = await recallTree(DIARY), t = k && treeFrom(k, DAILY);
