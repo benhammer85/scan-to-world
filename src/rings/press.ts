@@ -747,8 +747,25 @@ function baseNow(t = clock()): View {
  */
 let look = { k: 1, ox: 0, oy: 0 }, lookBack: { k: number; ox: number; oy: number; at: number } | null = null;
 const closer = () => look.k > 1.01;
+/**
+ * While a year grows out past the slice's room: the slice drawn back by just as much as it grows, so its edge
+ * stays where the room ends and the years within draw in under it, one movement; never past the room, and
+ * never a step back of its own after.
+ */
+let growScaled = false, grewTo: { s: number; at: number } | null = null;
+const ringMax = (r: Float32Array) => { let m = 0; for (let i = 0; i < r.length; i++) m = Math.max(m, r[i]); return m; };
+function growRoom(s: number, t: number): number {
+  growScaled = false;
+  const n = tree.rings.length;
+  if (!GROWN || !PRINT || !yearGrow || yearGrow.ring !== n - 1 || n < 2 || ease || closer()) return s;
+  const a = ringMax(tree.rings[n - 2]), b = ringMax(tree.rings[n - 1]), front = a + (b - a) * grownBy(t, yearGrow.at);
+  const lim = (0.7 * roomNow()) / Math.max(1e-6, front);
+  if (lim >= s) return s;
+  growScaled = true; grewTo = { s: lim, at: t };
+  return lim;
+}
 function viewNow(t = clock()): View {
-  const v = baseNow(t);
+  const v0 = baseNow(t), gs = growRoom(v0.s, t), v = gs === v0.s ? v0 : { ...v0, s: gs };
   if (lookBack) {
     const p = smooth((t - lookBack.at) / QUICK);
     look = { k: lookBack.k + (1 - lookBack.k) * p, ox: lookBack.ox * (1 - p), oy: lookBack.oy * (1 - p) };
@@ -790,13 +807,15 @@ let hintedCloser = false;
 /** Whether the slice at scale `s` reaches past its room: its widest past seven-tenths of it, as it's fitted (see fitScale). */
 const tooWide = (s: number) => s * barkMax() > 0.7 * roomNow() + 0.5 * px;
 function makeRoom(): void {
-  const was = baseNow(), old = warp, bark = tree.radius;
+  // (Carried on from the scale it was last shown at, if it was drawn in as its year grew.)
+  const b0 = baseNow(), fromGrow = !!grewTo && clock() - grewTo.at < 0.5, was = fromGrow ? { ...b0, s: Math.min(b0.s, grewTo!.s) } : b0, old = warp, bark = tree.radius;
+  grewTo = null;
   warp = warpNow(); if (!PRINT) paper.fit(warp, warp.R); view = null;
   const v = baseNow();
   // (Growing true to scale, the slice never steps back while it's looked at: the year grows out at the bark and
   // stays, the print and every mark in it as it was. It's fitted to its room again only when next opened, out
   // of sight; or here, if its widest would reach past the room it's given (see `tooWide`).)
-  if (GROWN && PRINT && !tooWide(was.s)) { view = { ...v, s: was.s }; ease = null; return; }
+  if (GROWN && PRINT && (fromGrow || !tooWide(was.s))) { view = { ...v, s: was.s }; ease = null; return; }
   // (Where the new bark was drawn, it stays at first: the slice then draws back from there.)
   const from = was.s * warpR(old, bark) / Math.max(1e-6, warpR(warp, bark));
   // (Never much larger than it rests: a wide loop's year is shown a little large at first, never filling
@@ -4223,7 +4242,7 @@ function frame(): void {
   const drawingNow = !!tree.stroke || painter !== null || settle.ring >= 0 || !!ease;
   const looking = fingers.size > 0 || closer() || !!lookBack;
   relax = drawingNow ? Math.max(0, relax - dt / 0.22) : restWanted && !looking ? Math.min(1, relax + dt / STEADY_T) : relax;
-  const moving = (!!ease && !GROWN) || !!lookBack || fingers.size >= 2, drift = !!ease && GROWN;
+  const moving = (!!ease && !GROWN) || !!lookBack || fingers.size >= 2, drift = (!!ease || growScaled) && GROWN;
   // (A finger the phone never said was lifted (a pinch's, now and then): let go after a still second and a half.)
   if (fingers.size && t - lastFingerAt > 1.5 && painter === null) { fingers.clear(); pinch = null; }
   breathe(t, dt);
@@ -4327,7 +4346,7 @@ void (async () => {
   else if (!tree.rings.length) say('Draw a circle around this one.', 8);
   // (Anything amiss with the trees kept, said before anything else.)
   if (dataNote) say(dataNote, 12);
-  Object.assign(window, { press: { get tree() { return tree; }, get phase() { return settle.ring >= 0 ? 'settling' : 'trace'; }, get easing() { return !!ease; }, get view() { return viewNow(); }, get days() { return days; }, get kind() { return kind; }, get choice() { return SEEDS[choice]; }, get far() { return far; }, get visiting() { return visit?.i ?? null; }, get parting() { return !!parting; }, groveNext: () => { const c = camNow(), w = worldOf(); return { x: (c.X0 + w.next.wx * c.S) / px, y: (c.Y0 + w.next.wy * c.S) / px }; }, stream: () => { const c = camNow(); return worldOf().stream.map(([x, y]) => ({ x: (c.X0 + x * c.S) / px, y: (c.Y0 + y * c.S) / px })); }, grove: () => groveLayout().trees.map((t) => ({ sp: t.sp, n: t.n, i: t.i, x: t.x / px, y: t.y / px, r: t.r / px })), get editionY() { return editionY; }, get stampAt() { return stampAt; }, print: async () => (await yearPrint()).toDataURL('image/png'), get presses() { return presses.splice(0); }, get breeze() { const st = worldOf().stream; return { gusts: gusts.length, lifted: lifted.length, stream: st.length, max: Math.max(0, ...st.map(([x, y]) => Math.hypot(...breezeAt(x, y)))) }; }, get room() { const v = viewNow(); return { widest: v.s * barkMax() / px, room: roomNow() / px }; }, get dbg() { return { trail: trail.length, inward: inward ? inward.ring : null, n: tree.rings.length, relax: +relax.toFixed(2), fading: Object.entries(fading).filter(([, f]) => f).map(([k, f]) => `${k}:${f!.at === Infinity ? 'held' : (clock() - f!.at).toFixed(2)}${f!.still ? 's' : ''}`), pressing: Object.keys(pressing), grow: !!yearGrow, ease: !!ease, caches: Object.entries(printCaches).map(([k, c]) => `${k}:${c ? (c.c.width + 'x' + c.c.height) : '-'}`) }; }, get marks() { return marks.map((m) => `${m.kind}@${m.a.toFixed(2)} ${m.from}-${m.last} x${m.size.toFixed(1)}`); } } });
+  Object.assign(window, { press: { get tree() { return tree; }, get phase() { return settle.ring >= 0 ? 'settling' : 'trace'; }, get easing() { return !!ease; }, get view() { return viewNow(); }, get days() { return days; }, get kind() { return kind; }, get choice() { return SEEDS[choice]; }, get far() { return far; }, get visiting() { return visit?.i ?? null; }, get parting() { return !!parting; }, groveNext: () => { const c = camNow(), w = worldOf(); return { x: (c.X0 + w.next.wx * c.S) / px, y: (c.Y0 + w.next.wy * c.S) / px }; }, stream: () => { const c = camNow(); return worldOf().stream.map(([x, y]) => ({ x: (c.X0 + x * c.S) / px, y: (c.Y0 + y * c.S) / px })); }, grove: () => groveLayout().trees.map((t) => ({ sp: t.sp, n: t.n, i: t.i, x: t.x / px, y: t.y / px, r: t.r / px })), get editionY() { return editionY; }, get stampAt() { return stampAt; }, print: async () => (await yearPrint()).toDataURL('image/png'), get presses() { return presses.splice(0); }, get breeze() { const st = worldOf().stream; return { gusts: gusts.length, lifted: lifted.length, stream: st.length, max: Math.max(0, ...st.map(([x, y]) => Math.hypot(...breezeAt(x, y)))) }; }, get room() { const v = viewNow(), n = tree.rings.length, gr = yearGrow && yearGrow.ring === n - 1 && n > 1 ? grownBy(clock(), yearGrow.at) : 1, front = n > 1 ? ringMax(tree.rings[n - 2]) + (ringMax(tree.rings[n - 1]) - ringMax(tree.rings[n - 2])) * gr : barkMax(); return { widest: v.s * front / px, room: roomNow() / px }; }, get dbg() { return { trail: trail.length, inward: inward ? inward.ring : null, n: tree.rings.length, relax: +relax.toFixed(2), fading: Object.entries(fading).filter(([, f]) => f).map(([k, f]) => `${k}:${f!.at === Infinity ? 'held' : (clock() - f!.at).toFixed(2)}${f!.still ? 's' : ''}`), pressing: Object.keys(pressing), grow: !!yearGrow, ease: !!ease, caches: Object.entries(printCaches).map(([k, c]) => `${k}:${c ? (c.c.width + 'x' + c.c.height) : '-'}`) }; }, get marks() { return marks.map((m) => `${m.kind}@${m.a.toFixed(2)} ${m.from}-${m.last} x${m.size.toFixed(1)}`); } } });
   // (The real wood: once it's come, the print is pressed again with it.)
   if (PRINT) loadWood(() => { for (const k in printCaches) delete printCaches[k]; for (const k in pressing) delete pressing[k]; });
   startIntro();
