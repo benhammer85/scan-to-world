@@ -1359,6 +1359,8 @@ function hear(): void {
     settleTap = clock() + BLOOM;
     // (Once, a week in: that the slice can be seen printed.)
     if (GROWN && tree.rings.length === 7 && !params.has('demo')) { try { if (!localStorage.getItem('annulus.printHint')) { localStorage.setItem('annulus.printHint', '1'); window.setTimeout(() => say('Hold the slice a moment to see it printed.', 7), 4000); } } catch { /* not said */ } }
+    // (A year still growing when the next is drawn: drawing quickly, the room's made at once.)
+    const rushed = !!yearGrow;
     if (GROWN) {
       // (First the loop dries away, the slice still; then, the sheet clear, the year grows out into it.)
       const soak = Math.min(1.3, 3.2 - 2.1 * smooth((tree.rings.length - 8) / 110));
@@ -1373,7 +1375,9 @@ function hear(): void {
     }
     // (Room made after the year has grown out; but at once if the slice already reaches past its room, however
     // quickly the rings come: never left growing past it while the next is drawn.)
-    if (!yearGrow || (GROWN && tooWide(viewNow().s))) makeRoom();
+    // (Room made once the year has grown out, never while it grows: one movement at a time. Drawn again before
+    // then, the growing is finished at once and room made, so the slice never runs on past its room.)
+    if (!yearGrow || (rushed && GROWN && tooWide(viewNow().s))) makeRoom();
   }
   tree.news.length = 0;
 }
@@ -2657,7 +2661,9 @@ const spare: Record<string, HTMLCanvasElement> = {};
  * slowing through the summer, the bark carried out on its edge. The years before never move.
  */
 let yearGrow: { ring: number; at: number } | null = null;
-const GROW_T = 2.6;
+const GROW_T = 3.2;
+/** How far the year has grown out (0 to 1) at time t: begun gently, never with a start, eased to rest. */
+const grownBy = (t: number, at: number) => { const x = Math.max(0, Math.min(1, (t - at) / GROW_T)); return x * x * x * (x * (6 * x - 15) + 10); };
 let roomDue = false;
 /** The year just drawn, shown pale a moment as new wood is (see `drawFresh`). */
 let fresh: { ring: number; at: number } | null = null;
@@ -2671,7 +2677,7 @@ function drawFresh(v: View, t: number): void {
   const age = t - fresh.at, al = 0.82 * smooth(age / 0.4) * (1 - smooth((age - GROW_T - 1.6) / 2.4));
   if (age > GROW_T + 4.2) { fresh = null; return; }
   if (al < 0.01) return;
-  const f = yearGrow && yearGrow.ring === fresh.ring ? 1 - Math.pow(1 - Math.max(0, Math.min(1, (t - yearGrow.at) / GROW_T)), 2.2) : 1;
+  const f = yearGrow && yearGrow.ring === fresh.ring ? grownBy(t, yearGrow.at) : 1;
   // (Only where the year is too fine to be seen growing: a young tree's wide year shows itself, and paled
   // over it would only wash its ink out.)
   const wpx = v.s * (meanR(fresh.ring) - meanR(fresh.ring - 1)) / px, need = 1 - smooth((wpx - 2) / 4);
@@ -2682,7 +2688,7 @@ function drawFresh(v: View, t: number): void {
 }
 function drawGrowth(v: View, t: number, moving: boolean, drift: boolean): boolean {
   const gr = yearGrow!, n = tree.rings.length;
-  const f = 1 - Math.pow(1 - Math.max(0, Math.min(1, (t - gr.at) / GROW_T)), 2.2);
+  const f = grownBy(t, gr.at);
   // (Room made at the start of the next frame, never part way through this one: the rest of it would be
   // pressed for the view as it was, and pressed again the frame after, a blur between.)
   if (gr.ring !== n - 1 || f >= 1 || closer() || fingers.size >= 2) { yearGrow = null; roomDue = true; return false; }
@@ -4235,8 +4241,9 @@ function frame(): void {
       if (rk > 0 && rest) drawSharp(rest, rv, 'rest', rk, breathGrow());
     }
     drawBreath(shownOf(v));
-    if (GROWN) drawFresh(shownOf(v), t);
   } else { paper.draw(g, v); drawLatewood(v); }
+  // (The year just drawn, pale as new wood, growing out with it and darkening after: never only once it's grown.)
+  if (GROWN && PRINT && far < 0.6) drawFresh(shownOf(v), t);
   const n = tree.rings.length;
   // A ring touched: lit softly along its edge for a moment, as its day is read.
   // (Coming on softly, from `litAt`: at once for a ring touched; for a year just grown, as it finishes growing.)
