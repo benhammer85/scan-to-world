@@ -2696,13 +2696,13 @@ let fresh: { ring: number; at: number } | null = null;
  */
 function drawFresh(v: View, t: number): void {
   if (!fresh || fresh.ring >= tree.rings.length || fresh.ring < 1) { fresh = null; return; }
-  const age = t - fresh.at, al = 0.82 * smooth(age / 0.4) * (1 - smooth((age - GROW_T - 1.6) / 2.4));
-  if (age > GROW_T + 4.2) { fresh = null; return; }
+  const age = t - fresh.at, al = 0.82 * smooth(age / 1.2) * (1 - smooth((age - GROW_T - 1.2) / 3.2));
+  if (age > GROW_T + 4.6) { fresh = null; return; }
   if (al < 0.01) return;
   const f = yearGrow && yearGrow.ring === fresh.ring ? grownBy(t, yearGrow.at) : 1;
   // (Only where the year is too fine to be seen growing: a young tree's wide year shows itself, and paled
   // over it would only wash its ink out.)
-  const wpx = v.s * (meanR(fresh.ring) - meanR(fresh.ring - 1)) / px, need = 1 - smooth((wpx - 2) / 4);
+  const wpx = v.s * (meanR(fresh.ring) - meanR(fresh.ring - 1)) / px, need = 0.45 * (1 - smooth((wpx - 0.5) / 1));
   if (need < 0.01) return;
   const old = barkOf(fresh.ring - 1), neu = barkOf(fresh.ring), minW = (3.4 * px) / v.s, hair = (1.1 * px) / v.s;
   const out = (a: number) => old(a) + (neu(a) - old(a)) * f - hair;
@@ -3535,9 +3535,9 @@ function layGrove(cam: Cam, still: boolean): void {
       // (Still, as a map's trees are: they move only in a breeze drawn across them.)
       const ph = (s.x / W) * 2.2 + h1(s.k) * 0.4;
       // (And leaning in a breeze drawn across it, tossing a little as it goes by.)
-      const [bx, by] = gusts.length ? breezeAt((s.x - from.cam.X0) / from.cam.S, (s.y - from.cam.Y0) / from.cam.S, t) : [0, 0], lean = Math.min(5 * px, s.r * 0.09) * q * (1 + 0.25 * Math.sin(t * 2.4 + ph));
+      const [bx, by] = gusts.length ? breezeAt((s.x - from.cam.X0) / from.cam.S, (s.y - from.cam.Y0) / from.cam.S, t) : [0, 0], lean = Math.min(2.5 * px, s.r * q * 0.03) * (1 + 0.12 * Math.sin(t * 1.6 + ph));
       // (And the weather's own wind, leaning every crown a little its way, slowly, each in its own time.)
-      const sway = sky.wind > 0.1 ? Math.min(5 * px, s.r * 0.09) * q * (sky.wind - 0.1) * 0.7 * (0.75 + 0.25 * Math.sin(t * 1.1 + ph * 2)) : 0;
+      const sway = sky.wind > 0.1 ? Math.min(2 * px, s.r * q * 0.025) * (sky.wind - 0.1) * (0.85 + 0.15 * Math.sin(t * 0.8 + ph * 2)) : 0;
       const dx = bx * lean + sky.windDx * sway, dy = by * lean + sky.windDy * sway;
       g.drawImage(s.c, X(s.x) - s.m * q + dx, Y(s.y) - s.m * q + dy, 2 * s.m * q, 2 * s.m * q);
     }
@@ -3625,14 +3625,15 @@ function litterOf(tr: { x: number; y: number; r: number; k: number; sp: string; 
   if (!col || tr.n < 8) return [];
   // (A young tree drops a few, more each year it grows: never none, then a whole pile.)
   const N = Math.round(60 * fallen(season) * Math.min(1.4, tr.r / Math.max(1, cam.S * 0.5)) * Math.min(1, (tr.n - 8) / 40)), out = [];
-  const len = Math.max(3 * px, 0.075 * cam.S);
+  // (The size of the leaves drawn in the crowns, every one of them, however close the grove's looked at.)
+  const len = 1.9 * px * Math.pow(Math.max(1, cam.S / worldOf().whole.S), 0.8);
   for (let j = 0; j < N; j++) {
     const h = (q: number) => h1(tr.k * 1.7 + j * 7.13 + q);
     // (Round the crown, more on the lee side, the wind's way.)
     let a = h(1) * TAU; if (h(2) < 0.45) a = 0.6 + (h(3) - 0.5) * 2.2;
     const d = tr.r * (0.82 + 0.6 * Math.pow(h(4), 1.8));
     const shade = 0.95 + 0.25 * h(5);
-    out.push({ x: tr.x + Math.cos(a) * d, y: tr.y + Math.sin(a) * d * 0.9, len: len * (0.75 + 0.5 * h(6)), rot: h(7) * TAU, col: col.map((c) => Math.min(255, Math.round(c * shade))) });
+    out.push({ x: tr.x + Math.cos(a) * d, y: tr.y + Math.sin(a) * d * 0.9, len: len * (0.92 + 0.16 * h(6)), rot: h(7) * TAU, col: col.map((c) => Math.min(255, Math.round(c * shade))) });
   }
   return out;
 }
@@ -3735,7 +3736,7 @@ function drawLife(cam: Cam): void {
         const al = Math.min(1, p / 0.06) * (p > 0.75 ? Math.max(0, 1 - (p - 0.75) / 0.03) : 1);
         // (Its shadow on the ground beneath, drawn in as it comes down.)
         if (air > 0.02) { g.save(); g.globalAlpha = al * 0.25 * (1 - air * 0.6); g.beginPath(); g.ellipse(x + air * to.len * 2.2, y + air * to.len * 1.8, to.len * 0.45, to.len * 0.2, to.rot, 0, TAU); g.fillStyle = ink(1); g.fill(); g.restore(); }
-        leafAt(g, x, y, to.len * (1 + 0.35 * air), rot, flip, to.col, U, al);
+        leafAt(g, x, y, to.len, rot, flip, to.col, U, al);
       }
     }
   }
