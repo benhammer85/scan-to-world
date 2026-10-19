@@ -39,7 +39,10 @@ const TAU = Math.PI * 2, PAPER = '#f7f3eb';
  * The relief print, after tree-ring prints (the wood itself inked and pressed): the slice's look.
  * `?ink=water` shows the watercolour instead.
  */
-const PRINT = new URLSearchParams(location.search).get('ink') !== 'water';
+// (The page's own options (`?demo`, `?grove`, `?fresh`, `?weather` and the rest) are for trying it out while it's
+// made: the app as released reads none of them.)
+const ASK = import.meta.env.DEV ? location.search : '';
+const PRINT = new URLSearchParams(ASK).get('ink') !== 'water';
 const canvas = document.getElementById('press') as HTMLCanvasElement;
 // (The drawing goes to the page, or for a moment to a picture of the slice: see `picture`.)
 let g = canvas.getContext('2d')!;
@@ -518,7 +521,7 @@ function lean(a: number): number {
   const side = (Math.sin(tree.seed * 12.9898) * 43758.5453) % 1 * TAU;
   return 1 + ECCENTRIC * Math.cos(a - side);
 }
-const DIARY = 'diary', params = new URLSearchParams(location.search);
+const DIARY = 'diary', params = new URLSearchParams(ASK);
 /**
  * The kind of tree, which decides how its wood prints and how it grows (a tree keeps its kind; `?tree=ash`
  * and so on plants that kind when a tree is begun). Three families of wood:
@@ -4370,6 +4373,8 @@ void (async () => {
   await recall();
   if (GROWN) {
     void navigator.storage?.persist?.().catch(() => false);
+    // (Kept on the phone, so it opens with no network once opened once: in a browser, as released.)
+    if (import.meta.env.PROD && !NATIVE && 'serviceWorker' in navigator) void navigator.serviceWorker.register('sw.js').catch(() => undefined);
     groveKept = params.has('grove') ? demoGrove(Math.max(1, Number(params.get('grove')) || 5)) : await grove();
   }
   warp = warpNow(); if (!PRINT) { paper.fit(warp, warp.R); paper.bake(tree); }
@@ -4380,7 +4385,8 @@ void (async () => {
   else if (!tree.rings.length) say('Draw a circle around this one.', 8);
   // (Anything amiss with the trees kept, said before anything else.)
   if (dataNote) say(dataNote, 12);
-  Object.assign(window, { press: { get tree() { return tree; }, get phase() { return settle.ring >= 0 ? 'settling' : 'trace'; }, get easing() { return !!ease; }, get view() { return viewNow(); }, get days() { return days; }, get kind() { return kind; }, get choice() { return SEEDS[choice]; }, get far() { return far; }, get visiting() { return visit?.i ?? null; }, get parting() { return !!parting; }, groveNext: () => { const c = camNow(), w = worldOf(); return { x: (c.X0 + w.next.wx * c.S) / px, y: (c.Y0 + w.next.wy * c.S) / px }; }, stream: () => { const c = camNow(); return worldOf().stream.map(([x, y]) => ({ x: (c.X0 + x * c.S) / px, y: (c.Y0 + y * c.S) / px })); }, grove: () => groveLayout().trees.map((t) => ({ sp: t.sp, n: t.n, i: t.i, x: t.x / px, y: t.y / px, r: t.r / px })), get editionY() { return editionY; }, get stampAt() { return stampAt; }, print: async () => (await yearPrint()).toDataURL('image/png'), get presses() { return presses.splice(0); }, get breeze() { const st = worldOf().stream; return { gusts: gusts.length, lifted: lifted.length, stream: st.length, max: Math.max(0, ...st.map(([x, y]) => Math.hypot(...breezeAt(x, y)))) }; }, get room() { const v = viewNow(); return { widest: (0.8 * roomNow() * v.s) / capScale(grow.x) / px, room: roomNow() / px }; }, get dbg() { return { gx: +grow.x.toFixed(3), trail: trail.length, inward: inward ? inward.ring : null, n: tree.rings.length, relax: +relax.toFixed(2), fading: Object.entries(fading).filter(([, f]) => f).map(([k, f]) => `${k}:${f!.at === Infinity ? 'held' : (clock() - f!.at).toFixed(2)}${f!.still ? 's' : ''}`), pressing: Object.keys(pressing), grow: growing(), ease: !!ease, caches: Object.entries(printCaches).map(([k, c]) => `${k}:${c ? (c.c.width + 'x' + c.c.height) : '-'}`) }; }, get marks() { return marks.map((m) => `${m.kind}@${m.a.toFixed(2)} ${m.from}-${m.last} x${m.size.toFixed(1)}`); } } });
+  // (Looked into while it's made, never in the app as released.)
+  if (import.meta.env.DEV) Object.assign(window, { press: { get tree() { return tree; }, get phase() { return settle.ring >= 0 ? 'settling' : 'trace'; }, get easing() { return !!ease; }, get view() { return viewNow(); }, get days() { return days; }, get kind() { return kind; }, get choice() { return SEEDS[choice]; }, get far() { return far; }, get visiting() { return visit?.i ?? null; }, get parting() { return !!parting; }, groveNext: () => { const c = camNow(), w = worldOf(); return { x: (c.X0 + w.next.wx * c.S) / px, y: (c.Y0 + w.next.wy * c.S) / px }; }, stream: () => { const c = camNow(); return worldOf().stream.map(([x, y]) => ({ x: (c.X0 + x * c.S) / px, y: (c.Y0 + y * c.S) / px })); }, grove: () => groveLayout().trees.map((t) => ({ sp: t.sp, n: t.n, i: t.i, x: t.x / px, y: t.y / px, r: t.r / px })), get editionY() { return editionY; }, get stampAt() { return stampAt; }, print: async () => (await yearPrint()).toDataURL('image/png'), get presses() { return presses.splice(0); }, get breeze() { const st = worldOf().stream; return { gusts: gusts.length, lifted: lifted.length, stream: st.length, max: Math.max(0, ...st.map(([x, y]) => Math.hypot(...breezeAt(x, y)))) }; }, get room() { const v = viewNow(); return { widest: (0.8 * roomNow() * v.s) / capScale(grow.x) / px, room: roomNow() / px }; }, get dbg() { return { gx: +grow.x.toFixed(3), trail: trail.length, inward: inward ? inward.ring : null, n: tree.rings.length, relax: +relax.toFixed(2), fading: Object.entries(fading).filter(([, f]) => f).map(([k, f]) => `${k}:${f!.at === Infinity ? 'held' : (clock() - f!.at).toFixed(2)}${f!.still ? 's' : ''}`), pressing: Object.keys(pressing), grow: growing(), ease: !!ease, caches: Object.entries(printCaches).map(([k, c]) => `${k}:${c ? (c.c.width + 'x' + c.c.height) : '-'}`) }; }, get marks() { return marks.map((m) => `${m.kind}@${m.a.toFixed(2)} ${m.from}-${m.last} x${m.size.toFixed(1)}`); } } });
   // (The real wood: once it's come, the print is pressed again with it.)
   if (PRINT) loadWood(() => { for (const k in printCaches) delete printCaches[k]; for (const k in pressing) delete pressing[k]; });
   startIntro();

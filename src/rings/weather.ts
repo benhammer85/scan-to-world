@@ -12,7 +12,7 @@ const HOUR = 3600e3;
 const get = (k: string) => { try { return localStorage.getItem(k); } catch { return null; } };
 const set = (k: string, v: string | null) => { try { if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch { /* not kept, then */ } };
 
-const params = new URLSearchParams(typeof location !== 'undefined' ? location.search : '');
+const params = new URLSearchParams(import.meta.env.DEV && typeof location !== 'undefined' ? location.search : '');
 const tried = (() => {
   const w = params.get('weather');
   if (!w) return null;

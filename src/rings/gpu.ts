@@ -489,7 +489,7 @@ function context(): WebGL2RenderingContext | null {
     progs.years = build(gl, YEARS); progs.grain = build(gl, GRAIN); progs.ground = build(gl, GROUND); progs.wash = build(gl, WASH); progs.hatch = build(gl, HATCH); progs.warp = build(gl, WARP);
     return gl;
   } catch (e) {
-    console.warn('press: no graphics chip, pressing by hand', e);
+    if (import.meta.env.DEV) console.warn('press: no graphics chip, pressing by hand', e);
     failed = true; gl = null; return null;
   }
 }
@@ -506,7 +506,7 @@ function build(g: WebGL2RenderingContext, src: string): Prog {
 }
 
 /** Whether the press can be done on the graphics chip (`?cpu` presses by hand, to compare). */
-const BY_HAND = typeof location !== 'undefined' && new URLSearchParams(location.search).has('cpu');
+const BY_HAND = import.meta.env.DEV && typeof location !== 'undefined' && new URLSearchParams(location.search).has('cpu');
 export function ready(): boolean {
   return !BY_HAND && !!context();
 }

@@ -1,0 +1,12 @@
+{
+  "name": "well-rounded-app",
+  "private": true,
+  "description": "The Well Rounded iPhone shell; its dependencies are the repository root's.",
+  "dependencies": {
+    "@capacitor/core": "^8.5.2",
+    "@capacitor/filesystem": "^8.1.3",
+    "@capacitor/haptics": "^8.0.2",
+    "@capacitor/ios": "^8.5.2",
+    "@capacitor/share": "^8.0.2"
+  }
+}

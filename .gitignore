@@ -1,6 +1,7 @@
 node_modules
 dist
 dist-app
+dist-rings
 
 # Browser checks run without an output folder write their screenshots here.
 /undefined/

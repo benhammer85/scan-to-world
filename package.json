@@ -9,7 +9,9 @@
     "preview": "vite preview",
     "test": "vitest run",
     "build:app": "tsc && vite build -c vite.app.config.ts",
-    "ios": "npm run build:app && npx cap sync ios && npx cap open ios"
+    "ios": "npm run build:app && npx cap sync ios && npx cap open ios",
+    "build:rings": "tsc && GAME=rings vite build -c vite.app.config.ts",
+    "ios:rings": "npm run build:rings && cd apps/well-rounded && npx --prefix ../.. cap sync ios && npx --prefix ../.. cap open ios"
   },
   "dependencies": {
     "@capacitor/core": "^8.5.2",

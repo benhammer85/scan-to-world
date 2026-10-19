@@ -15,7 +15,7 @@ cd "$ROOT"
 GAME=rings npm run build:app
 
 OUT="$(mktemp -d)"
-cp -R dist-app/. "$OUT/"
+cp -R dist-rings/. "$OUT/"
 # (No Jekyll: serve the files as they are.)
 touch "$OUT/.nojekyll"
 cat > "$OUT/README.md" <<EOF

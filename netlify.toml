@@ -3,7 +3,7 @@
 # classic.html.
 [build]
   command = "GAME=rings npm run build:app"
-  publish = "dist-app"
+  publish = "dist-rings"
 
 [build.environment]
   NODE_VERSION = "20"
