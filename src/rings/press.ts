@@ -690,7 +690,8 @@ function seedScale(): number {
  * a little way inside the loop and a little larger round the last, so the tree grows out for a week or so
  * before its bark fills the room.
  */
-const SEED_K = 0.4;
+// (Small at first, so the young tree grows out on the sheet for some two weeks before the view need draw back.)
+const SEED_K = 0.13;
 /** The scale that fits the bark to its room (the seed's first loop, before any ring). */
 function fitScale(): number {
   const room = roomNow();
@@ -1290,7 +1291,7 @@ function drawSeedChoice(v: View, t: number): void {
 }
 
 /** The seed, planted where the sheet was tapped: the tree grows from there. */
-let plantedAt = 0;
+let plantedAt = 0, seedSunk = 0;
 function plant(x: number, y: number): void {
   seedAt = [x / W, y / H]; view = null; plantedAt = clock();
   // (A new seed chosen while the last tree waited: now it stands in the grove, and this one is kept.)
@@ -1380,6 +1381,7 @@ function hear(): void {
     if (GROWN && tree.rings.length === 7 && !params.has('demo')) { try { if (!localStorage.getItem('annulus.printHint')) { localStorage.setItem('annulus.printHint', '1'); window.setTimeout(() => say('Hold the slice a moment to see it printed.', 7), 4000); } } catch { /* not said */ } }
     // (A year still growing when the next is drawn: drawing quickly, the room's made at once.)
     const rushed = !!yearGrow;
+    if (GROWN && tree.rings.length === 1) seedSunk = clock();
     if (GROWN) {
       // (First the loop dries away, the slice still; then, the sheet clear, the year grows out into it.)
       const soak = Math.min(1.3, 3.2 - 2.1 * smooth((tree.rings.length - 8) / 110));
@@ -4198,7 +4200,7 @@ function frame(): void {
   const calm = fingers.size === 0 && !tree.stroke && !ease && !lookBack && !farTo && !intro && settle.ring < 0 && !gusts.length && !lifted.length && !refused && !choiceTo && !ruffle.some((r) => r > 0.02);
   // (Still on the slice, nothing pressing or fading: a quarter of the frames, the breath being slow. Out in
   // the grove, half, for the crowns stirring and the leaves.)
-  const still = calm && trail.length < 2 && !fresh && !Object.keys(pressing).length && !Object.values(fading).some(Boolean) && !yearGrow && (relax <= 0 || relax >= 1)
+  const still = calm && trail.length < 2 && !fresh && !(seedSunk && t - seedSunk < 2.5) && !Object.keys(pressing).length && !Object.values(fading).some(Boolean) && !yearGrow && (relax <= 0 || relax >= 1)
     && !(lit >= 0 && t - litAt < 2 + STEADY_T) && t - openedAt > OPEN && !groveJob && !baseJob && !groveFade;
   const every = !calm ? 0 : far >= 1 ? 1 / 30 : still && far === 0 ? 1 / 15 : 0;
   if (every && t - lastFrame < every - 0.004) { requestAnimationFrame(frame); return; }
@@ -4307,6 +4309,11 @@ function frame(): void {
   // The ink: a brush's line, wet at first, then drying into bristle-streaks and evaporating. (It's on the
   // slice, so it draws back with it.)
   if (GROWN && !n && seedAt) drawSeed(v, t);
+  // (The seed, the first ring made round it, sinking into the sheet as the ring grows out: it becomes the heart.)
+  if (GROWN && n === 1 && seedSunk && t - seedSunk < 2.4) {
+    const e = smooth((t - seedSunk) / 2.4);
+    g.save(); g.globalAlpha = 1 - e; drawSeedOf(kind, v.cx, v.cy, 1, 1.4 * (1 - 0.75 * e)); g.restore();
+  }
   if (GROWN && !n && !seedAt) drawSeedChoice(v, t);
   drawPressMark(shownOf(v), t, dt);
   overChecks(v, () => drawBrush(g, v, t));
