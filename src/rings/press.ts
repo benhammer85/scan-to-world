@@ -753,18 +753,39 @@ const closer = () => look.k > 1.01;
  * stays where the room ends and the years within draw in under it, one movement; never past the room, and
  * never a step back of its own after.
  */
-let growScaled = false, grewTo: { s: number; at: number } | null = null;
+let growScaled = false;
 const ringMax = (r: Float32Array) => { let m = 0; for (let i = 0; i < r.length; i++) m = Math.max(m, r[i]); return m; };
-function growRoom(s: number, t: number): number {
-  growScaled = false;
+/** The largest scale at which the slice, grown out to `x` years, stays within four-fifths of its room. */
+function capScale(x: number): number {
   const n = tree.rings.length;
-  if (!GROWN || !PRINT || !yearGrow || yearGrow.ring !== n - 1 || n < 2 || ease || closer()) return s;
-  const a = ringMax(tree.rings[n - 2]), b = ringMax(tree.rings[n - 1]), front = a + (b - a) * grownBy(t, yearGrow.at);
-  const lim = (0.7 * roomNow()) / Math.max(1e-6, front);
+  if (!n) return Infinity;
+  const k = Math.max(0, Math.min(n - 1, Math.floor(x))), f = Math.max(0, Math.min(1, x - k));
+  const a = k ? ringMax(tree.rings[k - 1]) : tree.k.pith, b = ringMax(tree.rings[k]);
+  return (0.8 * roomNow()) / Math.max(1e-6, a + (b - a) * f);
+}
+/**
+ * While drawing, the slice may grow out to four-fifths of its room; past that it's drawn back by just as much
+ * as it grows, its edge held where it is. (Left a while, it settles to its own size: see `settleRoom`.)
+ */
+function growRoom(s: number, _t: number): number {
+  growScaled = false;
+  if (!GROWN || !PRINT || ease || closer() || !tree.rings.length) return s;
+  const lim = capScale(grow.x);
   if (lim >= s) return s;
-  growScaled = true; grewTo = { s: lim, at: t };
+  growScaled = true;
   return lim;
 }
+/** Left a while (some six seconds, nothing being drawn), the slice settles to the size it rests at: slowly. */
+let settling = false;
+function settleRoom(t: number, dt: number): void {
+  settling = false;
+  if (!GROWN || !PRINT || !view || growing() || ease || closer() || far > 0 || visit || tree.stroke || fingers.size || t - lastRingAt < 6) return;
+  const fit = Math.min(seedScale(), fitScale());
+  if (view.s <= fit * 1.002) return;
+  view = { ...view, s: view.s + (fit - view.s) * (1 - Math.exp(-dt / 6)) };
+  settling = true;
+}
+let lastRingAt = -1e9;
 function viewNow(t = clock()): View {
   const v0 = baseNow(t), gs = growRoom(v0.s, t), v = gs === v0.s ? v0 : { ...v0, s: gs };
   if (lookBack) {
@@ -805,18 +826,16 @@ function zoomAbout(x: number, y: number, f: number): void {
 }
 let hintedCloser = false;
 /** The ring closed: the slice laid out for the tree as it is now, eased to from where it was. */
-/** Whether the slice at scale `s` reaches past its room: its widest past seven-tenths of it, as it's fitted (see fitScale). */
-const tooWide = (s: number) => s * barkMax() > 0.7 * roomNow() + 0.5 * px;
 function makeRoom(): void {
-  // (Carried on from the scale it was last shown at, if it was drawn in as its year grew.)
-  const b0 = baseNow(), fromGrow = !!grewTo && clock() - grewTo.at < 0.5, was = fromGrow ? { ...b0, s: Math.min(b0.s, grewTo!.s) } : b0, old = warp, bark = tree.radius;
-  grewTo = null;
+  const was = baseNow(), old = warp, bark = tree.radius;
   warp = warpNow(); if (!PRINT) paper.fit(warp, warp.R); view = null;
   const v = baseNow();
   // (Growing true to scale, the slice never steps back while it's looked at: the year grows out at the bark and
   // stays, the print and every mark in it as it was. It's fitted to its room again only when next opened, out
   // of sight; or here, if its widest would reach past the room it's given (see `tooWide`).)
-  if (GROWN && PRINT && (fromGrow || !tooWide(was.s))) { view = { ...v, s: was.s }; ease = null; return; }
+  // (Growing true to scale, the slice's scale is kept: the room is made as it grows (see growRoom) and settled
+  // to after (settleRoom).)
+  if (GROWN && PRINT) { view = { ...v, s: was.s }; ease = null; return; }
   // (Where the new bark was drawn, it stays at first: the slice then draws back from there.)
   const from = was.s * warpR(old, bark) / Math.max(1e-6, warpR(warp, bark));
   // (Never much larger than it rests: a wide loop's year is shown a little large at first, never filling
@@ -847,7 +866,10 @@ function holdView(): void {
 /** The ring just closed, blooming (a look only: the next can be begun at once). */
 let settle = { ring: -1, at: 0 }, settleTap = 0;
 /** When the loop drawn was closed (growing true to scale: it dries where it was drawn). */
-let inward: { ring: number; at: number; by?: number } | null = null;
+type Inward = { ring: number; at: number; by?: number };
+let inward: Inward | null = null;
+/** Loops drawn before the one being drawn, still drying, each on its own. */
+let drying: { trail: typeof trail; inward: Inward }[] = [];
 /** The brush's track: where, when, how wide it laid (slow is wide), and how fast. */
 /** (`load`: the ink left in the brush, full at first, drier round the loop; `jit`: how unevenly the hand went.) */
 let trail: { a: number; r: number; t: number; w: number; fast: number; load: number; jit: number; turned: number }[] = [];
@@ -921,7 +943,8 @@ canvas.addEventListener('pointerdown', (e) => {
   if (inside) return;
   const b = brushAt(tree, v, 0, ...brushPoint(v, x, y));
   strokeView = v;
-  if (GROWN) { trail = []; inward = null; }
+  // (The loop before, still drying, left to dry on its own: never wiped away by the next.)
+  if (GROWN) { if (trail.length > 1 && inward && inward.ring < tree.rings.length) drying.push({ trail, inward: inward as Inward }); trail = []; inward = null; }
   if (tree.begin(e.timeStamp / 1000, b.a, rounded(b.a, b.u))) {
     painter = e.pointerId; if (!PRINT) paper.begin(tree); trailAt(b.a, b.u);
     loop = { x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, len: 0, closed: false };
@@ -1379,8 +1402,6 @@ function hear(): void {
     settleTap = clock() + BLOOM;
     // (Once, a week in: that the slice can be seen printed.)
     if (GROWN && tree.rings.length === 7 && !params.has('demo')) { try { if (!localStorage.getItem('annulus.printHint')) { localStorage.setItem('annulus.printHint', '1'); window.setTimeout(() => say('Hold the slice a moment to see it printed.', 7), 4000); } } catch { /* not said */ } }
-    // (A year still growing when the next is drawn: drawing quickly, the room's made at once.)
-    const rushed = !!yearGrow;
     if (GROWN && tree.rings.length === 1) seedSunk = clock();
     if (GROWN) {
       // (First the loop dries away, the slice still; then, the sheet clear, the year grows out into it.)
@@ -1388,17 +1409,18 @@ function hear(): void {
       inward = { ring: tree.rings.length - 1, at: clock(), by: soak };
       // (The new year simply there, where it settled, never growing out.)
       yearClosed = true;
-      // (The year's wood grows out to the loop before the slice draws back to make room.)
-      if (PRINT && !closer()) yearGrow = { ring: tree.rings.length - 1, at: clock() + 0.85 * soak };
-      // (And the new year shown as new wood is, pale, a moment: on an old tree it's a hair at the bark, and would
-      // grow there unseen.)
-      fresh = { ring: tree.rings.length - 1, at: clock() };
+      const n1 = tree.rings.length, now = clock();
+      lastRingAt = now;
+      // (The edge grows out to it once the loop's dried; a ring drawn while it's still growing only carries it on.)
+      if (PRINT && !closer()) {
+        grow.hold = now + 0.85 * soak;
+        wet.set(n1 - 1, now + 0.6 * soak);
+        // (And the year's ink pressed through the tree, from the heart out.)
+        if (wave && !wave.done) { wave.end = n1; wave.speed = Math.max(wave.speed, (n1 - wave.x) / 1.6); }
+        else wave = { x: 0, end: n1, speed: n1 / 2.2, at: now + 0.7 * soak, done: 0 };
+      } else grow.x = n1;
     }
-    // (Room made after the year has grown out; but at once if the slice already reaches past its room, however
-    // quickly the rings come: never left growing past it while the next is drawn.)
-    // (Room made once the year has grown out, never while it grows: one movement at a time. Drawn again before
-    // then, the growing is finished at once and room made, so the slice never runs on past its room.)
-    if (!yearGrow || (rushed && GROWN && tooWide(viewNow().s))) makeRoom();
+    if (!GROWN) makeRoom();
   }
   tree.news.length = 0;
 }
@@ -2684,42 +2706,43 @@ const spare: Record<string, HTMLCanvasElement> = {};
  * The year just closed, its wood growing out from the old bark to where the loop was drawn: fast in spring,
  * slowing through the summer, the bark carried out on its edge. The years before never move.
  */
-let yearGrow: { ring: number; at: number } | null = null;
-const GROW_T = 3.2;
-/** How far the year has grown out (0 to 1) at time t: begun gently, never with a start, eased to rest. */
-const grownBy = (t: number, at: number) => { const x = Math.max(0, Math.min(1, (t - at) / GROW_T)); return x * x * x * (x * (6 * x - 15) + 10); };
-let roomDue = false;
-/** The year just drawn, shown pale a moment as new wood is (see `drawFresh`). */
-let fresh: { ring: number; at: number } | null = null;
 /**
- * The year just drawn, pale, as fresh wood is before it darkens: a band just inside the bark, never thinner than
- * some three px however fine the year (so it's seen on an old tree too), growing out with the year,
- * then darkening into the print over a few seconds.
+ * The growing edge, in years (0 the heart, n once every year drawn has grown out): it glides toward the years
+ * drawn as on a spring, gently begun and gently come to rest, never faster than about a year a second, so a
+ * ring drawn after a ring only carries it further, never begins it again or makes it jump. Held a moment
+ * while the newest loop dries away (`hold`), so the year grows into a clear sheet.
  */
-function drawFresh(v: View, t: number): void {
-  if (!fresh || fresh.ring >= tree.rings.length || fresh.ring < 1) { fresh = null; return; }
-  const age = t - fresh.at, al = 0.82 * smooth(age / 1.2) * (1 - smooth((age - GROW_T - 1.2) / 3.2));
-  if (age > GROW_T + 4.6) { fresh = null; return; }
-  if (al < 0.01) return;
-  const f = yearGrow && yearGrow.ring === fresh.ring ? grownBy(t, yearGrow.at) : 1;
-  // (Only where the year is too fine to be seen growing: a young tree's wide year shows itself, and paled
-  // over it would only wash its ink out.)
-  const wpx = v.s * (meanR(fresh.ring) - meanR(fresh.ring - 1)) / px, need = 0.45 * (1 - smooth((wpx - 0.5) / 1));
-  if (need < 0.01) return;
-  const old = barkOf(fresh.ring - 1), neu = barkOf(fresh.ring), minW = (3.4 * px) / v.s, hair = (1.1 * px) / v.s;
-  const out = (a: number) => old(a) + (neu(a) - old(a)) * f - hair;
-  hideBetween(v, (a) => out(a) - minW, out, al * need);
+const grow = { x: 0, v: 0, hold: 0, paused: false };
+/** Whether the edge is still growing out toward the years drawn. */
+const growing = () => GROWN && PRINT && grow.x < tree.rings.length - 1e-3;
+function stepGrow(t: number, dt: number): void {
+  const n = tree.rings.length;
+  if (!GROWN || !PRINT || grow.x > n || closer() || fingers.size >= 2 || far > 0 || visit) { grow.x = n; grow.v = 0; return; }
+  // (Years not drawn just now (the tree as it was opened, a demo's): there already, never grown out again.)
+  if (grow.x < n - 1 - 1e-6 && t - lastRingAt > 20) { grow.x = n; grow.v = 0; return; }
+  if (grow.paused) { grow.paused = false; return; }
+  // (Only the newest year waits for its loop to dry: those before it grow on.)
+  const target = t < grow.hold ? n - 1 : n, w = 2.1;
+  grow.v += (w * w * (target - grow.x) - 2 * w * grow.v) * dt;
+  grow.v = Math.max(-1.1, Math.min(1.1, grow.v));
+  grow.x = Math.min(n, grow.x + grow.v * dt);
+  if (n - grow.x < 2e-3 && Math.abs(grow.v) < 4e-3 && t >= grow.hold) {
+    grow.x = n; grow.v = 0;
+    // (Come to rest: the scale it was held at, as it grew, kept.)
+    if (view && growScaled) view.s = Math.min(view.s, capScale(n));
+  }
 }
-function drawGrowth(v: View, t: number, moving: boolean, drift: boolean): boolean {
-  const gr = yearGrow!, n = tree.rings.length;
-  const f = grownBy(t, gr.at);
-  // (Room made at the start of the next frame, never part way through this one: the rest of it would be
-  // pressed for the view as it was, and pressed again the frame after, a blur between.)
-  if (gr.ring !== n - 1 || f >= 1 || closer() || fingers.size >= 2) { yearGrow = null; roomDue = true; return false; }
+/** The edge as far as it has grown, round the slice (mm), at `x` years. */
+function edgeAt(x: number): (a: number) => number {
+  const k = Math.max(0, Math.min(tree.rings.length - 1, Math.floor(x))), f = Math.max(0, Math.min(1, x - k)), i0 = barkOf(k - 1), i1 = barkOf(k);
+  return (a: number) => i0(a) + (i1(a) - i0(a)) * f;
+}
+function drawGrowth(v: View, moving: boolean, drift: boolean): boolean {
+  const n = tree.rings.length;
   const pc = printFor(v, moving, 'drawing', drift);
-  // (Its clock held till the new year's print is there: the growing begins at its beginning, never part way.)
-  if (pc.key !== printKey(v)) { gr.at = Math.max(gr.at, t); return false; }
-  const old = barkOf(n - 2), neu = barkOf(n - 1), front = (a: number) => old(a) + (neu(a) - old(a)) * f;
+  // (The new years' print not pressed yet: held where it was till it is.)
+  if (pc.key !== printKey(v)) { grow.paused = true; return false; }
+  const neu = barkOf(n - 1), front = edgeAt(grow.x);
   // (The wood, up to the growing edge.)
   g.save(); ringPath(v, front, 0, K * 2); g.clip(); drawKept(pc, v); g.restore();
   // (The bark, carried out on it: the print beyond its own bark, drawn as much smaller as the edge is in.)
@@ -2728,6 +2751,49 @@ function drawGrowth(v: View, t: number, moving: boolean, drift: boolean): boolea
   k /= 24;
   g.save(); g.beginPath(); g.rect(0, 0, W, H); ringPath(v, front, 0, K * 2, true); g.clip('evenodd'); drawKept(pc, v, 1, k); g.restore();
   return true;
+}
+/** A band between two edges round the slice (mm), filled with `style` composited by `op`. */
+function fillBetween(v: View, r0: (a: number) => number, r1: (a: number) => number, style: string, op: GlobalCompositeOperation): void {
+  g.save(); g.beginPath();
+  for (let j = 0; j <= K; j++) { const a = (j / K) * TAU, rr = v.s * warpR(v.warp, r1(a)), t = a + v.turn, x = v.cx + rr * Math.cos(t), y = v.cy - rr * Math.sin(t); if (j) g.lineTo(x, y); else g.moveTo(x, y); }
+  for (let j = K; j >= 0; j--) { const a = (j / K) * TAU, rr = Math.max(0, v.s * warpR(v.warp, r0(a))), t = a + v.turn; g.lineTo(v.cx + rr * Math.cos(t), v.cy - rr * Math.sin(t)); }
+  g.closePath(); g.globalCompositeOperation = op; g.fillStyle = style; g.fill(); g.restore();
+}
+/**
+ * A year's ink pressed through the tree: a soft wave of fresh ink from the heart out to the newest year as it
+ * sets (`x` years out, going to `end`), never ahead of the growing edge; a ring drawn while it travels only
+ * carries it further.
+ */
+let wave: { x: number; end: number; speed: number; at: number; done: number } | null = null;
+/** Each year just drawn, wet: when (it dries from a deep sepia to the print's black over some seven seconds). */
+const wet = new Map<number, number>();
+const WET_T = 7;
+function drawWetAndWave(v: View, t: number, dt: number): void {
+  const n = tree.rings.length;
+  if (!GROWN || !PRINT || !n) return;
+  // The wet years, sepia (only over the ink: the paper stays as it is), drying.
+  for (const [i, at] of wet) {
+    const age = t - at;
+    if (i >= n || age > WET_T) { wet.delete(i); continue; }
+    if (age < 0 || i > grow.x) continue;
+    const al = smooth(age / 0.5) * (1 - smooth(age / WET_T));
+    if (al < 0.01) continue;
+    const outer = i < Math.floor(grow.x) ? barkOf(i) : edgeAt(grow.x), inner = barkOf(i - 1), min = (4.5 * px) / v.s;
+    fillBetween(v, (a) => Math.min(inner(a), outer(a) - min), outer, `rgba(104,58,26,${(0.9 * al).toFixed(3)})`, 'lighten');
+  }
+  // The wave of fresh ink.
+  if (wave) {
+    if (wave.x < wave.end && t >= wave.at) wave.x = Math.min(wave.end, grow.x, wave.x + wave.speed * dt);
+    if (wave.x >= wave.end - 1e-3 && !wave.done) wave.done = t;
+    const fade = smooth((t - wave.at) / 0.5) * (wave.done ? 1 - smooth((t - wave.done) / 0.8) : 1);
+    if (wave.done && t - wave.done > 0.8) { wave = null; return; }
+    if (fade > 0.01 && t >= wave.at) {
+      const span = Math.max(1.2, 0.12 * n);
+      for (const [lo, al] of [[1, 0.08], [0.6, 0.12], [0.3, 0.16]] as [number, number][]) {
+        fillBetween(v, edgeAt(Math.max(-1, wave.x - span * lo)), edgeAt(Math.max(0, wave.x)), `rgba(30,22,16,${(al * fade).toFixed(3)})`, 'source-over');
+      }
+    }
+  }
 }
 /** A year just closed, to be pressed at once (see printFor). */
 let yearClosed = false;
@@ -3988,7 +4054,7 @@ function unvisit(): void {
   lookAfresh();
 }
 function lookAfresh(): void {
-  warp = warpNow(); view = null; ease = null; lookBack = null; look = { k: 1, ox: 0, oy: 0 }; trail = []; inward = null;
+  warp = warpNow(); view = null; ease = null; lookBack = null; look = { k: 1, ox: 0, oy: 0 }; trail = []; inward = null; drying = []; grow.x = tree.rings.length; grow.v = 0; wave = null; wet.clear();
   for (const k in printCaches) delete printCaches[k];
 }
 /**
@@ -4200,7 +4266,7 @@ function frame(): void {
   const calm = fingers.size === 0 && !tree.stroke && !ease && !lookBack && !farTo && !intro && settle.ring < 0 && !gusts.length && !lifted.length && !refused && !choiceTo && !ruffle.some((r) => r > 0.02);
   // (Still on the slice, nothing pressing or fading: a quarter of the frames, the breath being slow. Out in
   // the grove, half, for the crowns stirring and the leaves.)
-  const still = calm && trail.length < 2 && !fresh && !(seedSunk && t - seedSunk < 2.5) && !Object.keys(pressing).length && !Object.values(fading).some(Boolean) && !yearGrow && (relax <= 0 || relax >= 1)
+  const still = calm && trail.length < 2 && !drying.length && !wave && !wet.size && !growing() && !settling && !(seedSunk && t - seedSunk < 2.5) && !Object.keys(pressing).length && !Object.values(fading).some(Boolean) && (relax <= 0 || relax >= 1)
     && !(lit >= 0 && t - litAt < 2 + STEADY_T) && t - openedAt > OPEN && !groveJob && !baseJob && !groveFade;
   const every = !calm ? 0 : far >= 1 ? 1 / 30 : still && far === 0 ? 1 / 15 : 0;
   if (every && t - lastFrame < every - 0.004) { requestAnimationFrame(frame); return; }
@@ -4217,7 +4283,7 @@ function frame(): void {
     far = farTo.from + (farTo.to - farTo.from) * p; farPull = far;
     if (p >= 1) { const to = farTo.to; farTo = null; if (to === 1 && visit) unvisit(); if (to === 1) tellGrove(); }
   }
-  if (roomDue) { roomDue = false; makeRoom(); }
+  stepGrow(t, dt); settleRoom(t, dt);
   const v = viewNow(t);
   // The ring just closed blooms, then is done (and on the iPhone app, a faint touch as it settles).
   if (settle.ring >= 0 && t - settle.at > BLOOM + 0.6) settle.ring = -1;
@@ -4246,13 +4312,13 @@ function frame(): void {
   const drawingNow = !!tree.stroke || painter !== null || settle.ring >= 0 || !!ease;
   const looking = fingers.size > 0 || closer() || !!lookBack;
   relax = drawingNow ? Math.max(0, relax - dt / 0.22) : restWanted && !looking ? Math.min(1, relax + dt / STEADY_T) : relax;
-  const moving = (!!ease && !GROWN) || !!lookBack || fingers.size >= 2, drift = (!!ease || growScaled) && GROWN;
+  const moving = (!!ease && !GROWN) || !!lookBack || fingers.size >= 2, drift = (!!ease || growScaled || settling) && GROWN;
   // (A finger the phone never said was lifted (a pinch's, now and then): let go after a still second and a half.)
   if (fingers.size && t - lastFingerAt > 1.5 && painter === null) { fingers.clear(); pinch = null; }
   breathe(t, dt);
   // (Out in the grove, the slice is gone from view: not printed under it.)
   if (far >= 0.6) { /* the grove covers the sheet */ }
-  else if (PRINT && yearGrow && drawGrowth(v, t, moving, drift)) { /* the year growing out */ }
+  else if (PRINT && growing() && drawGrowth(v, moving, drift)) { /* the year growing out */ }
   else if (PRINT) {
     // (The print at rest pressed a strip at a time when it's new; the slice only settles into it once it's whole.)
     const rv = restOf(v), rest = relax > 0 ? printFor(rv, moving, 'rest', false, true) : undefined;
@@ -4270,7 +4336,7 @@ function frame(): void {
     drawBreath(shownOf(v));
   } else { paper.draw(g, v); drawLatewood(v); }
   // (The year just drawn, pale as new wood, growing out with it and darkening after: never only once it's grown.)
-  if (GROWN && PRINT && far < 0.6) drawFresh(shownOf(v), t);
+  if (GROWN && PRINT && far < 0.6) drawWetAndWave(shownOf(v), t, dt);
   const n = tree.rings.length;
   // A ring touched: lit softly along its edge for a moment, as its day is read.
   // (Coming on softly, from `litAt`: at once for a ring touched; for a year just grown, as it finishes growing.)
@@ -4316,6 +4382,13 @@ function frame(): void {
   }
   if (GROWN && !n && !seedAt) drawSeedChoice(v, t);
   drawPressMark(shownOf(v), t, dt);
+  // (The loops before, drying each in its own time; then the one now.)
+  if (drying.length) {
+    const tr = trail, iw = inward;
+    for (const d of drying) { trail = d.trail; inward = d.inward; overChecks(v, () => drawBrush(g, v, t)); d.trail = trail; }
+    trail = tr; inward = iw;
+    drying = drying.filter((d) => d.trail.length > 1);
+  }
   overChecks(v, () => drawBrush(g, v, t));
   if (GROWN && painter !== null && tree.stroke) drawPendingMarks(v, t);
   if (far > 0) drawFar(v);
@@ -4355,7 +4428,7 @@ void (async () => {
   else if (!tree.rings.length) say('Draw a circle around this one.', 8);
   // (Anything amiss with the trees kept, said before anything else.)
   if (dataNote) say(dataNote, 12);
-  Object.assign(window, { press: { get tree() { return tree; }, get phase() { return settle.ring >= 0 ? 'settling' : 'trace'; }, get easing() { return !!ease; }, get view() { return viewNow(); }, get days() { return days; }, get kind() { return kind; }, get choice() { return SEEDS[choice]; }, get far() { return far; }, get visiting() { return visit?.i ?? null; }, get parting() { return !!parting; }, groveNext: () => { const c = camNow(), w = worldOf(); return { x: (c.X0 + w.next.wx * c.S) / px, y: (c.Y0 + w.next.wy * c.S) / px }; }, stream: () => { const c = camNow(); return worldOf().stream.map(([x, y]) => ({ x: (c.X0 + x * c.S) / px, y: (c.Y0 + y * c.S) / px })); }, grove: () => groveLayout().trees.map((t) => ({ sp: t.sp, n: t.n, i: t.i, x: t.x / px, y: t.y / px, r: t.r / px })), get editionY() { return editionY; }, get stampAt() { return stampAt; }, print: async () => (await yearPrint()).toDataURL('image/png'), get presses() { return presses.splice(0); }, get breeze() { const st = worldOf().stream; return { gusts: gusts.length, lifted: lifted.length, stream: st.length, max: Math.max(0, ...st.map(([x, y]) => Math.hypot(...breezeAt(x, y)))) }; }, get room() { const v = viewNow(), n = tree.rings.length, gr = yearGrow && yearGrow.ring === n - 1 && n > 1 ? grownBy(clock(), yearGrow.at) : 1, front = n > 1 ? ringMax(tree.rings[n - 2]) + (ringMax(tree.rings[n - 1]) - ringMax(tree.rings[n - 2])) * gr : barkMax(); return { widest: v.s * front / px, room: roomNow() / px }; }, get dbg() { return { trail: trail.length, inward: inward ? inward.ring : null, n: tree.rings.length, relax: +relax.toFixed(2), fading: Object.entries(fading).filter(([, f]) => f).map(([k, f]) => `${k}:${f!.at === Infinity ? 'held' : (clock() - f!.at).toFixed(2)}${f!.still ? 's' : ''}`), pressing: Object.keys(pressing), grow: !!yearGrow, ease: !!ease, caches: Object.entries(printCaches).map(([k, c]) => `${k}:${c ? (c.c.width + 'x' + c.c.height) : '-'}`) }; }, get marks() { return marks.map((m) => `${m.kind}@${m.a.toFixed(2)} ${m.from}-${m.last} x${m.size.toFixed(1)}`); } } });
+  Object.assign(window, { press: { get tree() { return tree; }, get phase() { return settle.ring >= 0 ? 'settling' : 'trace'; }, get easing() { return !!ease; }, get view() { return viewNow(); }, get days() { return days; }, get kind() { return kind; }, get choice() { return SEEDS[choice]; }, get far() { return far; }, get visiting() { return visit?.i ?? null; }, get parting() { return !!parting; }, groveNext: () => { const c = camNow(), w = worldOf(); return { x: (c.X0 + w.next.wx * c.S) / px, y: (c.Y0 + w.next.wy * c.S) / px }; }, stream: () => { const c = camNow(); return worldOf().stream.map(([x, y]) => ({ x: (c.X0 + x * c.S) / px, y: (c.Y0 + y * c.S) / px })); }, grove: () => groveLayout().trees.map((t) => ({ sp: t.sp, n: t.n, i: t.i, x: t.x / px, y: t.y / px, r: t.r / px })), get editionY() { return editionY; }, get stampAt() { return stampAt; }, print: async () => (await yearPrint()).toDataURL('image/png'), get presses() { return presses.splice(0); }, get breeze() { const st = worldOf().stream; return { gusts: gusts.length, lifted: lifted.length, stream: st.length, max: Math.max(0, ...st.map(([x, y]) => Math.hypot(...breezeAt(x, y)))) }; }, get room() { const v = viewNow(); return { widest: (0.8 * roomNow() * v.s) / capScale(grow.x) / px, room: roomNow() / px }; }, get dbg() { return { gx: +grow.x.toFixed(3), wet: [...wet].map(([i, a]) => `${i}@${(clock() - a).toFixed(1)}`).join(','), wave: wave ? `${wave.x.toFixed(2)}/${wave.end}` : '', trail: trail.length, inward: inward ? inward.ring : null, n: tree.rings.length, relax: +relax.toFixed(2), fading: Object.entries(fading).filter(([, f]) => f).map(([k, f]) => `${k}:${f!.at === Infinity ? 'held' : (clock() - f!.at).toFixed(2)}${f!.still ? 's' : ''}`), pressing: Object.keys(pressing), grow: growing(), ease: !!ease, caches: Object.entries(printCaches).map(([k, c]) => `${k}:${c ? (c.c.width + 'x' + c.c.height) : '-'}`) }; }, get marks() { return marks.map((m) => `${m.kind}@${m.a.toFixed(2)} ${m.from}-${m.last} x${m.size.toFixed(1)}`); } } });
   // (The real wood: once it's come, the print is pressed again with it.)
   if (PRINT) loadWood(() => { for (const k in printCaches) delete printCaches[k]; for (const k in pressing) delete pressing[k]; });
   startIntro();
