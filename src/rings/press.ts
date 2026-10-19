@@ -893,6 +893,18 @@ function say(text: string, fade = 10): void {
   } else show();
 }
 let sayT = 0, swapT = 0;
+/**
+ * How it's done, said only until it's been done once: choosing a wood, until a seed's been planted; drawing the
+ * loop, until a ring's been drawn. (Someone who has a tree, or a grove, has done both.)
+ */
+const toldKey = (what: 'choose' | 'loop') => `annulus.done.${what}`;
+function done(what: 'choose' | 'loop'): void { try { localStorage.setItem(toldKey(what), '1'); } catch { /* said again, then */ } }
+function tellOnce(what: 'choose' | 'loop', text: string, fade: number): void {
+  let known = false;
+  try { known = !!localStorage.getItem(toldKey(what)); } catch { /* not known */ }
+  if (!known && GROWN && (groveKept.length || tree.rings.length || (what === 'choose' && finishedYear))) known = true;
+  if (!known || params.has('demo')) say(text, fade);
+}
 /** The words let go of, and any about to come. */
 function hush(): void { clearTimeout(swapT); words.classList.remove('shown'); }
 
@@ -1323,6 +1335,7 @@ function drawSeedChoice(v: View, t: number): void {
 /** The seed, planted where the sheet was tapped: the tree grows from there. */
 let plantedAt = 0, seedSunk = 0;
 function plant(x: number, y: number): void {
+  done('choose');
   seedAt = [x / W, y / H]; view = null; plantedAt = clock();
   // (A new seed chosen while the last tree waited: now it stands in the grove, and this one is kept.)
   if (parting) {
@@ -1337,7 +1350,7 @@ function plant(x: number, y: number): void {
       parting = null; worldKey = ''; keep();
     })();
   } else keep();
-  say('Now draw a loop around it.', 9);
+  tellOnce('loop', 'Now draw a loop around it.', 9);
 }
 
 /** A touch inside the slice: the ring under it, lit for a moment (no dates, no counting). */
@@ -1410,6 +1423,7 @@ function hear(): void {
     // (Once, a week in: that the slice can be seen printed.)
     if (GROWN && tree.rings.length === 7 && !params.has('demo')) { try { if (!localStorage.getItem('annulus.printHint')) { localStorage.setItem('annulus.printHint', '1'); window.setTimeout(() => say('Hold the slice a moment to see it printed.', 7), 4000); } } catch { /* not said */ } }
     if (GROWN && tree.rings.length === 1) seedSunk = clock();
+    done('loop'); done('choose');
     // (Told, to a screen reader: the ring laid.)
     heard.textContent = tree.rings.length === 1 ? 'The first ring is drawn.' : 'A ring is added.';
     if (GROWN) {
@@ -3032,7 +3046,7 @@ function plantAgain(at: [number, number] | null = null): void {
   parting = { k: kept(), tree, days, kind, seedAt, marks, place: herePlace };
   tree = new TreeSim(1 + Math.floor(Math.random() * 1e6), DAILY); days = []; seedAt = null; folding = null; marks = []; pendingMarks = []; herePlace = at;
   lookAfresh(); groveCam = null; farTo = { from: far, to: 0, at: clock() };
-  say('Swipe through the woods. Touch one to plant it.', 1e5);
+  tellOnce('choose', 'Swipe through the woods. Touch one to plant it.', 1e5);
 }
 function unpart(): void {
   if (!parting) return;
@@ -4402,7 +4416,7 @@ void (async () => {
   warp = warpNow(); if (!PRINT) { paper.fit(warp, warp.R); paper.bake(tree); }
   fit(); view = null; openedAt = clock(); idleSince = openedAt + OPEN;
   if (GROWN && !tree.rings.length && finishedYear) say('A year. It stands in your grove. Choose the next.', 1e5);
-  else if (GROWN && !tree.rings.length) say(seedAt ? 'Draw a loop around the seed.' : 'Swipe through the woods. Touch one to plant it.', 1e5);
+  else if (GROWN && !tree.rings.length) { if (seedAt) tellOnce('loop', 'Draw a loop around the seed.', 1e5); else tellOnce('choose', 'Swipe through the woods. Touch one to plant it.', 1e5); }
   // (Words only where they're needed: before the first ring. After that, the tree says it.)
   else if (!tree.rings.length) say('Draw a circle around this one.', 8);
   // (Anything amiss with the trees kept, said before anything else.)
