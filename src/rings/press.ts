@@ -825,8 +825,7 @@ function zoomAbout(x: number, y: number, f: number): void {
   // (Said only the first few times ever: after that, it's known.)
   if (closer() && !hintedCloser) {
     hintedCloser = true;
-    let n = 0; try { n = Number(localStorage.getItem('annulus.hintedCloser') || 0); localStorage.setItem('annulus.hintedCloser', String(n + 1)); } catch { /* not kept */ }
-    if (n < 3) say('Double-tap to zoom out.', 3);
+    if (fewTimes('annulus.hintedCloser', 1)) say('Double-tap to zoom out.', 3);
   }
 }
 let hintedCloser = false;
@@ -879,6 +878,8 @@ let drying: { trail: typeof trail; inward: Inward }[] = [];
 /** (`load`: the ink left in the brush, full at first, drier round the loop; `jit`: how unevenly the hand went.) */
 let trail: { a: number; r: number; t: number; w: number; fast: number; load: number; jit: number; turned: number }[] = [];
 let strokeView: View | null = null, painter: number | null = null;
+/** The finger that just closed a ring, still down: it moves nothing until it's lifted. */
+let painted: number | null = null;
 /** The finger's own path this stroke (CSS px): where it began, how far it has gone, and where it is. */
 let loop = { x0: 0, y0: 0, x: 0, y: 0, len: 0, closed: false };
 
@@ -898,6 +899,11 @@ let sayT = 0, swapT = 0;
  * loop, until a ring's been drawn. (Someone who has a tree, or a grove, has done both.)
  */
 const toldKey = (what: 'choose' | 'loop') => `annulus.done.${what}`;
+/** Whether a word is still to be said: only the first `n` times ever (counted as it's said). */
+function fewTimes(key: string, n: number): boolean {
+  try { const k = Number(localStorage.getItem(key) || 0); if (k >= n) return false; localStorage.setItem(key, String(k + 1)); } catch { /* said, then */ }
+  return true;
+}
 function done(what: 'choose' | 'loop'): void { try { localStorage.setItem(toldKey(what), '1'); } catch { /* said again, then */ } }
 function tellOnce(what: 'choose' | 'loop', text: string, fade: number): void {
   let known = false;
@@ -996,6 +1002,7 @@ canvas.addEventListener('pointermove', (e) => {
       pinch = now;
       return;
     }
+    if (e.pointerId === painted) return;
     if (closer() && painter === null && fingers.size === 1) { look.ox += dx; look.oy += dy; return; }
     if (far >= 1 && painter === null && fingers.size === 1) { panGrove(dx, dy); return; }
     if (choosing() && painter === null && fingers.size === 1) { choiceTo = null; choiceDx += dx; return; }
@@ -1021,6 +1028,7 @@ for (const type of ['pointerup', 'pointercancel'] as const) canvas.addEventListe
   // (A touch that only let the opening go: nothing more.)
   if (!fingers.has(e.pointerId) && painter !== e.pointerId) return;
   fingers.delete(e.pointerId);
+  if (e.pointerId === painted) painted = null;
   if (fingers.size < 2) pinch = null;
   // (A swipe let go: on to the next, or back.)
   if (choosing() && fingers.size === 0 && Math.abs(choiceDx) > 2 * px && !choiceTo) {
@@ -1071,7 +1079,7 @@ for (const type of ['pointerup', 'pointercancel'] as const) canvas.addEventListe
   // Let go most of the way round, the ring is closed for you; earlier, the line rests, to be taken up.
   if (tree.finish(0.8)) hear();
   // (A whole loop drawn, but not round the slice: let go, and said where, once the hand is off.)
-  else if (loop.closed && tree.stroke) { tree.cancel(); say(GROWN ? (tree.rings.length ? 'Draw your loop around the tree.' : 'Draw your loop around the seed.') : 'Draw around the circle.', 4); }
+  else if (loop.closed && tree.stroke) { tree.cancel(); if (fewTimes('annulus.missed', 3)) say(GROWN ? (tree.rings.length ? 'Draw your loop around the tree.' : 'Draw your loop around the seed.') : 'Draw around the circle.', 4); }
   else { tree.lift(); restAt = clock(); }
 });
 // (On a computer, the wheel looks closer about the pointer.)
@@ -1416,7 +1424,7 @@ function hear(): void {
     if (first) editionAt = clock() + 1.6;
     // (The ring is done: it settles into the paper and the slice draws back to make room, while the
     // next can be begun as soon as the finger comes down again.)
-    painter = null;
+    painted = painter; painter = null;
     settle = { ring: tree.rings.length - 1, at: clock() };
     closeTrail();
     settleTap = clock() + BLOOM;
@@ -4422,7 +4430,7 @@ void (async () => {
   // (Anything amiss with the trees kept, said before anything else.)
   if (dataNote) say(dataNote, 12);
   // (Looked into while it's made, never in the app as released.)
-  if (import.meta.env.DEV) Object.assign(window, { press: { get tree() { return tree; }, get phase() { return settle.ring >= 0 ? 'settling' : 'trace'; }, get easing() { return !!ease; }, get view() { return viewNow(); }, get days() { return days; }, get kind() { return kind; }, get choice() { return SEEDS[choice]; }, get far() { return far; }, get visiting() { return visit?.i ?? null; }, get parting() { return !!parting; }, groveNext: () => { const c = camNow(), w = worldOf(); return { x: (c.X0 + w.next.wx * c.S) / px, y: (c.Y0 + w.next.wy * c.S) / px }; }, stream: () => { const c = camNow(); return worldOf().stream.map(([x, y]) => ({ x: (c.X0 + x * c.S) / px, y: (c.Y0 + y * c.S) / px })); }, grove: () => groveLayout().trees.map((t) => ({ sp: t.sp, n: t.n, i: t.i, x: t.x / px, y: t.y / px, r: t.r / px })), get editionY() { return editionY; }, get stampAt() { return stampAt; }, print: async () => (await yearPrint()).toDataURL('image/png'), get presses() { return presses.splice(0); }, get breeze() { const st = worldOf().stream; return { gusts: gusts.length, lifted: lifted.length, stream: st.length, max: Math.max(0, ...st.map(([x, y]) => Math.hypot(...breezeAt(x, y)))) }; }, get room() { const v = viewNow(); return { widest: (0.8 * roomNow() * v.s) / capScale(grow.x) / px, room: roomNow() / px }; }, get dbg() { return { gx: +grow.x.toFixed(3), trail: trail.length, inward: inward ? inward.ring : null, n: tree.rings.length, relax: +relax.toFixed(2), fading: Object.entries(fading).filter(([, f]) => f).map(([k, f]) => `${k}:${f!.at === Infinity ? 'held' : (clock() - f!.at).toFixed(2)}${f!.still ? 's' : ''}`), pressing: Object.keys(pressing), grow: growing(), ease: !!ease, caches: Object.entries(printCaches).map(([k, c]) => `${k}:${c ? (c.c.width + 'x' + c.c.height) : '-'}`) }; }, get marks() { return marks.map((m) => `${m.kind}@${m.a.toFixed(2)} ${m.from}-${m.last} x${m.size.toFixed(1)}`); } } });
+  if (import.meta.env.DEV) Object.assign(window, { press: { get tree() { return tree; }, get phase() { return settle.ring >= 0 ? 'settling' : 'trace'; }, get easing() { return !!ease; }, get view() { return viewNow(); }, get days() { return days; }, get kind() { return kind; }, get choice() { return SEEDS[choice]; }, get far() { return far; }, get visiting() { return visit?.i ?? null; }, get parting() { return !!parting; }, groveNext: () => { const c = camNow(), w = worldOf(); return { x: (c.X0 + w.next.wx * c.S) / px, y: (c.Y0 + w.next.wy * c.S) / px }; }, stream: () => { const c = camNow(); return worldOf().stream.map(([x, y]) => ({ x: (c.X0 + x * c.S) / px, y: (c.Y0 + y * c.S) / px })); }, grove: () => groveLayout().trees.map((t) => ({ sp: t.sp, n: t.n, i: t.i, x: t.x / px, y: t.y / px, r: t.r / px })), get editionY() { return editionY; }, get stampAt() { return stampAt; }, print: async () => (await yearPrint()).toDataURL('image/png'), get presses() { return presses.splice(0); }, get breeze() { const st = worldOf().stream; return { gusts: gusts.length, lifted: lifted.length, stream: st.length, max: Math.max(0, ...st.map(([x, y]) => Math.hypot(...breezeAt(x, y)))) }; }, get room() { const v = viewNow(); return { widest: (0.8 * roomNow() * v.s) / capScale(grow.x) / px, room: roomNow() / px }; }, get dbg() { return { look: `${look.k.toFixed(3)},${look.ox.toFixed(0)},${look.oy.toFixed(0)}`, vb: view ? `${view.s.toFixed(3)},${view.cx.toFixed(0)},${view.cy.toFixed(0)}` : '-', lb: !!lookBack, gx: +grow.x.toFixed(3), trail: trail.length, inward: inward ? inward.ring : null, n: tree.rings.length, relax: +relax.toFixed(2), fading: Object.entries(fading).filter(([, f]) => f).map(([k, f]) => `${k}:${f!.at === Infinity ? 'held' : (clock() - f!.at).toFixed(2)}${f!.still ? 's' : ''}`), pressing: Object.keys(pressing), grow: growing(), ease: !!ease, caches: Object.entries(printCaches).map(([k, c]) => `${k}:${c ? (c.c.width + 'x' + c.c.height) : '-'}`) }; }, get marks() { return marks.map((m) => `${m.kind}@${m.a.toFixed(2)} ${m.from}-${m.last} x${m.size.toFixed(1)}`); } } });
   // (The real wood: once it's come, the print is pressed again with it.)
   if (PRINT) loadWood(() => { for (const k in printCaches) delete printCaches[k]; for (const k in pressing) delete pressing[k]; });
   startIntro();

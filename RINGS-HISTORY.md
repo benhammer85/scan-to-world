@@ -352,3 +352,11 @@ October 19 — Well Rounded on its own. Its own iPhone shell (apps/well-rounded:
 October 19 — open to everyone. The words said are announced to a screen reader as they come (a live region), and a ring laid is told to one quietly; the slice is described for what it is. The grove's three pencilled words are real buttons over the pencil (keep a copy, take one back, bring your weather), named, reachable by keyboard, a ring round them only when one is reached by keyboard. The words are darker (some five to one against the paper); the row of them sits clear of the iPhone's home bar. And asked to keep still (Reduce Motion), the slice doesn't breathe, the crowns don't stir, and no leaf, rain or snow falls; the growing is still shown.
 
 October 19 — how it's done, said once. "Swipe through the woods. Touch one to plant it." only until a seed's been planted; "Now draw a loop around it." only until a ring's been drawn. Then, choosing the next tree, nothing is said: the woods and the seed say it. (The year's end is still marked: "A year. It stands in your grove.")
+
+## 2026-10-19 — Zoomed in, the slice stays put when a ring closes; fewer reminders
+
+* Looked at closely, a ring closed with the finger still on the glass: that finger then became one that moves
+  the slice about, so the slice slid with the rest of the stroke. The finger that closed a ring now moves
+  nothing until it is lifted (`painted`).
+* Reminders said only while the practice is being learned (`fewTimes`): "Draw your loop around the tree"
+  the first three times a loop misses; "Double-tap to zoom out" once.
