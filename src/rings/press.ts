@@ -17,6 +17,7 @@
  * On opening, the slice paints itself in from the heart. Each ring is eased a little toward round (the
  * way a tree evens out), so the slice stays organic, never a lump. `?demo` shows a year already drawn.
  */
+import { overcast, setWeather, skyNow, weatherOn, type Sky } from './weather';
 import '../volcano/fonts.css';
 import { wood, sample, tile, loadWood, type Years } from './wood';
 import * as gpu from './gpu';
@@ -62,6 +63,9 @@ tooth.style.cssText = `position:fixed;left:0;top:0;width:100vw;pointer-events:no
 canvas.after(tooth);
 holdStill(canvas);
 addEventListener('resize', fit);
+// (Moved to a screen of another density: laid out again for it.)
+const watchDensity = () => { try { matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`).addEventListener('change', () => { fit(); watchDensity(); }, { once: true }); } catch { /* the resize will do */ } };
+watchDensity();
 const clock = () => performance.now() / 1000;
 /**
  * The pace of everything that moves, three speeds and one curve (`smooth`), so it all feels one hand's:
@@ -352,9 +356,26 @@ function warpMarks(v: View, Z: number): void {
   x0 = Math.max(0, Math.floor(x0)); y0 = Math.max(0, Math.floor(y0)); x1 = Math.min(c.width, Math.ceil(x1)); y1 = Math.min(c.height, Math.ceil(y1));
   const w = x1 - x0, h = y1 - y0;
   if (w <= 2 || h <= 2) return;
+  const last = tree.rings[tree.rings.length - 1];
+  // (On the graphics chip, where there is one: the same pulling about, every pixel at once, never read back.)
+  if (gpu.ready()) {
+    const EB = 720, edge = new Float32Array(EB);
+    for (let b = 0; b < EB; b++) edge[b] = v.s * warpR(v.warp, radiusAt(last, (b / EB) * TAU));
+    const E = new Float32Array(Math.max(1, eyes.length * 3)), Kn = new Float32Array(Math.max(1, knots.length * 3)), B = new Float32Array(Math.max(1, burls.length * 6));
+    eyes.forEach((e, i) => E.set([e.x, e.y, e.e], i * 3)); knots.forEach((k, i) => Kn.set([k.x, k.y, k.e], i * 3));
+    burls.forEach((b, i) => B.set([b.x0, b.y0, b.x1, b.y1, b.amp, b.seed], i * 6));
+    const pic = gpu.run('warp', w, h, { uSx0: x0, uSy0: y0, uRw: w, uRh: h, uNE: eyes.length, uNK: knots.length, uNB: burls.length, uEB: EB },
+      { uH: h, uCx: v.cx, uCy: v.cy, uCt: Math.cos(v.turn), uSt: Math.sin(v.turn), uTurn: v.turn, uUnit: px * Z, uKeep: 16 * px * Z },
+      { uNoise: { key: NOISE, data: () => NOISE }, uEyes: { name: 'eyes', data: E }, uKnots: { name: 'knots', data: Kn }, uBurls: { name: 'burls', data: B }, uEdge: { name: 'edge', data: edge } }, c);
+    if (pic) {
+      const cx = c.getContext('2d')!;
+      cx.save(); cx.setTransform(1, 0, 0, 1, 0, 0); cx.globalAlpha = 1; cx.globalCompositeOperation = 'source-over'; cx.clearRect(x0, y0, w, h); gpu.lay(cx, pic, x0, y0); cx.restore();
+      return;
+    }
+  }
   const ctx = c.getContext('2d')!, src = ctx.getImageData(x0, y0, w, h), out = ctx.createImageData(w, h), s = src.data, d = out.data;
   // (Never at the bark: the slice's own edge stays where it is, and the bark round it.)
-  const last = tree.rings[tree.rings.length - 1], edgeAt = (X: number, Y: number) => {
+  const edgeAt = (X: number, Y: number) => {
     const t = Math.atan2(v.cy - Y, X - v.cx) - v.turn;
     return v.s * warpR(v.warp, radiusAt(last, ((t % TAU) + TAU) % TAU));
   };
@@ -588,6 +609,11 @@ function demoYear(count = 365, start = (() => { const d = new Date(); d.setDate(
 /** The kept tree, if there is one (`?fresh` begins another). */
 async function recall(): Promise<void> {
   // (`?knots=6`: so many knots grown into the demo's years, to look at.)
+  // (`?burls=2`: so many burls, the same way.)
+  if (params.has('demo') && params.has('burls')) {
+    const n = Math.max(1, Number(params.get('demo')) || 365), q = Number(params.get('burls')) || 2;
+    for (let j = 0; j < q; j++) { const from = Math.floor(n * (0.2 + 0.5 * h1(j * 4.3 + 1))); marks.push({ kind: 'burl', a: h1(j * 5.1 + 2) * TAU, from, last: from + 2 + Math.floor(6 * h1(j * 2.2)), size: 2 + 5 * h1(j * 6.7), seed: 3000 + j * 6007 }); }
+  }
   if (params.has('demo') && params.has('knots')) {
     const n = Math.max(1, Number(params.get('demo')) || 365), q = Number(params.get('knots')) || 5;
     for (let j = 0; j < q; j++) { const from = Math.floor(n * (0.15 + 0.6 * h1(j * 3.1))); marks.push({ kind: 'knot', a: h1(j * 7.7) * TAU, from, last: from + 1 + Math.floor(5 * h1(j * 1.3)), size: 1 + 6 * h1(j * 5.9), seed: 1000 + j * 7919 }); }
@@ -2344,6 +2370,9 @@ function printFor(v: View, moving: boolean, slot = 'drawing', drift = false, pat
   const now = slot === 'drawing' && yearClosed && gpu.ready();
   if (now) yearClosed = false;
   if (!same && !now && (patient || pc || fading[slot]?.at === Infinity)) { pressSlowly(slot, v, key, false); return printCaches[slot]!; }
+  // (By hand, a picture that no longer covers the view is pressed a strip a frame like any other, the last
+  // scaled meanwhile: never all of it at once, seconds by hand, under the fingers.)
+  if (quick && !gpu.ready() && same) { pressSlowly(slot, v, key); return pc!; }
   if (!same || quick) {
     // (Wanted now: a new year, or nothing to show there. Pressed at once; or, if it's already being
     // pressed for these years, the rest of it at once.)
@@ -2791,6 +2820,30 @@ function worldOf() {
   const trees = all.map((a, j) => ({ ...a, wx: a.place ? a.place[0] : L.places[j].x, wy: a.place ? a.place[1] : L.places[j].y, wr: 1.3 * L.places[j].scale * crownSize(a.sp, a.n) }));
   // (And where the next will stand, when it's planted.)
   const nx = land(all.length + 1, seed).places[all.length], next = { wx: nx.x, wy: nx.y };
+  // (Crowns grown into each other eased apart, a little each way, until their lobes only touch (a crown reaches past
+  // its mean round, and grows a little fuller by the stream): a tree you set down
+  // by hand never moved.)
+  for (let it = 0; it < 24; it++) {
+    let moved = false;
+    for (let a = 0; a < trees.length; a++) for (let b = a + 1; b < trees.length; b++) {
+      const A = trees[a], B = trees[b], fa = A.place ? 0 : 1, fb = B.place ? 0 : 1;
+      if (!fa && !fb) continue;
+      const need = (A.wr + B.wr) * 1.15, dx = B.wx - A.wx, dy = B.wy - A.wy, d = Math.hypot(dx, dy);
+      if (d >= need) continue;
+      const ux = d > 1e-6 ? dx / d : 1, uy = d > 1e-6 ? dy / d : 0, push = (need - d) / (fa + fb);
+      A.wx -= ux * push * fa; A.wy -= uy * push * fa; B.wx += ux * push * fb; B.wy += uy * push * fb; moved = true;
+    }
+    // (And off the ground kept for the next tree.)
+    for (const A of trees) {
+      if (A.place) continue;
+      const need = A.wr + 0.5, dx = A.wx - next.wx, dy = A.wy - next.wy, d = Math.hypot(dx, dy);
+      if (d >= need) continue;
+      const ux = d > 1e-6 ? dx / d : 1, uy = d > 1e-6 ? dy / d : 0;
+      A.wx += ux * (need - d); A.wy += uy * (need - d); moved = true;
+    }
+    if (!moved) break;
+  }
+
   // (The whole of it in view, the trees and a little ground round them; never so close a crown fills the sheet.)
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   for (const t of [...trees, { ...next, wr: 0 }]) { x0 = Math.min(x0, t.wx - 1.6); x1 = Math.max(x1, t.wx + 1.6); y0 = Math.min(y0, t.wy - 1.6); y1 = Math.max(y1, t.wy + 1.6); }
@@ -2929,11 +2982,14 @@ function sunNow(): { sun: Sun; tint: [number, number, number, number]; key: stri
   const d = new Date(), h = params.has('hour') ? Number(params.get('hour')) : d.getHours() + d.getMinutes() / 60;
   const f = (h - 6) / 14, up = Math.sin(Math.PI * Math.max(0, Math.min(1, f)));
   const az = Math.PI / 2 + Math.PI * Math.max(0, Math.min(1, f)), dir = az + Math.PI, elev = Math.max(0.1, up * 0.95);
-  const sun: Sun = { dx: Math.sin(dir), dy: -Math.cos(dir), len: Math.min(1.6, 0.36 / Math.tan(elev)), strength: smooth(up / 0.2) };
+  // (Under cloud, rain or fog, the sun dimmed and the shadows with it: in steps, so the grove's light is drawn
+  // afresh, and crossfaded in, only now and then.)
+  const dim = overcast(skyNow(clock()));
+  const sun: Sun = { dx: Math.sin(dir), dy: -Math.cos(dir), len: Math.min(1.6, 0.36 / Math.tan(elev)), strength: smooth(up / 0.2) * (1 - 0.8 * dim) };
   // (Warm as the sun sets or rises; a cool wash at night.)
   const low = smooth(1 - up / 0.35) * (f > -0.05 && f < 1.05 ? 1 : 0), night = smooth((0.12 - up) / 0.12) * (f < 0 || f > 1 ? 1 : 0);
-  const tint: [number, number, number, number] = night > low ? [168, 178, 204, 0.38 * night] : [236, 196, 150, 0.35 * low];
-  return { sun, tint, key: `${Math.round(h * 4)}` };
+  const tint: [number, number, number, number] = night > low ? [168, 178, 204, 0.38 * night] : [236, 196, 150, 0.35 * low * (1 - 0.7 * dim)];
+  return { sun, tint, key: `${Math.round(h * 4)}|${dim}` };
 }
 /** How often each kept tree has been opened (by its seed): a path is worn to those opened often. */
 const visitsOf = (): Record<string, number> => { try { return JSON.parse(localStorage.getItem('annulus.visits') || '{}'); } catch { return {}; } };
@@ -3222,7 +3278,7 @@ function layGrove(cam: Cam, still: boolean): void {
   baseG = groveBase();
   const same = (a: Cam, b: Cam) => Math.abs(a.S - b.S) < 1e-3 * b.S && Math.abs(a.X0 - b.X0) < 0.5 && Math.abs(a.Y0 - b.Y0) < 0.5;
   // (Each crown stirred a little by the wind, its own way, the gusts coming and going.)
-  const t = clock();
+  const t = clock(), sky = skyNow(t);
   // (`over`: a view drawn for itself lies over this one there, so this is laid only round it, and none of
   // its crowns that view has too: never the ground washed twice, nor a crown doubled.)
   const lay = (from: { c: HTMLCanvasElement; cam: Cam; sprites: Sprite[] }, over?: { c: HTMLCanvasElement; cam: Cam; sprites: Sprite[] }) => {
@@ -3236,7 +3292,9 @@ function layGrove(cam: Cam, still: boolean): void {
       const ph = (s.x / W) * 2.2 + h1(s.k) * 0.4;
       // (And leaning in a breeze drawn across it, tossing a little as it goes by.)
       const [bx, by] = gusts.length ? breezeAt((s.x - from.cam.X0) / from.cam.S, (s.y - from.cam.Y0) / from.cam.S, t) : [0, 0], lean = Math.min(5 * px, s.r * 0.09) * q * (1 + 0.25 * Math.sin(t * 2.4 + ph));
-      const dx = bx * lean, dy = by * lean;
+      // (And the weather's own wind, leaning every crown a little its way, slowly, each in its own time.)
+      const sway = sky.wind > 0.1 ? Math.min(5 * px, s.r * 0.09) * q * (sky.wind - 0.1) * 0.7 * (0.75 + 0.25 * Math.sin(t * 1.1 + ph * 2)) : 0;
+      const dx = bx * lean + sky.windDx * sway, dy = by * lean + sky.windDy * sway;
       g.drawImage(s.c, X(s.x) - s.m * q + dx, Y(s.y) - s.m * q + dy, 2 * s.m * q, 2 * s.m * q);
     }
   };
@@ -3334,9 +3392,74 @@ function litterOf(tr: { x: number; y: number; r: number; k: number; sp: string; 
   }
   return out;
 }
+/**
+ * The weather where you are, over the grove (see weather.ts): cloud shadows drifting over it on the wind;
+ * rain, fine slanting strokes, the ground darker and cooler with it, rings opening on the stream; fog, a paler
+ * sheet drifting through; snow lying, a paler ground. Each only as much as there is of it, eased in.
+ */
+function drawWeather(cam: Cam, sky: Sky, t: number, U: number): void {
+  const w = worldOf(), [bx0, by0, bx1, by1] = w.box, spanX = bx1 - bx0 + 8, spanY = by1 - by0 + 8;
+  // (Where a thing drifting on the wind is now, in the world, wrapping round a field larger than the grove.)
+  const drift = (i: number, speed: number): [number, number] => {
+    const wx = bx0 - 4 + ((((h1(i * 1.31) * spanX + t * speed * sky.windDx) % spanX) + spanX) % spanX);
+    const wy = by0 - 4 + ((((h1(i * 2.17) * spanY + t * speed * sky.windDy) % spanY) + spanY) % spanY);
+    return [cam.X0 + wx * cam.S, cam.Y0 + wy * cam.S];
+  };
+  g.save();
+  // Cloud shadows: only where there's sun to cast them, most in a broken sky.
+  const broken = sky.cloud * (1 - sky.cloud) * 4 * sunNow().sun.strength;
+  if (broken > 0.03) {
+    g.globalCompositeOperation = 'multiply';
+    for (let i = 0; i < 12; i++) {
+      const [x, y] = drift(i + 40, 0.05 + 0.25 * sky.wind), r = (1 + 0.9 * h1(i * 5.3)) * cam.S;
+      const gr = g.createRadialGradient(x, y, 0, x, y, r);
+      gr.addColorStop(0, `rgba(96,100,112,${(0.24 * broken).toFixed(3)})`); gr.addColorStop(0.55, `rgba(96,100,112,${(0.17 * broken).toFixed(3)})`); gr.addColorStop(1, 'rgba(96,100,112,0)');
+      g.fillStyle = gr; g.save(); g.translate(x, y); g.scale(1.5, 1); g.translate(-x, -y); g.fillRect(x - r, y - r, 2 * r, 2 * r); g.restore();
+    }
+  }
+  // Rain: the ground darker and cooler where it's wet.
+  if (sky.rain > 0.02) {
+    g.globalCompositeOperation = 'multiply'; g.fillStyle = `rgba(178,186,194,${(0.35 * sky.rain).toFixed(3)})`; g.fillRect(0, 0, W, H);
+    g.globalCompositeOperation = 'source-over';
+    // (Rings opening on the stream, here and there, gone as they widen.)
+    const st = w.stream, n = Math.round(26 * sky.rain);
+    g.lineWidth = 0.5 * U;
+    for (let q = 0; q < n; q++) {
+      const per = 1.4 + h1(q * 3.7), cyc = Math.floor(t / per + h1(q)), p = (t / per + h1(q)) % 1, j = Math.floor(h1(cyc * 7.1 + q) * st.length);
+      const [sx, sy] = st[Math.min(st.length - 1, j)], o = (h1(cyc * 3.3 + q) - 0.5) * 0.18;
+      const x = cam.X0 + (sx + o) * cam.S, y = cam.Y0 + (sy - o) * cam.S;
+      if (x < -20 || x > W + 20 || y < -20 || y > H + 20) continue;
+      g.globalAlpha = 0.5 * (1 - p) * Math.min(1, p * 6); g.strokeStyle = 'rgb(84,104,116)';
+      g.beginPath(); g.ellipse(x, y, (0.4 + 2.6 * p) * U, (0.3 + 1.9 * p) * U, 0, 0, TAU); g.stroke();
+    }
+    // (The rain itself: fine strokes, slanting with the wind, falling past.)
+    const drops = Math.round(150 * sky.rain), sl = 0.15 + 0.6 * sky.wind, ax = sky.windDx * sl, len = (7 + 5 * sky.rain) * U;
+    g.strokeStyle = 'rgb(70,78,88)'; g.lineCap = 'round';
+    for (let q = 0; q < drops; q++) {
+      const v = (90 + 40 * h1(q * 2.3)) * U, m = 20 * U, Wm = W + 2 * m, Hm = H + 2 * m;
+      const y = ((h1(q * 3.1) * Hm + t * v) % Hm) - m, x = ((((h1(q * 1.7) * Wm + t * v * ax) % Wm) + Wm) % Wm) - m;
+      g.globalAlpha = (0.18 + 0.18 * h1(q * 9.7)) * Math.min(1, sky.rain * 3); g.lineWidth = (0.35 + 0.25 * h1(q * 4.1)) * U;
+      g.beginPath(); g.moveTo(x, y); g.lineTo(x - ax * len, y - len); g.stroke();
+    }
+    g.globalAlpha = 1;
+  }
+  // Snow lying: the ground paler under it.
+  if (sky.snow > 0.05) { g.globalCompositeOperation = 'screen'; g.fillStyle = `rgba(255,255,255,${(0.16 * sky.snow).toFixed(3)})`; g.fillRect(0, 0, W, H); }
+  // Fog: a paler sheet, thicker in drifting banks.
+  if (sky.fog > 0.02) {
+    g.globalCompositeOperation = 'source-over'; g.fillStyle = `rgba(244,239,228,${(0.32 * sky.fog).toFixed(3)})`; g.fillRect(0, 0, W, H);
+    for (let i = 0; i < 7; i++) {
+      const [x, y] = drift(i + 80, 0.04 + 0.1 * sky.wind), r = (2.5 + 2 * h1(i * 7.7)) * cam.S;
+      const gr = g.createRadialGradient(x, y, 0, x, y, r);
+      gr.addColorStop(0, `rgba(246,242,233,${(0.4 * sky.fog).toFixed(3)})`); gr.addColorStop(1, 'rgba(246,242,233,0)');
+      g.fillStyle = gr; g.save(); g.translate(x, y); g.scale(2.2, 1); g.translate(-x, -y); g.fillRect(x - r, y - r, 2 * r, 2 * r); g.restore();
+    }
+  }
+  g.restore();
+}
 const litterMemo = new Map<number, { key: string; lit: ReturnType<typeof litterOf> }>();
 function drawLife(cam: Cam): void {
-  const t = clock(), season = seasonNow(), L = groveLayout(cam).trees, wind = 0.55 + 0.45 * vnoise(t * 0.12, 3.7), U = px * Math.sqrt(Math.max(1, cam.S / worldOf().whole.S));
+  const t = clock(), season = seasonNow(), L = groveLayout(cam).trees, wind = 0.55 + 0.45 * vnoise(t * 0.12, 3.7), U = px * Math.sqrt(Math.max(1, cam.S / worldOf().whole.S)), sky = skyNow(t);
   g.save();
   if (season === 'autumn' || season === 'spring') {
     for (const tr of L) {
@@ -3359,7 +3482,9 @@ function drawLife(cam: Cam): void {
         const ta = Math.atan2(to.y - tr.y, to.x - tr.x), x0 = tr.x + Math.cos(ta) * tr.r * 0.85, y0 = tr.y + Math.sin(ta) * tr.r * 0.85;
         const air = 1 - e, ph = fall * 5.5 + q * 2 + h1(cyc + q) * 3, rock = Math.sin(ph);
         const nx = -Math.sin(ta), ny = Math.cos(ta), sw = rock * to.len * 1.1 * air;
-        const x = x0 + (to.x - x0) * e + nx * sw, y = y0 + (to.y - y0) * e + ny * sw;
+        // (Carried a little downwind as it falls, coming back to where it lies.)
+        const carry = air * sky.wind * tr.r * 0.5;
+        const x = x0 + (to.x - x0) * e + nx * sw + sky.windDx * carry, y = y0 + (to.y - y0) * e + ny * sw + sky.windDy * carry;
         // (Tilting into each swing; turning over only now and then, slowly.)
         const flip = fall < 1 ? 0.35 + 0.65 * Math.abs(Math.cos(ph * 0.5 + q)) : 1, rot = to.rot + air * 0.6 * Math.cos(ph);
         // (Down, it's one with the leaf already lying there: gone into it at once, never two inked over one.)
@@ -3369,11 +3494,14 @@ function drawLife(cam: Cam): void {
         leafAt(g, x, y, to.len * (1 + 0.35 * air), rot, flip, to.col, U, al);
       }
     }
-  } else if (season === 'winter') {
-    for (let q = 0; q < 70; q++) {
+  }
+  const flakes = Math.max(season === 'winter' ? 70 : 0, Math.round(130 * sky.snow));
+  if (flakes) {
+    for (let q = 0; q < flakes; q++) {
       // (Coming in past the sheet's edge and going out past it, fading as it goes: never there and then not.)
       const m = 8 * U, Wm = W + 2 * m, Hm = H + 2 * m;
-      const x = (((h1(q * 1.7) * Wm + t * (6 + 10 * wind) * U * (0.6 + h1(q))) % Wm) + Wm) % Wm - m, y = (h1(q * 3.1) * Hm + t * 14 * U * (0.6 + 0.6 * h1(q * 5))) % Hm - m;
+      const blow = (6 + 10 * wind + 30 * sky.wind) * U * (0.6 + h1(q)), sx = sky.wind > 0.2 ? sky.windDx : 1;
+      const x = (((h1(q * 1.7) * Wm + t * blow * sx) % Wm) + Wm) % Wm - m, y = (((h1(q * 3.1) * Hm + t * (14 * U * (0.6 + 0.6 * h1(q * 5)) + blow * Math.max(0, sky.windDy) * 0.5)) % Hm) + Hm) % Hm - m;
       g.globalAlpha = 0.85 * Math.max(0, Math.min(1, (y + m) / (0.06 * H), (H + m - y) / (0.06 * H))); g.beginPath(); g.arc(x + Math.sin(t + q) * 3 * U, y, (0.8 + 0.8 * h1(q * 7)) * U, 0, TAU);
       g.fillStyle = '#fdfcf9'; g.fill(); g.strokeStyle = ink(0.25); g.lineWidth = 0.4 * U; g.stroke();
     }
@@ -3388,7 +3516,9 @@ function drawLife(cam: Cam): void {
   if (ruffle.length !== st.length) ruffle = new Float32Array(st.length);
   const calmBy = Math.exp(-Math.min(0.1, t - (ruffledAt || t)) / 0.9);
   ruffledAt = t;
-  let ruffled = false;
+  // (The weather's own wind and rain on it too, all along it, as long as they last.)
+  const amb = Math.max(0, sky.wind - 0.25) * 0.6 + 0.2 * sky.rain;
+  let ruffled = amb > 0.03;
   for (let i = 0; i < st.length; i++) {
     const m = gusts.length ? Math.hypot(...breezeAt(st[i][0], st[i][1], t)) : 0;
     ruffle[i] = Math.max(ruffle[i] * calmBy, m);
@@ -3399,9 +3529,9 @@ function drawLife(cam: Cam): void {
     const P = (x: number, y: number): [number, number] => [cam.X0 + x * S, cam.Y0 + y * S];
     g.lineCap = 'round';
     for (let i = 1; i < st.length - 1; i++) {
-      const m = ruffle[i];
+      const m = Math.max(ruffle[i], amb);
       if (m < 0.03) continue;
-      const [bx, by] = gusts.length ? breezeAt(st[i][0], st[i][1], t) : [0, 0];
+      const [bx, by] = gusts.length && ruffle[i] > amb ? breezeAt(st[i][0], st[i][1], t) : [sky.windDx, sky.windDy];
       const tx0 = st[i + 1][0] - st[i - 1][0], ty0 = st[i + 1][1] - st[i - 1][1], tl = Math.hypot(tx0, ty0) || 1, tx = tx0 / tl, ty = ty0 / tl, nx = -ty, ny = tx;
       const drift = Math.sign(bx * tx + by * ty || 1), seg = tl / 2;
       for (let q = 0; q < 3; q++) {
@@ -3433,6 +3563,7 @@ function drawLife(cam: Cam): void {
     g.fillStyle = `rgb(${l.col[0]},${l.col[1]},${l.col[2]})`; g.fill(); g.strokeStyle = ink(0.5); g.lineWidth = 0.4 * U; g.stroke(); g.restore();
   }
   g.globalAlpha = 1;
+  drawWeather(cam, sky, t, U);
   const { tint } = sunNow();
   if (tint[3] > 0.01) { g.globalCompositeOperation = 'multiply'; g.fillStyle = `rgba(${tint[0]},${tint[1]},${tint[2]},${tint[3].toFixed(3)})`; g.fillRect(0, 0, W, H); }
   g.restore();
@@ -3489,7 +3620,15 @@ function drawFar(v: View): void {
  * A copy of everything (the grove, and today's tree), kept as a file somewhere safe; and one taken back.
  * Pencilled small at the foot of the grove.
  */
-const copyAt = () => ({ keep: [W / 2 - 52 * px, H - 44 * px] as [number, number], back: [W / 2 + 52 * px, H - 44 * px] as [number, number] });
+const copyAt = () => ({ keep: [W / 2 - 112 * px, H - 44 * px] as [number, number], back: [W / 2, H - 44 * px] as [number, number], sky: [W / 2 + 112 * px, H - 44 * px] as [number, number] });
+/** Said in pencil beside them: whether the grove takes the weather where you are. */
+const skyWords = () => (weatherOn() ? 'your weather' : 'bring your weather');
+async function toggleWeather(): Promise<void> {
+  if (weatherOn()) { await setWeather(false); say('The grove keeps its own weather again.', 4); return; }
+  say('Asking where you are, only roughly.', 6);
+  const on = await setWeather(true);
+  say(on ? 'The grove has the weather where you are now, as it changes.' : 'Without where you are, the grove keeps its own weather.', 5);
+}
 function drawCopyWords(al: number): void {
   if (al <= 0.01 || visit) return;
   const c = copyAt();
@@ -3497,11 +3636,12 @@ function drawCopyWords(al: number): void {
   g.font = `italic ${13 * px}px Newsreader, "Iowan Old Style", Georgia, serif`;
   // (On a clearing of paper of their own: never written over the map.)
   {
-    const cx = W / 2, cy = c.keep[1], rx = 150 * px, ry = 22 * px, gr = g.createRadialGradient(cx, cy, 0, cx, cy, rx);
+    const cx = W / 2, cy = c.keep[1], rx = 200 * px, ry = 22 * px, gr = g.createRadialGradient(cx, cy, 0, cx, cy, rx);
     gr.addColorStop(0, 'rgba(244,239,228,1)'); gr.addColorStop(0.7, 'rgba(244,239,228,0.92)'); gr.addColorStop(1, 'rgba(244,239,228,0)');
     g.save(); g.globalAlpha = al; g.translate(cx, cy); g.scale(1, ry / rx); g.translate(-cx, -cy); g.fillStyle = gr; g.fillRect(cx - rx, cy - rx, 2 * rx, 2 * rx); g.restore();
   }
   g.fillText('keep a copy', ...c.keep); g.fillText('take one back', ...c.back);
+  g.globalAlpha = al * (weatherOn() ? 0.85 : 0.6); g.fillText(skyWords(), ...c.sky);
   g.restore();
 }
 async function keepGroveCopy(): Promise<void> {
@@ -3519,7 +3659,7 @@ async function keepGroveCopy(): Promise<void> {
  */
 const backInput = (() => {
   const i = document.createElement('input'); i.type = 'file'; i.accept = 'application/json,.json';
-  Object.assign(i.style, { position: 'fixed', opacity: '0', width: '120px', height: '36px', transform: 'translate(-50%, -50%)', display: 'none', zIndex: '5', cursor: 'pointer' });
+  Object.assign(i.style, { position: 'fixed', opacity: '0', width: '100px', height: '36px', transform: 'translate(-50%, -50%)', display: 'none', zIndex: '5', cursor: 'pointer' });
   i.onchange = () => { const f = i.files?.[0]; i.value = ''; if (f) void takeGroveCopy(f); };
   document.body.append(i);
   return i;
@@ -3540,7 +3680,7 @@ async function takeGroveCopy(file: File): Promise<void> {
 }
 /** Touched in the grove: an older tree opens to its slice; today's comes home. */
 function tapGrove(x: number, y: number): void {
-  { const c = copyAt(); if (!visit && y > c.keep[1] - 18 * px && y < c.keep[1] + 18 * px) { if (Math.abs(x - c.keep[0]) < 50 * px) { void keepGroveCopy(); return; } if (Math.abs(x - c.back[0]) < 56 * px) return; } }
+  { const c = copyAt(); if (!visit && y > c.keep[1] - 18 * px && y < c.keep[1] + 18 * px) { if (Math.abs(x - c.keep[0]) < 48 * px) { void keepGroveCopy(); return; } if (Math.abs(x - c.back[0]) < 50 * px) return; if (Math.abs(x - c.sky[0]) < 58 * px) { void toggleWeather(); return; } } }
   const L = groveLayout(), w = worldOf();
   // (The next tree's ground: a new tree, if they say so.)
   if (!visit && Math.hypot(x - (L.cam.X0 + w.next.wx * L.cam.S), y - (L.cam.Y0 + w.next.wy * L.cam.S)) < Math.max(22 * px, 0.6 * L.cam.S)) { plantAgain(); return; }

@@ -372,11 +372,59 @@ void main() {
 }
 `;
 
+/**
+ * The wood pulled about round its knots and burls, as press.ts's warpMarks does it: each pixel read from a little
+ * way off (nearer a burl's bud speck or a knot; wandering over a burl), never at the bark.
+ */
+const WARP = COMMON + `
+uniform sampler2D uSrc, uEyes, uKnots, uBurls, uEdge;
+uniform int uSx0, uSy0, uRw, uRh, uNE, uNK, uNB, uEB;
+uniform float uH, uCx, uCy, uCt, uSt, uTurn, uUnit, uKeep;
+vec4 px(int x, int y) { ivec2 n = textureSize(uSrc, 0); return texelFetch(uSrc, ivec2(clamp(x, 0, n.x - 1), clamp(y, 0, n.y - 1)), 0); }
+void main() {
+  int x = int(gl_FragCoord.x), y = int(uH) - 1 - int(gl_FragCoord.y);
+  float X = float(x + uSx0), Y = float(y + uSy0), sx = X, sy = Y;
+  for (int i = 0; i < uNB; i++) {
+    float b0 = at(uBurls, i * 6), b1 = at(uBurls, i * 6 + 1), b2 = at(uBurls, i * 6 + 2), b3 = at(uBurls, i * 6 + 3), amp = at(uBurls, i * 6 + 4), seed = at(uBurls, i * 6 + 5);
+    float dx = max(max(b0 - X, 0.), X - b2), dy = max(max(b1 - Y, 0.), Y - b3), q = length(vec2(dx, dy)) / (amp * 4.), fade = exp(-q * q);
+    if (fade < 0.02) continue;
+    float lx = (X - uCx) / uUnit, ly = (uCy - Y) / uUnit, wx = lx * uCt + ly * uSt, wy = -lx * uSt + ly * uCt, L = uUnit / (amp * 3.5);
+    float nx = (vnoise(wx * L + seed * 0.001, wy * L) - 0.5) * 2., ny = (vnoise(wx * L + 37.1, wy * L + seed * 0.001) - 0.5) * 2., k = fade * amp * 1.6;
+    sx += k * (nx * uCt - ny * uSt); sy -= k * (nx * uSt + ny * uCt);
+  }
+  for (int i = 0; i < uNE; i++) {
+    float ex = at(uEyes, i * 3), ey = at(uEyes, i * 3 + 1), R = at(uEyes, i * 3 + 2) * 2.2;
+    float dx = X - ex, dy = Y - ey, dd = max(1e-3, length(vec2(dx, dy)));
+    if (dd > R * 2.5) continue;
+    float q = dd / R, pull = min(0.85 * dd, R * exp(-q * q));
+    sx -= dx / dd * pull; sy -= dy / dd * pull;
+  }
+  for (int i = 0; i < uNK; i++) {
+    float kx = at(uKnots, i * 3), ky = at(uKnots, i * 3 + 1), R = at(uKnots, i * 3 + 2) * 1.5;
+    float dx = X - kx, dy = Y - ky, dd = max(1e-3, length(vec2(dx, dy)));
+    if (dd > R * 3.) continue;
+    float q = dd / (R * 1.1), pull = min(0.7 * dd, R * exp(-q * q));
+    sx -= dx / dd * pull; sy -= dy / dd * pull;
+  }
+  if (sx != X || sy != Y) {
+    float t = atan(uCy - Y, X - uCx) - uTurn; t = mod(t, TAU);
+    float j = t / TAU * float(uEB), j0 = floor(j); int i0 = int(j0) % uEB;
+    float e = mix(at(uEdge, i0), at(uEdge, (i0 + 1) % uEB), j - j0), r = length(vec2(X - uCx, Y - uCy)), keep = sm((e - r) / uKeep);
+    sx = X + (sx - X) * keep; sy = Y + (sy - Y) * keep;
+  }
+  // (Bilinear, inside the piece read: as the canvas holds it, premultiplied.)
+  float lx = clamp(sx - float(uSx0), 0., float(uRw) - 1.001), ly = clamp(sy - float(uSy0), 0., float(uRh) - 1.001);
+  float fx0 = floor(lx), fy0 = floor(ly), fx = lx - fx0, fy = ly - fy0;
+  int ix = int(fx0) + uSx0, iy = int(fy0) + uSy0;
+  vec4 a = px(ix, iy), b = px(ix + 1, iy), c = px(ix, iy + 1), d = px(ix + 1, iy + 1);
+  o = a + (b - a) * fx + (c - a) * fy + (a - b - c + d) * fx * fy;
+}`;
+
 const VERT = `#version 300 es
 void main() { vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2)); gl_Position = vec4(p * 2. - 1., 0., 1.); }
 `;
 
-export type Pass = 'years' | 'grain' | 'ground' | 'wash' | 'hatch';
+export type Pass = 'years' | 'grain' | 'ground' | 'wash' | 'hatch' | 'warp';
 type Prog = { p: WebGLProgram; loc: Map<string, WebGLUniformLocation | null> };
 let canvas: HTMLCanvasElement | null = null, gl: WebGL2RenderingContext | null = null, failed = false;
 const progs: Record<string, Prog> = {};
@@ -385,6 +433,8 @@ let kept = new WeakMap<object, WebGLTexture>();
 /** Textures remade each press (the radii, the rings' facts), by name. */
 const fresh: Record<string, WebGLTexture> = {};
 let srcTex: WebGLTexture | null = null;
+/** Since when the chip's canvas has been far larger than asked for, and the most asked meanwhile. */
+let bigSince = 0, askedW = 0, askedH = 0;
 
 function context(): WebGL2RenderingContext | null {
   if (failed) return null;
@@ -398,7 +448,7 @@ function context(): WebGL2RenderingContext | null {
     for (const k in progs) delete progs[k];
     for (const k in fresh) delete fresh[k];
     srcTex = null;
-    progs.years = build(gl, YEARS); progs.grain = build(gl, GRAIN); progs.ground = build(gl, GROUND); progs.wash = build(gl, WASH); progs.hatch = build(gl, HATCH);
+    progs.years = build(gl, YEARS); progs.grain = build(gl, GRAIN); progs.ground = build(gl, GROUND); progs.wash = build(gl, WASH); progs.hatch = build(gl, HATCH); progs.warp = build(gl, WARP);
     return gl;
   } catch (e) {
     console.warn('press: no graphics chip, pressing by hand', e);
@@ -470,7 +520,15 @@ export function run(which: Pass, w: number, h: number, ints: Uniforms, floats: U
   if (!g || !canvas) return null;
   const pr = progs[which];
   // (The chip's canvas only ever grows: the picture is drawn in its lower left corner, and taken from there.)
-  if (canvas.width < w || canvas.height < h) { canvas.width = Math.max(canvas.width, w); canvas.height = Math.max(canvas.height, h); }
+  if (canvas.width < w || canvas.height < h) { canvas.width = Math.max(canvas.width, w); canvas.height = Math.max(canvas.height, h); bigSince = 0; }
+  // (But let go of, back to what's asked, once it's been far larger than anything asked for a while: after a
+  // turn of the phone, say. Its memory is the phone's, and a few seconds' passes are enough to know.)
+  else if (canvas.width * canvas.height > 4 * w * h) {
+    const now = performance.now();
+    askedW = Math.max(askedW, w); askedH = Math.max(askedH, h);
+    if (!bigSince) bigSince = now;
+    else if (now - bigSince > 10e3 && canvas.width * canvas.height > 4 * askedW * askedH) { canvas.width = askedW; canvas.height = askedH; bigSince = 0; askedW = askedH = 0; }
+  } else { bigSince = 0; askedW = askedH = 0; }
   g.viewport(0, 0, w, h);
   g.useProgram(pr.p);
   const loc = (n: string) => { if (!pr.loc.has(n)) pr.loc.set(n, g.getUniformLocation(pr.p, n)); return pr.loc.get(n)!; };
