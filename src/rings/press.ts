@@ -28,7 +28,7 @@ import { brushAt, radiusAt, scaleFor, unwarpR, warpFor, warpR, type View, type W
 import { at, paperTooth } from './draw';
 import { Paper } from './paint';
 import { dayDate, dayOf } from './days';
-import { climate, growth as growthOf } from './growing';
+import { climate, growth as growthOf, lobes } from './growing';
 import { crownSize, groundGpu, drawCrown, drawHill, drawMeadow, drawMoss, drawSeedling, drawStream, drawTrack, washFlat, shadeOf, heightAt, land, pigment, seasonOf, snowHill, washCrown, washHill, type CrownForm, type Hill, type Season, type Sun } from './grove';
 import { holdStill, steadySize } from './steady';
 import { fromText, grove, keepInGrove, keepTree, recallTree, setGrove, snapshotTree, toText, treeFrom, type KeptTree, type WoodMark } from './save';
@@ -471,7 +471,9 @@ const youth = (n: number) => (0.72 + 0.28 * smooth(n / 2.5)) * (1 + 0.32 * Math.
  */
 const evenUp = (a: number) => (0.8 * SPEC[kind].even * (tree.radius - radiusAt((i) => tree.inner(i), a))) / Math.max(1e-3, tree.radius);
 /** How the tree itself grows round its girth, besides the hand (see `growing.ts`), and its lean. */
-const growth = (a: number, n = tree.rings.length) => Math.pow(growthOf(tree.seed, a, n), SPEC[kind].amp) * SPEC[kind].width * alive(a, n) * leanOf(a, n) * fluteOf(a, n);
+/** How lobed each wood grows (its bulges, besides its lean and swells). */
+const LOBES: Partial<Record<Kind, number>> = { olive: 2.2, juniper: 1.6, bristlecone: 1.1, cherry: 0.35, maple: 0.3 };
+const growth = (a: number, n = tree.rings.length) => Math.pow(growthOf(tree.seed, a, n), SPEC[kind].amp) * lobes(tree.seed, a, n, LOBES[kind] ?? 0) * SPEC[kind].width * alive(a, n) * leanOf(a, n) * fluteOf(a, n);
 /**
  * A tree is never grown evenly round: it leans, or the light comes from one side, and year after year it lays
  * more wood on that side than the other, so its heart sits off the middle, the years wide on one side and close
@@ -537,20 +539,20 @@ const SPEC: Record<Kind, {
   /** Its years' lines and tone, drawn (diffuse and conifer). */
   line: number; tone: number; resin: boolean;
 }> = {
-  oak: { family: 'ring', bark: FISSURED, barkCss: [3, 0.045, 9], amp: 1, width: 1, even: 1, line: 0.85, tone: 1, resin: false },
+  oak: { family: 'ring', bark: FISSURED, barkCss: [3, 0.045, 9], amp: 1.1, width: 1, even: 1, line: 0.85, tone: 1, resin: false },
   ash: { family: 'ring', bark: { ...FISSURED, mean: 5, deep: [0.25, 0.6, 1] }, barkCss: [2.5, 0.04, 8], amp: 1, width: 1.05, even: 1, line: 0.85, tone: 1, resin: false },
-  cherry: { family: 'diffuse', bark: { ...PLATES, lumps: 90, mean: 10 }, barkCss: [2, 0.03, 6], amp: 1.1, width: 0.9, even: 1, line: 0.85, tone: 1, resin: false },
-  maple: { family: 'diffuse', bark: { ...FISSURED, lumps: 120, mean: 9, deep: [0.1, 0.5, 1.5] }, barkCss: [2.5, 0.035, 7], amp: 1, width: 1, even: 1, line: 0.85, tone: 1, resin: false },
+  cherry: { family: 'diffuse', bark: { ...PLATES, lumps: 90, mean: 10 }, barkCss: [2, 0.03, 6], amp: 1.25, width: 0.9, even: 1, line: 0.85, tone: 1, resin: false },
+  maple: { family: 'diffuse', bark: { ...FISSURED, lumps: 120, mean: 9, deep: [0.1, 0.5, 1.5] }, barkCss: [2.5, 0.035, 7], amp: 1.15, width: 1, even: 1, line: 0.85, tone: 1, resin: false },
   birch: { family: 'diffuse', bark: 'papery', barkCss: [1.6, 0.02, 3.5], amp: 1, width: 1, even: 1, line: 0.85, tone: 1, resin: false },
   pine: { family: 'conifer', bark: PLATES, barkCss: [3.5, 0.055, 11], amp: 1, width: 1, even: 1, line: 0.85, tone: 1, resin: true },
   redwood: { family: 'conifer', bark: { lumps: 220, plate: false, mean: 4, deep: [0.3, 0.6, 1], wide: 0.7 }, barkCss: [5, 0.08, 16], amp: 0.7, width: 1.3, even: 1.2, line: 0.85, tone: 1, resin: false },
-  bristlecone: { family: 'conifer', bark: { ...PLATES, lumps: 60, mean: 15 }, barkCss: [2, 0.03, 6], amp: 1.8, width: 0.45, even: 0.3, line: 0.85, tone: 1, resin: true },
-  olive: { family: 'diffuse', bark: { lumps: 160, plate: false, mean: 11, deep: [0.1, 0.4, 1], wide: 1 }, barkCss: [1.5, 0.02, 4], amp: 2.2, width: 0.8, even: 0.15, line: 0.85, tone: 1, resin: false },
+  bristlecone: { family: 'conifer', bark: { ...PLATES, lumps: 60, mean: 15 }, barkCss: [2, 0.03, 6], amp: 2.5, width: 0.45, even: 0.3, line: 0.85, tone: 1, resin: true },
+  olive: { family: 'diffuse', bark: { lumps: 160, plate: false, mean: 11, deep: [0.1, 0.4, 1], wide: 1 }, barkCss: [1.5, 0.02, 4], amp: 2.4, width: 0.8, even: 0.15, line: 0.85, tone: 1, resin: false },
   // Douglas fir: wide years when young, each a pale earlywood ending in a sharp, very dark latewood; a thick,
   // corky bark, deeply furrowed.
   fir: { family: 'conifer', bark: { lumps: 110, plate: false, mean: 6, deep: [0.35, 0.9, 1.6], wide: 1.2 }, barkCss: [4.5, 0.07, 15], amp: 0.9, width: 1.15, even: 1, line: 0.85, tone: 1, resin: true },
   // Juniper: close, fine years, uneven round it, the trunk fluted into lobes; a thin bark in long shreds.
-  juniper: { family: 'conifer', bark: { lumps: 260, plate: false, mean: 3, deep: [0.2, 0.5, 0.9], wide: 0.5 }, barkCss: [1.6, 0.02, 4], amp: 1.5, width: 0.6, even: 0.25, line: 0.85, tone: 1, resin: false },
+  juniper: { family: 'conifer', bark: { lumps: 260, plate: false, mean: 3, deep: [0.2, 0.5, 0.9], wide: 0.5 }, barkCss: [1.6, 0.02, 4], amp: 2.3, width: 0.6, even: 0.25, line: 0.85, tone: 1, resin: false },
 };
 const KINDS = Object.keys(SPEC) as Kind[];
 /** (Each wood answers the same loop its own way, never said: found by drawing.) */
@@ -1808,10 +1810,13 @@ function drawPrint(v: View): void {
   // (in plates: fewer, shallower splits, flatter between; the redwood's thick and stringy; the olive's thin).
   // (The bristlecone's gone where it has died back.)
   // (A rough, broken band: thinner than the wood's own measure, its outer edge bitten in and out.)
-  const bark = barkOf(n - 1), T = barkCss(v) * px * 0.78, lumps = bk.lumps, live = (a: number) => (kind === 'bristlecone' ? 0.08 + 0.92 * smooth((alive(a) - 0.25) / 0.6) : 1);
+  const bark = barkOf(n - 1), T = barkCss(v) * px * 1.1, lumps = bk.lumps, live = (a: number) => (kind === 'bristlecone' ? 0.08 + 0.92 * smooth((alive(a) - 0.25) / 0.6) : 1);
   const torn = (a: number) => { const u = (a / TAU) * lumps, i0 = Math.floor(u), f = u - i0, s2 = bk.plate ? (f < 0.85 ? 0 : (f - 0.85) / 0.15) : f * f * (3 - 2 * f); return Math.max(0, ((1 - s2) * h1(i0 % lumps) + s2 * h1((i0 + 1) % lumps)) * 1.25 - 0.25 + 0.35 * (noise(a * 23 + tree.seed * 0.01) - 0.5)) * live(a); };
   g.beginPath();
-  for (let j = 0; j <= K * 3; j++) { const a = (j / (K * 3)) * TAU, [x, y] = pt(a, bark(a), T * (0.7 + 0.55 * torn(a)) * live(a)); if (j) g.lineTo(x, y); else g.moveTo(x, y); }
+  // (Broken away in runs, as dried bark comes off a slice: there a ragged sliver left, here its full thickness.)
+  const kept2 = (a: number) => 0.18 + 0.82 * smooth((noise(tree.seed * 0.031 + (a / TAU) * 7) - 0.3) / 0.14);
+  const thick = (a: number) => T * (0.5 + 0.95 * torn(a)) * live(a) * kept2(a);
+  for (let j = 0; j <= K * 3; j++) { const a = (j / (K * 3)) * TAU, [x, y] = pt(a, bark(a), thick(a)); if (j) g.lineTo(x, y); else g.moveTo(x, y); }
   for (let j = K * 3; j >= 0; j--) { const a = (j / (K * 3)) * TAU, [x, y] = pt(a, bark(a)); g.lineTo(x, y); }
   g.closePath(); g.fillStyle = ink(0.82); g.fill();
   // (Its fissures: splits from the outside in, never evenly spaced: in runs and gaps, some shallow, some
@@ -1822,7 +1827,7 @@ function drawPrint(v: View): void {
     let a = h1(tree.seed * 0.17) * TAU, q = 0;
     const end = a + TAU - mean * 0.5;
     while (a < end && q < 4000) {
-      const k = q++, out = T * (0.7 + 0.55 * torn(a)) * live(a), deep = bk.deep[0] + bk.deep[1] * h1(k * 4.4) ** bk.deep[2];
+      const k = q++, out = thick(a), deep = bk.deep[0] + bk.deep[1] * h1(k * 4.4) ** bk.deep[2];
       const w0 = (0.35 + 0.8 * h1(k * 3.1) ** 2) * px * Z * bk.wide, bend = (h1(k * 7.9) - 0.5) * 0.03, R0 = Math.max(1, scr(bark(a)));
       g.beginPath();
       for (let j = 0; j <= 6; j++) { const f = j / 6, [x, y] = pt(a + bend * f * f + (w0 * (1 - f)) / R0, bark(a), out * (1 - deep * f)); if (j) g.lineTo(x, y); else g.moveTo(x, y); }
@@ -1847,24 +1852,26 @@ function drawPrint(v: View): void {
     // `wide` px where it began, a hairline at its end. Stroked a short piece at a time, each as wide as the crack
     // is there, its ends round, so it turns along a ring and back without a seam.)
     const crack = (q: number, a0: number, deep: number, wide: number, fromHeart: boolean) => {
+      // (`a0` its line: moved on only where it steps along a ring.)
       const pts: [number, number][] = [], along: number[] = [];
       let a = a0, f = 0, stepping = 0, dir = 1, held = 0, stepped = false;
       const steps = 60;
       for (let j = 0; j <= steps * 2 && f <= 1; j++) {
         if (stepping > 0) {
           // (Along the ring it met: the radius held at that year's edge, the angle moving on.)
-          pts.push([a, barkOf(held)(a)]); along.push(pts.length - 1); a += dir * 0.012; stepping--;
+          pts.push([a, barkOf(held)(a)]); along.push(pts.length - 1); a += dir * 0.012; a0 += dir * 0.012; stepping--;
           continue;
         }
         const rr = Math.max(tree.k.pith * 1.5, bark(a) * (fromHeart ? f * deep : 1 - f * deep));
         pts.push([a, rr]);
         f += 1 / steps;
-        a += (noise(q * 9 + f * 3) - 0.5) * 0.03;
+        // (Straight in from the bark, as wood splits along its rays: only a little jagged, never wandering off.)
+        a = a0 + (noise(q * 9 + f * 7) - 0.5) * 0.022 + (noise(q * 4 + f * 31) - 0.5) * 0.008;
         // (Once in a while, at a year's edge, it turns along it for a short way.)
-        if (f > 0.4 && f < 0.85 && !stepped && h1(q * 5.3 + j * 0.77) < 0.045) {
+        if (f > 0.4 && f < 0.85 && !stepped && h1(q * 5.3 + j * 0.77) < 0.012) {
           stepped = h1(q * 8.1) > 0.4;
           let i = 0; while (i < n - 1 && meanR(i) < rr) i++;
-          held = Math.max(0, i - 1); stepping = 5 + Math.floor(h1(q * 2.1 + j) * 9); dir = h1(q * 3.9 + j) < 0.5 ? -1 : 1;
+          held = Math.max(0, i - 1); stepping = 2 + Math.floor(h1(q * 2.1 + j) * 4); dir = h1(q * 3.9 + j) < 0.5 ? -1 : 1;
         }
       }
       const L = pts.length;
@@ -1985,7 +1992,7 @@ function drawBirchBark(v: View, pt: (a: number, r: number, dr?: number) => [numb
  * rays run on from year to year, and where the slice has doubled in size, a new run begins (as new rays
  * do). Fine rings take a smaller copy of the year, so they never shimmer.
  */
-let yearsMemo: { key: string; oak: Years | null; rad: Float32Array; reps: Float32Array; off: Float32Array; yr: Int32Array; lvl: Int32Array; runR: Float32Array; thin: Float32Array; edge: Uint8Array; gapOf: Float32Array; edgeIn: Int32Array; edgeOut: Int32Array } | null = null;
+let yearsMemo: { key: string; oak: Years | null; rad: Float32Array; reps: Float32Array; off: Float32Array; yr: Int32Array; lvl: Int32Array; runR: Float32Array; thin: Float32Array; edge: Uint8Array; gapOf: Float32Array; edgeIn: Int32Array; edgeOut: Int32Array; dens: Float32Array } | null = null;
 function printYears(v: View, oak: Years | null): void {
   const n = tree.rings.length, c = g.canvas as HTMLCanvasElement, B = 720, Z = Math.max(1, look.k);
   const scr = (r: number) => v.s * warpR(v.warp, r);
@@ -2018,25 +2025,41 @@ function printYears(v: View, oak: Years | null): void {
       const w = (scr(meanR(i)) - scr(meanR(i - 1)));
       lvl[i] = Math.max(0, Math.min(oak.levels.length - 1, Math.ceil(Math.log2(oak.year / Math.max(0.5, w)))));
     }
-    // (Years too fine to print apart, a day's ring at the grown tree's scale: the wood, so many years to a
-    // pixel, would print solid; so it prints at about half its tone, and as many of its years as the screen
-    // can part (one every 3 to 5 px, never evenly) print as a line at their edge, as the drawn woods' fine years do.)
-    const thin = new Float32Array(n), edge = new Uint8Array(n), gapOf = new Float32Array(n);
-    let lastR = scr(meanR(-1));
+    // (Years too fine to print apart, a day's ring at the grown tree's scale: as a print takes such wood, a block
+    // of ink, darker where the years ran narrow (more latewood to the mm), a little paler where they ran wide;
+    // and cut through it, pale, the earlywood of the years wide enough to stand out from those round them, as
+    // the hand drew them: never lines ruled at a spacing of their own. Never closer than the screen can part,
+    // and never so far apart the block goes blank: past that, the widest year since the last.)
+    const thin = new Float32Array(n), edge = new Uint8Array(n), gapOf = new Float32Array(n), dens = new Float32Array(n);
+    const wd = new Float32Array(n);
+    for (let i = 0; i < n; i++) { wd[i] = Math.max(1e-6, widthAt(i)); thin[i] = 1 - smooth((wd[i] / Z - 1.2 * px) / (3 * px)); }
+    // (Each year against the dozen round it.)
+    const ratio = new Float32Array(n);
+    for (let i = 0, sum = 0, lo = 0, hi = -1; i < n; i++) {
+      while (hi < Math.min(n - 1, i + 6)) sum += wd[++hi];
+      while (lo < i - 6) sum -= wd[lo++];
+      ratio[i] = wd[i] / (sum / (hi - lo + 1));
+      dens[i] = Math.max(0.55, Math.min(0.96, 0.8 + 0.45 * (1 - ratio[i])));
+    }
+    const minGap = 2.6 * px * Z, maxGap = 9 * px * Z;
+    let lastR = scr(meanR(-1)), best = -1, bestS = -1;
+    const mark = (j: number) => { const Rj = scr(meanR(j)); edge[j] = 1; gapOf[j] = Rj - lastR; lastR = Rj; best = -1; bestS = -1; };
     for (let i = 0; i < n; i++) {
-      thin[i] = 1 - smooth((widthAt(i) / Z - 1.2 * px) / (3 * px));
-      const R = scr(meanR(i));
-      // (Never a regular comb of lines, which would beat against the screen's pixels in waves: as far apart
-      // as a hand would rule them, each its own distance.)
-      if (thin[i] > 0 && R - lastR >= (3.2 + 1.4 * h1(i * 1.37 + 0.5)) * px * Z) { edge[i] = 1; gapOf[i] = R - lastR; lastR = R; }
+      if (thin[i] <= 0) { lastR = scr(meanR(i)); best = -1; bestS = -1; continue; }
+      const gap = scr(meanR(i)) - lastR;
+      if (gap < minGap) continue;
+      const sc = ratio[i] + 0.12 * h1(i * 1.37 + 0.5);
+      if (sc > 1.22) { mark(i); continue; }
+      if (sc > bestS) { best = i; bestS = sc; }
+      if (gap >= maxGap && best >= 0) mark(best);
     }
     // (A line is wider than the years it lies among: each ring knows the nearest lines in and out.)
     const edgeIn = new Int32Array(n).fill(-1), edgeOut = new Int32Array(n).fill(-1);
     for (let i = 0, e = -1; i < n; i++) { edgeIn[i] = e; if (edge[i]) e = i; }
     for (let i = n - 1, e = -1; i >= 0; i--) { if (edge[i]) e = i; edgeOut[i] = e; }
-    yearsMemo = { key: yKey, oak, rad, reps, off, yr, lvl, runR, thin, edge, gapOf, edgeIn, edgeOut };
+    yearsMemo = { key: yKey, oak, rad, reps, off, yr, lvl, runR, thin, edge, gapOf, edgeIn, edgeOut, dens };
   }
-  const { rad, reps, off, yr, lvl, runR, thin, edge, gapOf, edgeIn, edgeOut } = yearsMemo;
+  const { rad, reps, off, yr, lvl, runR, thin, edge, gapOf, edgeIn, edgeOut, dens } = yearsMemo;
   // (The sapwood, paler, fading into the heartwood over some eight years: a year added shifts it by a hair.)
   const tone = (i: number) => 1 - 0.16 * smooth((i - (n - 9)) / 8) * smooth((n - 12) / 8);
   let rmax = 0;
@@ -2102,12 +2125,13 @@ function printYears(v: View, oak: Years | null): void {
   // (A fine year's line on its edge, drawn smooth across the pixels, a little heavier or lighter than the
   // next, and its weight wandering with the press.)
   const half = new Float32Array(n);
-  for (let j = 0; j < n; j++) half[j] = 0.19 * gapOf[j] * (0.85 + 0.3 * h1(j * 3.7 + 1.1));
-  const lineAt = (j: number, dist: number) => (j < 0 || !edge[j] ? 0 : Math.max(0, Math.min(1, (half[j] + 0.5 * px - dist) / px)) * thin[j]);
+  // (The pale line a year's earlywood: some a seventh of the block it parts, never under a pixel across.)
+  for (let j = 0; j < n; j++) half[j] = Math.max(0.5 * px * Z, 0.14 * gapOf[j]) * (0.85 + 0.3 * h1(j * 3.7 + 1.1));
+  const lineAt = (j: number, dist: number) => (j < 0 || !edge[j] ? 0 : Math.max(0, Math.min(1, (half[j] + 0.5 * px - dist) / px)) * Math.min(1, 2 * thin[j]));
   // (On the graphics chip, where there is one: the same, every pixel at once.)
   if (gpu.ready()) {
     const ring = new Float32Array(Math.max(1, n) * 14);
-    for (let i = 0; i < n; i++) ring.set([reps[i], off[i], yr[i], lvl[i], runR[i], thin[i], edge[i], half[i], edgeIn[i], edgeOut[i], tone(i), conifer ? calmOf(i) : 0.5, meanR(i), 0], i * 14);
+    for (let i = 0; i < n; i++) ring.set([reps[i], off[i], yr[i], lvl[i], runR[i], thin[i], edge[i], half[i], edgeIn[i], edgeOut[i], tone(i), conifer ? calmOf(i) : 0.5, meanR(i), dens[i]], i * 14);
     const A = an ?? ANATOMY.cherry!, lv = oak ? oak.levels : [], LV = Math.min(12, lv.length), run = RAY_RUN[kind] ?? [20, 0.3];
     const lvO = new Int32Array(12), lvW = new Int32Array(12).fill(1), lvH = new Int32Array(12).fill(1), lvRows = new Int32Array(12).fill(1);
     for (let k = 0, o = 0; k < LV; k++) { lvO[k] = o; lvW[k] = lv[k].w; lvH[k] = lv[k].h; lvRows[k] = lv[k].rows; o += lv[k].w * lv[k].h; }
@@ -2170,11 +2194,11 @@ function printYears(v: View, oak: Years | null): void {
         ink *= tone(i);
       } else ink = drawnInk(i, a, r, across, heart, rout - rin, dx, dy, rrM * SNAP, mm * SNAP) * tone(i);
       if (!heart && thin[i] > 0) {
-        // (As dark as the wide years: lines as wide as some three-fifths of the space they stand for.)
-        ink *= 1 - 0.65 * thin[i];
+        // (A block of ink, as dark as its years ran narrow; cut through by the pale lines of the wide ones.)
+        ink += (dens[i] * tone(i) - ink) * thin[i];
         const jo = edgeOut[i], ji = edgeIn[i];
         const cov = Math.max(jo < 0 ? 0 : lineAt(jo, at(jo, b, f) - r), ji < 0 ? 0 : lineAt(ji, r - at(ji, b, f))) * (0.75 + 0.35 * vnoise(dx * 0.11 + i, dy * 0.11));
-        if (cov > 0) ink = Math.max(ink, 0.95 * cov);
+        if (cov > 0) ink = Math.min(ink, 1 - 0.92 * Math.min(1, cov));
       }
       // The rays: the wood's fine radial lines, open to the paper, crossing every year, so the latewood prints
       // as a run of small bricks.
@@ -2221,7 +2245,7 @@ const realYears = () => wood.years[kind];
  * pixels only; paper-coloured marks left as they are) of a canvas `c` holding the slice drawn for view `v`.
  */
 function inkGrain(c: HTMLCanvasElement, v: View, band?: [number, number], soft = 1): void {
-  const n = tree.rings.length, last = n ? tree.rings[n - 1] : null;
+  const n = tree.rings.length, last = n ? tree.rings[n - 1] : null, rbMm = meanR(n - 1);
   let rmax = tree.k.pith;
   if (last) for (let i = 0; i < K; i++) rmax = Math.max(rmax, last[i]);
   const R = v.s * warpR(v.warp, rmax) + (barkCss(v) * 1.6 + 6) * px;
@@ -2255,17 +2279,33 @@ function inkGrain(c: HTMLCanvasElement, v: View, band?: [number, number], soft =
   if (gpu.ready()) {
     const pic = gpu.run('grain', w, h,
       { uSx0: x0, uSy0: y0, uHasFib: fib ? 1 : 0, uFibW: fib?.w ?? 1, uFibH: fib?.h ?? 1, uHasSea: sea && field ? 1 : 0, uSeaW: sea?.w ?? 1, uSeaH: sea?.h ?? 1, uFieldW: field?.w ?? 1, uFieldH: field?.h ?? 1 },
-      { uX0: x0, uY0: y0, uH: h, uCx: v.cx, uCy: v.cy, uInside: Math.min(1e9, inside), uPerMm: perMm, uFine: fine, uAlong: along, uSpeck: speck, uStreak: streak, uTooth: tooth, uLow: low, uPerTex: perTex, uClose: close, uCg: cg, uFc: fc, uFs: fs, uSawK: sawK, uSx: sx, uSy: sy, uSaw: SAW, uSoft: soft, uVs: v.s },
+      { uRb: rbMm, uX0: x0, uY0: y0, uH: h, uCx: v.cx, uCy: v.cy, uInside: Math.min(1e9, inside), uPerMm: perMm, uFine: fine, uAlong: along, uSpeck: speck, uStreak: streak, uTooth: tooth, uLow: low, uPerTex: perTex, uClose: close, uCg: cg, uFc: fc, uFs: fs, uSawK: sawK, uSx: sx, uSy: sy, uSaw: SAW, uSoft: soft, uVs: v.s },
       { uNoise: { key: NOISE, data: () => NOISE }, uFib: fib ? { key: fib, data: () => fib.d } : { key: NONE, data: () => NONE }, uSea: sea ? { key: sea, data: () => sea.d } : { key: NONE, data: () => NONE }, uField: field ? { key: field, data: () => field.d } : { key: NONE, data: () => NONE } },
       c);
     if (pic) { ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; ctx.clearRect(x0, y0, w, h); gpu.lay(ctx, pic, x0, y0); ctx.restore(); return; }
   }
-  const img = ctx.getImageData(x0, y0, w, h), d = img.data;
+  const img = ctx.getImageData(x0, y0, w, h), d = img.data, d0 = new Uint8ClampedArray(d);
   for (let y = 0; y < h; y++) {
     const dy = y + y0 - v.cy;
     for (let x = 0; x < w; x++) {
       const k = (y * w + x) * 4, a = d[k + 3];
-      if (a < 8 || d[k] + d[k + 1] + d[k + 2] > 380) continue;
+      if (a < 8) {
+        // (Beside the ink, the paper: here and there the ink spread into it along the paper's own fibres, a fine
+        // broken fringe, so no edge is ever clean.)
+        let bk = -1, ba = 0;
+        for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const xx = x + ox, yy = y + oy;
+          if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
+          const kk = (yy * w + xx) * 4;
+          if (d0[kk + 3] > ba) { ba = d0[kk + 3]; bk = kk; }
+        }
+        if (bk >= 0 && ba > 153 && d0[bk] + d0[bk + 1] + d0[bk + 2] < 380) {
+          const dx = x + x0 - v.cx, fr = vnoise((dx / v.s) * tooth * 0.6 + 3.7, (dy / v.s) * tooth * 0.6 + 8.1);
+          if (fr > 0.6) { const al = 0.85 * smooth((fr - 0.6) / 0.1); d[k] = d0[bk]; d[k + 1] = d0[bk + 1]; d[k + 2] = d0[bk + 2]; d[k + 3] = Math.round(255 * al); }
+        }
+        continue;
+      }
+      if (d[k] + d[k + 1] + d[k + 2] > 380) continue;
       const dx = x + x0 - v.cx, r = Math.sqrt(dx * dx + dy * dy), th = Math.atan2(dy, dx);
       // (Across the seam at the left, blended.)
       const seam = Math.max(0, (Math.abs(th) - (Math.PI - 0.25)) / 0.25);
@@ -2304,7 +2344,15 @@ function inkGrain(c: HTMLCanvasElement, v: View, band?: [number, number], soft =
         // (Looked at closer than the print's own grain: finer grain, at the screen's scale, so it stays crisp.)
         if (close > 0) took *= 1 + close * 0.22 * (vnoise(mx * cg + 3.3, my * cg + 7.1) - 0.5);
       }
-      const thr = 0.5 + (sea ? 0.22 : 0.95) * (t1 - 0.5) + 0.2 * (vnoise(mx * low + 40, my * low + 11) - 0.5) + saw;
+      // (The press's own pressure, wandering over the block in wide soft drifts, as a hand-burnished print's
+      // does: here it took lightly, a pale patch broken to specks; there it bore down, the ink full.)
+      // (In drifts as wide as a third of the slice: between two sizes a doubling apart, blended by its size, so
+      // a year added never moves them.)
+      const lp = Math.log2(Math.max(4, 0.35 * rbMm)), lk = Math.floor(lp), L1 = 2 ** lk, L2 = L1 * 2;
+      const P0 = 0.65 * vnoise(mx / L1 + 71, my / L1 + 19) + 0.35 * vnoise(mx / (0.4 * L1) + 5, my / (0.4 * L1) + 44);
+      const P1 = 0.65 * vnoise(mx / L2 + 13, my / L2 + 57) + 0.35 * vnoise(mx / (0.4 * L2) + 29, my / (0.4 * L2) + 3);
+      const P = 0.5 + (P0 + (P1 - P0) * (lp - lk) - 0.5) * 1.35;
+      const thr = 0.5 + (sea ? 0.22 : 0.95) * (t1 - 0.5) + 0.2 * (vnoise(mx * low + 40, my * low + 11) - 0.5) + saw + 0.24 * smooth((0.44 - P) / 0.16) - 0.06 * smooth((P - 0.6) / 0.15);
       // (Took or not, sharply; `soft` keeps a pixel or so of the edge's own shading, for a print that's
       // shown larger than it was pressed, so it's never stepped.)
       const e = Math.max(0, Math.min(1, (took - thr + 0.07 * soft) / (0.14 * soft)));
@@ -2592,7 +2640,7 @@ function drawKept(pc: { c: HTMLCanvasElement; v: View }, v: View, alpha = 1, gro
   if (hole) { g.restore(); g.globalAlpha = alpha; }
   if (pressShown > 0.01) {
     const m = markOf(pc), k = w / pc.c.width;
-    if (m) { g.globalAlpha = alpha * pressShown; g.drawImage(m.c, ox + m.x * k, oy + m.y * k, m.c.width * k * (m.s ?? 1), m.c.height * k * (m.s ?? 1)); }
+    if (m) { g.globalAlpha = alpha * pressShown * 0.3; g.drawImage(m.c, ox + m.x * k, oy + m.y * k, m.c.width * k * (m.s ?? 1), m.c.height * k * (m.s ?? 1)); }
   }
   g.globalAlpha = 1;
 }

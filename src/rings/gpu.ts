@@ -52,9 +52,9 @@ float ringN(float a, float rho, float kx, float ox, float y) {
   return w > 0. ? mix(n0, vnoise((a - TAU) * rho * kx + ox, y), w) : n0;
 }
 float rad(int i, int b, float f) { int k = (i + 1) * (uB + 1) + b; float p = at(uRad, k); return p + (at(uRad, k + 1) - p) * f; }
-// (Each ring's facts: 0 reps, 1 off, 2 year, 3 level, 4 runR, 5 thin, 6 edge, 7 half, 8 edgeIn, 9 edgeOut, 10 tone, 11 calm.)
+// (Each ring's facts: 0 reps, 1 off, 2 year, 3 level, 4 runR, 5 thin, 6 edge, 7 half, 8 edgeIn, 9 edgeOut, 10 tone, 11 calm, 12 mm, 13 density.)
 float R(int i, int k) { return at(uRing, i * 14 + k); }
-float lineAt(int j, float dist) { return j < 0 || R(j, 6) == 0. ? 0. : clamp((R(j, 7) + 0.5 * uPx - dist) / uPx, 0., 1.) * R(j, 5); }
+float lineAt(int j, float dist) { return j < 0 || R(j, 6) == 0. ? 0. : clamp((R(j, 7) + 0.5 * uPx - dist) / uPx, 0., 1.) * min(1., 2. * R(j, 5)); }
 // (kp: the slice's own px to a unit of the wood; ws how much finer a ray is drawn than the look in magnifies it.)
 float rayAt(float a, float rho, float kp, float ws) {
   const float R0 = 10., GAP = 3.6;
@@ -165,10 +165,10 @@ void main() {
     ink *= R(i, 10);
   } else ink = drawnInk(i, a, r, across, heart, rout - rin, dx, dy, rrM * uSnap, mm * uSnap) * R(i, 10);
   if (!heart && R(i, 5) > 0.) {
-    ink *= 1. - 0.65 * R(i, 5);
+    ink += (R(i, 13) * R(i, 10) - ink) * R(i, 5);
     int jo = int(R(i, 9)), ji = int(R(i, 8));
     float cov = max(jo < 0 ? 0. : lineAt(jo, rad(jo, b, f) - r), ji < 0 ? 0. : lineAt(ji, r - rad(ji, b, f))) * (0.75 + 0.35 * vnoise(dx * 0.11 + float(i), dy * 0.11));
-    if (cov > 0.) ink = max(ink, 0.95 * cov);
+    if (cov > 0.) ink = min(ink, 1. - 0.92 * min(1., cov));
   }
   // (The drawn woods' rays fine and sparing, as a print shows them: the years' bands run on through them.)
   // (The rays fine, as a print shows them, and ending short of the bark; the scanned woods' own rays already there.)
@@ -182,7 +182,7 @@ const GRAIN = COMMON + `
 uniform sampler2D uSrc, uFib, uSea, uField;
 uniform int uHasFib, uFibW, uFibH, uHasSea, uSeaW, uSeaH, uFieldW, uFieldH;
 uniform int uSx0, uSy0;
-uniform float uX0, uY0, uH, uCx, uCy, uInside, uPerMm, uFine, uAlong, uSpeck, uStreak, uTooth, uLow, uPerTex, uClose, uCg, uFc, uFs, uSawK, uSx, uSy, uSaw, uSoft, uVs;
+uniform float uRb, uX0, uY0, uH, uCx, uCy, uInside, uPerMm, uFine, uAlong, uSpeck, uStreak, uTooth, uLow, uPerTex, uClose, uCg, uFc, uFs, uSawK, uSx, uSy, uSaw, uSoft, uVs;
 float fibAt(float t, float r) { return sampleL(uFib, 0, uFibW, uFibH, t * r * uPerMm, r * uPerMm, 0., float(uFibH)); }
 float grainAt(float t, float r) { return 0.55 * vnoise(r * uFine, t * r * uAlong) + 0.45 * vnoise(r * uFine * 0.35 + 31.7, t * r * uAlong * 0.25 + 7.1); }
 void main() {
@@ -191,8 +191,25 @@ void main() {
   vec4 s = texelFetch(uSrc, ivec2(x + uSx0, y + uSy0), 0);
   if (s.a > 0.) s.rgb /= s.a;
   float A = s.a * 255.;
-  if (A < 8. || (s.r + s.g + s.b) * 255. > 380.) { o = vec4(s.rgb * s.a, s.a); return; }
   float dx = float(x) + uX0 - uCx, dy = float(y) + uY0 - uCy, r = sqrt(dx * dx + dy * dy), th = atan(dy, dx);
+  if (A < 8.) {
+    // (Beside the ink, the paper: here and there the ink spread into it along the paper's own fibres, a fine
+    // broken fringe, so no edge is ever clean.)
+    ivec2 n = textureSize(uSrc, 0), p0 = ivec2(x + uSx0, y + uSy0);
+    vec4 best = vec4(0.);
+    for (int q = 0; q < 4; q++) {
+      ivec2 d = q == 0 ? ivec2(1, 0) : q == 1 ? ivec2(-1, 0) : q == 2 ? ivec2(0, 1) : ivec2(0, -1);
+      vec4 t = texelFetch(uSrc, clamp(p0 + d, ivec2(0), n - 1), 0);
+      if (t.a > best.a) best = t;
+    }
+    float fr = vnoise(dx / uVs * uTooth * 0.6 + 3.7, dy / uVs * uTooth * 0.6 + 8.1);
+    if (best.a > 0.6 && (best.r + best.g + best.b) / best.a * 255. < 380. && fr > 0.6) {
+      float al = 0.85 * sm((fr - 0.6) / 0.1);
+      o = vec4(best.rgb / best.a * al, al); return;
+    }
+    o = vec4(s.rgb * s.a, s.a); return;
+  }
+  if ((s.r + s.g + s.b) * 255. > 380.) { o = vec4(s.rgb * s.a, s.a); return; }
   float seam = max(0., (abs(th) - (PI - 0.25)) / 0.25), f;
   if (r < uInside) f = 1.;
   else if (uHasFib == 1) {
@@ -219,7 +236,15 @@ void main() {
     took = val * (0.84 + 0.2 * tileL(uSea, uSeaW, uSeaH, u + 17., w + 31.) * (0.75 + 0.25 * tileL(uField, uFieldW, uFieldH, (u * uFc - w * uFs) * 0.8, (u * uFs + w * uFc) * 0.8)));
     if (uClose > 0.) took *= 1. + uClose * 0.22 * (vnoise(mx * uCg + 3.3, my * uCg + 7.1) - 0.5);
   }
-  float thr = 0.5 + (uHasSea == 1 ? 0.22 : 0.95) * (t1 - 0.5) + 0.2 * (vnoise(mx * uLow + 40., my * uLow + 11.) - 0.5) + saw;
+  // (The press's own pressure, wandering over the block in wide soft drifts, as a hand-burnished print's does:
+  // here it took lightly, a pale patch broken to specks; there it bore down, the ink full.)
+  // (In drifts as wide as a third of the slice: between two sizes a doubling apart, blended by its size, so a
+  // year added never moves them.)
+  float lp = log2(max(4., 0.35 * uRb)), lk = floor(lp), L1 = exp2(lk), L2 = L1 * 2.;
+  float P = mix(0.65 * vnoise(mx / L1 + 71., my / L1 + 19.) + 0.35 * vnoise(mx / (0.4 * L1) + 5., my / (0.4 * L1) + 44.),
+                0.65 * vnoise(mx / L2 + 13., my / L2 + 57.) + 0.35 * vnoise(mx / (0.4 * L2) + 29., my / (0.4 * L2) + 3.), lp - lk);
+  P = 0.5 + (P - 0.5) * 1.35;
+  float thr = 0.5 + (uHasSea == 1 ? 0.22 : 0.95) * (t1 - 0.5) + 0.2 * (vnoise(mx * uLow + 40., my * uLow + 11.) - 0.5) + saw + 0.24 * sm((0.44 - P) / 0.16) - 0.06 * sm((P - 0.6) / 0.15);
   float e = clamp((took - thr + 0.07 * uSoft) / (0.14 * uSoft), 0., 1.);
   float al = floor(255. * e * e * (3. - 2. * e) + 0.5) / 255.;
   o = vec4(s.rgb * al, al);

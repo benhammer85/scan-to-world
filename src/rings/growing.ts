@@ -16,13 +16,26 @@ const TAU = Math.PI * 2;
 export function growth(seed: number, a: number, n: number): number {
   let e = 0;
   for (let m = 1; m <= 4; m++) {
-    const s = seed * 0.0137 + m * 17.3, amp = [0, 0.32, 0.2, 0.12, 0.07][m];
+    const s = seed * 0.0137 + m * 17.3, amp = [0, 0.32, 0.22, 0.16, 0.11][m];
     const k = amp * (noise(s + n / (20 + 10 * m)) * 1.6 - 0.3), ph = 1.6 * TAU * noise(s + 50 + n / (m === 1 ? 320 : 110 + 40 * m));
     e += k * Math.cos(m * a - ph);
   }
   return Math.exp(e);
 }
 
+/**
+ * The lobes of a wild, twisted wood (an olive's, a juniper's): four to six bulges round it, each drifting
+ * slowly round as the years go on, so the slice grows into a flame or a cloud, never an egg. `k` how much.
+ */
+export function lobes(seed: number, a: number, n: number, k: number): number {
+  if (!k) return 1;
+  let e = 0;
+  for (let m = 4; m <= 6; m++) {
+    const s = seed * 0.0191 + m * 23.9, amp = [0, 0, 0, 0, 0.16, 0.13, 0.1][m];
+    e += amp * (noise(s + n / 60) * 1.4 - 0.2) * Math.cos(m * a - TAU * noise(s + 90 + n / 400));
+  }
+  return Math.exp(k * e);
+}
 /** How far through its growth a season is, t of 1 (0 to 1): early growth quick, easing to a stop. */
 export const season = (t: number) => { const x = Math.max(0, Math.min(1, t)); return 1 - (1 - x) ** 2.6 * (1 + 1.6 * x); };
 
@@ -37,6 +50,8 @@ const hash = (x: number) => { const v = Math.sin(x * 127.1 + 311.7) * 43758.5453
 export function climate(seed: number, n: number): number {
   const s = seed * 0.0213;
   const slow = noise(s + n / 11) - 0.5, quick = noise(s + 70 + n / 2.3) - 0.5;
+  // (And the long runs a real slice shows as bands: a few lean months, a few good ones, months on end.)
+  const long = noise(s + 140 + n / 45) - 0.5, era = noise(s + 210 + n / 130) - 0.5;
   const hard = hash(s * 3.7 + n * 0.731) < 0.035 ? 0.42 : 1;
-  return Math.exp(1.0 * slow + 0.55 * quick) * hard;
+  return Math.exp(1.0 * slow + 0.55 * quick + 1.1 * long + 0.7 * era) * hard;
 }
