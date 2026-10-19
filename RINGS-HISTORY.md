@@ -367,3 +367,9 @@ October 19 — how it's done, said once. "Swipe through the woods. Touch one to 
   set down until a seed is chosen, and pinching back out brings the year's tree back as it was.
 * The ground takes a tree anywhere but the stream (a pencil ring there, no words). The wood gives way to it;
   too near a tree of the grove, it's set down at the nearest open ground. No "too far" or "too close" words.
+
+## 2026-10-19 — The year grows out at once
+
+* The new year waited for its loop to dry (over a second) and then eased in slowly, so nothing was seen to grow
+  before the next loop was begun: it looked as if only the second circle grew the tree. Now it begins growing
+  a third of a second after the loop closes, as the loop dries over it (`grow.hold`, spring 2.1 → 2.4).

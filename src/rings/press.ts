@@ -1435,16 +1435,16 @@ function hear(): void {
     // (Told, to a screen reader: the ring laid.)
     heard.textContent = tree.rings.length === 1 ? 'The first ring is drawn.' : 'A ring is added.';
     if (GROWN) {
-      // (First the loop dries away, the slice still; then, the sheet clear, the year grows out into it.)
+      // (The loop dries away as the year grows out under it, begun at once: never waiting on the next loop.)
       const soak = Math.min(1.3, 3.2 - 2.1 * smooth((tree.rings.length - 8) / 110));
       inward = { ring: tree.rings.length - 1, at: clock(), by: soak };
       // (The new year simply there, where it settled, never growing out.)
       yearClosed = true;
       const n1 = tree.rings.length, now = clock();
       lastRingAt = now;
-      // (The edge grows out to it once the loop's dried; a ring drawn while it's still growing only carries it on.)
+      // (The edge grows out to it a moment after the loop closes; a ring drawn while it's still growing only carries it on.)
       if (PRINT && !closer()) {
-        grow.hold = now + 0.85 * soak;
+        grow.hold = now + 0.3;
       } else grow.x = n1;
     }
     if (!GROWN) makeRoom();
@@ -2749,7 +2749,7 @@ function stepGrow(t: number, dt: number): void {
   if (grow.x < n - 1 - 1e-6 && t - lastRingAt > 20) { grow.x = n; grow.v = 0; return; }
   if (grow.paused) { grow.paused = false; return; }
   // (Only the newest year waits for its loop to dry: those before it grow on.)
-  const target = t < grow.hold ? n - 1 : n, w = 2.1;
+  const target = t < grow.hold ? n - 1 : n, w = 2.4;
   grow.v += (w * w * (target - grow.x) - 2 * w * grow.v) * dt;
   grow.v = Math.max(-1.1, Math.min(1.1, grow.v));
   grow.x = Math.min(n, grow.x + grow.v * dt);
