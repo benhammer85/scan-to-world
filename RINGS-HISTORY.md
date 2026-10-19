@@ -318,3 +318,5 @@ October 19 — never past its room. Held at its scale while looked at, the slice
 October 19 — the loop let go of sooner as the tree grows. A young tree's year is near where the loop was drawn; an old one's is a hair at the bark, far in from it, and the loop only stands apart. So it dries quicker the older the tree: some three seconds at first, two by fifty rings, under one by two hundred.
 
 October 19 — the year seen growing. With the fine years printed as a block of ink, a day's year on an old tree, a hair at the bark, grew there unseen: nothing seemed to be built. Now the year just drawn shows as new wood does, pale: a band just inside the bark, never thinner than some three px however fine the year, growing out with it, then darkening into the print over a few seconds.
+
+October 19 — the pale new wood only where it's needed. On a young tree the year is wide and shows itself growing; the pale band laid over all of it washed its ink to grey. Now the band is only a thin strip at the bark, and only where the year is too fine to be seen (under some four px), fading out as years get wider.

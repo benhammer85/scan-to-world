@@ -2649,9 +2649,13 @@ function drawFresh(v: View, t: number): void {
   if (age > GROW_T + 4.2) { fresh = null; return; }
   if (al < 0.01) return;
   const f = yearGrow && yearGrow.ring === fresh.ring ? 1 - Math.pow(1 - Math.min(1, (t - yearGrow.at) / GROW_T), 2.2) : 1;
+  // (Only where the year is too fine to be seen growing: a young tree's wide year shows itself, and paled
+  // over it would only wash its ink out.)
+  const wpx = v.s * (meanR(fresh.ring) - meanR(fresh.ring - 1)) / px, need = 1 - smooth((wpx - 2) / 4);
+  if (need < 0.01) return;
   const old = barkOf(fresh.ring - 1), neu = barkOf(fresh.ring), minW = (3.4 * px) / v.s, hair = (1.1 * px) / v.s;
   const out = (a: number) => old(a) + (neu(a) - old(a)) * f - hair;
-  hideBetween(v, (a) => Math.min(old(a) - hair, out(a) - minW), out, al);
+  hideBetween(v, (a) => out(a) - minW, out, al * need);
 }
 function drawGrowth(v: View, t: number, moving: boolean, drift: boolean): boolean {
   const gr = yearGrow!, n = tree.rings.length;
