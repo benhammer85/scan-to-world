@@ -829,7 +829,8 @@ let settle = { ring: -1, at: 0 }, settleTap = 0;
 /** When the loop drawn was closed (growing true to scale: it dries where it was drawn). */
 let inward: { ring: number; at: number } | null = null;
 /** The brush's track: where, when, how wide it laid (slow is wide), and how fast. */
-let trail: { a: number; r: number; t: number; w: number; fast: number }[] = [];
+/** (`load`: the ink left in the brush, full at first, drier round the loop; `jit`: how unevenly the hand went.) */
+let trail: { a: number; r: number; t: number; w: number; fast: number; load: number; jit: number; turned: number }[] = [];
 let strokeView: View | null = null, painter: number | null = null;
 /** The finger's own path this stroke (CSS px): where it began, how far it has gone, and where it is. */
 let loop = { x0: 0, y0: 0, x: 0, y: 0, len: 0, closed: false };
@@ -1313,7 +1314,7 @@ function closeTrail(): void {
   const steps = Math.ceil(Math.abs(d) / 0.02);
   for (let k = 1; k <= steps; k++) {
     const f = k / steps;
-    trail.push({ a: (((last.a + d * f) % TAU) + TAU) % TAU, r: last.r + (first.r - last.r) * f, t: last.t, w: last.w + (full - last.w) * f, fast: last.fast });
+    trail.push({ a: (((last.a + d * f) % TAU) + TAU) % TAU, r: last.r + (first.r - last.r) * f, t: last.t, w: last.w + (full - last.w) * f, fast: last.fast, load: last.load, jit: last.jit, turned: last.turned });
   }
 }
 /** The paint, laid exactly where the brush is (angle a, u steady widths from the bark). */
@@ -1321,18 +1322,31 @@ function trailAt(a: number, u: number): void {
   if (!strokeView) return;
   // (Joined across the circle's own seam too, where the angle comes round from a full turn to nothing.)
   const t = clock(), last = trail[trail.length - 1], joined = last && angleOff(last.a, a) < 0.5;
-  const r = radiusAt((i) => tree.inner(i), a) + Math.max(0, GROWN ? u : Math.min(WIDEST, u)) * tree.wRef;
-  // Speed on the screen, in CSS px a second, eased so the width swells and thins smoothly.
-  let fast = last ? last.fast : 0;
+  let r = radiusAt((i) => tree.inner(i), a) + Math.max(0, GROWN ? u : Math.min(WIDEST, u)) * tree.wRef;
+  const dt = joined ? Math.max(0.004, t - last.t) : 0;
+  // (A brush with some weight: a sudden jerk in or out rounded over a few hundredths of a second, but never
+  // more than a px and a half from under the finger, so it's never behind it.)
+  if (joined) {
+    const want = r, lag = (1.5 * px) / Math.max(1e-6, strokeView.s);
+    r = last.r + (want - last.r) * (1 - Math.exp(-dt / 0.045));
+    r = Math.max(want - lag, Math.min(want + lag, r));
+  }
+  // Speed on the screen, in CSS px a second, eased by time (never by how often the phone reports), so the
+  // brush's width and its ink breathe rather than flicker.
+  let fast = last ? last.fast : 0, jit = last ? last.jit : 0;
   if (joined) {
     const [x0, y0] = at(strokeView, last.a, last.r), [x1, y1] = at(strokeView, a, r);
-    const v = Math.hypot(x1 - x0, y1 - y0) / px / Math.max(0.008, t - last.t);
-    fast += (Math.min(1, v / 600) - fast) * 0.25;
+    const v = Math.hypot(x1 - x0, y1 - y0) / px / dt, was = fast;
+    fast += (Math.min(1, v / 600) - fast) * (1 - Math.exp(-dt / 0.22));
+    // (How unevenly the hand goes: the pace's own changes, eased over half a second.)
+    jit += (Math.min(1, (Math.abs(fast - was) / dt) / 1.2) - jit) * (1 - Math.exp(-dt / 0.5));
   }
+  // (The ink in the brush: full as it touches down, drier as it goes round, as a loaded brush runs out.)
+  const turned = joined ? last.turned + angleOff(last.a, a) : 0, load = 1 - 0.4 * smooth(turned / TAU);
   // A brush: full and wet when unhurried, thin and dry when quick, tapering in as it touches down.
   const n = joined ? trail.length : 0;
-  const w = (3.5 + 4.5 * (1 - fast)) * Math.min(1, 0.3 + n / 8);
-  trail.push({ a, r, t, w: joined && n ? last.w + (w - last.w) * 0.35 : w * 0.4, fast });
+  const w = (3.5 + 4.5 * (1 - fast)) * (0.85 + 0.15 * load) * Math.min(1, 0.3 + n / 8);
+  trail.push({ a, r, t, w: joined && n ? last.w + (w - last.w) * (1 - Math.exp(-dt / 0.12)) : w * 0.4, fast, load, jit, turned });
 }
 function hear(): void {
   for (const n of tree.news) if (n.kind === 'ring') {
@@ -1546,12 +1560,13 @@ function drawBrush(g: CanvasRenderingContext2D, v: View, t: number): void {
         const P = xs.map((q, j) => {
           const a0 = xs[Math.max(0, j - 1)], b0 = xs[Math.min(m - 1, j + 1)], dx = b0[0] - a0[0], dy = b0[1] - a0[1], l = Math.hypot(dx, dy) || 1, q0 = src[j];
           const taper = smooth(sAt[j] / (22 * px)) * (live ? 0.25 + 0.75 * smooth((L - sAt[j]) / (16 * px)) : 0.4 + 0.6 * smooth((L - sAt[j]) / (8 * px)));
-          return { x: q[0], y: q[1], nx: -dy / l, ny: dx / l, hw: 0.5 * q0.q.w * 0.72 * (0.6 + 0.4 * life) * px * Math.max(0.12, taper) * (0.8 + 0.4 * vnoise(sAt[j] / (70 * px) + from * 0.37, 4.1)), s: sAt[j], fast: q0.q.fast };
+          return { x: q[0], y: q[1], nx: -dy / l, ny: dx / l, hw: 0.5 * q0.q.w * 0.72 * (0.6 + 0.4 * life) * px * Math.max(0.12, taper) * (0.8 + 0.4 * vnoise(sAt[j] / (70 * px) + from * 0.37, 4.1)), s: sAt[j], fast: q0.q.fast, load: q0.q.load ?? 1, jit: q0.q.jit ?? 0 };
         });
         const band = (j0: number, j1: number, k0: number, k1: number) => {
           g.beginPath();
           // (Its edges a little ragged where the hair of the brush is, never ruled.)
-          const rag = (p: typeof P[0], k: number) => k * p.hw * (Math.abs(k) > 0.9 ? 1 + 0.1 * (vnoise(p.s / (2.2 * px) + k * 13, 2.7) - 0.5) * 2 : 1);
+          // (Ragged the more unevenly the hand went: a steady pace leaves a clean edge.)
+          const rag = (p: typeof P[0], k: number) => k * p.hw * (Math.abs(k) > 0.9 ? 1 + (0.06 + 0.3 * p.jit) * (vnoise(p.s / (2.2 * px) + k * 13, 2.7) - 0.5) * 2 : 1);
           for (let j = j0; j <= j1; j++) { const p = P[j], d = rag(p, k1); if (j === j0) g.moveTo(p.x + p.nx * d, p.y + p.ny * d); else g.lineTo(p.x + p.nx * d, p.y + p.ny * d); }
           for (let j = j1; j >= j0; j--) { const p = P[j], d = rag(p, k0); g.lineTo(p.x + p.nx * d, p.y + p.ny * d); }
           g.closePath(); g.fill();
@@ -1561,10 +1576,12 @@ function drawBrush(g: CanvasRenderingContext2D, v: View, t: number): void {
         for (let bj = 0; bj < B.length - 1; bj++) {
           const k0 = B[bj] - 0.03, k1 = B[bj + 1] + 0.03, outer = Math.abs((B[bj] + B[bj + 1]) / 2);
           // (The one ink in every bristle; dry where the hand hurried, the edges first.)
-          g.fillStyle = opaque(0.92 * (0.55 + 0.45 * life));
-          let run0 = -1;
+          let run0 = -1, tone = -1;
           for (let j = 0; j < m; j++) {
-            const p = P[j], dryness = Math.max(0, p.fast - 0.35) * (0.4 + 0.9 * outer) * (0.6 + 0.4 * (1 - wet));
+            const p = P[j], dryness = (Math.max(0, p.fast - 0.35) + 0.35 * (1 - p.load) + 0.25 * p.jit) * (0.4 + 0.9 * outer) * (0.6 + 0.4 * (1 - wet));
+            // (Paler as the brush runs out: set per run, in steps too fine to see.)
+            const tk = Math.round((0.92 * (0.55 + 0.45 * life) * (0.82 + 0.18 * p.load)) * 40) / 40;
+            if (tk !== tone) { if (run0 >= 0 && j - 1 > run0) { band(run0, j - 1, k0, k1); run0 = j - 1; } tone = tk; g.fillStyle = opaque(tk); }
             const on = vnoise(p.s / (9 * px) + bj * 7.3, bj * 1.9) >= dryness;
             if (on && run0 < 0) run0 = j;
             if ((!on || j === m - 1) && run0 >= 0) { const e = on ? j : j - 1; if (e > run0) band(run0, e, k0, k1); run0 = -1; }
