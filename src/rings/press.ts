@@ -1533,6 +1533,16 @@ function drawBrush(g: CanvasRenderingContext2D, v: View, t: number): void {
     // show; and where the hand hurried, the outer bristles run dry and leave the paper between them.)
     const life = pts[n - 1].life;
     if (life < 0.02) return;
+    // (Where the year growing out would reach it, the line is gone before it gets there: cleared a little way
+    // ahead of the growing edge, never touched by it.)
+    const gr = going && yearGrow && yearGrow.ring === going.ring ? yearGrow : null;
+    const fG = gr ? 1 - Math.pow(1 - Math.min(1, (t - gr.at) / GROW_T), 2.2) : 1;
+    const inner0 = going ? barkOf(going.ring - 1) : null, outer0 = going ? barkOf(going.ring) : null;
+    const clearOf = (q: (typeof trail)[0]) => {
+      if (!inner0 || !outer0) return 1;
+      const front = inner0(q.a) + (outer0(q.a) - inner0(q.a)) * fG, gap = ((q.r - front) * v.s) / px;
+      return smooth((gap - 3) / 14);
+    };
     // (Soaking away as it dries, all of it paler and paler till it's gone: never a dark line there and then not.)
     const was = g.globalAlpha; g.globalAlpha = was * smooth(life / 0.6);
     const wet = life * life, live = !!tree.stroke && !going;
@@ -1560,7 +1570,7 @@ function drawBrush(g: CanvasRenderingContext2D, v: View, t: number): void {
         const P = xs.map((q, j) => {
           const a0 = xs[Math.max(0, j - 1)], b0 = xs[Math.min(m - 1, j + 1)], dx = b0[0] - a0[0], dy = b0[1] - a0[1], l = Math.hypot(dx, dy) || 1, q0 = src[j];
           const taper = smooth(sAt[j] / (22 * px)) * (live ? 0.25 + 0.75 * smooth((L - sAt[j]) / (16 * px)) : 0.4 + 0.6 * smooth((L - sAt[j]) / (8 * px)));
-          return { x: q[0], y: q[1], nx: -dy / l, ny: dx / l, hw: 0.5 * q0.q.w * 0.72 * (0.6 + 0.4 * life) * px * Math.max(0.12, taper) * (0.8 + 0.4 * vnoise(sAt[j] / (70 * px) + from * 0.37, 4.1)), s: sAt[j], fast: q0.q.fast, load: q0.q.load ?? 1, jit: q0.q.jit ?? 0 };
+          return { x: q[0], y: q[1], nx: -dy / l, ny: dx / l, hw: 0.5 * q0.q.w * 0.72 * (going ? 1 : 0.6 + 0.4 * life) * px * Math.max(0.12, taper) * (0.8 + 0.4 * vnoise(sAt[j] / (70 * px) + from * 0.37, 4.1)), s: sAt[j], fast: q0.q.fast, load: q0.q.load ?? 1, jit: q0.q.jit ?? 0, cl: Math.round(clearOf(q0.q) * 20) / 20 };
         });
         const band = (j0: number, j1: number, k0: number, k1: number) => {
           g.beginPath();
@@ -1572,16 +1582,20 @@ function drawBrush(g: CanvasRenderingContext2D, v: View, t: number): void {
           g.closePath(); g.fill();
         };
         // (A breath of wet ink beyond it, while it's fresh.)
-        if (wet > 0.05) { g.fillStyle = `rgba(140,96,62,${(0.07 * wet).toFixed(3)})`; band(0, m - 1, -1.35, 1.35); }
+        if (wet > 0.05 && !going) { g.fillStyle = `rgba(140,96,62,${(0.07 * wet).toFixed(3)})`; band(0, m - 1, -1.35, 1.35); }
         for (let bj = 0; bj < B.length - 1; bj++) {
           const k0 = B[bj] - 0.03, k1 = B[bj + 1] + 0.03, outer = Math.abs((B[bj] + B[bj + 1]) / 2);
           // (The one ink in every bristle; dry where the hand hurried, the edges first.)
-          let run0 = -1, tone = -1;
+          let run0 = -1, tone = -1, clv = -1;
           for (let j = 0; j < m; j++) {
-            const p = P[j], dryness = (Math.max(0, p.fast - 0.35) + 0.35 * (1 - p.load) + 0.25 * p.jit) * (0.4 + 0.9 * outer) * (0.6 + 0.4 * (1 - wet));
+            const p = P[j], dryness = (Math.max(0, p.fast - 0.35) + 0.15 * (1 - p.load) + 0.12 * p.jit) * (0.4 + 0.9 * outer) * (going ? 0.6 : 0.6 + 0.4 * (1 - wet));
             // (Paler as the brush runs out: set per run, in steps too fine to see.)
-            const tk = Math.round((0.92 * (0.55 + 0.45 * life) * (0.82 + 0.18 * p.load)) * 40) / 40;
-            if (tk !== tone) { if (run0 >= 0 && j - 1 > run0) { band(run0, j - 1, k0, k1); run0 = j - 1; } tone = tk; g.fillStyle = opaque(tk); }
+            // (Its tone set by how loaded the brush was there, not by drying: drying only fades it, evenly.)
+            const tk = Math.round((0.92 * (going ? 1 : 0.55 + 0.45 * life) * (0.82 + 0.18 * p.load)) * 40) / 40;
+            if (tk !== tone || p.cl !== clv) {
+              if (run0 >= 0 && j - 1 > run0) { band(run0, j - 1, k0, k1); run0 = j - 1; }
+              tone = tk; clv = p.cl; g.fillStyle = opaque(tk); g.globalAlpha = was * smooth(life / 0.6) * clv;
+            }
             const on = vnoise(p.s / (9 * px) + bj * 7.3, bj * 1.9) >= dryness;
             if (on && run0 < 0) run0 = j;
             if ((!on || j === m - 1) && run0 >= 0) { const e = on ? j : j - 1; if (e > run0) band(run0, e, k0, k1); run0 = -1; }
