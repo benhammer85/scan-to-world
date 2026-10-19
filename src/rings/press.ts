@@ -300,14 +300,16 @@ function drawMarks(v: View, Z: number): void {
 /** A knot on the sheet: where (device px), how large, turned how, and how many of its own rings. */
 function knotSpot(m: WoodMark, v: View, Z: number): { x: number; y: number; e: number; rot: number; rings: number } {
   // (Where the branch, rising, crosses the cut: partway along its years, never at the bark.)
-  const n = tree.rings.length, i = Math.max(0, Math.min(n - 3, Math.round((m.from + Math.min(n - 1, m.last)) / 2)));
+  // (Its own years only, never the tree's count or bark as they are today: a year added leaves it as it was,
+  // once the bark it's measured from, three years past its last, is grown.)
+  const n = tree.rings.length, i = Math.max(0, Math.min(n - 1, Math.round((m.from + m.last) / 2)));
   const rin = i <= 0 ? tree.k.pith : radiusAt(tree.rings[i - 1], m.a), rout = radiusAt(tree.rings[i], m.a);
-  const t = m.a + v.turn, sz = Math.min(12, m.size), rb = radiusAt(tree.rings[n - 1], m.a);
+  const t = m.a + v.turn, sz = Math.min(12, m.size), rb = radiusAt(tree.rings[Math.min(n - 1, m.last + 3)], m.a);
   // (Laid in the wood, not on the screen: sized and kept off the bark at true scale, then carried wherever
   // the magnifier carries its own ring, so the rings never slide past it as the slice eases in and out.)
   const s0 = restOf(v).s;
   const e0 = Math.min(0.2 * s0 * rb, (4 + 2.6 * Math.sqrt(sz)) * px * Z * TAKES[kind].knot);
-  const rk = Math.max(0, Math.min((rin + rout) / 2, rb - (e0 * 2.8 + barkCss(v) * px) / s0));
+  const bk = m.last + 3 >= n - 1 ? barkCss(v) * px : 0, rk = Math.max(0, Math.min((rin + rout) / 2, rb - (e0 * 2.8 + bk) / s0));
   // (Swollen or squeezed as the wood round it is.)
   const W = (r: number) => v.s * warpR(v.warp, r), Rk = W(rk), d = Math.max(1e-4, rb * 0.01);
   const grow = Math.sqrt(Math.max(0.05, (W(rk + d) - W(Math.max(0, rk - d))) / (rk + d - Math.max(0, rk - d)) / s0) * (rk > 1e-6 ? Rk / rk / s0 : 1));
@@ -771,6 +773,10 @@ function makeRoom(): void {
   const was = baseNow(), old = warp, bark = tree.radius;
   warp = warpNow(); if (!PRINT) paper.fit(warp, warp.R); view = null;
   const v = baseNow();
+  // (Growing true to scale, the slice never steps back while it's looked at: the year grows out at the bark and
+  // stays, the print and every mark in it as it was. It's fitted to its room again only when next opened, out
+  // of sight; or here, if its widest would reach past four-fifths of the room.)
+  if (GROWN && PRINT && was.s * barkMax() <= 0.8 * roomNow()) { view = { ...v, s: was.s }; ease = null; return; }
   // (Where the new bark was drawn, it stays at first: the slice then draws back from there.)
   const from = was.s * warpR(old, bark) / Math.max(1e-6, warpR(warp, bark));
   // (Never much larger than it rests: a wide loop's year is shown a little large at first, never filling
@@ -2091,7 +2097,8 @@ function printYears(v: View, oak: Years | null): void {
     }
     return Math.max(0, ink);
   };
-  const yearMm = n ? meanR(n - 1) / n : 1, wA = 0.22 * yearMm * v.s, wL = 1 / (Math.max(2.2, 3 * yearMm) * v.s), wL2 = wL * 2.7;
+  // (The wandering set by the tree's own steady year, never its mean so far: a year added never moves the rest.)
+  const yearMm = tree.wRef, wA = 0.22 * yearMm * v.s, wL = 1 / (Math.max(2.2, 3 * yearMm) * v.s), wL2 = wL * 2.7;
   // (A fine year's line on its edge, drawn smooth across the pixels, a little heavier or lighter than the
   // next, and its weight wandering with the press.)
   const half = new Float32Array(n);
