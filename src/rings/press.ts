@@ -1322,15 +1322,8 @@ function trailAt(a: number, u: number): void {
   if (!strokeView) return;
   // (Joined across the circle's own seam too, where the angle comes round from a full turn to nothing.)
   const t = clock(), last = trail[trail.length - 1], joined = last && angleOff(last.a, a) < 0.5;
-  let r = radiusAt((i) => tree.inner(i), a) + Math.max(0, GROWN ? u : Math.min(WIDEST, u)) * tree.wRef;
+  const r = radiusAt((i) => tree.inner(i), a) + Math.max(0, GROWN ? u : Math.min(WIDEST, u)) * tree.wRef;
   const dt = joined ? Math.max(0.004, t - last.t) : 0;
-  // (A brush with some weight: a sudden jerk in or out rounded over a few hundredths of a second, but never
-  // more than a px and a half from under the finger, so it's never behind it.)
-  if (joined) {
-    const want = r, lag = (1.5 * px) / Math.max(1e-6, strokeView.s);
-    r = last.r + (want - last.r) * (1 - Math.exp(-dt / 0.045));
-    r = Math.max(want - lag, Math.min(want + lag, r));
-  }
   // Speed on the screen, in CSS px a second, eased by time (never by how often the phone reports), so the
   // brush's width and its ink breathe rather than flicker.
   let fast = last ? last.fast : 0, jit = last ? last.jit : 0;
@@ -1492,6 +1485,8 @@ function overChecks(v: View, draw: () => void): void {
   g.clip('evenodd');
   try { draw(); } finally { g.restore(); }
 }
+/** The drying loop's own sheet (see drawBrush). */
+let brushSheet: HTMLCanvasElement | null = null;
 function drawBrush(g: CanvasRenderingContext2D, v: View, t: number): void {
   const n = trail.length;
   if (n < 2) return;
@@ -1533,18 +1528,13 @@ function drawBrush(g: CanvasRenderingContext2D, v: View, t: number): void {
     // show; and where the hand hurried, the outer bristles run dry and leave the paper between them.)
     const life = pts[n - 1].life;
     if (life < 0.02) return;
-    // (Where the year growing out would reach it, the line is gone before it gets there: cleared a little way
-    // ahead of the growing edge, never touched by it.)
-    const gr = going && yearGrow && yearGrow.ring === going.ring ? yearGrow : null;
-    const fG = gr ? 1 - Math.pow(1 - Math.min(1, (t - gr.at) / GROW_T), 2.2) : 1;
-    const inner0 = going ? barkOf(going.ring - 1) : null, outer0 = going ? barkOf(going.ring) : null;
-    const clearOf = (q: (typeof trail)[0]) => {
-      if (!inner0 || !outer0) return 1;
-      const front = inner0(q.a) + (outer0(q.a) - inner0(q.a)) * fG, gap = ((q.r - front) * v.s) / px;
-      return smooth((gap - 3) / 14);
-    };
-    // (Soaking away as it dries, all of it paler and paler till it's gone: never a dark line there and then not.)
-    const was = g.globalAlpha; g.globalAlpha = was * smooth(life / 0.6);
+    // (Drying, it's laid on a sheet of its own, whole and at full ink, then faded as one: never its overlapping
+    // bristles showing through each other as it pales.)
+    const main = g, orig = main.globalAlpha, fadeTo = orig * smooth(life / 0.6);
+    if (going) {
+      brushSheet = sized(brushSheet ?? undefined, W, H);
+      g = brushSheet.getContext('2d')!; g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.clearRect(0, 0, W, H);
+    } else main.globalAlpha = fadeTo;
     const wet = life * life, live = !!tree.stroke && !going;
     const PAPER_RGB = [247, 243, 235], INK_RGB = [24, 20, 18];
     const opaque = (a: number) => { const k = Math.max(0, Math.min(1, a)); return `rgb(${PAPER_RGB.map((c, j) => Math.round(c + (INK_RGB[j] - c) * k)).join(',')})`; };
@@ -1570,13 +1560,13 @@ function drawBrush(g: CanvasRenderingContext2D, v: View, t: number): void {
         const P = xs.map((q, j) => {
           const a0 = xs[Math.max(0, j - 1)], b0 = xs[Math.min(m - 1, j + 1)], dx = b0[0] - a0[0], dy = b0[1] - a0[1], l = Math.hypot(dx, dy) || 1, q0 = src[j];
           const taper = smooth(sAt[j] / (22 * px)) * (live ? 0.25 + 0.75 * smooth((L - sAt[j]) / (16 * px)) : 0.4 + 0.6 * smooth((L - sAt[j]) / (8 * px)));
-          return { x: q[0], y: q[1], nx: -dy / l, ny: dx / l, hw: 0.5 * q0.q.w * 0.72 * (going ? 1 : 0.6 + 0.4 * life) * px * Math.max(0.12, taper) * (0.8 + 0.4 * vnoise(sAt[j] / (70 * px) + from * 0.37, 4.1)), s: sAt[j], fast: q0.q.fast, load: q0.q.load ?? 1, jit: q0.q.jit ?? 0, cl: Math.round(clearOf(q0.q) * 20) / 20 };
+          return { x: q[0], y: q[1], nx: -dy / l, ny: dx / l, hw: 0.5 * q0.q.w * 0.72 * (going ? 1 : 0.6 + 0.4 * life) * px * Math.max(0.12, taper) * (0.8 + 0.4 * vnoise(sAt[j] / (70 * px) + from * 0.37, 4.1)), s: sAt[j], fast: q0.q.fast, load: q0.q.load ?? 1, jit: q0.q.jit ?? 0 };
         });
         const band = (j0: number, j1: number, k0: number, k1: number) => {
           g.beginPath();
           // (Its edges a little ragged where the hair of the brush is, never ruled.)
           // (Ragged the more unevenly the hand went: a steady pace leaves a clean edge.)
-          const rag = (p: typeof P[0], k: number) => k * p.hw * (Math.abs(k) > 0.9 ? 1 + (0.06 + 0.3 * p.jit) * (vnoise(p.s / (2.2 * px) + k * 13, 2.7) - 0.5) * 2 : 1);
+          const rag = (p: typeof P[0], k: number) => k * p.hw * (Math.abs(k) > 0.9 ? 1 + (0.06 + 0.1 * p.jit) * (vnoise(p.s / (2.2 * px) + k * 13, 2.7) - 0.5) * 2 : 1);
           for (let j = j0; j <= j1; j++) { const p = P[j], d = rag(p, k1); if (j === j0) g.moveTo(p.x + p.nx * d, p.y + p.ny * d); else g.lineTo(p.x + p.nx * d, p.y + p.ny * d); }
           for (let j = j1; j >= j0; j--) { const p = P[j], d = rag(p, k0); g.lineTo(p.x + p.nx * d, p.y + p.ny * d); }
           g.closePath(); g.fill();
@@ -1586,16 +1576,13 @@ function drawBrush(g: CanvasRenderingContext2D, v: View, t: number): void {
         for (let bj = 0; bj < B.length - 1; bj++) {
           const k0 = B[bj] - 0.03, k1 = B[bj + 1] + 0.03, outer = Math.abs((B[bj] + B[bj + 1]) / 2);
           // (The one ink in every bristle; dry where the hand hurried, the edges first.)
-          let run0 = -1, tone = -1, clv = -1;
+          let run0 = -1, tone = -1;
           for (let j = 0; j < m; j++) {
-            const p = P[j], dryness = (Math.max(0, p.fast - 0.35) + 0.15 * (1 - p.load) + 0.12 * p.jit) * (0.4 + 0.9 * outer) * (going ? 0.6 : 0.6 + 0.4 * (1 - wet));
+            const p = P[j], dryness = (Math.max(0, p.fast - 0.35) + 0.15 * (1 - p.load) + 0.05 * p.jit) * (0.4 + 0.9 * outer) * (going ? 0.6 : 0.6 + 0.4 * (1 - wet));
             // (Paler as the brush runs out: set per run, in steps too fine to see.)
             // (Its tone set by how loaded the brush was there, not by drying: drying only fades it, evenly.)
             const tk = Math.round((0.92 * (going ? 1 : 0.55 + 0.45 * life) * (0.82 + 0.18 * p.load)) * 40) / 40;
-            if (tk !== tone || p.cl !== clv) {
-              if (run0 >= 0 && j - 1 > run0) { band(run0, j - 1, k0, k1); run0 = j - 1; }
-              tone = tk; clv = p.cl; g.fillStyle = opaque(tk); g.globalAlpha = was * smooth(life / 0.6) * clv;
-            }
+            if (tk !== tone) { if (run0 >= 0 && j - 1 > run0) { band(run0, j - 1, k0, k1); run0 = j - 1; } tone = tk; g.fillStyle = opaque(tk); }
             const on = vnoise(p.s / (9 * px) + bj * 7.3, bj * 1.9) >= dryness;
             if (on && run0 < 0) run0 = j;
             if ((!on || j === m - 1) && run0 >= 0) { const e = on ? j : j - 1; if (e > run0) band(run0, e, k0, k1); run0 = -1; }
@@ -1604,7 +1591,20 @@ function drawBrush(g: CanvasRenderingContext2D, v: View, t: number): void {
       }
       from = i;
     }
-    g.globalAlpha = was;
+    if (going) {
+      // (Gone a little ahead of the year growing out toward it, softly: the new wood never touches wet ink.)
+      const gr = yearGrow && yearGrow.ring === going.ring ? yearGrow : null;
+      const fG = gr ? 1 - Math.pow(1 - Math.min(1, (t - gr.at) / GROW_T), 2.2) : 1, in0 = barkOf(going.ring - 1), out0 = barkOf(going.ring);
+      const front = (a: number) => in0(a) + (out0(a) - in0(a)) * fG, N = K * 2;
+      g.globalCompositeOperation = 'destination-out'; g.fillStyle = '#000';
+      for (let q = 6; q >= 0; q--) {
+        const ex = ((3 + (14 * q) / 6) * px) / v.s;
+        g.globalAlpha = q === 0 ? 1 : 0.32; g.beginPath();
+        for (let j = 0; j <= N; j++) { const a = (j / N) * TAU, [x, y] = at(v, a, front(a) + ex); if (j) g.lineTo(x, y); else g.moveTo(x, y); }
+        g.closePath(); g.fill();
+      }
+      g = main; g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = fadeTo; g.drawImage(brushSheet!, 0, 0); g.restore();
+    } else main.globalAlpha = orig;
     return;
   }
   for (let i = 1; i < n; i++) {
