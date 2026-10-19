@@ -1358,6 +1358,9 @@ function hear(): void {
       yearClosed = true;
       // (The year's wood grows out to the loop before the slice draws back to make room.)
       if (PRINT && !closer()) yearGrow = { ring: tree.rings.length - 1, at: clock() };
+      // (And the new year shown as new wood is, pale, a moment: on an old tree it's a hair at the bark, and would
+      // grow there unseen.)
+      fresh = { ring: tree.rings.length - 1, at: clock() };
     }
     // (Room made after the year has grown out; but at once if the slice already reaches past its room, however
     // quickly the rings come: never left growing past it while the next is drawn.)
@@ -2633,6 +2636,23 @@ const spare: Record<string, HTMLCanvasElement> = {};
 let yearGrow: { ring: number; at: number } | null = null;
 const GROW_T = 2.6;
 let roomDue = false;
+/** The year just drawn, shown pale a moment as new wood is (see `drawFresh`). */
+let fresh: { ring: number; at: number } | null = null;
+/**
+ * The year just drawn, pale, as fresh wood is before it darkens: a band just inside the bark, never thinner than
+ * some three px however fine the year (so it's seen on an old tree too), growing out with the year,
+ * then darkening into the print over a few seconds.
+ */
+function drawFresh(v: View, t: number): void {
+  if (!fresh || fresh.ring >= tree.rings.length || fresh.ring < 1) { fresh = null; return; }
+  const age = t - fresh.at, al = 0.82 * smooth(age / 0.4) * (1 - smooth((age - GROW_T - 1.6) / 2.4));
+  if (age > GROW_T + 4.2) { fresh = null; return; }
+  if (al < 0.01) return;
+  const f = yearGrow && yearGrow.ring === fresh.ring ? 1 - Math.pow(1 - Math.min(1, (t - yearGrow.at) / GROW_T), 2.2) : 1;
+  const old = barkOf(fresh.ring - 1), neu = barkOf(fresh.ring), minW = (3.4 * px) / v.s, hair = (1.1 * px) / v.s;
+  const out = (a: number) => old(a) + (neu(a) - old(a)) * f - hair;
+  hideBetween(v, (a) => Math.min(old(a) - hair, out(a) - minW), out, al);
+}
 function drawGrowth(v: View, t: number, moving: boolean, drift: boolean): boolean {
   const gr = yearGrow!, n = tree.rings.length;
   const f = 1 - Math.pow(1 - Math.min(1, (t - gr.at) / GROW_T), 2.2);
@@ -4100,7 +4120,7 @@ function frame(): void {
   const calm = fingers.size === 0 && !tree.stroke && !ease && !lookBack && !farTo && !intro && settle.ring < 0 && !gusts.length && !lifted.length && !choiceTo && !ruffle.some((r) => r > 0.02);
   // (Still on the slice, nothing pressing or fading: a quarter of the frames, the breath being slow. Out in
   // the grove, half, for the crowns stirring and the leaves.)
-  const still = calm && trail.length < 2 && !Object.keys(pressing).length && !Object.values(fading).some(Boolean) && !yearGrow && (relax <= 0 || relax >= 1)
+  const still = calm && trail.length < 2 && !fresh && !Object.keys(pressing).length && !Object.values(fading).some(Boolean) && !yearGrow && (relax <= 0 || relax >= 1)
     && !(lit >= 0 && t - litAt < 2 + STEADY_T) && t - openedAt > OPEN && !groveJob && !baseJob && !groveFade;
   const every = !calm ? 0 : far >= 1 ? 1 / 30 : still && far === 0 ? 1 / 15 : 0;
   if (every && t - lastFrame < every - 0.004) { requestAnimationFrame(frame); return; }
@@ -4168,10 +4188,12 @@ function frame(): void {
       if (rk > 0 && rest) drawSharp(rest, rv, 'rest', rk, breathGrow());
     }
     drawBreath(shownOf(v));
+    if (GROWN) drawFresh(shownOf(v), t);
   } else { paper.draw(g, v); drawLatewood(v); }
   const n = tree.rings.length;
   // A ring touched: lit softly along its edge for a moment, as its day is read.
-  const glow = lit >= 0 && lit < n ? 1 - smooth((t - litAt - 2) / STEADY_T) : 0;
+  // (Coming on softly, from `litAt`: at once for a ring touched; for a year just grown, as it finishes growing.)
+  const glow = lit >= 0 && lit < n ? smooth((t - litAt) / 0.5) * (1 - smooth((t - litAt - 2) / STEADY_T)) : 0;
   // (A soft light along it, never a ruled line.)
   if (glow > 0.01) {
     g.save(); g.lineJoin = 'round';
