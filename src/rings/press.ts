@@ -3041,12 +3041,9 @@ let editionY = -1e9, stampAt: [number, number] = [-1e9, -1e9];
 let parting: { k: KeptTree; tree: TreeSim; days: string[]; kind: Kind; seedAt: [number, number] | null; marks: WoodMark[]; place: [number, number] | null } | null = null;
 /** Where today's tree stands in the grove, if it was planted somewhere chosen (world units). */
 let herePlace: [number, number] | null = null;
-let plantAsked = 0;
 function plantAgain(at: [number, number] | null = null): void {
-  // (A year not yet finished is never set down by one touch: asked first, a second touch within a few
-  // seconds to begin another.)
-  if (!parting && tree.rings.length && clock() - plantAsked > 6) { plantAsked = clock(); say('This year’s tree isn’t finished. Touch the ground again to begin a new one; this one will stand in the grove as it is.', 6); return; }
-  plantAsked = 0;
+  // (Nothing is set down yet: the year's tree stands as it was until a new seed is chosen, and pinching back
+  // out of the woods brings it back.)
   if (painter !== null) { tree.cancel(); trail = []; painter = null; }
   if (visit) unvisit();
   fingers.clear();
@@ -4019,21 +4016,27 @@ function tapGrove(x: number, y: number): void {
     const wx = (x - L.cam.X0) / L.cam.S, wy = (y - L.cam.Y0) / L.cam.S;
     const sd = w.seedlings.find((q) => Math.hypot(q.wx - wx, q.wy - wy) * L.cam.S < Math.max(18 * px, 0.3 * L.cam.S));
     if (sd) { plantAgain([sd.wx, sd.wy]); return; }
-    // (Anywhere on the grove's ground, with room for it to grow: never in the stream, never where it or a tree
-    // beside it, grown full, would crowd the other. Where it can't go, a pencil ring there, fading, and why.)
-    const no = (why: string) => { refused = { wx, wy, at: clock() }; say(why, 4); };
-    const [bx0, by0, bx1, by1] = w.box;
-    if (wx < bx0 - 1.5 || wx > bx1 + 1.5 || wy < by0 - 1.5 || wy > by1 + 1.5) { no('That’s too far from the grove. Somewhere nearer the others.'); return; }
+    // (Anywhere on the ground: never in the stream (a pencil ring there, fading); the wood gives way to it, and
+    // where it would crowd a tree beside it, grown full, it's set down at the nearest open ground instead.)
     const st = w.stream;
-    for (let j = 1; j < st.length; j++) {
-      const [ax, ay] = st[j - 1], [cx2, cy2] = st[j], dx = cx2 - ax, dy = cy2 - ay, l2 = dx * dx + dy * dy || 1;
-      const k = Math.max(0, Math.min(1, ((wx - ax) * dx + (wy - ay) * dy) / l2));
-      if (Math.hypot(wx - ax - dx * k, wy - ay - dy * k) < 0.7) { no('Not in the stream. On its bank, perhaps.'); return; }
-    }
+    const wet = (x2: number, y2: number) => {
+      for (let j = 1; j < st.length; j++) {
+        const [ax, ay] = st[j - 1], [cx2, cy2] = st[j], dx = cx2 - ax, dy = cy2 - ay, l2 = dx * dx + dy * dy || 1;
+        const k = Math.max(0, Math.min(1, ((x2 - ax) * dx + (y2 - ay) * dy) / l2));
+        if (Math.hypot(x2 - ax - dx * k, y2 - ay - dy * k) < 0.7) return true;
+      }
+      return false;
+    };
+    if (wet(wx, wy)) { refused = { wx, wy, at: clock() }; return; }
     const fullNew = 1.3 * crownSize('oak', 365), fullOf = (t: { sp: string; n: number; wr: number }) => t.wr * crownSize(t.sp, Math.max(365, t.n)) / Math.max(1e-6, crownSize(t.sp, t.n));
-    if (w.trees.some((t) => Math.hypot(t.wx - wx, t.wy - wy) < 0.85 * (fullOf(t) + fullNew))) { no('Too close to another tree. Each needs room to grow.'); return; }
-    if (w.wild.some((t) => Math.hypot(t.wx - wx, t.wy - wy) < t.wr + 0.6 * fullNew)) { no('Too close to the wood. A little more open ground.'); return; }
-    plantAgain([wx, wy]);
+    const open = (x2: number, y2: number) => !wet(x2, y2) && !w.trees.some((t) => Math.hypot(t.wx - x2, t.wy - y2) < 0.85 * (fullOf(t) + fullNew));
+    let at: [number, number] | null = open(wx, wy) ? [wx, wy] : null;
+    for (let d = 0.2; !at && d < 6; d += 0.2) for (let q = 0; q < 24 && !at; q++) {
+      const a = (q / 24) * TAU, x2 = wx + Math.cos(a) * d, y2 = wy + Math.sin(a) * d;
+      if (open(x2, y2)) at = [x2, y2];
+    }
+    if (!at) { refused = { wx, wy, at: clock() }; return; }
+    plantAgain(at);
     return;
   }
   if (hit.i < 0) { groveCam = null; farTo = { from: far, to: 0, at: clock() }; return; }

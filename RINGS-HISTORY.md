@@ -360,3 +360,10 @@ October 19 — how it's done, said once. "Swipe through the woods. Touch one to 
   nothing until it is lifted (`painted`).
 * Reminders said only while the practice is being learned (`fewTimes`): "Draw your loop around the tree"
   the first three times a loop misses; "Double-tap to zoom out" once.
+
+## 2026-10-19 — Plant anywhere but the water, at one touch
+
+* No more "This year's tree isn't finished…": one touch on the ground opens the woods to choose from. Nothing is
+  set down until a seed is chosen, and pinching back out brings the year's tree back as it was.
+* The ground takes a tree anywhere but the stream (a pencil ring there, no words). The wood gives way to it;
+  too near a tree of the grove, it's set down at the nearest open ground. No "too far" or "too close" words.
