@@ -1414,10 +1414,6 @@ function hear(): void {
       // (The edge grows out to it once the loop's dried; a ring drawn while it's still growing only carries it on.)
       if (PRINT && !closer()) {
         grow.hold = now + 0.85 * soak;
-        wet.set(n1 - 1, now + 0.6 * soak);
-        // (And the year's ink pressed through the tree, from the heart out.)
-        if (wave && !wave.done) { wave.end = n1; wave.speed = Math.max(wave.speed, (n1 - wave.x) / 1.6); }
-        else wave = { x: 0, end: n1, speed: n1 / 2.2, at: now + 0.7 * soak, done: 0 };
       } else grow.x = n1;
     }
     if (!GROWN) makeRoom();
@@ -2752,49 +2748,6 @@ function drawGrowth(v: View, moving: boolean, drift: boolean): boolean {
   g.save(); g.beginPath(); g.rect(0, 0, W, H); ringPath(v, front, 0, K * 2, true); g.clip('evenodd'); drawKept(pc, v, 1, k); g.restore();
   return true;
 }
-/** A band between two edges round the slice (mm), filled with `style` composited by `op`. */
-function fillBetween(v: View, r0: (a: number) => number, r1: (a: number) => number, style: string, op: GlobalCompositeOperation): void {
-  g.save(); g.beginPath();
-  for (let j = 0; j <= K; j++) { const a = (j / K) * TAU, rr = v.s * warpR(v.warp, r1(a)), t = a + v.turn, x = v.cx + rr * Math.cos(t), y = v.cy - rr * Math.sin(t); if (j) g.lineTo(x, y); else g.moveTo(x, y); }
-  for (let j = K; j >= 0; j--) { const a = (j / K) * TAU, rr = Math.max(0, v.s * warpR(v.warp, r0(a))), t = a + v.turn; g.lineTo(v.cx + rr * Math.cos(t), v.cy - rr * Math.sin(t)); }
-  g.closePath(); g.globalCompositeOperation = op; g.fillStyle = style; g.fill(); g.restore();
-}
-/**
- * A year's ink pressed through the tree: a soft wave of fresh ink from the heart out to the newest year as it
- * sets (`x` years out, going to `end`), never ahead of the growing edge; a ring drawn while it travels only
- * carries it further.
- */
-let wave: { x: number; end: number; speed: number; at: number; done: number } | null = null;
-/** Each year just drawn, wet: when (it dries from a deep sepia to the print's black over some seven seconds). */
-const wet = new Map<number, number>();
-const WET_T = 7;
-function drawWetAndWave(v: View, t: number, dt: number): void {
-  const n = tree.rings.length;
-  if (!GROWN || !PRINT || !n) return;
-  // The wet years, sepia (only over the ink: the paper stays as it is), drying.
-  for (const [i, at] of wet) {
-    const age = t - at;
-    if (i >= n || age > WET_T) { wet.delete(i); continue; }
-    if (age < 0 || i > grow.x) continue;
-    const al = smooth(age / 0.5) * (1 - smooth(age / WET_T));
-    if (al < 0.01) continue;
-    const outer = i < Math.floor(grow.x) ? barkOf(i) : edgeAt(grow.x), inner = barkOf(i - 1), min = (4.5 * px) / v.s;
-    fillBetween(v, (a) => Math.min(inner(a), outer(a) - min), outer, `rgba(104,58,26,${(0.9 * al).toFixed(3)})`, 'lighten');
-  }
-  // The wave of fresh ink.
-  if (wave) {
-    if (wave.x < wave.end && t >= wave.at) wave.x = Math.min(wave.end, grow.x, wave.x + wave.speed * dt);
-    if (wave.x >= wave.end - 1e-3 && !wave.done) wave.done = t;
-    const fade = smooth((t - wave.at) / 0.5) * (wave.done ? 1 - smooth((t - wave.done) / 0.8) : 1);
-    if (wave.done && t - wave.done > 0.8) { wave = null; return; }
-    if (fade > 0.01 && t >= wave.at) {
-      const span = Math.max(1.2, 0.12 * n);
-      for (const [lo, al] of [[1, 0.08], [0.6, 0.12], [0.3, 0.16]] as [number, number][]) {
-        fillBetween(v, edgeAt(Math.max(-1, wave.x - span * lo)), edgeAt(Math.max(0, wave.x)), `rgba(30,22,16,${(al * fade).toFixed(3)})`, 'source-over');
-      }
-    }
-  }
-}
 /** A year just closed, to be pressed at once (see printFor). */
 let yearClosed = false;
 /** When a view was last pressed live, and how long that takes (ms), as it went. */
@@ -4054,7 +4007,7 @@ function unvisit(): void {
   lookAfresh();
 }
 function lookAfresh(): void {
-  warp = warpNow(); view = null; ease = null; lookBack = null; look = { k: 1, ox: 0, oy: 0 }; trail = []; inward = null; drying = []; grow.x = tree.rings.length; grow.v = 0; wave = null; wet.clear();
+  warp = warpNow(); view = null; ease = null; lookBack = null; look = { k: 1, ox: 0, oy: 0 }; trail = []; inward = null; drying = []; grow.x = tree.rings.length; grow.v = 0;
   for (const k in printCaches) delete printCaches[k];
 }
 /**
@@ -4266,7 +4219,7 @@ function frame(): void {
   const calm = fingers.size === 0 && !tree.stroke && !ease && !lookBack && !farTo && !intro && settle.ring < 0 && !gusts.length && !lifted.length && !refused && !choiceTo && !ruffle.some((r) => r > 0.02);
   // (Still on the slice, nothing pressing or fading: a quarter of the frames, the breath being slow. Out in
   // the grove, half, for the crowns stirring and the leaves.)
-  const still = calm && trail.length < 2 && !drying.length && !wave && !wet.size && !growing() && !settling && !(seedSunk && t - seedSunk < 2.5) && !Object.keys(pressing).length && !Object.values(fading).some(Boolean) && (relax <= 0 || relax >= 1)
+  const still = calm && trail.length < 2 && !drying.length && !growing() && !settling && !(seedSunk && t - seedSunk < 2.5) && !Object.keys(pressing).length && !Object.values(fading).some(Boolean) && (relax <= 0 || relax >= 1)
     && !(lit >= 0 && t - litAt < 2 + STEADY_T) && t - openedAt > OPEN && !groveJob && !baseJob && !groveFade;
   const every = !calm ? 0 : far >= 1 ? 1 / 30 : still && far === 0 ? 1 / 15 : 0;
   if (every && t - lastFrame < every - 0.004) { requestAnimationFrame(frame); return; }
@@ -4336,7 +4289,6 @@ function frame(): void {
     drawBreath(shownOf(v));
   } else { paper.draw(g, v); drawLatewood(v); }
   // (The year just drawn, pale as new wood, growing out with it and darkening after: never only once it's grown.)
-  if (GROWN && PRINT && far < 0.6) drawWetAndWave(shownOf(v), t, dt);
   const n = tree.rings.length;
   // A ring touched: lit softly along its edge for a moment, as its day is read.
   // (Coming on softly, from `litAt`: at once for a ring touched; for a year just grown, as it finishes growing.)
@@ -4428,7 +4380,7 @@ void (async () => {
   else if (!tree.rings.length) say('Draw a circle around this one.', 8);
   // (Anything amiss with the trees kept, said before anything else.)
   if (dataNote) say(dataNote, 12);
-  Object.assign(window, { press: { get tree() { return tree; }, get phase() { return settle.ring >= 0 ? 'settling' : 'trace'; }, get easing() { return !!ease; }, get view() { return viewNow(); }, get days() { return days; }, get kind() { return kind; }, get choice() { return SEEDS[choice]; }, get far() { return far; }, get visiting() { return visit?.i ?? null; }, get parting() { return !!parting; }, groveNext: () => { const c = camNow(), w = worldOf(); return { x: (c.X0 + w.next.wx * c.S) / px, y: (c.Y0 + w.next.wy * c.S) / px }; }, stream: () => { const c = camNow(); return worldOf().stream.map(([x, y]) => ({ x: (c.X0 + x * c.S) / px, y: (c.Y0 + y * c.S) / px })); }, grove: () => groveLayout().trees.map((t) => ({ sp: t.sp, n: t.n, i: t.i, x: t.x / px, y: t.y / px, r: t.r / px })), get editionY() { return editionY; }, get stampAt() { return stampAt; }, print: async () => (await yearPrint()).toDataURL('image/png'), get presses() { return presses.splice(0); }, get breeze() { const st = worldOf().stream; return { gusts: gusts.length, lifted: lifted.length, stream: st.length, max: Math.max(0, ...st.map(([x, y]) => Math.hypot(...breezeAt(x, y)))) }; }, get room() { const v = viewNow(); return { widest: (0.8 * roomNow() * v.s) / capScale(grow.x) / px, room: roomNow() / px }; }, get dbg() { return { gx: +grow.x.toFixed(3), wet: [...wet].map(([i, a]) => `${i}@${(clock() - a).toFixed(1)}`).join(','), wave: wave ? `${wave.x.toFixed(2)}/${wave.end}` : '', trail: trail.length, inward: inward ? inward.ring : null, n: tree.rings.length, relax: +relax.toFixed(2), fading: Object.entries(fading).filter(([, f]) => f).map(([k, f]) => `${k}:${f!.at === Infinity ? 'held' : (clock() - f!.at).toFixed(2)}${f!.still ? 's' : ''}`), pressing: Object.keys(pressing), grow: growing(), ease: !!ease, caches: Object.entries(printCaches).map(([k, c]) => `${k}:${c ? (c.c.width + 'x' + c.c.height) : '-'}`) }; }, get marks() { return marks.map((m) => `${m.kind}@${m.a.toFixed(2)} ${m.from}-${m.last} x${m.size.toFixed(1)}`); } } });
+  Object.assign(window, { press: { get tree() { return tree; }, get phase() { return settle.ring >= 0 ? 'settling' : 'trace'; }, get easing() { return !!ease; }, get view() { return viewNow(); }, get days() { return days; }, get kind() { return kind; }, get choice() { return SEEDS[choice]; }, get far() { return far; }, get visiting() { return visit?.i ?? null; }, get parting() { return !!parting; }, groveNext: () => { const c = camNow(), w = worldOf(); return { x: (c.X0 + w.next.wx * c.S) / px, y: (c.Y0 + w.next.wy * c.S) / px }; }, stream: () => { const c = camNow(); return worldOf().stream.map(([x, y]) => ({ x: (c.X0 + x * c.S) / px, y: (c.Y0 + y * c.S) / px })); }, grove: () => groveLayout().trees.map((t) => ({ sp: t.sp, n: t.n, i: t.i, x: t.x / px, y: t.y / px, r: t.r / px })), get editionY() { return editionY; }, get stampAt() { return stampAt; }, print: async () => (await yearPrint()).toDataURL('image/png'), get presses() { return presses.splice(0); }, get breeze() { const st = worldOf().stream; return { gusts: gusts.length, lifted: lifted.length, stream: st.length, max: Math.max(0, ...st.map(([x, y]) => Math.hypot(...breezeAt(x, y)))) }; }, get room() { const v = viewNow(); return { widest: (0.8 * roomNow() * v.s) / capScale(grow.x) / px, room: roomNow() / px }; }, get dbg() { return { gx: +grow.x.toFixed(3), trail: trail.length, inward: inward ? inward.ring : null, n: tree.rings.length, relax: +relax.toFixed(2), fading: Object.entries(fading).filter(([, f]) => f).map(([k, f]) => `${k}:${f!.at === Infinity ? 'held' : (clock() - f!.at).toFixed(2)}${f!.still ? 's' : ''}`), pressing: Object.keys(pressing), grow: growing(), ease: !!ease, caches: Object.entries(printCaches).map(([k, c]) => `${k}:${c ? (c.c.width + 'x' + c.c.height) : '-'}`) }; }, get marks() { return marks.map((m) => `${m.kind}@${m.a.toFixed(2)} ${m.from}-${m.last} x${m.size.toFixed(1)}`); } } });
   // (The real wood: once it's come, the print is pressed again with it.)
   if (PRINT) loadWood(() => { for (const k in printCaches) delete printCaches[k]; for (const k in pressing) delete pressing[k]; });
   startIntro();
