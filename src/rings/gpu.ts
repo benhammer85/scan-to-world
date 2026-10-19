@@ -134,10 +134,14 @@ void main() {
   bool heart = r < rad(-1, b, f);
   int i = heart ? 0 : lo;
   float rin = heart ? 0. : rad(i - 1, b, f), rout = heart ? rad(-1, b, f) : rad(i, b, f);
-  float across = (r - rin) / max(1e-3, rout - rin), ink;
+  // (A wide young year printed as one is: mostly pale earlywood, the year's dark latewood only its outer part,
+  // never a broad black band.)
+  float acr0 = (r - rin) / max(1e-3, rout - rin), wpx = rout - rin, cap = min(wpx, 9. * uU + 0.36 * wpx);
+  bool wide = !heart && wpx > cap + 0.5;
+  float across = wide ? max(0., 1. - (1. - acr0) * wpx / cap) : acr0, ink;
   // (Where the point lies in the wood itself (mm): the wood's marks are its own, never moved by a year added.)
   float rinM = heart ? 0. : (i == 0 ? uPithMM : R(i - 1, 12)), routM = heart ? uPithMM : R(i, 12);
-  float mm = rinM + across * (routM - rinM), rrM = (rinM + routM) * 0.5;
+  float mm = rinM + acr0 * (routM - rinM), rrM = (rinM + routM) * 0.5;
   if (uOak == 1) {
     int year = heart ? (int(R(0, 2)) + uOakN - 1) % uOakN : int(R(i, 2));
     float runR = R(i, 4), reps = R(i, 0), fi = float(i);
@@ -146,7 +150,7 @@ void main() {
     float rows = float(uLvRows[li]), wob = (0.09 * sin(2. * a + fi * 1.7) + 0.06 * sin(3. * a + fi * 2.9 + 1.) + 0.04 * sin(5. * a + fi * 0.6)) * uW0;
     // (As the drawn woods print: every year its own, its latewood broader or narrower and heavier or lighter;
     // its edge torn in short bites; and the scan's wood laid round the ring at the ring's own radius.)
-    float rr = rrM * uSnap, w = max(1e-3, rout - rin), yv = h1(fi * 1.37 + 0.71), heavy = 0.85 + 0.3 * h1(fi * 2.91 + 0.3);
+    float rr = rrM * uSnap, w = max(1e-3, wide ? cap : rout - rin), yv = h1(fi * 1.37 + 0.71), heavy = 0.85 + 0.3 * h1(fi * 2.91 + 0.3);
     float fray = (ringN(a, rr, 0.7, fi * 3.1, rr * 0.7) - 0.5) + 0.7 * (ringN(a, rr, 1.9, fi, rr * 1.9 + 3.) - 0.5);
     float acr = heart ? across : clamp(pow(clamp(across + 1.4 * uU / w * fray, 0., 1.), 0.7 + 0.6 * yv), 0., 1.);
     // (The scan read a little either way along the year and averaged: its own rays and pores, enlarged, never a
@@ -163,7 +167,12 @@ void main() {
     // (The heart: no stretched copy of the year, only a pale pith ringed by its first dark edge.)
     if (heart) ink = 0.92 * sm((across - 0.62) / 0.22) * (1. - 0.8 * sm((ringN(a, rr, 1.2, 3., mm * uSnap * 1.2) - 0.78) / 0.05));
     ink *= R(i, 10);
-  } else ink = drawnInk(i, a, r, across, heart, rout - rin, dx, dy, rrM * uSnap, mm * uSnap) * R(i, 10);
+  } else ink = drawnInk(i, a, r, across, heart, cap, dx, dy, rrM * uSnap, mm * uSnap) * R(i, 10);
+  if (wide) {
+    // (The earlywood: the paper, its grain's fine lines faintly taken, broken.)
+    float rr2 = rrM * uSnap, pale = 0.85 * sm((ringN(a, rr2, 0.6, float(i) * 2.7, mm * uSnap * 1.8 + 7.) - 0.8) / 0.04) * sm((ringN(a, rr2, 0.25, 3., mm * uSnap * 0.25) - 0.4) / 0.12);
+    ink += (pale * R(i, 10) - ink) * sm((1. - cap / wpx - acr0) * wpx / (2.5 * uU));
+  }
   if (!heart && R(i, 5) > 0.) {
     ink += (R(i, 13) * R(i, 10) - ink) * R(i, 5);
     int jo = int(R(i, 9)), ji = int(R(i, 8));

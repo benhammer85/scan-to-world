@@ -2185,7 +2185,10 @@ function printYears(v: View, oak: Years | null): void {
       const heart = r < at(-1, b, f), i = heart ? 0 : lo, rin = heart ? 0 : at(i - 1, b, f), rout = heart ? at(-1, b, f) : at(i, b, f);
       // (Where the point lies in the wood itself (mm): its marks never moved by a year added.)
       const rinM = heart ? 0 : i === 0 ? meanR(-1) : meanR(i - 1), routM = heart ? meanR(-1) : meanR(i);
-      const across = (r - rin) / Math.max(1e-3, rout - rin), mm = rinM + across * (routM - rinM), rrM = (rinM + routM) / 2, year = !oak ? 0 : heart ? (yr[0] + oak.n - 1) % oak.n : yr[i];
+      // (A wide young year printed as one is: mostly pale earlywood, the year's dark latewood only its outer part,
+      // never a broad black band; as gpu.ts presses it.)
+      const acr0 = (r - rin) / Math.max(1e-3, rout - rin), wpx = rout - rin, cap = Math.min(wpx, 9 * U + 0.36 * wpx), wide = !heart && wpx > cap + 0.5;
+      const across = wide ? Math.max(0, 1 - ((1 - acr0) * wpx) / cap) : acr0, mm = rinM + acr0 * (routM - rinM), rrM = (rinM + routM) / 2, year = !oak ? 0 : heart ? (yr[0] + oak.n - 1) % oak.n : yr[i];
       // (Never evenly round: a gentle stretch and squeeze round each ring, its own, so the rays fall
       // unevenly and bend a little from year to year. The heart, soft: a blurred year, no rays meeting.)
       // (Toward the middle, a ring's wood is drawn in ever tighter round: there it takes a softer copy, so
@@ -2197,7 +2200,7 @@ function printYears(v: View, oak: Years | null): void {
         const wob = (0.09 * Math.sin(2 * a + i * 1.7) + 0.06 * Math.sin(3 * a + i * 2.9 + 1) + 0.04 * Math.sin(5 * a + i * 0.6)) * W0;
         // (As the drawn woods print: every year its own, its edge torn in short bites, the wood laid round the ring
         // at its own radius; as gpu.ts presses it.)
-        const rr = rrM * SNAP, wd = Math.max(1e-3, rout - rin), yv = h1(i * 1.37 + 0.71), heavy = 0.85 + 0.3 * h1(i * 2.91 + 0.3), wrap = smooth((a - (TAU - 0.4)) / 0.4);
+        const rr = rrM * SNAP, wd = Math.max(1e-3, wide ? cap : rout - rin), yv = h1(i * 1.37 + 0.71), heavy = 0.85 + 0.3 * h1(i * 2.91 + 0.3), wrap = smooth((a - (TAU - 0.4)) / 0.4);
         const rn = (kx: number, ox: number, y: number) => { const n0 = vnoise(a * rr * kx + ox, y); return wrap > 0 ? n0 + (vnoise((a - TAU) * rr * kx + ox, y) - n0) * wrap : n0; };
         const fray = rn(0.7, i * 3.1, rr * 0.7) - 0.5 + 0.7 * (rn(1.9, i, rr * 1.9 + 3) - 0.5);
         const acr = heart ? across : Math.max(0, Math.min(1, Math.pow(Math.max(0, Math.min(1, across + ((1.4 * U) / wd) * fray)), 0.7 + 0.6 * yv)));
@@ -2212,7 +2215,14 @@ function printYears(v: View, oak: Years | null): void {
         // (The heart: a pale pith ringed by its first dark edge, never a stretched copy of the year.)
         if (heart) ink = 0.92 * smooth((across - 0.62) / 0.22) * (1 - 0.8 * smooth((rn(1.2, 3, mm * SNAP * 1.2) - 0.78) / 0.05));
         ink *= tone(i);
-      } else ink = drawnInk(i, a, r, across, heart, rout - rin, dx, dy, rrM * SNAP, mm * SNAP) * tone(i);
+      } else ink = drawnInk(i, a, r, across, heart, cap, dx, dy, rrM * SNAP, mm * SNAP) * tone(i);
+      if (wide) {
+        // (The earlywood: the paper, its grain's fine lines faintly taken, broken.)
+        const wrap2 = smooth((a - (TAU - 0.4)) / 0.4), rr2 = rrM * SNAP;
+        const rn2 = (kx: number, ox: number, y: number) => { const n0 = vnoise(a * rr2 * kx + ox, y); return wrap2 > 0 ? n0 + (vnoise((a - TAU) * rr2 * kx + ox, y) - n0) * wrap2 : n0; };
+        const pale = 0.85 * smooth((rn2(0.6, i * 2.7, mm * SNAP * 1.8 + 7) - 0.8) / 0.04) * smooth((rn2(0.25, 3, mm * SNAP * 0.25) - 0.4) / 0.12);
+        ink += (pale * tone(i) - ink) * smooth((1 - cap / wpx - acr0) * wpx / (2.5 * U));
+      }
       if (!heart && thin[i] > 0) {
         // (A block of ink, as dark as its years ran narrow; cut through by the pale lines of the wide ones.)
         ink += (dens[i] * tone(i) - ink) * thin[i];
