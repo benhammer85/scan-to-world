@@ -47,6 +47,8 @@ const canvas = document.getElementById('press') as HTMLCanvasElement;
 // (The drawing goes to the page, or for a moment to a picture of the slice: see `picture`.)
 let g = canvas.getContext('2d')!;
 const words = document.getElementById('words')!;
+/** Said only to a screen reader: what the hand just did (see `hear`). */
+const heard = document.getElementById('heard') ?? document.createElement('p');
 // (The type the sheet's words are written in, asked for at once: drawn on the sheet, it's there from the first, never swapped in.)
 try { void document.fonts?.load('italic 13px Newsreader'); } catch { /* the fallback, then */ }
 let W = 1, H = 1, px = 1;
@@ -1078,7 +1080,9 @@ let restAt = 0;
  * and ebbs at six breaths a minute, four seconds in and six out (slow breathing, the out-breath long, is what
  * calms); a touch, and it's gone. Never a word about it but once.
  */
-const BREATH = PRINT && GROWN, IN = 4, OUT = 6;
+/** Asked of the phone to keep still: no breath, no stirring crowns, no falling leaves, rain or snow; the growing still shown. */
+const STILL = (() => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; } })();
+const BREATH = PRINT && GROWN && !STILL, IN = 4, OUT = 6;
 let breathShown = 0, stillSince = 0, breathNow = 0;
 /** Where in the breath it is now, 0 (out) to 1 (in), and how present the breath is (0 to 1). */
 function breathe(t: number, dt: number): void {
@@ -1406,6 +1410,8 @@ function hear(): void {
     // (Once, a week in: that the slice can be seen printed.)
     if (GROWN && tree.rings.length === 7 && !params.has('demo')) { try { if (!localStorage.getItem('annulus.printHint')) { localStorage.setItem('annulus.printHint', '1'); window.setTimeout(() => say('Hold the slice a moment to see it printed.', 7), 4000); } } catch { /* not said */ } }
     if (GROWN && tree.rings.length === 1) seedSunk = clock();
+    // (Told, to a screen reader: the ring laid.)
+    heard.textContent = tree.rings.length === 1 ? 'The first ring is drawn.' : 'A ring is added.';
     if (GROWN) {
       // (First the loop dries away, the slice still; then, the sheet clear, the year grows out into it.)
       const soak = Math.min(1.3, 3.2 - 2.1 * smooth((tree.rings.length - 8) / 110));
@@ -3562,7 +3568,7 @@ function layGrove(cam: Cam, still: boolean): void {
       const [bx, by] = gusts.length ? breezeAt((s.x - from.cam.X0) / from.cam.S, (s.y - from.cam.Y0) / from.cam.S, t) : [0, 0], lean = Math.min(2.5 * px, s.r * q * 0.03) * (1 + 0.12 * Math.sin(t * 1.6 + ph));
       // (And the weather's own wind, leaning every crown a little its way, slowly, each in its own time.)
       const sway = sky.wind > 0.1 ? Math.min(2 * px, s.r * q * 0.025) * (sky.wind - 0.1) * (0.85 + 0.15 * Math.sin(t * 0.8 + ph * 2)) : 0;
-      const dx = bx * lean + sky.windDx * sway, dy = by * lean + sky.windDy * sway;
+      const dx = STILL ? 0 : bx * lean + sky.windDx * sway, dy = STILL ? 0 : by * lean + sky.windDy * sway;
       g.drawImage(s.c, X(s.x) - s.m * q + dx, Y(s.y) - s.m * q + dy, 2 * s.m * q, 2 * s.m * q);
     }
   };
@@ -3702,7 +3708,7 @@ function drawWeather(cam: Cam, sky: Sky, t: number, U: number): void {
       g.beginPath(); g.ellipse(x, y, (0.4 + 2.6 * p) * U, (0.3 + 1.9 * p) * U, 0, 0, TAU); g.stroke();
     }
     // (The rain itself: fine strokes, slanting with the wind, falling past.)
-    const drops = Math.round(150 * sky.rain), sl = 0.15 + 0.6 * sky.wind, ax = sky.windDx * sl, len = (7 + 5 * sky.rain) * U;
+    const drops = STILL ? 0 : Math.round(150 * sky.rain), sl = 0.15 + 0.6 * sky.wind, ax = sky.windDx * sl, len = (7 + 5 * sky.rain) * U;
     g.strokeStyle = 'rgb(70,78,88)'; g.lineCap = 'round';
     for (let q = 0; q < drops; q++) {
       const v = (90 + 40 * h1(q * 2.3)) * U, m = 20 * U, Wm = W + 2 * m, Hm = H + 2 * m;
@@ -3741,7 +3747,7 @@ function drawLife(cam: Cam): void {
       const lit = got && got.key === lk ? got.lit : litterOf(tr, cam, season);
       if (!got || got.key !== lk) litterMemo.set(tr.k, { key: lk, lit });
       if (!lit.length) continue;
-      for (let q = 0; q < 2; q++) {
+      for (let q = 0; q < (STILL ? 0 : 2); q++) {
         const per = 6 + 4 * h1(tr.k + q), cyc = Math.floor(t / per + h1(tr.k * 1.3 + q * 0.7)), p = (t / per + h1(tr.k * 1.3 + q * 0.7)) % 1;
         const to = lit[Math.floor(h1(cyc * 3.1 + q + tr.k) * lit.length)];
         // (A leaf comes down softly: it lets go slowly, then falls at a gentle, steady pace, rocking side to side
@@ -3764,7 +3770,7 @@ function drawLife(cam: Cam): void {
       }
     }
   }
-  const flakes = Math.max(season === 'winter' ? 70 : 0, Math.round(130 * sky.snow));
+  const flakes = STILL ? 0 : Math.max(season === 'winter' ? 70 : 0, Math.round(130 * sky.snow));
   if (flakes) {
     for (let q = 0; q < flakes; q++) {
       // (Coming in past the sheet's edge and going out past it, fading as it goes: never there and then not.)
@@ -3897,7 +3903,9 @@ function drawFar(v: View): void {
  * A copy of everything (the grove, and today's tree), kept as a file somewhere safe; and one taken back.
  * Pencilled small at the foot of the grove.
  */
-const copyAt = () => ({ keep: [W / 2 - 112 * px, H - 44 * px] as [number, number], back: [W / 2, H - 44 * px] as [number, number], sky: [W / 2 + 112 * px, H - 44 * px] as [number, number] });
+/** The phone's own inset at its foot (CSS px): the home bar's room, kept clear of. */
+const footInset = (() => { const d = document.createElement('div'); d.style.cssText = 'position:fixed;bottom:0;height:0;padding-bottom:env(safe-area-inset-bottom);visibility:hidden;pointer-events:none'; document.body.append(d); return () => d.offsetHeight || 0; })();
+const copyAt = () => { const y = H - (44 + footInset()) * px; return { keep: [W / 2 - 112 * px, y] as [number, number], back: [W / 2, y] as [number, number], sky: [W / 2 + 112 * px, y] as [number, number] }; };
 /** Said in pencil beside them: whether the grove takes the weather where you are. */
 const skyWords = () => (weatherOn() ? 'your weather' : 'bring your weather');
 async function toggleWeather(): Promise<void> {
@@ -3909,7 +3917,8 @@ async function toggleWeather(): Promise<void> {
 function drawCopyWords(al: number): void {
   if (al <= 0.01 || visit) return;
   const c = copyAt();
-  g.save(); g.globalAlpha = al * 0.7; g.fillStyle = 'rgba(92,88,84,0.85)'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  // (Dark enough to read: some five to one against the paper.)
+  g.save(); g.globalAlpha = al; g.fillStyle = 'rgb(84,76,68)'; g.textAlign = 'center'; g.textBaseline = 'middle';
   g.font = `italic ${13 * px}px Newsreader, "Iowan Old Style", Georgia, serif`;
   // (On a clearing of paper of their own: never written over the map.)
   {
@@ -3918,7 +3927,7 @@ function drawCopyWords(al: number): void {
     g.save(); g.globalAlpha = al; g.translate(cx, cy); g.scale(1, ry / rx); g.translate(-cx, -cy); g.fillStyle = gr; g.fillRect(cx - rx, cy - rx, 2 * rx, 2 * rx); g.restore();
   }
   g.fillText('keep a copy', ...c.keep); g.fillText('take one back', ...c.back);
-  g.globalAlpha = al * (weatherOn() ? 0.85 : 0.6); g.fillText(skyWords(), ...c.sky);
+  g.fillText(skyWords(), ...c.sky);
   g.restore();
 }
 async function keepGroveCopy(): Promise<void> {
@@ -3942,10 +3951,23 @@ const backInput = (() => {
   document.body.append(i);
   return i;
 })();
+backInput.setAttribute('aria-label', 'take one back: restore your trees from a copy');
+/** (And the other two words, as real buttons over them: for a screen reader or a keyboard as much as a finger.) */
+const groveButtons = (() => {
+  const make = (label: string, act: () => void) => {
+    const b = document.createElement('button'); b.className = 'pencil'; b.setAttribute('aria-label', label); b.onclick = act;
+    Object.assign(b.style, { position: 'fixed', width: '100px', height: '44px', transform: 'translate(-50%, -50%)', display: 'none', zIndex: '5' });
+    document.body.append(b); return b;
+  };
+  return { keep: make('keep a copy: save your trees as a file', () => void keepGroveCopy()), sky: make('bring your weather', () => void toggleWeather()) };
+})();
 function placeBackInput(on: boolean): void {
-  const show = on && !visit;
-  if (show) { const c = copyAt(); backInput.style.left = `${c.back[0] / px}px`; backInput.style.top = `${c.back[1] / px}px`; }
-  if ((backInput.style.display !== 'none') !== show) backInput.style.display = show ? 'block' : 'none';
+  const show = on && !visit, c = copyAt();
+  for (const [el, at] of [[backInput, c.back], [groveButtons.keep, c.keep], [groveButtons.sky, c.sky]] as [HTMLElement, [number, number]][]) {
+    if (show) { el.style.left = `${at[0] / px}px`; el.style.top = `${at[1] / px}px`; }
+    if ((el.style.display !== 'none') !== show) el.style.display = show ? 'block' : 'none';
+  }
+  if (show) groveButtons.sky.setAttribute('aria-label', weatherOn() ? 'your weather: on; turn it off' : 'bring your weather: show the weather where you are');
 }
 async function takeGroveCopy(file: File): Promise<void> {
   try {
