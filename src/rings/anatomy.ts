@@ -50,7 +50,7 @@ export const RAYS: Partial<Record<Kind, number>> = { fir: 0.3, juniper: 0.2, oak
  * How long a wood's rays run before breaking off (in the slice's own px): oak's broad rays long, the others'
  * short flecks a few years tall, staggered; and how much of each ray's way is broken.
  */
-export const RAY_RUN: Partial<Record<Kind, [number, number]>> = { fir: [7, 0.6], juniper: [5, 0.65], oak: [26, 0.25], ash: [12, 0.4], cherry: [5, 0.55], maple: [5, 0.5], birch: [4, 0.6], olive: [5, 0.55], pine: [7, 0.6], redwood: [7, 0.6], bristlecone: [7, 0.6] };
+export const RAY_RUN: Partial<Record<Kind, [number, number]>> = { fir: [7, 0.6], juniper: [5, 0.65], oak: [15, 0.32], ash: [9, 0.42], cherry: [5, 0.55], maple: [5, 0.5], birch: [4, 0.6], olive: [5, 0.55], pine: [7, 0.6], redwood: [7, 0.6], bristlecone: [7, 0.6] };
 /**
  * The rays at a point (tree angle `a`, `rho` px out at the slice's own size), 0 to 1. Real rays keep about the
  * same distance apart all the way out: a few begin at the heart, and as the wood widens new ones begin between
@@ -81,9 +81,14 @@ export function rayAt(a: number, rho: number, run: [number, number] = [20, 0.3],
     let dd = Math.abs(sAt - at); dd = Math.min(dd, N - dd);
     const dist = (dd * TAU * rho * kp) / N + (vnoise(rho * 2.4 + id, id * 0.13) - 0.5) * 0.35 * ws;
     if (dist > half + 0.6 * ws) continue;
-    // (A run, then broken off: short flecks in most woods, long runs in oak's.)
-    if (vnoise(id * 0.37, rho / run[0]) < run[1]) continue;
-    best = Math.max(best, Math.min(1, smooth(1 - (dist - half) / (0.6 * ws))) * Math.min(1, (rho - born) / 3));
+    // (Never a ruled line: a ray is a run of lens-shaped flecks, each its own length, swelling and tapering to a
+    // point at either end, staggered from its neighbours', now and then one missing.)
+    const per = run[0] * (0.8 + 0.8 * h1(id * 5.3)), u = rho / per + h1(id * 8.1), seg = Math.floor(u), ph = u - seg;
+    const on = (1 - run[1]) * (0.7 + 0.6 * h1(id * 2.9 + seg * 1.37));
+    if (ph > on || h1(id * 3.1 + seg * 7.7) < run[1] * 0.35) continue;
+    const lens = Math.pow(Math.sin((Math.PI * ph) / on), 0.7), hw = half * lens;
+    if (dist > hw + 0.6 * ws) continue;
+    best = Math.max(best, Math.min(1, smooth(1 - (dist - hw) / (0.6 * ws))) * Math.min(1, (rho - born) / 3) * Math.min(1, lens * 3));
   }
   return best;
 }

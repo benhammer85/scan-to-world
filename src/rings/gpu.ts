@@ -75,8 +75,12 @@ float rayAt(float a, float rho, float kp, float ws) {
     float dd = abs(sAt - there); dd = min(dd, Nf - dd);
     float dist = dd * TAU * rho / Nf * kp + (vnoise(rho * 2.4 + id, id * 0.13) - 0.5) * 0.35 * ws;
     if (dist > hf + 0.6 * ws) continue;
-    if (vnoise(id * 0.37, rho / uRun0) < uRun1) continue;
-    best = max(best, min(1., sm(1. - (dist - hf) / (0.6 * ws))) * min(1., (rho - born) / 3.));
+    float per = uRun0 * (0.8 + 0.8 * h1(id * 5.3)), u = rho / per + h1(id * 8.1), seg = floor(u), ph = u - seg;
+    float on = (1. - uRun1) * (0.7 + 0.6 * h1(id * 2.9 + seg * 1.37));
+    if (ph > on || h1(id * 3.1 + seg * 7.7) < uRun1 * 0.35) continue;
+    float lens = pow(sin(PI * ph / on), 0.7), hw = hf * lens;
+    if (dist > hw + 0.6 * ws) continue;
+    best = max(best, min(1., sm(1. - (dist - hw) / (0.6 * ws))) * min(1., (rho - born) / 3.) * min(1., lens * 3.));
   }
   return best;
 }

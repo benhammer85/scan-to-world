@@ -2392,7 +2392,8 @@ const realYears = () => wood.years[kind];
  * pixels only; paper-coloured marks left as they are) of a canvas `c` holding the slice drawn for view `v`.
  */
 function inkGrain(c: HTMLCanvasElement, v: View, band?: [number, number], soft = 1): void {
-  const n = tree.rings.length, last = n ? tree.rings[n - 1] : null, rbMm = meanR(n - 1);
+  // (The press's drifts sized in the wood's own mm, the same for every slice: never moved by a year added.)
+  const n = tree.rings.length, last = n ? tree.rings[n - 1] : null, rbMm = 57;
   let rmax = tree.k.pith;
   if (last) for (let i = 0; i < K; i++) rmax = Math.max(rmax, last[i]);
   const R = v.s * warpR(v.warp, rmax) + (barkCss(v) * 1.6 + 6) * px;
