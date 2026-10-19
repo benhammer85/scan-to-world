@@ -3139,7 +3139,7 @@ function tellGrove(): void {
   if (groveTold) { nudgeCopy(); return; }
   groveTold = true;
   try { localStorage.setItem('annulus.grove1', '1'); } catch { /* said again next time, then */ }
-  say('Touch the ground to plant a new tree.', 6);
+  say('Touch the ground anywhere to plant a new tree.', 6);
 }
 /** The land and its trees, drawn for a view: inked and coloured (slow: drawn when the view is still). */
 /** A crown as laid over the ground, to be stirred by the wind: its picture, where its middle is, its size. */
@@ -3777,6 +3777,14 @@ function drawLife(cam: Cam): void {
     g.fillStyle = `rgb(${l.col[0]},${l.col[1]},${l.col[2]})`; g.fill(); g.strokeStyle = ink(0.5); g.lineWidth = 0.4 * U; g.stroke(); g.restore();
   }
   g.globalAlpha = 1;
+  if (refused) {
+    const k = 1 - smooth((t - refused.at) / 1.6);
+    if (k <= 0) refused = null;
+    else {
+      const x = cam.X0 + refused.wx * cam.S, y = cam.Y0 + refused.wy * cam.S, r = Math.max(7 * px, 0.45 * cam.S) * (1 + 0.15 * (1 - k));
+      g.save(); g.globalAlpha = 0.55 * k; g.strokeStyle = 'rgb(92,88,84)'; g.lineWidth = 0.8 * px; g.setLineDash([2.5 * px, 2.5 * px]); g.beginPath(); g.arc(x, y, r, 0, TAU); g.stroke(); g.restore();
+    }
+  }
   drawWeather(cam, sky, t, U);
   const { tint } = sunNow();
   if (tint[3] > 0.01) { g.globalCompositeOperation = 'multiply'; g.fillStyle = `rgba(${tint[0]},${tint[1]},${tint[2]},${tint[3].toFixed(3)})`; g.fillRect(0, 0, W, H); }
@@ -3897,6 +3905,8 @@ async function takeGroveCopy(file: File): Promise<void> {
   } catch { say('That file isn’t a copy of a grove.', 4); }
 }
 /** Touched in the grove: an older tree opens to its slice; today's comes home. */
+/** Where a tree couldn't be planted, just touched (world units): a pencil ring there a moment. */
+let refused: { wx: number; wy: number; at: number } | null = null;
 function tapGrove(x: number, y: number): void {
   { const c = copyAt(); if (!visit && y > c.keep[1] - 18 * px && y < c.keep[1] + 18 * px) { if (Math.abs(x - c.keep[0]) < 48 * px) { void keepGroveCopy(); return; } if (Math.abs(x - c.back[0]) < 50 * px) return; if (Math.abs(x - c.sky[0]) < 58 * px) { void toggleWeather(); return; } } }
   const L = groveLayout(), w = worldOf();
@@ -3910,10 +3920,20 @@ function tapGrove(x: number, y: number): void {
     const wx = (x - L.cam.X0) / L.cam.S, wy = (y - L.cam.Y0) / L.cam.S;
     const sd = w.seedlings.find((q) => Math.hypot(q.wx - wx, q.wy - wy) * L.cam.S < Math.max(18 * px, 0.3 * L.cam.S));
     if (sd) { plantAgain([sd.wx, sd.wy]); return; }
+    // (Anywhere on the grove's ground, with room for it to grow: never in the stream, never where it or a tree
+    // beside it, grown full, would crowd the other. Where it can't go, a pencil ring there, fading, and why.)
+    const no = (why: string) => { refused = { wx, wy, at: clock() }; say(why, 4); };
     const [bx0, by0, bx1, by1] = w.box;
-    if (wx < bx0 - 1.5 || wx > bx1 + 1.5 || wy < by0 - 1.5 || wy > by1 + 1.5) return;
-    if (w.trees.some((t) => Math.hypot(t.wx - wx, t.wy - wy) < t.wr + 0.35)) return;
-    if (w.wild.some((t) => Math.hypot(t.wx - wx, t.wy - wy) < t.wr + 0.2)) return;
+    if (wx < bx0 - 1.5 || wx > bx1 + 1.5 || wy < by0 - 1.5 || wy > by1 + 1.5) { no('That’s too far from the grove. Somewhere nearer the others.'); return; }
+    const st = w.stream;
+    for (let j = 1; j < st.length; j++) {
+      const [ax, ay] = st[j - 1], [cx2, cy2] = st[j], dx = cx2 - ax, dy = cy2 - ay, l2 = dx * dx + dy * dy || 1;
+      const k = Math.max(0, Math.min(1, ((wx - ax) * dx + (wy - ay) * dy) / l2));
+      if (Math.hypot(wx - ax - dx * k, wy - ay - dy * k) < 0.7) { no('Not in the stream. On its bank, perhaps.'); return; }
+    }
+    const fullNew = 1.3 * crownSize('oak', 365), fullOf = (t: { sp: string; n: number; wr: number }) => t.wr * crownSize(t.sp, Math.max(365, t.n)) / Math.max(1e-6, crownSize(t.sp, t.n));
+    if (w.trees.some((t) => Math.hypot(t.wx - wx, t.wy - wy) < 0.85 * (fullOf(t) + fullNew))) { no('Too close to another tree. Each needs room to grow.'); return; }
+    if (w.wild.some((t) => Math.hypot(t.wx - wx, t.wy - wy) < t.wr + 0.6 * fullNew)) { no('Too close to the wood. A little more open ground.'); return; }
     plantAgain([wx, wy]);
     return;
   }
@@ -4144,7 +4164,7 @@ function frame(): void {
   const t = clock(), dt = lastFrame ? Math.min(0.1, Math.max(1 / 240, t - lastFrame)) : 1 / 60;
   // (Nothing being done and nothing quick moving: half the frames are enough, for the slow things (the
   // breath, the crowns stirring), and the phone kept cool.)
-  const calm = fingers.size === 0 && !tree.stroke && !ease && !lookBack && !farTo && !intro && settle.ring < 0 && !gusts.length && !lifted.length && !choiceTo && !ruffle.some((r) => r > 0.02);
+  const calm = fingers.size === 0 && !tree.stroke && !ease && !lookBack && !farTo && !intro && settle.ring < 0 && !gusts.length && !lifted.length && !refused && !choiceTo && !ruffle.some((r) => r > 0.02);
   // (Still on the slice, nothing pressing or fading: a quarter of the frames, the breath being slow. Out in
   // the grove, half, for the crowns stirring and the leaves.)
   const still = calm && trail.length < 2 && !fresh && !Object.keys(pressing).length && !Object.values(fading).some(Boolean) && !yearGrow && (relax <= 0 || relax >= 1)
@@ -4296,7 +4316,7 @@ void (async () => {
   else if (!tree.rings.length) say('Draw a circle around this one.', 8);
   // (Anything amiss with the trees kept, said before anything else.)
   if (dataNote) say(dataNote, 12);
-  Object.assign(window, { press: { get tree() { return tree; }, get phase() { return settle.ring >= 0 ? 'settling' : 'trace'; }, get easing() { return !!ease; }, get view() { return viewNow(); }, get days() { return days; }, get kind() { return kind; }, get choice() { return SEEDS[choice]; }, get far() { return far; }, get visiting() { return visit?.i ?? null; }, get parting() { return !!parting; }, groveNext: () => { const c = camNow(), w = worldOf(); return { x: (c.X0 + w.next.wx * c.S) / px, y: (c.Y0 + w.next.wy * c.S) / px }; }, grove: () => groveLayout().trees.map((t) => ({ sp: t.sp, n: t.n, i: t.i, x: t.x / px, y: t.y / px, r: t.r / px })), get editionY() { return editionY; }, get stampAt() { return stampAt; }, print: async () => (await yearPrint()).toDataURL('image/png'), get presses() { return presses.splice(0); }, get breeze() { const st = worldOf().stream; return { gusts: gusts.length, lifted: lifted.length, stream: st.length, max: Math.max(0, ...st.map(([x, y]) => Math.hypot(...breezeAt(x, y)))) }; }, get room() { const v = viewNow(); return { widest: v.s * barkMax() / px, room: roomNow() / px }; }, get dbg() { return { trail: trail.length, inward: inward ? inward.ring : null, n: tree.rings.length, relax: +relax.toFixed(2), fading: Object.entries(fading).filter(([, f]) => f).map(([k, f]) => `${k}:${f!.at === Infinity ? 'held' : (clock() - f!.at).toFixed(2)}${f!.still ? 's' : ''}`), pressing: Object.keys(pressing), grow: !!yearGrow, ease: !!ease, caches: Object.entries(printCaches).map(([k, c]) => `${k}:${c ? (c.c.width + 'x' + c.c.height) : '-'}`) }; }, get marks() { return marks.map((m) => `${m.kind}@${m.a.toFixed(2)} ${m.from}-${m.last} x${m.size.toFixed(1)}`); } } });
+  Object.assign(window, { press: { get tree() { return tree; }, get phase() { return settle.ring >= 0 ? 'settling' : 'trace'; }, get easing() { return !!ease; }, get view() { return viewNow(); }, get days() { return days; }, get kind() { return kind; }, get choice() { return SEEDS[choice]; }, get far() { return far; }, get visiting() { return visit?.i ?? null; }, get parting() { return !!parting; }, groveNext: () => { const c = camNow(), w = worldOf(); return { x: (c.X0 + w.next.wx * c.S) / px, y: (c.Y0 + w.next.wy * c.S) / px }; }, stream: () => { const c = camNow(); return worldOf().stream.map(([x, y]) => ({ x: (c.X0 + x * c.S) / px, y: (c.Y0 + y * c.S) / px })); }, grove: () => groveLayout().trees.map((t) => ({ sp: t.sp, n: t.n, i: t.i, x: t.x / px, y: t.y / px, r: t.r / px })), get editionY() { return editionY; }, get stampAt() { return stampAt; }, print: async () => (await yearPrint()).toDataURL('image/png'), get presses() { return presses.splice(0); }, get breeze() { const st = worldOf().stream; return { gusts: gusts.length, lifted: lifted.length, stream: st.length, max: Math.max(0, ...st.map(([x, y]) => Math.hypot(...breezeAt(x, y)))) }; }, get room() { const v = viewNow(); return { widest: v.s * barkMax() / px, room: roomNow() / px }; }, get dbg() { return { trail: trail.length, inward: inward ? inward.ring : null, n: tree.rings.length, relax: +relax.toFixed(2), fading: Object.entries(fading).filter(([, f]) => f).map(([k, f]) => `${k}:${f!.at === Infinity ? 'held' : (clock() - f!.at).toFixed(2)}${f!.still ? 's' : ''}`), pressing: Object.keys(pressing), grow: !!yearGrow, ease: !!ease, caches: Object.entries(printCaches).map(([k, c]) => `${k}:${c ? (c.c.width + 'x' + c.c.height) : '-'}`) }; }, get marks() { return marks.map((m) => `${m.kind}@${m.a.toFixed(2)} ${m.from}-${m.last} x${m.size.toFixed(1)}`); } } });
   // (The real wood: once it's come, the print is pressed again with it.)
   if (PRINT) loadWood(() => { for (const k in printCaches) delete printCaches[k]; for (const k in pressing) delete pressing[k]; });
   startIntro();
