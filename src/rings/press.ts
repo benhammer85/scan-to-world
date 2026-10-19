@@ -2562,8 +2562,10 @@ function printFor(v: View, moving: boolean, slot = 'drawing', drift = false, pat
     pressInto(c, v, 0, ch, 0, cw, Q);
     presses.push(Math.round(performance.now() - t0)); if (presses.length > 50) presses.shift();
     pc = printCaches[slot] = { c, key, v: { ...v }, at: clock() };
-  } else if (gpu.ready() && !exact && ((pinch && fingers.size >= 2) || (drift && !moving))) {
-    // (And as the slice steps back after a year: pressed for the view as it is, never a picture scaled soft.)
+  } else if (gpu.ready() && !exact && pinch && fingers.size >= 2) {
+    // (Not as the slice steps back after a year: pressed afresh each frame a hair smaller, its fine specks and
+    // lines land each time on other pixels and glisten; the picture as it is, scaled smoothly, then the sharp
+    // one faded in once it's at rest.)
     // (Only under a pinch: the slice easing back as a ring settles is the picture moved and scaled, smooth.)
     // (On the graphics chip: pressed again for the view as it is, each frame as the fingers move, so the print
     // under them is never a stretched picture; every other frame, or fewer, when a pressing takes longer than
@@ -2577,9 +2579,9 @@ function printFor(v: View, moving: boolean, slot = 'drawing', drift = false, pat
   } else if ((!moving && !drift && !exact) || far) {
     // (Only sharper wanted, for a view already shown: pressed a strip a frame, the picture there meanwhile
     // scaled to it, and put in its place once whole, so a pinch let go never stalls.)
-    // (Drifting, as the slice eases into its room: finished for the view it was begun at, never begun again
-    // each frame.)
-    pressSlowly(slot, v, key, !drift);
+    // (Drifting, as the slice eases into its room: nothing pressed till it's at rest, then the sharp print
+    // faded in; never begun again each frame.)
+    if (!drift) pressSlowly(slot, v, key);
   }
   return pc;
 }
@@ -2787,6 +2789,8 @@ function drawKept(pc: { c: HTMLCanvasElement; v: View }, v: View, alpha = 1, gro
   // (`hole`: where a sharper picture lies over it, left out, so its softer ink never shows round the sharp.)
   if (hole) { g.save(); g.beginPath(); g.rect(0, 0, W, H); g.rect(...hole); g.clip('evenodd'); }
   g.globalAlpha = alpha;
+  // (Scaled smoothly, as the slice moves: never a shimmer of pixels.)
+  g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
   g.drawImage(pc.c, ox, oy, w, h);
   if (hole) { g.restore(); g.globalAlpha = alpha; }
   if (pressShown > 0.01) {
