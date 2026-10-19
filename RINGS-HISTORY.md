@@ -373,3 +373,8 @@ October 19 — how it's done, said once. "Swipe through the woods. Touch one to 
 * The new year waited for its loop to dry (over a second) and then eased in slowly, so nothing was seen to grow
   before the next loop was begun: it looked as if only the second circle grew the tree. Now it begins growing
   a third of a second after the loop closes, as the loop dries over it (`grow.hold`, spring 2.1 → 2.4).
+
+## 2026-10-19 — No dotted ring in the grove
+
+* The faint dotted pencil ring marking where the next tree would go is gone: the whole ground takes a tree now,
+  so it marked nothing. Touching where it was plants there like anywhere else.

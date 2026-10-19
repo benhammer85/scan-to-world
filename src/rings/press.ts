@@ -3415,12 +3415,6 @@ function* groveSteps(c: CanvasRenderingContext2D, cam: Cam, sprites?: Sprite[], 
     const [x, y] = at((p.wx + q.wx) / 2, (p.wy + q.wy) / 2);
     drawMoss(c, x, y, d * cam.S * 0.55, d * cam.S * 0.28, Math.atan2(q.wy - p.wy, q.wx - p.wx), Math.min(1, (old - 120) / 220), u, p.k * 7 + q.k);
   }
-  // The ground for the next tree: a faint pencil ring, to be touched when one is wanted.
-  {
-    const [x, y] = at(w.next.wx, w.next.wy), r = Math.max(7 * px, 0.45 * cam.S);
-    c.save(); c.strokeStyle = 'rgba(92,88,84,0.5)'; c.lineWidth = 0.8 * px; c.setLineDash([2.5 * px, 2.5 * px]);
-    c.beginPath(); c.arc(x, y, r, 0, TAU); c.stroke(); c.restore();
-  }
   for (const s of w.seedlings) { const [x, y] = at(s.wx, s.wy); drawSeedling(c, x, y, Math.max(3 * px, 0.18 * cam.S), u); }
   yield;
   const order = [...L].sort((p, q) => p.y - q.y), shown = order.filter((t) => !(t.x < -t.r * 2 || t.x > W + t.r * 2 || t.y < -t.r * 2 || t.y > H + t.r * 2));
@@ -4006,8 +4000,6 @@ let refused: { wx: number; wy: number; at: number } | null = null;
 function tapGrove(x: number, y: number): void {
   { const c = copyAt(); if (!visit && y > c.keep[1] - 18 * px && y < c.keep[1] + 18 * px) { if (Math.abs(x - c.keep[0]) < 48 * px) { void keepGroveCopy(); return; } if (Math.abs(x - c.back[0]) < 50 * px) return; if (Math.abs(x - c.sky[0]) < 58 * px) { void toggleWeather(); return; } } }
   const L = groveLayout(), w = worldOf();
-  // (The next tree's ground: a new tree, if they say so.)
-  if (!visit && Math.hypot(x - (L.cam.X0 + w.next.wx * L.cam.S), y - (L.cam.Y0 + w.next.wy * L.cam.S)) < Math.max(22 * px, 0.6 * L.cam.S)) { plantAgain(); return; }
   let hit: Stand | null = null, best = Infinity;
   for (const t of L.trees) { const d = Math.hypot(x - t.x, y - t.y) / Math.max(t.r * 1.15, 20 * px); if (d < 1 && d < best) { best = d; hit = t; } }
   if (!hit) {
