@@ -31,7 +31,8 @@ import { dayDate, dayOf } from './days';
 import { climate, growth as growthOf, lobes } from './growing';
 import { crownSize, groundGpu, drawCrown, drawHill, drawMeadow, drawMoss, drawSeedling, drawStream, drawTrack, washFlat, shadeOf, heightAt, land, pigment, seasonOf, snowHill, washCrown, washHill, type CrownForm, type Hill, type Season, type Sun } from './grove';
 import { holdStill, steadySize } from './steady';
-import { fromText, grove, keepInGrove, keepTree, recallTree, setGrove, snapshotTree, toText, treeFrom, type KeptTree, type WoodMark } from './save';
+import { fromText, grove, keepInGrove, keepTree, recallTree, setAside, setGrove, snapshotTree, toText, treeFrom, type KeptTree, type WoodMark } from './save';
+import { shareFile } from './share';
 
 const TAU = Math.PI * 2, PAPER = '#f4efe4';
 /**
@@ -625,24 +626,39 @@ async function recall(): Promise<void> {
   if (params.has('demo')) { demoYear(Math.max(1, Number(params.get('demo')) || 365)); seedAt = tree.rings.length ? [0.5, 0.47] : null; return; }
   if (params.has('fresh')) return;
   const k = await recallTree(DIARY), t = k && treeFrom(k, DAILY);
+  // (A tree kept that can't be read back: set aside whole, never written over by a new one; said once it's open.)
+  if (k && !t) { const ok = await setAside(k, 'unreadable'); dataNote = ok ? 'Your tree couldn’t be opened. It’s kept safe, set aside, and a new one begins.' : 'Your tree couldn’t be opened.'; if (!ok) noSave = true; return; }
   if (!k || !t) return;
   tree = t; days = (k.days ?? []).slice(0, t.rings.length); kind = asKind(k.tree) ?? 'oak'; marks = (k.marks ?? []).map((m) => ({ ...m })); herePlace = k.place ?? null;
   seedAt = k.at ?? (t.rings.length ? [0.5, 0.47] : null);
   while (days.length < t.rings.length) days.unshift(days[0] ?? dayOf());
   // (The practice: a year from its first ring, the tree is finished, and stands in the grove.)
-  if (GROWN && days.length && dayOf() >= yearOn(days[0])) { await keepInGrove(kept()); finishedYear = true; tree = new TreeSim(1 + Math.floor(Math.random() * 1e6), DAILY); days = []; seedAt = null; marks = []; herePlace = null; keep(); }
+  // (Only once it's truly standing there (read back) is it let go of here, and a copy of it set aside as well;
+  // if it can't be stood there now, it stays as it is, to be tried again next time.)
+  if (GROWN && days.length && dayOf() >= yearOn(days[0])) {
+    const year = kept();
+    if (await keepInGrove(year)) {
+      await setAside(year, 'year');
+      finishedYear = true; tree = new TreeSim(1 + Math.floor(Math.random() * 1e6), DAILY); days = []; seedAt = null; marks = []; herePlace = null; keep();
+    } else dataNote = 'This year’s tree couldn’t be stood in the grove just now. It’s kept as it is, and will be tried again next time.';
+  }
 }
+/** Something about the kept trees to say once the sheet is open; and whether keeping has failed (so it's not tried over what's there). */
+let dataNote = '', noSave = false, saveWarned = false;
 /** A day a year on from the given one (as 2027-10-14). */
 const yearOn = (d: string) => { const x = dayDate(d); x.setFullYear(x.getFullYear() + 1); return dayOf(x); };
 /** Whether, opening, a year's tree was found finished (and stood in the grove). */
 let finishedYear = false;
 function keep(): void {
-  if (params.has('demo') || visit || parting) return;
-  void keepTree(kept(), DIARY);
+  // (`?fresh`, to try a new tree, keeps nothing: never written over the tree that's kept.)
+  if (params.has('demo') || params.has('fresh') || visit || parting || noSave) return;
+  void keepTree(kept(), DIARY).then((ok) => {
+    if (!ok && !saveWarned) { saveWarned = true; say('Your ring couldn’t be saved on this phone just now. Keep a copy from the grove to be safe.', 10); }
+  });
 }
 /** The tree as kept (and as a copy is kept). */
 function kept(): KeptTree {
-  return { tree: kind, seed: tree.seed, wander: false, turn: 0, sim: snapshotTree(tree), days: days.slice(), ...(seedAt ? { at: seedAt } : {}), ...(marks.length ? { marks: marks.map((m) => ({ ...m })) } : {}), ...(herePlace ? { place: herePlace } : {}) };
+  return { v: 1, tree: kind, seed: tree.seed, wander: false, turn: 0, sim: snapshotTree(tree), days: days.slice(), ...(seedAt ? { at: seedAt } : {}), ...(marks.length ? { marks: marks.map((m) => ({ ...m })) } : {}), ...(herePlace ? { place: herePlace } : {}) };
 }
 
 /**
@@ -1252,7 +1268,11 @@ function plant(x: number, y: number): void {
   if (parting) {
     const was = parting.k, grown = parting.tree.rings.length > 0;
     void (async () => {
-      if (grown && !params.has('demo')) await keepInGrove(was);
+      // (Only once it truly stands in the grove is it let go of here; if it can't be, the tree as it was comes back.)
+      if (grown && !params.has('demo') && !(await keepInGrove(was))) {
+        say('Last year’s tree couldn’t be stood in the grove just now, so it’s kept as it was.', 8);
+        ({ tree, days, kind, seedAt, marks } = parting!); herePlace = parting!.place; parting = null; lookAfresh(); return;
+      }
       if (grown) groveKept = [...groveKept, was];
       parting = null; worldKey = ''; keep();
     })();
@@ -2814,7 +2834,12 @@ let editionY = -1e9, stampAt: [number, number] = [-1e9, -1e9];
 let parting: { k: KeptTree; tree: TreeSim; days: string[]; kind: Kind; seedAt: [number, number] | null; marks: WoodMark[]; place: [number, number] | null } | null = null;
 /** Where today's tree stands in the grove, if it was planted somewhere chosen (world units). */
 let herePlace: [number, number] | null = null;
+let plantAsked = 0;
 function plantAgain(at: [number, number] | null = null): void {
+  // (A year not yet finished is never set down by one touch: asked first, a second touch within a few
+  // seconds to begin another.)
+  if (!parting && tree.rings.length && clock() - plantAsked > 6) { plantAsked = clock(); say('This year’s tree isn’t finished. Touch the ground again to begin a new one; this one will stand in the grove as it is.', 6); return; }
+  plantAsked = 0;
   if (painter !== null) { tree.cancel(); trail = []; painter = null; }
   if (visit) unvisit();
   fingers.clear();
@@ -2972,8 +2997,21 @@ let groveMoved = 0;
 /** Said once, the first time in the grove: how a new tree is begun. */
 let groveTold = false;
 try { groveTold = !!localStorage.getItem('annulus.grove1'); localStorage.removeItem('annulus.paths'); } catch { /* not known */ }
+/**
+ * Once in a while, out in the grove: when it's been a month since a copy was kept (or one never was) and
+ * there's something worth keeping, a word about keeping one. Once a visit at most.
+ */
+let copyNudged = false;
+function nudgeCopy(): void {
+  if (copyNudged || !groveTold || params.has('demo') || params.has('grove')) return;
+  let at = 0;
+  try { at = Number(localStorage.getItem('annulus.copiedAt')) || 0; } catch { return; }
+  if (!(groveKept.length || tree.rings.length >= 30) || Date.now() - at < 30 * 864e5) return;
+  copyNudged = true;
+  say('It’s been a while since a copy was kept. “keep a copy” saves your trees as a file, somewhere safe.', 8);
+}
 function tellGrove(): void {
-  if (groveTold) return;
+  if (groveTold) { nudgeCopy(); return; }
   groveTold = true;
   try { localStorage.setItem('annulus.grove1', '1'); } catch { /* said again next time, then */ }
   say('Touch the ground to plant a new tree.', 6);
@@ -3696,12 +3734,13 @@ function drawCopyWords(al: number): void {
   g.restore();
 }
 async function keepGroveCopy(): Promise<void> {
-  const all = { wellRounded: 1, diary: kept(), grove: groveKept };
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([toText(all)], { type: 'application/json' })); a.download = `well-rounded-${dayOf()}.json`;
-  document.body.append(a); a.click(); a.remove();
-  window.setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-  try { localStorage.setItem('annulus.copied', String(groveKept.length * 1000 + tree.rings.length)); } catch { /* not noted */ }
+  const all = { wellRounded: 1, v: 1, diary: parting ? parting.k : kept(), grove: groveKept };
+  // (In the app, by the share sheet (to Files, Notes, Mail, anywhere); in a phone's browser, its own share
+  // sheet if it has one; else a download. Said kept only once it truly was.)
+  const how = await shareFile(toText(all), `well-rounded-${dayOf()}.json`, 'application/json');
+  if (how === 'cancelled') return;
+  if (how === 'failed') { say('The copy couldn’t be made just now.', 5); return; }
+  try { localStorage.setItem('annulus.copiedAt', String(Date.now())); } catch { /* not noted */ }
   say('A copy is kept, as a file. Keep it somewhere safe.', 4);
 }
 /**
@@ -3725,7 +3764,10 @@ async function takeGroveCopy(file: File): Promise<void> {
     const all = fromText(await file.text()) as { wellRounded?: number; diary?: KeptTree; grove?: KeptTree[] };
     if (!all.wellRounded || !all.diary || !Array.isArray(all.grove) || !treeFrom(all.diary, DAILY) || all.grove.some((k) => !treeFrom(k, DAILY))) throw new Error('not a copy');
     if (!window.confirm(`Take back this copy (${all.grove.length + 1} trees)? What's here now will be replaced.`)) return;
-    await setGrove(all.grove); await keepTree(all.diary, DIARY);
+    // (What's here now set aside first, never only replaced; then the copy put in its place.)
+    await setAside({ diary: kept(), grove: groveKept }, 'before-copy');
+    try { await setGrove(all.grove); } catch { say('The copy couldn’t be taken back just now. Nothing here was changed.', 6); return; }
+    if (!(await keepTree(all.diary, DIARY))) { say('The grove was taken back, but this year’s tree couldn’t be. Try again.', 8); return; }
     location.reload();
   } catch { say('That file isn’t a copy of a grove.', 4); }
 }
@@ -4125,6 +4167,8 @@ void (async () => {
   else if (GROWN && !tree.rings.length) say(seedAt ? 'Draw a loop around the seed.' : 'Swipe through the woods. Touch one to plant it.', 1e5);
   // (Words only where they're needed: before the first ring. After that, the tree says it.)
   else if (!tree.rings.length) say('Draw a circle around this one.', 8);
+  // (Anything amiss with the trees kept, said before anything else.)
+  if (dataNote) say(dataNote, 12);
   Object.assign(window, { press: { get tree() { return tree; }, get phase() { return settle.ring >= 0 ? 'settling' : 'trace'; }, get easing() { return !!ease; }, get view() { return viewNow(); }, get days() { return days; }, get kind() { return kind; }, get choice() { return SEEDS[choice]; }, get far() { return far; }, get visiting() { return visit?.i ?? null; }, get parting() { return !!parting; }, groveNext: () => { const c = camNow(), w = worldOf(); return { x: (c.X0 + w.next.wx * c.S) / px, y: (c.Y0 + w.next.wy * c.S) / px }; }, grove: () => groveLayout().trees.map((t) => ({ sp: t.sp, n: t.n, i: t.i, x: t.x / px, y: t.y / px, r: t.r / px })), get editionY() { return editionY; }, get stampAt() { return stampAt; }, print: async () => (await yearPrint()).toDataURL('image/png'), get presses() { return presses.splice(0); }, get breeze() { const st = worldOf().stream; return { gusts: gusts.length, lifted: lifted.length, stream: st.length, max: Math.max(0, ...st.map(([x, y]) => Math.hypot(...breezeAt(x, y)))) }; }, get dbg() { return { relax: +relax.toFixed(2), fading: Object.entries(fading).filter(([, f]) => f).map(([k, f]) => `${k}:${f!.at === Infinity ? 'held' : (clock() - f!.at).toFixed(2)}${f!.still ? 's' : ''}`), pressing: Object.keys(pressing), grow: !!yearGrow, ease: !!ease, caches: Object.entries(printCaches).map(([k, c]) => `${k}:${c ? (c.c.width + 'x' + c.c.height) : '-'}`) }; }, get marks() { return marks.map((m) => `${m.kind}@${m.a.toFixed(2)} ${m.from}-${m.last} x${m.size.toFixed(1)}`); } } });
   // (The real wood: once it's come, the print is pressed again with it.)
   if (PRINT) loadWood(() => { for (const k in printCaches) delete printCaches[k]; for (const k in pressing) delete pressing[k]; });

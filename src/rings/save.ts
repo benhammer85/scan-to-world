@@ -39,6 +39,8 @@ async function run<T>(mode: IDBTransactionMode, act: (s: IDBObjectStore) => IDBR
  */
 export interface WoodMark { kind: 'knot' | 'burl'; a: number; from: number; last: number; size: number; seed: number }
 export interface KeptTree {
+  /** (What shape it was kept in: 1, the first; a record without one is of that shape too.) */
+  v?: number;
   tree: string; seed: number; wander: boolean; turn: number; sim: Record<string, unknown>; days?: string[]; at?: [number, number];
   marks?: WoodMark[];
   /** Where it stands in the grove (world units), if planted somewhere chosen rather than the next place. */
@@ -71,13 +73,28 @@ export function snapshotTree(t: TreeSim): Record<string, unknown> {
 
 /** A kept tree, grown again from its seed and filled in as it was; null if it can't be. */
 export function treeFrom(k: KeptTree, rules: Partial<Rules>): TreeSim | null {
+  if (!k || typeof k.seed !== 'number' || !k.sim || typeof k.sim !== 'object') return null;
   const t = new TreeSim(k.seed, rules);
-  return restoreInto(t, k.sim) ? t : null;
+  try { if (!restoreInto(t, k.sim)) return null; } catch { return null; }
+  // (Read back whole or not at all: every ring as many points round as the tree has, each a real radius,
+  // never one opened that would draw as nothing, or not at all.)
+  const K = t.alive.length, rings = t.rings as unknown;
+  if (!Array.isArray(rings)) return null;
+  for (const r of rings as unknown[]) {
+    if (!ArrayBuffer.isView(r) || (r as Float32Array).length !== K) return null;
+    for (const x of r as Float32Array) if (!Number.isFinite(x) || x < 0) return null;
+  }
+  return t;
 }
 
 // (`key`: the game's tree is kept as 'current'; the daily practice keeps its own, as 'diary'.)
-export async function keepTree(k: KeptTree, key = CURRENT): Promise<void> {
-  try { await run('readwrite', (s) => s.put(k, key)); } catch { /* not kept, and that's all */ }
+/** Kept, and whether it was: never thrown, but never quietly lost either (the caller says so). */
+export async function keepTree(k: KeptTree, key = CURRENT): Promise<boolean> {
+  try { await run('readwrite', (s) => s.put(k, key)); return true; } catch { return false; }
+}
+/** Set aside under a key of its own, never written over: a tree that couldn't be read, or the one a year replaced. */
+export async function setAside(k: unknown, why: string): Promise<boolean> {
+  try { await run('readwrite', (s) => s.put(k, `aside/${why}/${Date.now()}`)); return true; } catch { return false; }
 }
 export async function recallTree(key = CURRENT): Promise<KeptTree | undefined> {
   try { return (await run('readonly', (s) => s.get(key))) as KeptTree | undefined; } catch { return undefined; }
@@ -118,12 +135,15 @@ async function groveKeys(): Promise<string[]> {
   }
   return (got as string[] | undefined) ?? [];
 }
-export async function keepInGrove(k: KeptTree): Promise<void> {
+/** Stood in the grove: and whether it truly is (read back), so nothing is let go of until it's there. */
+export async function keepInGrove(k: KeptTree): Promise<boolean> {
   try {
     const keys = await groveKeys(), key = `${GROVE_PREFIX}${Date.now()}`;
     await run('readwrite', (s) => s.put(k, key));
     await run('readwrite', (s) => s.put([...keys, key], GROVE));
-  } catch { /* not kept, and that's all */ }
+    const back = (await run('readonly', (s) => s.get(key))) as KeptTree | undefined, list = (await run('readonly', (s) => s.get(GROVE))) as string[] | undefined;
+    return !!back && back.seed === k.seed && !!list && list.includes(key);
+  } catch { return false; }
 }
 export async function grove(): Promise<KeptTree[]> {
   try {
@@ -133,10 +153,13 @@ export async function grove(): Promise<KeptTree[]> {
   } catch { return []; }
 }
 /** The grove replaced whole (a copy taken back). */
+/** (Every tree written first, then the list switched over in one write, then the old ones let go: a failure part
+ * way leaves the grove as it was, never half replaced.) */
 export async function setGrove(all: KeptTree[]): Promise<void> {
-  const keys: string[] = [];
-  for (const [i, k] of all.entries()) { const key = `${GROVE_PREFIX}${Date.now()}-${i}`; await run('readwrite', (s) => s.put(k, key)); keys.push(key); }
+  const old = await groveKeys(), keys: string[] = [], at = Date.now();
+  for (const [i, k] of all.entries()) { const key = `${GROVE_PREFIX}${at}-${i}`; await run('readwrite', (s) => s.put(k, key)); keys.push(key); }
   await run('readwrite', (s) => s.put(keys, GROVE));
+  for (const key of old) if (!keys.includes(key)) { try { await run('readwrite', (s) => s.delete(key)); } catch { /* left, unlisted */ } }
 }
 
 /**
