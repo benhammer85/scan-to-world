@@ -776,20 +776,8 @@ function makeRoom(): void {
   // (Never much larger than it rests: a wide loop's year is shown a little large at first, never filling
   // the sheet.)
   ease = { from: Math.min(from, 1.3 * v.s), at: clock() };
-  // (Growing true to scale, a small step back is never moved through, a hair a frame (a sharp print redrawn at
-  // a scale changing by a hair a frame shimmers): the print as it was fades into the new one at its own size.)
-  const kept = printCaches.drawing;
-  // (Only where the slice stands still: looked into, or moved, the print as it was is faded over the new one where
-  // the new one is, never left standing apart from it.)
-  const now = viewNow();
-  if (GROWN && PRINT && kept && !closer() && Math.abs(ease.from / v.s - 1) < 0.08 && Math.hypot(kept.v.cx - now.cx, kept.v.cy - now.cy) < 2 * px && Math.abs(kept.v.s / now.s - 1) < 0.08) {
-    ease = null;
-    if (fading.drawing) spare.drawing = fading.drawing.c;
-    // (Held whole till the new one is pressed, a strip a frame, then faded from: never all of it pressed in the
-    // one frame, at the calmest moment.)
-    fading.drawing = { c: kept.c, v: { ...kept.v }, at: Infinity, still: true };
-    delete printCaches.drawing;
-  }
+  // (Every step back moved through, slowly, the print as it is carried with the view: a print faded into one a
+  // little smaller, where it stood, doubled every line for a moment.)
 }
 /**
  * Looked into while the slice is still drawing back: the drawing back is finished at once, and the look
@@ -1452,11 +1440,12 @@ function drawBrush(g: CanvasRenderingContext2D, v: View, t: number): void {
   // (Growing true to scale, the loop, once closed, stays where it was drawn and dries away, soaking into
   // the sheet, while the year grows on the slice.)
   const going = inward && inward.ring < tree.rings.length ? inward : null;
-  const dry = going ? 1 - smooth((t - going.at) / 2.6) : 1;
+  const dry = going ? 1 - smooth((t - going.at) / 3.2) : 1;
   // (Dried away: let go of, never mapped again each frame for nothing.)
   if (!tree.stroke && painter === null && (going ? dry < 0.01 : t - trail[n - 1].t > 14)) { trail = []; return; }
-  // (And as it dries it draws in onto the year it made, never left standing apart from it.)
-  const into = going ? smooth((t - going.at) / (yearGrow ? GROW_T : STEADY_T)) : 0, edge = going ? barkOf(going.ring) : null;
+  // (It dries where it was drawn, soaking into the sheet, never sliding in after the year it made: the year is
+  // the wood's measure, not the loop's, and a line seen shrinking onto it reads as the drawing taken back.)
+  const into = 0, edge = null as ((a: number) => number) | null;
   const pts = trail.map((q) => {
     const [x, y] = at(v, q.a, edge ? q.r + (edge(q.a) - q.r) * into : q.r);
     // (Growing true to scale, the loop stays wet all the way round while it's drawn, however slow the
@@ -1483,6 +1472,8 @@ function drawBrush(g: CanvasRenderingContext2D, v: View, t: number): void {
     // show; and where the hand hurried, the outer bristles run dry and leave the paper between them.)
     const life = pts[n - 1].life;
     if (life < 0.02) return;
+    // (Soaking away as it dries, all of it paler and paler till it's gone: never a dark line there and then not.)
+    const was = g.globalAlpha; g.globalAlpha = was * smooth(life / 0.6);
     const wet = life * life, live = !!tree.stroke && !going;
     const PAPER_RGB = [244, 239, 228], INK_RGB = [24, 20, 18];
     const opaque = (a: number) => { const k = Math.max(0, Math.min(1, a)); return `rgb(${PAPER_RGB.map((c, j) => Math.round(c + (INK_RGB[j] - c) * k)).join(',')})`; };
@@ -1535,6 +1526,7 @@ function drawBrush(g: CanvasRenderingContext2D, v: View, t: number): void {
       }
       from = i;
     }
+    g.globalAlpha = was;
     return;
   }
   for (let i = 1; i < n; i++) {
@@ -2387,7 +2379,8 @@ function printFor(v: View, moving: boolean, slot = 'drawing', drift = false, pat
     pressInto(c, v, 0, ch, 0, cw, Q);
     presses.push(Math.round(performance.now() - t0)); if (presses.length > 50) presses.shift();
     pc = printCaches[slot] = { c, key, v: { ...v }, at: clock() };
-  } else if (gpu.ready() && !exact && pinch && fingers.size >= 2) {
+  } else if (gpu.ready() && !exact && ((pinch && fingers.size >= 2) || (drift && !moving))) {
+    // (And as the slice steps back after a year: pressed for the view as it is, never a picture scaled soft.)
     // (Only under a pinch: the slice easing back as a ring settles is the picture moved and scaled, smooth.)
     // (On the graphics chip: pressed again for the view as it is, each frame as the fingers move, so the print
     // under them is never a stretched picture; every other frame, or fewer, when a pressing takes longer than
@@ -2486,10 +2479,13 @@ const spare: Record<string, HTMLCanvasElement> = {};
  */
 let yearGrow: { ring: number; at: number } | null = null;
 const GROW_T = 2.6;
+let roomDue = false;
 function drawGrowth(v: View, t: number, moving: boolean, drift: boolean): boolean {
   const gr = yearGrow!, n = tree.rings.length;
   const f = 1 - Math.pow(1 - Math.min(1, (t - gr.at) / GROW_T), 2.2);
-  if (gr.ring !== n - 1 || f >= 1 || closer() || fingers.size >= 2) { yearGrow = null; makeRoom(); return false; }
+  // (Room made at the start of the next frame, never part way through this one: the rest of it would be
+  // pressed for the view as it was, and pressed again the frame after, a blur between.)
+  if (gr.ring !== n - 1 || f >= 1 || closer() || fingers.size >= 2) { yearGrow = null; roomDue = true; return false; }
   const pc = printFor(v, moving, 'drawing', drift);
   // (Its clock held till the new year's print is there: the growing begins at its beginning, never part way.)
   if (pc.key !== printKey(v)) { gr.at = t; return false; }
@@ -3946,6 +3942,7 @@ function frame(): void {
     far = farTo.from + (farTo.to - farTo.from) * p; farPull = far;
     if (p >= 1) { const to = farTo.to; farTo = null; if (to === 1 && visit) unvisit(); if (to === 1) tellGrove(); }
   }
+  if (roomDue) { roomDue = false; makeRoom(); }
   const v = viewNow(t);
   // The ring just closed blooms, then is done (and on the iPhone app, a faint touch as it settles).
   if (settle.ring >= 0 && t - settle.at > BLOOM + 0.6) settle.ring = -1;
@@ -4073,7 +4070,7 @@ void (async () => {
   else if (GROWN && !tree.rings.length) say(seedAt ? 'Draw a loop around the seed.' : 'Swipe through the woods. Touch one to plant it.', 1e5);
   // (Words only where they're needed: before the first ring. After that, the tree says it.)
   else if (!tree.rings.length) say('Draw a circle around this one.', 8);
-  Object.assign(window, { press: { get tree() { return tree; }, get phase() { return settle.ring >= 0 ? 'settling' : 'trace'; }, get easing() { return !!ease; }, get view() { return viewNow(); }, get days() { return days; }, get kind() { return kind; }, get choice() { return SEEDS[choice]; }, get far() { return far; }, get visiting() { return visit?.i ?? null; }, get parting() { return !!parting; }, groveNext: () => { const c = camNow(), w = worldOf(); return { x: (c.X0 + w.next.wx * c.S) / px, y: (c.Y0 + w.next.wy * c.S) / px }; }, grove: () => groveLayout().trees.map((t) => ({ sp: t.sp, n: t.n, i: t.i, x: t.x / px, y: t.y / px, r: t.r / px })), get editionY() { return editionY; }, get stampAt() { return stampAt; }, print: async () => (await yearPrint()).toDataURL('image/png'), get presses() { return presses.splice(0); }, get breeze() { const st = worldOf().stream; return { gusts: gusts.length, lifted: lifted.length, stream: st.length, max: Math.max(0, ...st.map(([x, y]) => Math.hypot(...breezeAt(x, y)))) }; }, get marks() { return marks.map((m) => `${m.kind}@${m.a.toFixed(2)} ${m.from}-${m.last} x${m.size.toFixed(1)}`); } } });
+  Object.assign(window, { press: { get tree() { return tree; }, get phase() { return settle.ring >= 0 ? 'settling' : 'trace'; }, get easing() { return !!ease; }, get view() { return viewNow(); }, get days() { return days; }, get kind() { return kind; }, get choice() { return SEEDS[choice]; }, get far() { return far; }, get visiting() { return visit?.i ?? null; }, get parting() { return !!parting; }, groveNext: () => { const c = camNow(), w = worldOf(); return { x: (c.X0 + w.next.wx * c.S) / px, y: (c.Y0 + w.next.wy * c.S) / px }; }, grove: () => groveLayout().trees.map((t) => ({ sp: t.sp, n: t.n, i: t.i, x: t.x / px, y: t.y / px, r: t.r / px })), get editionY() { return editionY; }, get stampAt() { return stampAt; }, print: async () => (await yearPrint()).toDataURL('image/png'), get presses() { return presses.splice(0); }, get breeze() { const st = worldOf().stream; return { gusts: gusts.length, lifted: lifted.length, stream: st.length, max: Math.max(0, ...st.map(([x, y]) => Math.hypot(...breezeAt(x, y)))) }; }, get dbg() { return { relax: +relax.toFixed(2), fading: Object.entries(fading).filter(([, f]) => f).map(([k, f]) => `${k}:${f!.at === Infinity ? 'held' : (clock() - f!.at).toFixed(2)}${f!.still ? 's' : ''}`), pressing: Object.keys(pressing), grow: !!yearGrow, ease: !!ease, caches: Object.entries(printCaches).map(([k, c]) => `${k}:${c ? (c.c.width + 'x' + c.c.height) : '-'}`) }; }, get marks() { return marks.map((m) => `${m.kind}@${m.a.toFixed(2)} ${m.from}-${m.last} x${m.size.toFixed(1)}`); } } });
   // (The real wood: once it's come, the print is pressed again with it.)
   if (PRINT) loadWood(() => { for (const k in printCaches) delete printCaches[k]; for (const k in pressing) delete pressing[k]; });
   startIntro();
