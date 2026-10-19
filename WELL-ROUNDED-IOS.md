@@ -41,3 +41,17 @@ screen), an offline copy (`sw.js`), and its privacy and support pages (from `rin
   support page first).
 * App Privacy: *Data Not Collected*, except **Coarse Location**, used for app functionality only, not
   linked to the user, not used for tracking (sent to Open-Meteo only when the person turns weather on).
+
+## Check on a phone (what can't be checked in a browser on a computer)
+
+Run it on an iPhone (the app, and the site added to the home screen) and look for:
+
+1. **Drawing:** draw a ring slowly, then several quickly. The loop dries away, the year glides out, nothing jumps; the slice never runs past its room and settles back slowly once you stop.
+2. **A full year's tree:** open a tree of a few hundred rings (or the site with `npm run dev` and `?demo=365` on the same network). Pinch in and out: smooth, never stalling; no glistening as it steps back.
+3. **Haptics:** a faint touch as a ring settles (the app only).
+4. **Keep a copy:** in the grove, "keep a copy" opens the share sheet; save to Files. "take one back" with that file restores it (after a confirm).
+5. **The print:** hold the slice a moment; "keep this print" opens the share sheet with the picture.
+6. **Weather:** "bring your weather" asks for location once; the grove takes on the weather; touching "your weather" turns it off.
+7. **Offline (the site):** add it to the home screen, open it once, turn on Airplane Mode, open it again.
+8. **VoiceOver and Reduce Motion:** with VoiceOver on, the words and the grove's three buttons are read; with Reduce Motion on, nothing drifts or falls.
+9. **The year's end:** set the phone's date a year past the first ring, open it: the tree stands in the grove, and a new one is offered. (Set the date back after.)
