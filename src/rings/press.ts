@@ -34,7 +34,7 @@ import { holdStill, steadySize } from './steady';
 import { fromText, grove, keepInGrove, keepTree, recallTree, setAside, setGrove, snapshotTree, toText, treeFrom, type KeptTree, type WoodMark } from './save';
 import { shareFile } from './share';
 
-const TAU = Math.PI * 2, PAPER = '#f4efe4';
+const TAU = Math.PI * 2, PAPER = '#f7f3eb';
 /**
  * The relief print, after tree-ring prints (the wood itself inked and pressed): the slice's look.
  * `?ink=water` shows the watercolour instead.
@@ -443,12 +443,12 @@ function drawPendingMarks(v: View, t: number): void {
       // (A dark eye gathering under the brush, its own tight ring round it.)
       const [x, y] = at(v, p.a, p.r), e = (2 + 2.4 * Math.min(1, p.grow)) * px * k, rot = -(p.a + v.turn);
       g.beginPath(); g.ellipse(x, y, e, e * 0.78, rot, 0, TAU); g.fillStyle = ink(0.92); g.fill();
-      g.beginPath(); g.ellipse(x, y, e * 0.55, e * 0.42, rot, 0, TAU); g.strokeStyle = 'rgba(244,239,228,0.5)'; g.lineWidth = 0.5 * px; g.stroke();
+      g.beginPath(); g.ellipse(x, y, e * 0.55, e * 0.42, rot, 0, TAU); g.strokeStyle = 'rgba(247, 243, 235,0.5)'; g.lineWidth = 0.5 * px; g.stroke();
     } else {
       for (let q = 0; q < 8 + Math.round(5 * p.grow); q++) {
         const da = (h1(q * 1.9 + p.at) - 0.5) * 0.16, dr = (h1(q * 3.7 + p.at) - 0.5) * 0.5 * tree.wRef, [ex, ey] = at(v, p.a + da, p.r + dr);
         const e = (0.5 + 0.7 * h1(q * 5.3)) * px * k;
-        g.beginPath(); g.arc(ex, ey, e * 2.2, 0, TAU); g.strokeStyle = 'rgba(244,239,228,0.4)'; g.lineWidth = 0.45 * px; g.stroke();
+        g.beginPath(); g.arc(ex, ey, e * 2.2, 0, TAU); g.strokeStyle = 'rgba(247, 243, 235,0.4)'; g.lineWidth = 0.45 * px; g.stroke();
         g.beginPath(); g.arc(ex, ey, e, 0, TAU); g.fillStyle = ink(0.92); g.fill();
       }
     }
@@ -853,7 +853,7 @@ let tapStart = { x: 0, y: 0, at: 0 }, lastTap = 0, lastFingerAt = 0;
 const spread = () => { const [a, b] = [...fingers.values()]; return { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 }; };
 
 /** Whether this touch came down on the slice (a tap there reads its day). */
-let inside = false;
+let inside = false, holdTimer = 0;
 canvas.addEventListener('pointerdown', (e) => {
   // (The opening, touched: let go of at once.)
   if (intro) { if (!intro.skip) intro.skip = clock(); return; }
@@ -875,6 +875,12 @@ canvas.addEventListener('pointerdown', (e) => {
   // (Looked at closely: a finger moves the slice about, or taps; nothing is drawn. And on a bare sheet, a
   // tap plants the seed: see the tap, below.)
   if (tree.rings.length && brushAt(tree, viewNow(), 0, e.clientX * px, e.clientY * px).u < 0) inside = true;
+  // (Held still on the slice a moment: its print, on a sheet of its own.)
+  if (inside && fingers.size === 1 && !tree.stroke && painter === null && far === 0) {
+    clearTimeout(holdTimer);
+    const id = e.pointerId, sx = e.clientX * px, sy = e.clientY * px;
+    holdTimer = window.setTimeout(() => { const f = fingers.get(id); if (!f || fingers.size !== 1 || pinched || painter !== null || far > 0 || Math.hypot(f.x - sx, f.y - sy) > 10 * px) return; void printView.show(); }, 650);
+  }
   if ((closer() && inside) || far > 0 || visit || (GROWN && !seedAt)) return;
   hush();
   const x = e.clientX * px, y = e.clientY * px;
@@ -962,6 +968,7 @@ for (const type of ['pointerup', 'pointercancel'] as const) canvas.addEventListe
   if (breezeHand && breezeHand.id === e.pointerId) { const on = breezeHand.on; breezeHand = null; if (on) return; }
   // (Let go part way back: on to the grove, or home to today.)
   if (fingers.size === 0 && far > 0 && far < 1 && !farTo) settleFar();
+  if (fingers.size === 0) clearTimeout(holdTimer);
   // A tap (short, still, one finger): a double tap goes back from looking closer.
   const tap = type === 'pointerup' && !pinched && fingers.size === 0 && clock() - tapStart.at < 0.3 && Math.hypot(e.clientX - tapStart.x, e.clientY - tapStart.y) < 12;
   if (tap) {
@@ -1101,9 +1108,9 @@ function drawSeedOf(sp: Kind, x: number, y: number, k = 1, z = 1, standing = fal
   if (sp === 'oak') {
     // The nut, then its cup (scaled, cross-hatched a little), and its stalk.
     g.beginPath(); g.ellipse(0, 2.5 * u, 5.2 * u, 7 * u, 0, 0, TAU); g.fill();
-    g.fillStyle = 'rgba(244,239,228,0.32)'; g.beginPath(); g.ellipse(-1.8 * u, 3.5 * u, 1.2 * u, 3 * u, -0.2, 0, TAU); g.fill();
+    g.fillStyle = 'rgba(247, 243, 235,0.32)'; g.beginPath(); g.ellipse(-1.8 * u, 3.5 * u, 1.2 * u, 3 * u, -0.2, 0, TAU); g.fill();
     g.fillStyle = ink(0.95); g.beginPath(); g.ellipse(0, -2.6 * u, 6.4 * u, 3.4 * u, 0, Math.PI, TAU); g.lineTo(6.4 * u, -1.6 * u); g.lineTo(-6.4 * u, -1.6 * u); g.closePath(); g.fill();
-    g.strokeStyle = 'rgba(244,239,228,0.5)'; g.lineWidth = 0.6 * u; g.beginPath();
+    g.strokeStyle = 'rgba(247, 243, 235,0.5)'; g.lineWidth = 0.6 * u; g.beginPath();
     for (let i = -5; i <= 5; i += 2) { g.moveTo(i * u, -1.8 * u); g.lineTo(i * u + 1.4 * u, -4.4 * u); }
     g.stroke(); g.strokeStyle = ink(0.85); g.lineWidth = 1.1 * u; g.beginPath(); g.moveTo(0, -5.8 * u); g.quadraticCurveTo(1 * u, -8.5 * u, 2.4 * u, -9.6 * u); g.stroke();
   } else if (sp === 'pine') {
@@ -1122,7 +1129,7 @@ function drawSeedOf(sp: Kind, x: number, y: number, k = 1, z = 1, standing = fal
     // The fruit, round, a light on it, its long stalk.
     g.strokeStyle = ink(0.85); g.lineWidth = 0.9 * u; g.beginPath(); g.moveTo(0, -3.6 * u); g.bezierCurveTo(0.4 * u, -7 * u, 2 * u, -10 * u, 4 * u, -12.5 * u); g.stroke();
     g.beginPath(); g.ellipse(0, 1.2 * u, 5 * u, 4.6 * u, 0, 0, TAU); g.fill();
-    g.fillStyle = 'rgba(244,239,228,0.4)'; g.beginPath(); g.ellipse(-1.9 * u, -0.6 * u, 1.1 * u, 1.7 * u, -0.5, 0, TAU); g.fill();
+    g.fillStyle = 'rgba(247, 243, 235,0.4)'; g.beginPath(); g.ellipse(-1.9 * u, -0.6 * u, 1.1 * u, 1.7 * u, -0.5, 0, TAU); g.fill();
   } else if (sp === 'maple') {
     // Two keys, joined at their seeds, the wings spread wide and veined.
     for (const sgn of [-1, 1]) {
@@ -1136,14 +1143,14 @@ function drawSeedOf(sp: Kind, x: number, y: number, k = 1, z = 1, standing = fal
   } else if (sp === 'redwood') {
     // A small cone, round, its scales' faces each wrinkled to a little mouth.
     g.beginPath(); g.ellipse(0, 0, 5.2 * u, 6.4 * u, 0, 0, TAU); g.fill();
-    g.strokeStyle = 'rgba(244,239,228,0.55)'; g.lineWidth = 0.6 * u; g.beginPath();
+    g.strokeStyle = 'rgba(247, 243, 235,0.55)'; g.lineWidth = 0.6 * u; g.beginPath();
     for (let i = -2; i <= 2; i++) { g.moveTo(-5 * u, i * 2.4 * u - 2 * u); g.quadraticCurveTo(0, i * 2.4 * u + 1.6 * u, 5 * u, i * 2.4 * u - 2 * u); }
     for (let i = -2; i <= 2; i++) { g.moveTo(i * 2.2 * u, -6 * u); g.quadraticCurveTo(i * 2.2 * u + 1.4 * u, 0, i * 2.2 * u, 6 * u); }
     g.stroke(); g.strokeStyle = ink(0.85); g.lineWidth = 1 * u; g.beginPath(); g.moveTo(0, -6.2 * u); g.lineTo(0.6 * u, -8.6 * u); g.stroke();
   } else if (sp === 'bristlecone') {
     // A cone, long, in rows of scales, each tipped with a fine prickle.
     g.beginPath(); g.ellipse(0, 0, 4.4 * u, 8.6 * u, 0, 0, TAU); g.fill();
-    g.strokeStyle = 'rgba(244,239,228,0.55)'; g.lineWidth = 0.55 * u; g.beginPath();
+    g.strokeStyle = 'rgba(247, 243, 235,0.55)'; g.lineWidth = 0.55 * u; g.beginPath();
     for (let i = -4; i <= 4; i++) for (const sgn of [-1, 1]) { g.moveTo(-4.4 * u, i * 2.6 * u + sgn * 3 * u); g.lineTo(4.4 * u, i * 2.6 * u - sgn * 3 * u); }
     g.stroke(); g.strokeStyle = ink(0.8); g.lineWidth = 0.45 * u; g.beginPath();
     for (let i = -3; i <= 3; i++) for (const sgn of [-1, 1]) {
@@ -1154,7 +1161,7 @@ function drawSeedOf(sp: Kind, x: number, y: number, k = 1, z = 1, standing = fal
   } else if (sp === 'fir') {
     // A Douglas fir's cone: long, its scales round-edged, and from under each a three-pointed bract.
     g.beginPath(); g.ellipse(0, 0, 4.2 * u, 9 * u, 0, 0, TAU); g.fill();
-    g.strokeStyle = 'rgba(244,239,228,0.5)'; g.lineWidth = 0.55 * u; g.beginPath();
+    g.strokeStyle = 'rgba(247, 243, 235,0.5)'; g.lineWidth = 0.55 * u; g.beginPath();
     for (let i = -3; i <= 3; i++) { g.moveTo(-4 * u, i * 2.6 * u); g.quadraticCurveTo(0, i * 2.6 * u + 2.2 * u, 4 * u, i * 2.6 * u); }
     g.stroke(); g.strokeStyle = ink(0.85); g.lineWidth = 0.5 * u; g.beginPath();
     for (let i = -3; i <= 3; i++) for (const sgn of [-1, 1]) {
@@ -1168,14 +1175,14 @@ function drawSeedOf(sp: Kind, x: number, y: number, k = 1, z = 1, standing = fal
     g.lineWidth = 0.5 * u; g.beginPath(); for (let i = 0; i < 7; i++) { const f = i / 6, x = -8 * u + 14 * u * f, y = 8 * u - 17 * u * f; g.moveTo(x, y); g.lineTo(x + 1.6 * u, y + 0.4 * u); } g.stroke();
     for (const [bx, by, br] of [[-3, 1, 3.4], [2.6, -3.6, 3], [3.4, 2.2, 2.6]] as [number, number, number][]) {
       g.fillStyle = ink(0.88); g.beginPath(); g.arc(bx * u, by * u, br * u, 0, TAU); g.fill();
-      g.fillStyle = 'rgba(244,239,228,0.35)'; g.beginPath(); g.ellipse((bx - br * 0.35) * u, (by - br * 0.35) * u, br * 0.35 * u, br * 0.5 * u, -0.5, 0, TAU); g.fill();
+      g.fillStyle = 'rgba(247, 243, 235,0.35)'; g.beginPath(); g.ellipse((bx - br * 0.35) * u, (by - br * 0.35) * u, br * 0.35 * u, br * 0.5 * u, -0.5, 0, TAU); g.fill();
     }
   } else if (sp === 'olive') {
     // The fruit, oval, a light on it, a narrow leaf from its stalk.
     g.beginPath(); g.moveTo(0, -4.6 * u); g.bezierCurveTo(3 * u, -8 * u, 9 * u, -11 * u, 13 * u, -11.5 * u); g.bezierCurveTo(9 * u, -8.6 * u, 3.5 * u, -5.6 * u, 0, -4.6 * u);
     g.fillStyle = ink(0.3); g.fill(); g.stroke(); g.lineWidth = 0.4 * u; g.beginPath(); g.moveTo(0.5 * u, -4.8 * u); g.quadraticCurveTo(6 * u, -8.6 * u, 12.5 * u, -11.4 * u); g.stroke();
     g.fillStyle = ink(0.88); g.beginPath(); g.ellipse(0, 1 * u, 3.8 * u, 5.4 * u, 0, 0, TAU); g.fill();
-    g.fillStyle = 'rgba(244,239,228,0.35)'; g.beginPath(); g.ellipse(-1.4 * u, -0.6 * u, 0.9 * u, 1.8 * u, -0.3, 0, TAU); g.fill();
+    g.fillStyle = 'rgba(247, 243, 235,0.35)'; g.beginPath(); g.ellipse(-1.4 * u, -0.6 * u, 0.9 * u, 1.8 * u, -0.3, 0, TAU); g.fill();
   } else {
     // Two round wings, papery, the seed small between them.
     for (const sgn of [-1, 1]) { g.beginPath(); g.ellipse(sgn * 3.6 * u, 0, 3.6 * u, 2.8 * u, sgn * 0.15, 0, TAU); g.fillStyle = ink(0.18); g.fill(); g.lineWidth = 0.6 * u; g.stroke(); }
@@ -1341,6 +1348,8 @@ function hear(): void {
     settle = { ring: tree.rings.length - 1, at: clock() };
     closeTrail();
     settleTap = clock() + BLOOM;
+    // (Once, a week in: that the slice can be seen printed.)
+    if (GROWN && tree.rings.length === 7 && !params.has('demo')) { try { if (!localStorage.getItem('annulus.printHint')) { localStorage.setItem('annulus.printHint', '1'); window.setTimeout(() => say('Hold the slice a moment to see it printed.', 7), 4000); } } catch { /* not said */ } }
     if (GROWN) {
       inward = { ring: tree.rings.length - 1, at: clock() };
       // (The new year simply there, where it settled, never growing out.)
@@ -1363,7 +1372,7 @@ function groundOf(): HTMLCanvasElement {
   c.fillStyle = PAPER; c.fillRect(0, 0, W, H);
   const light = c.createRadialGradient(W * 0.2, H * 0.12, 0, W * 0.2, H * 0.12, Math.hypot(W, H));
   light.addColorStop(0, 'rgba(255,253,246,0.55)'); light.addColorStop(0.5, 'rgba(255,253,246,0)');
-  light.addColorStop(1, 'rgba(120,96,70,0.10)');
+  light.addColorStop(1, 'rgba(120,96,70,0.08)');
   c.fillStyle = light; c.fillRect(0, 0, W, H);
   return ground;
 }
@@ -1503,7 +1512,7 @@ function drawBrush(g: CanvasRenderingContext2D, v: View, t: number): void {
     // (Soaking away as it dries, all of it paler and paler till it's gone: never a dark line there and then not.)
     const was = g.globalAlpha; g.globalAlpha = was * smooth(life / 0.6);
     const wet = life * life, live = !!tree.stroke && !going;
-    const PAPER_RGB = [244, 239, 228], INK_RGB = [24, 20, 18];
+    const PAPER_RGB = [247, 243, 235], INK_RGB = [24, 20, 18];
     const opaque = (a: number) => { const k = Math.max(0, Math.min(1, a)); return `rgb(${PAPER_RGB.map((c, j) => Math.round(c + (INK_RGB[j] - c) * k)).join(',')})`; };
     const B = [-1, -0.62, -0.22, 0.22, 0.62, 1];
     let from = 0;
@@ -1762,7 +1771,7 @@ function drawPrint(v: View): void {
       // The fine rays, in a wide band: short pale flecks across it, a few px apart (oak's; the others' can't be seen).
       if (!fine && kind === 'oak') {
         const count = Math.round((TAU * R * SPARSE) / (16 * px * Z));
-        g.strokeStyle = 'rgba(244,239,228,0.38)'; g.lineWidth = 0.4 * px * Z; g.lineCap = 'round'; g.beginPath();
+        g.strokeStyle = 'rgba(247, 243, 235,0.38)'; g.lineWidth = 0.4 * px * Z; g.lineCap = 'round'; g.beginPath();
         for (let q = 0; q < count; q++) {
           const a = h1(i * 7.7 + q * 1.31) * TAU, lo = bandIn(a), hi = outer(a), band = hi - lo, tilt = (h1(q * 5.9 + i) - 0.5) * 0.6 * px * Z / Math.max(1, R);
           const r0 = lo + band * (0.15 + 0.5 * h1(q * 2.9 + i)), r1 = r0 + band * (0.12 + 0.3 * h1(q * 4.1 + i * 3));
@@ -1809,7 +1818,7 @@ function drawPrint(v: View): void {
         const lw = (scr(outer(0)) - scr(bandIn(0))) / px / Z;
         if (lw >= 2.2) {
           const count = Math.round((TAU * scr(meanR(i - 1)) * SPARSE) / (2.6 * px * Z));
-          g.fillStyle = 'rgba(244,239,228,0.92)'; g.beginPath();
+          g.fillStyle = 'rgba(247, 243, 235,0.92)'; g.beginPath();
           for (let q = 0; q < count; q++) {
             if (h1(q * 0.37 + i * 1.7) < 0.28) continue;
             const a = ((q + h1(q * 3.7 + i)) / count) * TAU, r0 = scr(bandIn(a)), r1 = scr(outer(a));
@@ -1961,12 +1970,12 @@ function drawPrint(v: View): void {
     const side = h1(tree.seed * 0.731) * TAU, Rs = scr(Rb) + barkCss(v) * px * 2, ox = Math.cos(side + v.turn), oy = -Math.sin(side + v.turn);
     g.save(); g.globalCompositeOperation = 'source-atop';
     const lin = g.createLinearGradient(v.cx - ox * Rs, v.cy - oy * Rs, v.cx + ox * Rs, v.cy + oy * Rs);
-    lin.addColorStop(0, 'rgba(244,239,228,0)'); lin.addColorStop(0.55, 'rgba(244,239,228,0.02)'); lin.addColorStop(1, 'rgba(244,239,228,0.1)');
+    lin.addColorStop(0, 'rgba(247, 243, 235,0)'); lin.addColorStop(0.55, 'rgba(247, 243, 235,0.02)'); lin.addColorStop(1, 'rgba(247, 243, 235,0.1)');
     g.fillStyle = lin; g.fillRect(v.cx - Rs, v.cy - Rs, 2 * Rs, 2 * Rs);
     for (let q = 0; q < 5; q++) {
       const a = h1(tree.seed + q * 3.3) * TAU, d = Rs * (0.2 + 0.6 * h1(q * 7.1 + tree.seed)), rr = Rs * (0.25 + 0.3 * h1(q * 2.9));
       const x = v.cx + d * Math.cos(a), y = v.cy - d * Math.sin(a), rad = g.createRadialGradient(x, y, 0, x, y, rr);
-      rad.addColorStop(0, `rgba(244,239,228,${(0.03 + 0.03 * h1(q * 5.5)).toFixed(3)})`); rad.addColorStop(1, 'rgba(244,239,228,0)');
+      rad.addColorStop(0, `rgba(247, 243, 235,${(0.03 + 0.03 * h1(q * 5.5)).toFixed(3)})`); rad.addColorStop(1, 'rgba(247, 243, 235,0)');
       g.fillStyle = rad; g.fillRect(x - rr, y - rr, 2 * rr, 2 * rr);
     }
     g.restore();
@@ -2250,8 +2259,9 @@ const INK_PRINT = [24, 20, 18];
 async function yearPrint(): Promise<HTMLCanvasElement> {
   const Wp = 2400, Hp = 3000, P = 4, out = document.createElement('canvas'); out.width = Wp; out.height = Hp;
   const c = out.getContext('2d')!, was = { g, px, W, H };
-  c.fillStyle = '#ffffff'; c.fillRect(0, 0, Wp, Hp);
-  const R = barkMax(), v: View = { cx: Wp / 2, cy: Hp * 0.44, s: (Wp * 0.3) / Math.max(1e-6, R), turn: 0, px: P };
+  // (On a sheet of the warm white a print is pulled on, as the screen's paper but brighter.)
+  c.fillStyle = '#f8f5ef'; c.fillRect(0, 0, Wp, Hp);
+  const R = barkMax(), v: View = { cx: Wp / 2, cy: Hp * 0.44, s: (Wp * 0.37) / Math.max(1e-6, R), turn: 0, px: P };
   const lay = document.createElement('canvas'); lay.width = Wp; lay.height = Hp;
   g = lay.getContext('2d')!; px = P; W = Wp; H = Hp;
   try { if (tree.rings.length) { drawPrint(v); inkGrain(lay, v); } } finally { g = was.g; px = was.px; W = was.W; H = was.H; }
@@ -2263,8 +2273,59 @@ async function yearPrint(): Promise<HTMLCanvasElement> {
   }
   lc.putImageData(img, 0, 0);
   c.drawImage(lay, 0, 0);
+  // (Pencilled under it, as a printmaker signs a sheet: the wood and its days at the left, the edition at the right.)
+  if (tree.rings.length && days.length) {
+    const fmt = (d: string) => dayDate(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+    const first = fmt(days[0]), last = fmt(days[days.length - 1]), when = first === last ? first : `${first} – ${last}`;
+    c.fillStyle = 'rgba(92,88,84,0.82)'; c.font = `italic ${46}px Newsreader, "Iowan Old Style", Georgia, serif`; c.textBaseline = 'alphabetic';
+    const y = Math.min(Hp - 150, v.cy + v.s * R + 260);
+    c.textAlign = 'left'; c.fillText(`${kind}, ${tree.rings.length} ${tree.rings.length === 1 ? 'ring' : 'rings'}, ${when}`, 230, y);
+    c.textAlign = 'right'; c.fillText('1/1', Wp - 230, y);
+  }
   return out;
 }
+
+/**
+ * The print, looked at: the slice pressed large on a sheet of its own, pencilled under, as the artist's prints
+ * are; to keep (the share sheet, or a download), or let go of. A long press on the slice brings it.
+ */
+const printView = (() => {
+  const el = document.createElement('div');
+  el.style.cssText = 'position:fixed;inset:0;z-index:20;display:none;flex-direction:column;align-items:center;justify-content:center;gap:18px;background:rgba(236,230,218,0.97);opacity:0;transition:opacity 0.6s ease;font:italic 15px Newsreader,"Iowan Old Style",Georgia,serif;color:rgba(46,33,24,0.62);padding:calc(24px + env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom));box-sizing:border-box';
+  const sheet = document.createElement('img');
+  sheet.alt = 'This tree, printed on a sheet';
+  sheet.style.cssText = 'max-width:min(92vw,520px);max-height:76vh;box-shadow:0 1px 2px rgba(46,33,24,0.12),0 8px 28px rgba(46,33,24,0.12);background:#f8f5ef';
+  const note = document.createElement('div'); note.textContent = 'pressing the print…';
+  const row = document.createElement('div'); row.style.cssText = 'display:flex;gap:36px';
+  const keepB = document.createElement('button'), backB = document.createElement('button');
+  for (const b of [keepB, backB]) b.style.cssText = 'font:inherit;color:inherit;background:none;border:0;padding:12px 6px;cursor:pointer';
+  keepB.textContent = 'keep this print'; backB.textContent = 'back';
+  row.append(keepB, backB); el.append(sheet, note, row); document.body.append(el);
+  let blob: Blob | null = null, url = '';
+  const close = () => { el.style.opacity = '0'; window.setTimeout(() => { el.style.display = 'none'; if (url) URL.revokeObjectURL(url); url = ''; sheet.removeAttribute('src'); blob = null; }, 600); };
+  backB.onclick = close;
+  el.addEventListener('click', (e) => { if (e.target === el) close(); });
+  keepB.onclick = async () => {
+    if (!blob) return;
+    const how = await shareFile(blob, `well-rounded-${kind}-${dayOf()}.png`, 'image/png');
+    if (how === 'shared' || how === 'downloaded') note.textContent = 'Kept.';
+    else if (how === 'failed') note.textContent = 'It couldn’t be kept just now.';
+  };
+  return {
+    get open() { return el.style.display !== 'none'; },
+    async show(): Promise<void> {
+      if (el.style.display !== 'none') return;
+      hush(); blob = null; note.textContent = 'pressing the print…'; keepB.style.visibility = 'hidden';
+      el.style.display = 'flex'; requestAnimationFrame(() => { el.style.opacity = '1'; });
+      // (A breath first, so the sheet's fading in is never caught by the pressing.)
+      await new Promise((r) => setTimeout(r, 80));
+      const c = await yearPrint();
+      blob = await new Promise<Blob | null>((r) => c.toBlob(r, 'image/png'));
+      if (!blob) { note.textContent = 'The print couldn’t be pressed just now.'; return; }
+      url = URL.createObjectURL(blob); sheet.src = url; note.textContent = ''; keepB.style.visibility = '';
+    },
+  };
+})();
 
 /** The real wood's years, pressed from a scan (see printYears): oak's and ash's, once loaded. */
 const realYears = () => wood.years[kind];
@@ -3546,7 +3607,7 @@ function drawWeather(cam: Cam, sky: Sky, t: number, U: number): void {
   if (sky.snow > 0.05) { g.globalCompositeOperation = 'screen'; g.fillStyle = `rgba(255,255,255,${(0.16 * sky.snow).toFixed(3)})`; g.fillRect(0, 0, W, H); }
   // Fog: a paler sheet, thicker in drifting banks.
   if (sky.fog > 0.02) {
-    g.globalCompositeOperation = 'source-over'; g.fillStyle = `rgba(244,239,228,${(0.32 * sky.fog).toFixed(3)})`; g.fillRect(0, 0, W, H);
+    g.globalCompositeOperation = 'source-over'; g.fillStyle = `rgba(247, 243, 235,${(0.32 * sky.fog).toFixed(3)})`; g.fillRect(0, 0, W, H);
     for (let i = 0; i < 7; i++) {
       const [x, y] = drift(i + 80, 0.04 + 0.1 * sky.wind), r = (2.5 + 2 * h1(i * 7.7)) * cam.S;
       const gr = g.createRadialGradient(x, y, 0, x, y, r);
@@ -3736,7 +3797,7 @@ function drawCopyWords(al: number): void {
   // (On a clearing of paper of their own: never written over the map.)
   {
     const cx = W / 2, cy = c.keep[1], rx = 200 * px, ry = 22 * px, gr = g.createRadialGradient(cx, cy, 0, cx, cy, rx);
-    gr.addColorStop(0, 'rgba(244,239,228,1)'); gr.addColorStop(0.7, 'rgba(244,239,228,0.92)'); gr.addColorStop(1, 'rgba(244,239,228,0)');
+    gr.addColorStop(0, 'rgba(247, 243, 235,1)'); gr.addColorStop(0.7, 'rgba(247, 243, 235,0.92)'); gr.addColorStop(1, 'rgba(247, 243, 235,0)');
     g.save(); g.globalAlpha = al; g.translate(cx, cy); g.scale(1, ry / rx); g.translate(-cx, -cy); g.fillStyle = gr; g.fillRect(cx - rx, cy - rx, 2 * rx, 2 * rx); g.restore();
   }
   g.fillText('keep a copy', ...c.keep); g.fillText('take one back', ...c.back);

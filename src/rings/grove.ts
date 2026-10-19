@@ -15,7 +15,7 @@ function vn(x: number, y: number): number {
   const a = h1(xi * 57 + yi * 131), b = h1(xi * 57 + 57 + yi * 131), c = h1(xi * 57 + yi * 131 + 131), e = h1(xi * 57 + 57 + yi * 131 + 131);
   return a + (b - a) * sx + (c - a) * sy + (a - b - c + e) * sx * sy;
 }
-const INK = '36,28,23', PAPER = 'rgb(244,239,228)';
+const INK = '36,28,23', PAPER = 'rgb(247, 243, 235)';
 const ink = (a: number) => `rgba(${INK},${a})`;
 
 type Habit = { clumps: number; spread: number; rough: number; tip: number; size: number; tall: number; marks: number; squash: number };
@@ -612,7 +612,7 @@ export function drawStream(g: CanvasRenderingContext2D, pts: [number, number][],
   g.save(); g.lineCap = 'round'; g.lineJoin = 'round';
   // The water: paper, a cool wash, paler down the middle where the light is on it.
   g.beginPath(); g.moveTo(...L[0]); for (const q of L) g.lineTo(...q); for (let i = n - 1; i >= 0; i--) g.lineTo(...R[i]); g.closePath();
-  g.fillStyle = 'rgb(244,239,228)'; g.fill();
+  g.fillStyle = 'rgb(247, 243, 235)'; g.fill();
   g.globalCompositeOperation = 'multiply'; g.fillStyle = 'rgba(160,184,192,0.42)'; g.fill();
   const Li = side(1, 0.18), Ri = side(-1, 0.18);
   g.beginPath(); g.moveTo(...Li[0]); for (const q of Li) g.lineTo(...q); for (let i = n - 1; i >= 0; i--) g.lineTo(...Ri[i]); g.closePath();
