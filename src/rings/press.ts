@@ -827,7 +827,7 @@ function holdView(): void {
 /** The ring just closed, blooming (a look only: the next can be begun at once). */
 let settle = { ring: -1, at: 0 }, settleTap = 0;
 /** When the loop drawn was closed (growing true to scale: it dries where it was drawn). */
-let inward: { ring: number; at: number } | null = null;
+let inward: { ring: number; at: number; by?: number } | null = null;
 /** The brush's track: where, when, how wide it laid (slow is wide), and how fast. */
 /** (`load`: the ink left in the brush, full at first, drier round the loop; `jit`: how unevenly the hand went.) */
 let trail: { a: number; r: number; t: number; w: number; fast: number; load: number; jit: number; turned: number }[] = [];
@@ -1360,11 +1360,13 @@ function hear(): void {
     // (Once, a week in: that the slice can be seen printed.)
     if (GROWN && tree.rings.length === 7 && !params.has('demo')) { try { if (!localStorage.getItem('annulus.printHint')) { localStorage.setItem('annulus.printHint', '1'); window.setTimeout(() => say('Hold the slice a moment to see it printed.', 7), 4000); } } catch { /* not said */ } }
     if (GROWN) {
-      inward = { ring: tree.rings.length - 1, at: clock() };
+      // (First the loop dries away, the slice still; then, the sheet clear, the year grows out into it.)
+      const soak = Math.min(1.3, 3.2 - 2.1 * smooth((tree.rings.length - 8) / 110));
+      inward = { ring: tree.rings.length - 1, at: clock(), by: soak };
       // (The new year simply there, where it settled, never growing out.)
       yearClosed = true;
       // (The year's wood grows out to the loop before the slice draws back to make room.)
-      if (PRINT && !closer()) yearGrow = { ring: tree.rings.length - 1, at: clock() };
+      if (PRINT && !closer()) yearGrow = { ring: tree.rings.length - 1, at: clock() + 0.85 * soak };
       // (And the new year shown as new wood is, pale, a moment: on an old tree it's a hair at the bark, and would
       // grow there unseen.)
       fresh = { ring: tree.rings.length - 1, at: clock() };
@@ -1496,7 +1498,8 @@ function drawBrush(g: CanvasRenderingContext2D, v: View, t: number): void {
   // (Quicker the older the tree: a young tree's year is near where the loop was drawn, an old one's far in from
   // it, a hair at the bark; the loop then only stands apart, and is let go of sooner.)
   const dryT = 3.2 - 2.1 * smooth((tree.rings.length - 8) / 110);
-  const dry = going ? 1 - smooth((t - going.at) / dryT) : 1;
+  // (All of it, evenly, before the year grows out toward it: never cleared a piece at a time.)
+  const dry = going ? 1 - smooth((t - going.at) / Math.min(dryT, going.by ?? dryT)) : 1;
   // (Dried away: let go of, never mapped again each frame for nothing.)
   if (!tree.stroke && painter === null && (going ? dry < 0.01 : t - trail[n - 1].t > 14)) { trail = []; return; }
   // (It dries where it was drawn, soaking into the sheet, never sliding in after the year it made: the year is
@@ -1592,17 +1595,6 @@ function drawBrush(g: CanvasRenderingContext2D, v: View, t: number): void {
       from = i;
     }
     if (going) {
-      // (Gone a little ahead of the year growing out toward it, softly: the new wood never touches wet ink.)
-      const gr = yearGrow && yearGrow.ring === going.ring ? yearGrow : null;
-      const fG = gr ? 1 - Math.pow(1 - Math.min(1, (t - gr.at) / GROW_T), 2.2) : 1, in0 = barkOf(going.ring - 1), out0 = barkOf(going.ring);
-      const front = (a: number) => in0(a) + (out0(a) - in0(a)) * fG, N = K * 2;
-      g.globalCompositeOperation = 'destination-out'; g.fillStyle = '#000';
-      for (let q = 6; q >= 0; q--) {
-        const ex = ((3 + (14 * q) / 6) * px) / v.s;
-        g.globalAlpha = q === 0 ? 1 : 0.32; g.beginPath();
-        for (let j = 0; j <= N; j++) { const a = (j / N) * TAU, [x, y] = at(v, a, front(a) + ex); if (j) g.lineTo(x, y); else g.moveTo(x, y); }
-        g.closePath(); g.fill();
-      }
       g = main; g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = fadeTo; g.drawImage(brushSheet!, 0, 0); g.restore();
     } else main.globalAlpha = orig;
     return;
@@ -2679,7 +2671,7 @@ function drawFresh(v: View, t: number): void {
   const age = t - fresh.at, al = 0.82 * smooth(age / 0.4) * (1 - smooth((age - GROW_T - 1.6) / 2.4));
   if (age > GROW_T + 4.2) { fresh = null; return; }
   if (al < 0.01) return;
-  const f = yearGrow && yearGrow.ring === fresh.ring ? 1 - Math.pow(1 - Math.min(1, (t - yearGrow.at) / GROW_T), 2.2) : 1;
+  const f = yearGrow && yearGrow.ring === fresh.ring ? 1 - Math.pow(1 - Math.max(0, Math.min(1, (t - yearGrow.at) / GROW_T)), 2.2) : 1;
   // (Only where the year is too fine to be seen growing: a young tree's wide year shows itself, and paled
   // over it would only wash its ink out.)
   const wpx = v.s * (meanR(fresh.ring) - meanR(fresh.ring - 1)) / px, need = 1 - smooth((wpx - 2) / 4);
@@ -2690,13 +2682,13 @@ function drawFresh(v: View, t: number): void {
 }
 function drawGrowth(v: View, t: number, moving: boolean, drift: boolean): boolean {
   const gr = yearGrow!, n = tree.rings.length;
-  const f = 1 - Math.pow(1 - Math.min(1, (t - gr.at) / GROW_T), 2.2);
+  const f = 1 - Math.pow(1 - Math.max(0, Math.min(1, (t - gr.at) / GROW_T)), 2.2);
   // (Room made at the start of the next frame, never part way through this one: the rest of it would be
   // pressed for the view as it was, and pressed again the frame after, a blur between.)
   if (gr.ring !== n - 1 || f >= 1 || closer() || fingers.size >= 2) { yearGrow = null; roomDue = true; return false; }
   const pc = printFor(v, moving, 'drawing', drift);
   // (Its clock held till the new year's print is there: the growing begins at its beginning, never part way.)
-  if (pc.key !== printKey(v)) { gr.at = t; return false; }
+  if (pc.key !== printKey(v)) { gr.at = Math.max(gr.at, t); return false; }
   const old = barkOf(n - 2), neu = barkOf(n - 1), front = (a: number) => old(a) + (neu(a) - old(a)) * f;
   // (The wood, up to the growing edge.)
   g.save(); ringPath(v, front, 0, K * 2); g.clip(); drawKept(pc, v); g.restore();
