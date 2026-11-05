@@ -2340,11 +2340,12 @@ function printYears(v: View, oak: Years | null): void {
         ink += (pale * tone(i) - ink) * smooth((1 - cap / wpx - acr0) * wpx / (2.5 * U));
       }
       if (!heart && thin[i] > 0) {
-        // (A block of ink, as dark as its years ran narrow; cut through by the pale lines of the wide ones.)
-        ink += (dens[i] * tone(i) - ink) * thin[i];
+        // (Years too fine to print apart: the wood between paled, and the years that stand out from those round
+        // them drawn over it as dark lines. Inked solid, as a block, the whole slice went black.)
+        ink *= 1 - 0.65 * thin[i];
         const jo = edgeOut[i], ji = edgeIn[i];
         const cov = Math.max(jo < 0 ? 0 : lineAt(jo, at(jo, b, f) - r), ji < 0 ? 0 : lineAt(ji, r - at(ji, b, f))) * (0.75 + 0.35 * vnoise(dx * 0.11 + i, dy * 0.11));
-        if (cov > 0) ink = Math.min(ink, 1 - 0.92 * Math.min(1, cov));
+        if (cov > 0) ink = Math.max(ink, 0.95 * Math.min(1, cov));
       }
       // The rays: the wood's fine radial lines, open to the paper, crossing every year, so the latewood prints
       // as a run of small bricks.

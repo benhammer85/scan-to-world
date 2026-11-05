@@ -178,10 +178,10 @@ void main() {
     ink += (pale * R(i, 10) - ink) * sm((1. - cap / wpx - acr0) * wpx / (2.5 * uU));
   }
   if (!heart && R(i, 5) > 0.) {
-    ink += (R(i, 13) * R(i, 10) - ink) * R(i, 5);
+    ink *= 1. - 0.65 * R(i, 5);
     int jo = int(R(i, 9)), ji = int(R(i, 8));
     float cov = max(jo < 0 ? 0. : lineAt(jo, rad(jo, b, f) - r), ji < 0 ? 0. : lineAt(ji, r - rad(ji, b, f))) * (0.75 + 0.35 * vnoise(dx * 0.11 + float(i), dy * 0.11));
-    if (cov > 0.) ink = min(ink, 1. - 0.92 * min(1., cov));
+    if (cov > 0.) ink = max(ink, 0.95 * min(1., cov));
   }
   // (The drawn woods' rays fine and sparing, as a print shows them: the years' bands run on through them.)
   // (The rays fine, as a print shows them, and ending short of the bark; the scanned woods' own rays already there.)

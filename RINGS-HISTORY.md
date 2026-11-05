@@ -378,3 +378,11 @@ October 19 — how it's done, said once. "Swipe through the woods. Touch one to 
 
 * The faint dotted pencil ring marking where the next tree would go is gone: the whole ground takes a tree now,
   so it marked nothing. Touching where it was plants there like anywhere else.
+
+## 2026-11-05 — The fine years print pale again, with dark lines
+
+* Since October 19 the years too fine to print apart were inked as a solid block, cut by thin pale lines. On a
+  phone nearly every year is that fine, so the slice printed mostly black: a forty-day oak took about a third
+  more ink, its rings broken and run together, and an older tree went nearly solid. Those years now print as
+  before, pale wood with the years that stand out drawn over it as dark lines, which still fall on the tree's
+  own years. The press's pressure, the straight checks and the broken bark stay.
