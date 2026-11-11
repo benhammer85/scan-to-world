@@ -1982,15 +1982,15 @@ function drawPrint(v: View): void {
   // them, so a crack now and then runs a little way along a ring before going on: a step. Widest where it began,
   // jagged at its edges. (The practice only: they belong to an old slice.)
   cracksCut = [];
-  if (GROWN && n >= 20) {
+  if (GROWN && n >= 10) {
     const bark = barkOf(n - 1), T = barkCss(v) * px;
     // (A crack's way, as (angle, mm), `fromHeart` outward or else inward from the bark, to `deep` of the radius;
     // `wide` px where it began, a hairline at its end. Stroked a short piece at a time, each as wide as the crack
     // is there, its ends round, so it turns along a ring and back without a seam.)
-    const crack = (q: number, a0: number, deep: number, wide: number, fromHeart: boolean) => {
+    const crack = (q: number, a0: number, deep: number, wide: number, fromHeart: boolean, drift = 0) => {
       // (`a0` its line: moved on only where it steps along a ring.)
       const pts: [number, number][] = [], along: number[] = [];
-      let a = a0, f = 0, stepping = 0, dir = 1, held = 0, stepped = false;
+      let a = a0, f = 0, stepping = 0, dir = 1, held = 0, stepped = 0;
       const steps = 60;
       for (let j = 0; j <= steps * 2 && f <= 1; j++) {
         if (stepping > 0) {
@@ -2002,10 +2002,10 @@ function drawPrint(v: View): void {
         pts.push([a, rr]);
         f += 1 / steps;
         // (Straight in from the bark, as wood splits along its rays: only a little jagged, never wandering off.)
-        a = a0 + (noise(q * 9 + f * 7) - 0.5) * 0.022 + (noise(q * 4 + f * 31) - 0.5) * 0.008;
+        a = a0 + drift * f + (noise(q * 9 + f * 7) - 0.5) * 0.04 + (noise(q * 4 + f * 31) - 0.5) * 0.02 + (noise(q * 2 + f * 90) - 0.5) * 0.008;
         // (Once in a while, at a year's edge, it turns along it for a short way.)
-        if (f > 0.4 && f < 0.85 && !stepped && h1(q * 5.3 + j * 0.77) < 0.012) {
-          stepped = h1(q * 8.1) > 0.4;
+        if (f > 0.15 && f < 0.9 && stepped < 3 && h1(q * 5.3 + j * 0.77) < 0.03) {
+          stepped++;
           let i = 0; while (i < n - 1 && meanR(i) < rr) i++;
           held = Math.max(0, i - 1); stepping = 2 + Math.floor(h1(q * 2.1 + j) * 4); dir = h1(q * 3.9 + j) < 0.5 ? -1 : 1;
         }
@@ -2021,23 +2021,47 @@ function drawPrint(v: View): void {
       }
     };
     g.save(); g.globalCompositeOperation = 'destination-out'; g.strokeStyle = '#000'; g.lineCap = 'round'; g.lineJoin = 'round';
-    const count = Math.min(5, 1 + Math.floor((n - 20) / 70));
+    // (From the bark in: more as the slice ages, a dozen and more on an old one, as a weathered stump has;
+    // some forked near the bark, the fork running in to meet its crack.)
+    const count = Math.min(16, 1 + Math.floor((n - 10) / 9));
     for (let c = 0; c < count; c++) {
-      const q = tree.seed * 0.0031 + c * 7.71, age = n - 20 - c * 70;
-      const deep = Math.min(0.85, 0.2 + 0.0045 * age + 0.3 * h1(q + 1.3));
-      const wide = Math.min(0.03 * scr(Rb), 9 * px * Z) * (0.5 + 0.7 * h1(q + 2.9)) * Math.min(1, 0.35 + age / 90);
-      crack(q, h1(q) * TAU, deep, wide, false);
+      const q = tree.seed * 0.0031 + c * 7.71, age = n - 10 - c * 9, a0 = h1(q + 4.4) * TAU;
+      const deep = Math.min(0.9, 0.18 + 0.006 * age + 0.35 * h1(q + 1.3));
+      const wide = Math.min(0.018 * scr(Rb), 5 * px * Z) * (0.25 + 0.9 * h1(q + 2.9) ** 2) * Math.min(1, 0.35 + age / 60);
+      crack(q, a0, deep, wide, false);
+      if (h1(q + 6.6) < 0.35) { const d = (h1(q + 7.2) < 0.5 ? -1 : 1) * (0.05 + 0.08 * h1(q + 8.1)), dd = deep * (0.25 + 0.3 * h1(q + 9.3)); crack(q + 0.37, a0 + d, dd, wide * 0.5, false, -d); }
     }
-    // (From the heart: two to four, spread round, each opening as the slice ages.)
-    if (n >= 90) {
-      const hs = 2 + Math.floor(h1(tree.seed * 0.173) * 3), base = h1(tree.seed * 0.71) * TAU;
+    // (From the heart: a star of four to six, spread round, each opening as the slice ages.)
+    if (n >= 25) {
+      const hs = 4 + Math.floor(h1(tree.seed * 0.173) * 3), base = h1(tree.seed * 0.71) * TAU;
       for (let c = 0; c < hs; c++) {
-        const q = tree.seed * 0.0057 + c * 3.37 + 50, age = n - 90 - c * 40;
+        const q = tree.seed * 0.0057 + c * 3.37 + 50, age = n - 25 - c * 12;
         if (age < 0) continue;
-        const deep = Math.min(0.75, 0.15 + 0.004 * age + 0.25 * h1(q + 0.9));
-        const wide = Math.min(0.035 * scr(Rb), 10 * px * Z) * (0.6 + 0.6 * h1(q + 1.7)) * Math.min(1, 0.4 + age / 100);
-        crack(q, base + (c / hs) * TAU + (h1(q * 2.2) - 0.5) * 0.8, deep, wide, true);
+        const deep = Math.min(0.6, 0.08 + 0.004 * age + 0.3 * h1(q + 0.9) ** 2);
+        const wide = Math.min(0.02 * scr(Rb), 5 * px * Z) * (0.4 + 0.6 * h1(q + 1.7)) * Math.min(1, 0.35 + age / 80);
+        crack(q, base + (c / hs) * TAU + (h1(q * 2.2) - 0.5) * 0.9, deep, wide, true);
       }
+    }
+    // (The wood broken into blocks, as weathered end grain is: fine splits along the rays, a few years long,
+    // and short ones along the years between them, so the face reads as small bricks, smallest at the heart.)
+    if (n >= 15) {
+      const on = smooth((n - 15) / 40), R1 = scr(Rb), cell = 6 * px * Z, hair = 0.7 * px * Z;
+      const rays = Math.floor(TAU * R1 / (cell * 1.6)), M = Math.floor(rays * (R1 / cell) * 0.45 * on);
+      g.lineWidth = hair;
+      for (let k = 0; k < M; k++) {
+        const u = h1(k * 1.618 + tree.seed * 0.011), w = h1(k * 2.414 + 3.1), rr = Math.sqrt(u) * 0.94;
+        const ar = Math.floor(w * rays) / rays * TAU + h1(k * 0.7) * 0.004;
+        let i = 0; const rWant = rr * meanR(n - 1); while (i < n - 1 && meanR(i) < rWant) i++;
+        const span = 1 + Math.floor(h1(k * 3.3) * 3), i0 = Math.max(0, i - span), r0 = barkOf(i0)(ar), r1 = barkOf(Math.min(n - 1, i))(ar);
+        if (r1 - r0 <= 0) continue;
+        g.globalAlpha = 0.55 + 0.45 * h1(k * 4.1);
+        g.beginPath(); g.moveTo(...pt(ar, r0)); g.lineTo(...pt(ar, r1)); g.stroke();
+        if (h1(k * 5.9) < 0.55) {
+          const da = (cell * (0.8 + 1.4 * h1(k * 6.3))) / Math.max(cell, scr(r1)) * (h1(k * 7.1) < 0.5 ? -1 : 1), br = barkOf(i0);
+          g.beginPath(); g.moveTo(...pt(ar, br(ar))); for (let t = 1; t <= 4; t++) { const at = ar + (da * t) / 4; g.lineTo(...pt(at, br(at))); } g.stroke();
+        }
+      }
+      g.globalAlpha = 1;
     }
     g.restore();
   }

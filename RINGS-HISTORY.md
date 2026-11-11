@@ -386,3 +386,12 @@ October 19 — how it's done, said once. "Swipe through the woods. Touch one to 
   more ink, its rings broken and run together, and an older tree went nearly solid. Those years now print as
   before, pale wood with the years that stand out drawn over it as dark lines, which still fall on the tree's
   own years. The press's pressure, the straight checks and the broken bark stay.
+
+## 2026-11-11 — Split like a weathered stump
+
+* After photographs of weathered oak stumps: the slice splits far more as it ages. Cracks run in from the bark
+  from about the tenth ring, unevenly spaced, a dozen and more on an old slice, thin and jagged, stepping along
+  a ring now and then, some forked near the bark with the fork running in to meet its crack.
+* A star of four to six splits opens from the heart from about the twenty-fifth ring.
+* The face breaks into small blocks: fine splits along the rays, a few years long, and short ones along the
+  years between them.
